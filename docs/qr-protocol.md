@@ -1,4 +1,4 @@
-# Offline Cipher QR プロトコル仕様 v1
+# Qrypt QR プロトコル仕様 v1
 
 本書は QR コードで交換されるペイロードの正式仕様である。実装(`src/qr/payload.ts`, `src/crypto/*`)と単体テストは本書に従う。
 

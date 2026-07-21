@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { deleteDB, openDB } from "idb"
 
-const PROBE_DB = "offline-cipher-cryptokey-probe"
+const PROBE_DB = "qrypt-cryptokey-probe"
 
 interface ProbeRecord {
   id: string

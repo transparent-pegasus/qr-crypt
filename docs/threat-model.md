@@ -1,4 +1,4 @@
-# Offline Cipher 脅威モデル
+# Qrypt 脅威モデル
 
 ## 1. 保護対象資産
 

@@ -1,4 +1,4 @@
-// IndexedDB 接続(spec §15)。DB 名 offline-cipher / version 1。
+// IndexedDB 接続(spec §15)。DB 名 qrypt / version 1。
 // upgrade 処理は migrations.ts の版別マップに委譲する(plan §12-7)。
 import { deleteDB, openDB } from "idb"
 import type { DBSchema, IDBPDatabase } from "idb"
@@ -6,7 +6,7 @@ import { toAppError } from "@/crypto/errors"
 import type { StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
 import { applyMigrations } from "@/storage/migrations"
 
-export const DB_NAME = "offline-cipher"
+export const DB_NAME = "qrypt"
 export const DB_VERSION = 1
 
 export const STORE_KEYS = "keys"

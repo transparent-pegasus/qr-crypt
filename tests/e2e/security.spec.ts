@@ -16,7 +16,7 @@ test("暗号フローは同一オリジンに限定され秘密をログや loca
   const keyMaterial = await page.evaluate(async () => {
     const records = await new Promise<Array<{ symmetricKey?: CryptoKey }>>(
       (resolve, reject) => {
-        const openRequest = indexedDB.open("offline-cipher")
+        const openRequest = indexedDB.open("qrypt")
         openRequest.onerror = () => reject(openRequest.error)
         openRequest.onsuccess = () => {
           const database = openRequest.result

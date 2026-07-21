@@ -38,3 +38,5 @@ spec §5「ui-ux-pro-max-skill の使用」の実施記録。
 - **追加**: QR 面は常に白背景(spec §6)、機密度バッジ 3 段階、確認強度 3 段階、safe-area・44px タッチ領域・reduced-motion 規則(spec §6)。
 
 ページ別規則は `design-system/pages/{encrypt,keys,saved-qr,settings}.md`(spec §5 の指定 5 ファイル構成)。
+
+その後プロダクト名は Qrypt へ改名(2026-07-21)

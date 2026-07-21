@@ -32,8 +32,8 @@ const intFromString = (defaultValue: number, min: number, max: number) =>
     .pipe(z.number().int().min(min).max(max))
 
 const rawSchema = z.object({
-  VITE_APP_NAME: z.string().min(1).default("Offline Cipher"),
-  VITE_APP_SHORT_NAME: z.string().min(1).default("Cipher"),
+  VITE_APP_NAME: z.string().min(1).default("Qrypt"),
+  VITE_APP_SHORT_NAME: z.string().min(1).default("Qrypt"),
   VITE_DEFAULT_ALGORITHM: z.enum(["A256GCM", "RSA-HYBRID"]).default("A256GCM"),
   VITE_QR_ERROR_CORRECTION: z.enum(["L", "M", "Q", "H"]).default("Q"),
   VITE_QR_RENDER_SIZE: intFromString(512, 128, 1024),

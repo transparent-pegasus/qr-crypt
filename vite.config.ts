@@ -11,8 +11,8 @@ const pkg = JSON.parse(
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
-  const appName = env.VITE_APP_NAME ?? "Offline Cipher"
-  const shortName = env.VITE_APP_SHORT_NAME ?? "Cipher"
+  const appName = env.VITE_APP_NAME ?? "Qrypt"
+  const shortName = env.VITE_APP_SHORT_NAME ?? "Qrypt"
   return {
     plugins: [
       react(),

@@ -1,4 +1,4 @@
-# Offline Cipher（qrypt）
+# Qrypt
 
 オフライン暗号化 QR PWA。端末上で平文を暗号化し、暗号文・鍵素材を QR として表示・読取・保存する Progressive Web App です。
 
