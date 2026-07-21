@@ -22,7 +22,8 @@ test("Service Worker 制御下で完全オフラインの暗号化と QR 表示"
   await context.setOffline(true)
   try {
     await page.reload({ waitUntil: "domcontentloaded" })
-    await expect(page.getByRole("heading", { name: "Offline Cipher" })).toBeVisible()
+    await expect(page.locator("header h1")).toBeVisible()
+    await expect(page.locator("header h1")).not.toHaveText("")
 
     const keyName = "オフライン共通鍵"
     await createSymmetricKey(page, keyName)

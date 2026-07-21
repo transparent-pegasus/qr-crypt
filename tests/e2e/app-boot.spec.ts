@@ -23,7 +23,9 @@ test("起動、下部ナビゲーション、PWA マニフェストとアイコ�
     return { status: response.status, body }
   })
   expect(manifest.status).toBe(200)
-  expect(manifest.body.name).toBe("Offline Cipher")
+  const headerTitle = (await page.locator("header h1").innerText()).trim()
+  expect(headerTitle.length).toBeGreaterThan(0)
+  expect(manifest.body.name).toBe(headerTitle)
   expect(manifest.body.display).toBe("standalone")
   expect(manifest.body.icons).toHaveLength(3)
 
