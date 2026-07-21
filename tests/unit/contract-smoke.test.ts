@@ -6,11 +6,7 @@ import { AppError, ERROR_CODES, toAppError, userMessageFor } from "@/crypto/erro
 import { KEY_ID_PATTERN, MAX_CIPHERTEXT_BYTES, MAX_PLAINTEXT_BYTES } from "@/lib/limits"
 import { ecLevelFor, payloadFits, qrByteCapacity } from "@/qr/encode"
 import { QR_PREFIX } from "@/qr/payload"
-import {
-  sensitivityForKind,
-  toUiAlgorithm,
-  toWireAlgorithm,
-} from "@/schemas/domain"
+import { sensitivityForKind, toUiAlgorithm, toWireAlgorithm } from "@/schemas/domain"
 import { env, parseAppEnv } from "@/schemas/env-schema"
 import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
 
@@ -23,9 +19,7 @@ describe("contract smoke", () => {
       "復号できませんでした。鍵、暗号方式、または暗号文が一致していません。",
     )
     expect(userMessageFor("QR_TOO_LARGE")).toContain("QRコード")
-    expect(toAppError(new Error("x"), "STORAGE_FAILED").code).toBe(
-      "STORAGE_FAILED",
-    )
+    expect(toAppError(new Error("x"), "STORAGE_FAILED").code).toBe("STORAGE_FAILED")
     expect(toAppError(error, "STORAGE_FAILED")).toBe(error)
   })
 
@@ -53,9 +47,7 @@ describe("contract smoke", () => {
     })
     expect(normalized.defaultAlgorithm).toBe("A256GCM")
     expect(normalized.buildSha).toBe("development")
-    expect(() => parseAppEnv({ VITE_ENABLE_RSA: "yes" })).toThrow(
-      "環境変数が不正です",
-    )
+    expect(() => parseAppEnv({ VITE_ENABLE_RSA: "yes" })).toThrow("環境変数が不正です")
     expect(() => parseAppEnv({ VITE_QR_RENDER_SIZE: "abc" })).toThrow(
       "環境変数が不正です",
     )

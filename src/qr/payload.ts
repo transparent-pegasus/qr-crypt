@@ -6,6 +6,12 @@ import type {
   PublicKeyEnvelopeV1,
   SymmetricKeyEnvelopeV1,
 } from "@/crypto/envelope"
+import { Decoder, Encoder, Tag } from "cbor-x"
+import { AppError, toAppError } from "@/crypto/errors"
+import { fromBase64Url, toBase64Url } from "@/lib/base64url"
+import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
+import { MAX_PAYLOAD_CHARS } from "@/lib/limits"
+import { validateDecodedEnvelope } from "@/schemas/envelope-schema"
 
 export const QR_PREFIX = {
   message: "OCM1:",
@@ -22,21 +28,143 @@ export type DecodedPayload =
   | { kind: "symmetric-key"; envelope: SymmetricKeyEnvelopeV1 }
   | { kind: "public-key"; envelope: PublicKeyEnvelopeV1 }
 
-function notImplemented(...args: unknown[]): never {
-  void args
-  throw new Error("not implemented")
+const encoder = new Encoder({ useRecords: false, tagUint8Array: false })
+const decoder = new Decoder({
+  useRecords: false,
+  tagUint8Array: false,
+  mapsAsObjects: true,
+})
+
+function orderedEnvelope(envelope: AnyEnvelopeV1): Record<string, unknown> {
+  if (envelope.type === "message" && envelope.algorithm === "A256GCM") {
+    return {
+      v: envelope.v,
+      type: envelope.type,
+      algorithm: envelope.algorithm,
+      keyId: envelope.keyId,
+      createdAt: envelope.createdAt,
+      iv: envelope.iv,
+      ciphertext: envelope.ciphertext,
+      aad: envelope.aad,
+    }
+  }
+  if (envelope.type === "message" && envelope.algorithm === "RSA-OAEP-3072+A256GCM") {
+    return {
+      v: envelope.v,
+      type: envelope.type,
+      algorithm: envelope.algorithm,
+      recipientKeyId: envelope.recipientKeyId,
+      createdAt: envelope.createdAt,
+      wrappedKey: envelope.wrappedKey,
+      iv: envelope.iv,
+      ciphertext: envelope.ciphertext,
+      aad: envelope.aad,
+    }
+  }
+  if (envelope.type === "symmetric-key") {
+    return {
+      v: envelope.v,
+      type: envelope.type,
+      algorithm: envelope.algorithm,
+      keyId: envelope.keyId,
+      createdAt: envelope.createdAt,
+      key: envelope.key,
+    }
+  }
+  return {
+    v: envelope.v,
+    type: envelope.type,
+    algorithm: envelope.algorithm,
+    keyId: envelope.keyId,
+    createdAt: envelope.createdAt,
+    spki: envelope.spki,
+  }
+}
+
+function prefixKindForEnvelope(envelope: AnyEnvelopeV1): PayloadKind {
+  if (envelope.type === "message") return "message"
+  return envelope.type
+}
+
+function containsUnsupportedCbor(value: unknown): boolean {
+  if (value instanceof Tag || value instanceof Map) return true
+  if (value instanceof Uint8Array || value === null) return false
+  if (Array.isArray(value)) return value.some(containsUnsupportedCbor)
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value) as unknown
+    if (prototype !== Object.prototype && prototype !== null) return true
+    return Object.values(value as Record<string, unknown>).some(containsUnsupportedCbor)
+  }
+  return false
 }
 
 // CBOR は共有 Encoder({ useRecords: false, tagUint8Array: false })・
 // 型別の固定キー順ビルダー経由でのみ符号化する(plan §12-2)
 export function encodeEnvelopeToPayload(envelope: AnyEnvelopeV1): string {
-  return notImplemented(envelope)
+  try {
+    const kind = prefixKindForEnvelope(envelope)
+    const validated = validateDecodedEnvelope(envelope, kind)
+    const bytes = encoder.encode(orderedEnvelope(validated))
+    const payload = `${QR_PREFIX[kind]}${toBase64Url(bytes)}`
+    if (payload.length > MAX_PAYLOAD_CHARS) {
+      throw new AppError("INVALID_QR_PAYLOAD")
+    }
+    return payload
+  } catch (error) {
+    throw toAppError(error, "INVALID_QR_PAYLOAD")
+  }
 }
 
 export function decodePayload(text: string): DecodedPayload {
-  return notImplemented(text)
+  const prefixEntry = Object.entries(QR_PREFIX).find(([, prefix]) =>
+    text.startsWith(prefix),
+  ) as [keyof typeof QR_PREFIX, string] | undefined
+  if (prefixEntry === undefined) throw new AppError("INVALID_QR_PREFIX")
+  const [prefixKind, prefix] = prefixEntry
+  if (prefixKind === "encrypted-private-key") {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
+  if (text.length > MAX_PAYLOAD_CHARS) {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
+
+  let decoded: unknown
+  try {
+    const body = text.slice(prefix.length)
+    if (body.length === 0) throw new Error("empty payload")
+    const values = decoder.decodeMultiple(fromBase64Url(body)) as unknown[]
+    if (values.length !== 1) throw new Error("trailing CBOR value")
+    decoded = values[0]
+    if (
+      typeof decoded !== "object" ||
+      decoded === null ||
+      Array.isArray(decoded) ||
+      decoded instanceof Map ||
+      containsUnsupportedCbor(decoded)
+    ) {
+      throw new Error("invalid CBOR map")
+    }
+  } catch {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
+
+  const envelope = validateDecodedEnvelope(decoded, prefixKind)
+  if (prefixKind === "message") {
+    return { kind: "message", envelope: envelope as MessageEnvelope }
+  }
+  if (prefixKind === "symmetric-key") {
+    return {
+      kind: "symmetric-key",
+      envelope: envelope as SymmetricKeyEnvelopeV1,
+    }
+  }
+  return { kind: "public-key", envelope: envelope as PublicKeyEnvelopeV1 }
 }
 
-export function payloadSha256Hex(payload: string): Promise<string> {
-  return notImplemented(payload)
+export async function payloadSha256Hex(payload: string): Promise<string> {
+  try {
+    return await sha256Hex(utf8ToBytes(payload))
+  } catch (error) {
+    throw toAppError(error, "INVALID_QR_PAYLOAD")
+  }
 }

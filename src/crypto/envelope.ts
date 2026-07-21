@@ -1,5 +1,6 @@
 // エンベロープ型定義(docs/qr-protocol.md §3)と AAD 構築(同 §4)。
 // フィールドの追加・削除はプロトコル v2 を意味する — v1 では不可。
+import { utf8ToBytes } from "@/lib/bytes"
 
 export interface AesMessageEnvelopeV1 {
   v: 1
@@ -44,10 +45,7 @@ export interface PublicKeyEnvelopeV1 {
 
 export type MessageEnvelope = AesMessageEnvelopeV1 | RsaHybridEnvelopeV1
 
-export type AnyEnvelopeV1 =
-  | MessageEnvelope
-  | SymmetricKeyEnvelopeV1
-  | PublicKeyEnvelopeV1
+export type AnyEnvelopeV1 = MessageEnvelope | SymmetricKeyEnvelopeV1 | PublicKeyEnvelopeV1
 
 export interface AadFields {
   v: number
@@ -58,12 +56,9 @@ export interface AadFields {
   createdAt: number
 }
 
-function notImplemented(...args: unknown[]): never {
-  void args
-  throw new Error("not implemented")
-}
-
 // AAD = UTF-8("OCAAD1|" + v + "|" + type + "|" + algorithm + "|" + keyId + "|" + createdAt)
 export function buildAad(fields: AadFields): Uint8Array {
-  return notImplemented(fields)
+  return utf8ToBytes(
+    `OCAAD1|${fields.v}|${fields.type}|${fields.algorithm}|${fields.keyId}|${fields.createdAt}`,
+  )
 }

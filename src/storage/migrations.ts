@@ -13,9 +13,22 @@ export type UpgradeFn = (
   >,
 ) => void
 
-function notImplemented(...args: unknown[]): never {
-  void args
-  throw new Error("not implemented")
+const migrations: Readonly<Record<number, UpgradeFn>> = {
+  1: (db, tx) => {
+    void tx
+    const keys = db.createObjectStore("keys", { keyPath: "id" })
+    keys.createIndex("by-fingerprint", "fingerprint", { unique: true })
+    keys.createIndex("by-createdAt", "createdAt")
+
+    const qrArtifacts = db.createObjectStore("qrArtifacts", {
+      keyPath: "id",
+    })
+    qrArtifacts.createIndex("by-payloadSha256", "payloadSha256")
+    qrArtifacts.createIndex("by-createdAt", "createdAt")
+
+    db.createObjectStore("preferences", { keyPath: "key" })
+    db.createObjectStore("appMetadata", { keyPath: "key" })
+  },
 }
 
 // oldVersion < N のとき migrations[N] を昇順に適用する
@@ -24,5 +37,8 @@ export function applyMigrations(
   oldVersion: number,
   tx: Parameters<UpgradeFn>[1],
 ): void {
-  notImplemented(db, oldVersion, tx)
+  for (let version = oldVersion + 1; version <= 1; version += 1) {
+    const migration = migrations[version]
+    if (migration !== undefined) migration(db, tx)
+  }
 }

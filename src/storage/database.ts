@@ -1,7 +1,10 @@
 // IndexedDB 接続(spec §15)。DB 名 offline-cipher / version 1。
 // upgrade 処理は migrations.ts の版別マップに委譲する(plan §12-7)。
+import { deleteDB, openDB } from "idb"
 import type { DBSchema, IDBPDatabase } from "idb"
+import { toAppError } from "@/crypto/errors"
 import type { StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
+import { applyMigrations } from "@/storage/migrations"
 
 export const DB_NAME = "offline-cipher"
 export const DB_VERSION = 1
@@ -32,20 +35,48 @@ export interface OfflineCipherDb extends DBSchema {
   appMetadata: { key: string; value: KeyValueRow }
 }
 
-function notImplemented(...args: unknown[]): never {
-  void args
-  throw new Error("not implemented")
-}
+let databasePromise: Promise<IDBPDatabase<OfflineCipherDb>> | undefined
+let databaseInstance: IDBPDatabase<OfflineCipherDb> | undefined
 
-export function getDb(): Promise<IDBPDatabase<OfflineCipherDb>> {
-  return notImplemented()
+export async function getDb(): Promise<IDBPDatabase<OfflineCipherDb>> {
+  databasePromise ??= openDB<OfflineCipherDb>(DB_NAME, DB_VERSION, {
+    upgrade(database, oldVersion, _newVersion, transaction) {
+      applyMigrations(database, oldVersion, transaction)
+    },
+    terminated() {
+      databaseInstance = undefined
+      databasePromise = undefined
+    },
+  })
+  try {
+    const database = await databasePromise
+    databaseInstance = database
+    return database
+  } catch (error) {
+    databasePromise = undefined
+    throw toAppError(error, "STORAGE_FAILED")
+  }
 }
 
 export function closeDb(): void {
-  notImplemented()
+  if (databasePromise === undefined) return
+  if (databaseInstance !== undefined) databaseInstance.close()
+  else void databasePromise.then((database) => database.close()).catch(() => undefined)
+  databaseInstance = undefined
+  databasePromise = undefined
 }
 
 // 全ローカルデータ初期化用(設定ページ)。SW キャッシュは対象外(plan §13 C21)
-export function deleteEntireDatabase(): Promise<void> {
-  return notImplemented()
+export async function deleteEntireDatabase(): Promise<void> {
+  try {
+    if (databasePromise !== undefined) {
+      const database = await databasePromise
+      database.close()
+      databaseInstance = undefined
+      databasePromise = undefined
+    }
+    await deleteDB(DB_NAME)
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
 }

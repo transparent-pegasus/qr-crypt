@@ -10,10 +10,7 @@ export type QrEcLevel = "L" | "M" | "Q" | "H"
 export type KeyKind = "symmetric" | "rsa-key-pair" | "public-key"
 
 export type QrArtifactKind =
-  | "ciphertext"
-  | "symmetric-key"
-  | "public-key"
-  | "encrypted-private-key"
+  "ciphertext" | "symmetric-key" | "public-key" | "encrypted-private-key"
 
 export type Sensitivity = "public" | "confidential" | "secret"
 

@@ -34,8 +34,7 @@ const USER_MESSAGES: Record<ErrorCode, string> = {
   ENCRYPTION_FAILED: "暗号化に失敗しました。入力内容を確認してください。",
   DECRYPTION_FAILED:
     "復号できませんでした。鍵、暗号方式、または暗号文が一致していません。",
-  QR_TOO_LARGE:
-    "データ量が多いため、この誤り訂正レベルではQRコードを生成できません。",
+  QR_TOO_LARGE: "データ量が多いため、この誤り訂正レベルではQRコードを生成できません。",
   STORAGE_FAILED: "保存領域の操作に失敗しました。",
   CAMERA_PERMISSION_DENIED:
     "カメラの使用が許可されていません。ブラウザーの設定で許可してください。",

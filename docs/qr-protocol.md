@@ -36,7 +36,7 @@
 | `keyId` | text | `^[A-Za-z0-9_-]{22}$`(16 バイト乱数の base64url) |
 | `createdAt` | int | Unix ms。`0 < x < 2^53` |
 | `iv` | bytes | **12 バイト固定** |
-| `ciphertext` | bytes | 16〜6144 バイト(GCM タグ 16B を末尾に含む) |
+| `ciphertext` | bytes | 16〜4112 バイト(= 平文上限 4096 + GCM タグ 16。上限は `VITE_MAX_PLAINTEXT_BYTES + 16` から導出) |
 | `aad` | bytes | ≤128 バイト。§4 の再計算値と完全一致必須 |
 
 ### 3.2 `RsaHybridEnvelopeV1`(OCM1)

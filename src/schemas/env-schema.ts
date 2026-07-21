@@ -48,9 +48,7 @@ const rawSchema = z.object({
 export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
   const parsed = rawSchema.safeParse(raw)
   if (!parsed.success) {
-    const paths = parsed.error.issues
-      .map((issue) => issue.path.join("."))
-      .join(", ")
+    const paths = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")
     throw new Error(`環境変数が不正です: ${paths}`)
   }
   const v = parsed.data

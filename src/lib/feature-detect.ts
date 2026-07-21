@@ -7,11 +7,15 @@ export interface FeatureSupport {
   serviceWorker: boolean
 }
 
-function notImplemented(...args: unknown[]): never {
-  void args
-  throw new Error("not implemented")
-}
-
 export function detectFeatures(): FeatureSupport {
-  return notImplemented()
+  const hasNavigator = typeof navigator !== "undefined"
+  return {
+    webCrypto:
+      typeof crypto !== "undefined" &&
+      typeof crypto.subtle !== "undefined" &&
+      typeof crypto.getRandomValues === "function",
+    indexedDb: typeof indexedDB !== "undefined",
+    camera: hasNavigator && typeof navigator.mediaDevices?.getUserMedia === "function",
+    serviceWorker: hasNavigator && "serviceWorker" in navigator,
+  }
 }
