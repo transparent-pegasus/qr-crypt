@@ -6,8 +6,6 @@
 
 **しないこと**: 平文や秘密鍵の外部送信、クラウド上の鍵保管、独自暗号アルゴリズム、CDN 依存のランタイム、オフライン表示を安全性の証明として扱うこと。
 
-> 本 README はドラフトです。WP-6 でクリーンチェックアウトによる実コマンド照合で最終化されます（C29）。
-
 ## セキュリティ上の前提と免責
 
 このアプリが保証するのは、アプリケーションが意図的に平文や秘密鍵を外部送信しないことまでとする。
@@ -97,6 +95,7 @@ aube build:prod
 
 重要:
 
+* `.env.local` は任意。未配置でも `.env.example` / `.env.prod` の既定で全ゲート（`aube ci`〜`aube test:e2e`）が通る
 * `VITE_*` はビルド後のクライアントコードへ含まれるため、**秘密情報を入れてはならない**
 * 暗号鍵・秘密鍵・Cloudflare API Token・復号用情報を `.env` に置かない
 * feature flag をアクセス制御や秘密保護として使わない
@@ -153,12 +152,16 @@ GitHub の Cloudflare Git Integration とは二重運用しません。GitHub Ac
 | 逸脱 | 理由 / 根拠 |
 | --- | --- |
 | `toast` → `sonner` | shadcn v3 レジストリに `toast` が無い（廃止）ため、公式後継 `sonner` を使用 |
-| `playwright` → `@playwright/test` | テストランナー実体は `@playwright/test` |
-| テスト補助 dev deps（`fake-indexeddb` / `pngjs` / `@types/pngjs` / `@testing-library/jest-dom` 等）および Tailwind / Radix 系 | §3 推奨リスト外だがスタック上必須の追加（C11 等） |
+| shadcn CLI 不使用・手動ベンダリング | CLI が npm 系 lock を生成するため不採用。公式レジストリ JSON から `src/components/ui/` へ手動配置（C24） |
+| `radix-ui` 傘パッケージ不採用 | `radix-ui@1.6.4` のみ provenance 欠落のため、スコープ付き `@radix-ui/react-*` を使用。供給網事象の詳細は [docs/threat-model.md](docs/threat-model.md) §5.1 |
+| `typescript@6` ピン | メジャー 6 を明示ピン（`package.json` の `"typescript": "6"`） |
+| `playwright` → `@playwright/test` | テストランナー実体は `@playwright/test`。ブラウザーは `aube exec playwright install chromium`（CI は `--with-deps`） |
+| テスト補助 dev deps（`fake-indexeddb` / `pngjs` / `@types/pngjs` / `@testing-library/jest-dom` 等）および Tailwind / Radix 系 | §3 推奨リスト外だがスタック上必須の追加（C11: `pngjs` で PNG 往復復号など） |
 | shadcn 追加コンポーネント `checkbox` / `radio-group` / `collapsible` | 強確認・読取対象選択・詳細折りたたみに必要（§12 改訂 11） |
 | `_headers` へ `/sw.js`・`/registerSW.js`・`/manifest.webmanifest` の `Cache-Control: no-cache` 追加 | SW / manifest の鮮度担保（C19）。§27 からの管理された追加 |
 | CI へ独立 `e2e` job 追加 | plan C15。`validate-and-deploy` はそのまま。e2e は deploy をブロックしない |
 | `@zxing/library` 追加 | DOM 非依存の unit テスト用。`@zxing/browser` は UI 層のみ |
 | `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` は予約のみ | env は残すが UI・モジュール分岐なし（§12 改訂 18） |
+| 供給網ピン・override（`react-hook-form@7.82.0` / `eslint-config-prettier@10.1.8` / `aube.overrides` で rollup OMT） | 初期構築時の advisory・trust-downgrade 対応。一覧は [docs/threat-model.md](docs/threat-model.md) §5.1 |
 
 Action ピン（`actions/checkout@v6` / `jdx/mise-action@v3` / `cloudflare/wrangler-action@v3`）はいずれも該当リポジトリにメジャータグが存在することを確認済みです。変更不要のため、ここでの追加逸脱はありません（改訂 20）。
