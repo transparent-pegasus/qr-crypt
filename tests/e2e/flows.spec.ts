@@ -3,15 +3,18 @@ import {
   createSymmetricKey,
   encryptWithStoredKey,
   mainNavigation,
+  openOfflineApp,
 } from "./helpers"
 
 test("共通鍵生成から暗号文 QR の保存、改名、削除、鍵全消去まで", async ({
+  context,
   page,
 }) => {
   const keyName = "フロー共通鍵"
   const qrName = "フロー保存QR"
   const renamedQr = "改名済みフローQR"
 
+  await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, keyName)
 
   await page.getByRole("button", { name: `${keyName}の操作` }).click()

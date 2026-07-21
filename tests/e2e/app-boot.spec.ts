@@ -1,18 +1,11 @@
 import { expect, test } from "@playwright/test"
-import { mainNavigation } from "./helpers"
+import { loadOnlineGate, mainNavigation, switchToOfflineApp } from "./helpers"
 
-test("起動、下部ナビゲーション、PWA マニフェストとアイコン", async ({ page }) => {
-  await page.goto("/")
-  await expect(page).toHaveURL(/\/encrypt$/)
-
-  const navigation = mainNavigation(page)
-  await expect(navigation.getByRole("link")).toHaveCount(4)
-  for (const label of ["暗号化", "鍵", "保存済み", "設定"]) {
-    await expect(
-      navigation.getByRole("link", { name: new RegExp(`^${label}`) }),
-    ).toBeVisible()
-  }
-
+test("オンライン導入画面、PWA 資産、オフライン起動とナビゲーション", async ({
+  context,
+  page,
+}) => {
+  await loadOnlineGate(page, "/")
   const manifest = await page.evaluate(async () => {
     const response = await fetch("/manifest.webmanifest")
     const body = (await response.json()) as {
@@ -33,4 +26,14 @@ test("起動、下部ナビゲーション、PWA マニフェストとアイコ�
     (await fetch("/icons/icon-192.png")).status,
   )
   expect(iconStatus).toBe(200)
+
+  await switchToOfflineApp(page, context)
+  await expect(page).toHaveURL(/\/encrypt$/)
+  const navigation = mainNavigation(page)
+  await expect(navigation.getByRole("link")).toHaveCount(4)
+  for (const label of ["暗号化", "鍵", "保存済み", "設定"]) {
+    await expect(
+      navigation.getByRole("link", { name: new RegExp(`^${label}`) }),
+    ).toBeVisible()
+  }
 })

@@ -8,7 +8,7 @@ import {
   QRCodeReader,
   RGBLuminanceSource,
 } from "@zxing/library"
-import { createSymmetricKey, encryptWithStoredKey } from "./helpers"
+import { createSymmetricKey, encryptWithStoredKey, openOfflineApp } from "./helpers"
 
 function decodePng(buffer: Buffer): string {
   const png = PNG.sync.read(buffer)
@@ -65,9 +65,11 @@ function decodePng(buffer: Buffer): string {
 }
 
 test("PNG と SVG のダウンロード内容が画面のペイロードと一致する", async ({
+  context,
   page,
 }) => {
   const keyName = "出力確認鍵"
+  await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, keyName)
   const { payload } = await encryptWithStoredKey(page, {
     keyName,

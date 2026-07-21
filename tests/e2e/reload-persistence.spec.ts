@@ -2,12 +2,17 @@ import { expect, test } from "@playwright/test"
 import {
   createRsaKeyPair,
   encryptWithStoredKey,
+  openOfflineApp,
   RSA_ALGORITHM_LABEL,
 } from "./helpers"
 
-test("IndexedDB の RSA 秘密鍵を reload 後も使って復号できる", async ({ page }) => {
+test("IndexedDB の RSA 秘密鍵を reload 後も使って復号できる", async ({
+  context,
+  page,
+}) => {
   const keyName = "再読込RSA鍵ペア"
   const plaintext = "再読み込み後に秘密鍵で復号する日本語平文"
+  await openOfflineApp(page, context, "/keys")
   await createRsaKeyPair(page, keyName)
   const { payload } = await encryptWithStoredKey(page, {
     keyName,

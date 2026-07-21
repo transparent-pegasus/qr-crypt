@@ -1,8 +1,9 @@
 import "./helpers/module-mocks"
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { fakeFeatures } from "./helpers/fakes"
+import { setTestOnlineStatus } from "./helpers/network"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 describe("app shell and feature gate", () => {
@@ -30,12 +31,6 @@ describe("app shell and feature gate", () => {
 
   it("reports offline as neutral communication state without a safety claim", async () => {
     await renderApp("/encrypt")
-    expect(await screen.findByText("オンライン")).toBeInTheDocument()
-    Object.defineProperty(navigator, "onLine", {
-      value: false,
-      configurable: true,
-    })
-    fireEvent(window, new Event("offline"))
     expect(await screen.findByText("オフライン")).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent("オフラインなので安全")
   })
@@ -84,6 +79,7 @@ describe("app shell and feature gate", () => {
   })
 
   it("blocks all features when Web Crypto is missing", async () => {
+    setTestOnlineStatus(true)
     await renderApp("/encrypt", {
       detectFeatures: () => ({
         webCrypto: false,
@@ -95,6 +91,9 @@ describe("app shell and feature gate", () => {
     expect(await screen.findByText("UNSUPPORTED_BROWSER")).toBeInTheDocument()
     expect(screen.getByText("このブラウザーでは利用できません")).toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("オンラインではPWAの導入のみ利用できます"),
+    ).not.toBeInTheDocument()
   })
 
   it("keeps the app available but disables camera reading when camera is absent", async () => {

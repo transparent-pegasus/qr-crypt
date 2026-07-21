@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test"
+import { openOfflineApp } from "./helpers"
 
 test("fake camera の映像を再生しダイアログ終了時に全 track を停止する", async ({
+  context,
   page,
 }) => {
-  await page.goto("/keys")
+  await openOfflineApp(page, context, "/keys")
   await page.evaluate(() => {
     const probeWindow = window as Window & {
       __cameraProbe?: {

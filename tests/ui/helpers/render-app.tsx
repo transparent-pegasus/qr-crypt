@@ -1,6 +1,7 @@
 import { cleanup, render } from "@testing-library/react"
 import { createElement, type ComponentProps } from "react"
 import { resetFakes } from "./fakes"
+import { setTestOnlineStatus } from "./network"
 
 type AppComponent = typeof import("@/app/App").App
 let appComponent: AppComponent | null = null
@@ -63,9 +64,6 @@ export function resetUi(): void {
   resetFakes()
   memoryLocalStorage.clear()
   document.documentElement.classList.remove("dark")
-  Object.defineProperty(navigator, "onLine", {
-    value: true,
-    configurable: true,
-  })
+  setTestOnlineStatus(false)
   window.history.pushState({}, "", "/")
 }

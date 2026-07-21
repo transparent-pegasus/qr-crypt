@@ -7,6 +7,7 @@ import {
 } from "@/lib/feature-detect"
 import { createAppRouter } from "@/app/router"
 import { AppProviders, ThemeProvider } from "@/app/providers"
+import { OnlineGate } from "@/components/online-gate"
 import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
 
 export interface AppProps {
@@ -78,7 +79,9 @@ export function App({ detectFeatures, pwaHook }: AppProps) {
 
   return (
     <AppProviders features={features} pwaHook={pwaHook}>
-      <RouterProvider router={router} />
+      <OnlineGate>
+        <RouterProvider router={router} />
+      </OnlineGate>
     </AppProviders>
   )
 }

@@ -51,6 +51,8 @@
 | T11 | ストレージ経由の情報漏洩 | localStorage 誤用 | localStorage はテーマのみ(自動テストで検査)、平文非保存テスト、QR ペイロードは IndexedDB のみ | 端末窃取+プロファイル抽出(非目標 5) |
 | T12 | カメラの不正利用 | 常時カメラ | 読取モーダル表示中のみ getUserMedia、閉鎖時トラック停止、Permissions-Policy camera=(self) | カメラマルウェア(非目標 3) |
 
+T8/T11 横断対策として、OnlineGate はオンライン中の全機能を遮断し、offline→online 遷移時に TransientClear を発火して平文・復号結果・結果ペイロードを即時消去する。オフライン表示自体を安全性の証明とは扱わない。
+
 ## 5. 設計上のトレードオフ(明示)
 
 - **共通鍵は extractable**: 共通鍵 QR の生成が仕様要件のため。露出面は T3 の UI 対策で縮小。より高い保護が必要な相手には RSA 方式を推奨(秘密鍵は non-extractable)。

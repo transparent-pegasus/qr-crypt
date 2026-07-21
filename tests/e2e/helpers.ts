@@ -1,10 +1,66 @@
-import { expect, type Page } from "@playwright/test"
+import { expect, type BrowserContext, type Page } from "@playwright/test"
 
 export const AES_ALGORITHM_LABEL = "共通鍵 — AES-256-GCM"
 export const RSA_ALGORITHM_LABEL = "公開鍵 — RSA-OAEP-3072 + AES-256-GCM"
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+export async function expectOnlineGate(page: Page): Promise<void> {
+  await expect(
+    page.getByText("オンラインではPWAの導入のみ利用できます"),
+  ).toBeVisible()
+  await expect(page.getByRole("img", { name: /アプリアイコン/ })).toBeVisible()
+  await expect(page.getByText("PWAインストール状態")).toBeVisible()
+  await expect(page.getByText("オフライン利用準備状態")).toBeVisible()
+  await expect(
+    page.getByText("オフライン（機内モード）に切り替えると全機能が利用できます。"),
+  ).toBeVisible()
+  await expect(page.getByText("オンライン", { exact: true })).toBeVisible()
+  await expect(page.getByRole("navigation")).toBeHidden()
+}
+
+export async function loadOnlineGate(page: Page, path = "/encrypt"): Promise<void> {
+  await page.goto(path)
+  await expectOnlineGate(page)
+}
+
+export async function waitForServiceWorkerControl(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready
+  })
+  if (!(await page.evaluate(() => navigator.serviceWorker.controller !== null))) {
+    await page.reload({ waitUntil: "domcontentloaded" })
+    await expectOnlineGate(page)
+  }
+  await expect
+    .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), {
+      timeout: 15_000,
+    })
+    .toBe(true)
+}
+
+export async function switchToOfflineApp(
+  page: Page,
+  context: BrowserContext,
+): Promise<void> {
+  await waitForServiceWorkerControl(page)
+  await context.setOffline(true)
+  await page.reload({ waitUntil: "domcontentloaded" })
+  await expect(
+    page.getByText("オンラインではPWAの導入のみ利用できます"),
+  ).toBeHidden()
+  await expect(mainNavigation(page)).toBeVisible()
+}
+
+export async function openOfflineApp(
+  page: Page,
+  context: BrowserContext,
+  path = "/encrypt",
+): Promise<void> {
+  await loadOnlineGate(page, path)
+  await switchToOfflineApp(page, context)
 }
 
 export async function createSymmetricKey(page: Page, name: string): Promise<void> {

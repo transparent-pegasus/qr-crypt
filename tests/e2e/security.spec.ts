@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test"
-import { createSymmetricKey, encryptWithStoredKey } from "./helpers"
+import { createSymmetricKey, encryptWithStoredKey, openOfflineApp } from "./helpers"
 
 test("暗号フローは同一オリジンに限定され秘密をログや localStorage に残さない", async ({
+  context,
   page,
 }) => {
   const requestUrls: string[] = []
@@ -11,6 +12,7 @@ test("暗号フローは同一オリジンに限定され秘密をログや loca
 
   const keyName = "セキュリティ確認鍵"
   const plaintext = "絶対にログへ出してはいけない日本語平文-SECURITY-E2E"
+  await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, keyName)
 
   const keyMaterial = await page.evaluate(async () => {
