@@ -1,0 +1,6 @@
+dist
+dev-dist
+coverage
+playwright-report
+test-results
+aube-lock.yaml

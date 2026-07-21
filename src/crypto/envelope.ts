@@ -1,0 +1,69 @@
+// エンベロープ型定義(docs/qr-protocol.md §3)と AAD 構築(同 §4)。
+// フィールドの追加・削除はプロトコル v2 を意味する — v1 では不可。
+
+export interface AesMessageEnvelopeV1 {
+  v: 1
+  type: "message"
+  algorithm: "A256GCM"
+  keyId: string
+  createdAt: number
+  iv: Uint8Array
+  ciphertext: Uint8Array
+  aad: Uint8Array
+}
+
+export interface RsaHybridEnvelopeV1 {
+  v: 1
+  type: "message"
+  algorithm: "RSA-OAEP-3072+A256GCM"
+  recipientKeyId: string
+  createdAt: number
+  wrappedKey: Uint8Array
+  iv: Uint8Array
+  ciphertext: Uint8Array
+  aad: Uint8Array
+}
+
+export interface SymmetricKeyEnvelopeV1 {
+  v: 1
+  type: "symmetric-key"
+  algorithm: "A256GCM"
+  keyId: string
+  createdAt: number
+  key: Uint8Array
+}
+
+export interface PublicKeyEnvelopeV1 {
+  v: 1
+  type: "public-key"
+  algorithm: "RSA-OAEP-3072"
+  keyId: string
+  createdAt: number
+  spki: Uint8Array
+}
+
+export type MessageEnvelope = AesMessageEnvelopeV1 | RsaHybridEnvelopeV1
+
+export type AnyEnvelopeV1 =
+  | MessageEnvelope
+  | SymmetricKeyEnvelopeV1
+  | PublicKeyEnvelopeV1
+
+export interface AadFields {
+  v: number
+  type: string
+  algorithm: string
+  // RSA ハイブリッドでは recipientKeyId を渡す(docs/qr-protocol.md §4)
+  keyId: string
+  createdAt: number
+}
+
+function notImplemented(...args: unknown[]): never {
+  void args
+  throw new Error("not implemented")
+}
+
+// AAD = UTF-8("OCAAD1|" + v + "|" + type + "|" + algorithm + "|" + keyId + "|" + createdAt)
+export function buildAad(fields: AadFields): Uint8Array {
+  return notImplemented(fields)
+}
