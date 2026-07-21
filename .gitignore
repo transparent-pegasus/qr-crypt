@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dev-dist/
+.env.local
+.env.*.local
+playwright-report/
+test-results/
+coverage/
+.tmp/
