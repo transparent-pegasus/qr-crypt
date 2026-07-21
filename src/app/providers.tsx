@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react"
 import type { FeatureSupport } from "@/lib/feature-detect"
-import { PwaUpdatePrompt, type UseRegisterSwHook } from "@/components/pwa-update-prompt"
+import { PwaOfflineReady, type UseRegisterSwHook } from "@/components/pwa-offline-ready"
 import { Toaster } from "@/components/ui/sonner"
 
 export type Theme = "light" | "dark" | "system"
@@ -179,7 +179,7 @@ export function AppProviders({
       <FeatureSupportProvider features={features}>
         <TransientClearProvider>
           <SensitiveSessionProvider>
-            <PwaUpdatePrompt registerHook={pwaHook}>{children}</PwaUpdatePrompt>
+            <PwaOfflineReady registerHook={pwaHook}>{children}</PwaOfflineReady>
             <Toaster position="top-center" richColors />
           </SensitiveSessionProvider>
         </TransientClearProvider>

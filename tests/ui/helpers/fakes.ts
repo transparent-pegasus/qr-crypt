@@ -69,8 +69,8 @@ export const fakeArtifacts: StoredQrArtifact[] = []
 export const fakePreferences: Preferences = {
   defaultAlgorithm: "A256GCM",
   qrErrorCorrection: "Q",
-  autoClearPlaintextAfterEncrypt: false,
-  backgroundClearSeconds: 300,
+  autoClearPlaintextAfterEncrypt: true,
+  backgroundClearEnabled: true,
 }
 export const fakeFeatures: FeatureSupport = {
   webCrypto: true,
@@ -79,7 +79,6 @@ export const fakeFeatures: FeatureSupport = {
   serviceWorker: true,
 }
 export const fakePwa = {
-  needRefresh: false,
   offlineReady: false,
 }
 
@@ -494,15 +493,11 @@ export const deleteEntireDatabase = vi.fn(async () => {
 export const getDb = vi.fn()
 export const closeDb = vi.fn()
 
-export const updateServiceWorker = vi.fn(async () => undefined)
 export function useFakeRegisterSW(_options?: RegisterSWOptions) {
   void _options
-  const needRefreshState = useState(fakePwa.needRefresh)
   const offlineReadyState = useState(fakePwa.offlineReady)
   return {
-    needRefresh: needRefreshState,
     offlineReady: offlineReadyState,
-    updateServiceWorker,
   }
 }
 
@@ -512,8 +507,8 @@ export function resetFakes(): void {
   Object.assign(fakePreferences, {
     defaultAlgorithm: "A256GCM",
     qrErrorCorrection: "Q",
-    autoClearPlaintextAfterEncrypt: false,
-    backgroundClearSeconds: 300,
+    autoClearPlaintextAfterEncrypt: true,
+    backgroundClearEnabled: true,
   } satisfies Preferences)
   Object.assign(fakeFeatures, {
     webCrypto: true,
@@ -521,7 +516,6 @@ export function resetFakes(): void {
     camera: true,
     serviceWorker: true,
   } satisfies FeatureSupport)
-  fakePwa.needRefresh = false
   fakePwa.offlineReady = false
   artifactCounter = 0
   keyCounter = 0

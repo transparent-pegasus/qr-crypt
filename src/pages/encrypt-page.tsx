@@ -201,7 +201,7 @@ export function EncryptPage() {
   }, [])
 
   useAutoClear({
-    seconds: preferences.backgroundClearSeconds,
+    enabled: preferences.backgroundClearEnabled,
     onClear: clearTransient,
     clearNonce: nonce,
   })

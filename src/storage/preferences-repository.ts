@@ -1,7 +1,6 @@
-// 設定の永続化(spec §28)。既定値は env 由来(plan §12-6):
-// defaultAlgorithm/qrErrorCorrection = env、
-// autoClearPlaintextAfterEncrypt = false(spec §7.2)、
-// backgroundClearSeconds = env.autoClearSeconds。
+// 設定の永続化(spec §28、オーナー決定による既定変更):
+// defaultAlgorithm/qrErrorCorrection = env、平文自動消去は両方 true。
+// 遅延は設定として保存せず env.autoClearSeconds の固定値を使う。
 import type { Preferences } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { env } from "@/schemas/env-schema"
@@ -13,8 +12,8 @@ function defaults(): Preferences {
   return {
     defaultAlgorithm: env.defaultAlgorithm,
     qrErrorCorrection: env.qrErrorCorrection,
-    autoClearPlaintextAfterEncrypt: false,
-    backgroundClearSeconds: env.autoClearSeconds,
+    autoClearPlaintextAfterEncrypt: true,
+    backgroundClearEnabled: true,
   }
 }
 
@@ -31,10 +30,7 @@ function validatePreferences(value: unknown): Preferences {
       candidate.qrErrorCorrection !== "Q" &&
       candidate.qrErrorCorrection !== "H") ||
     typeof candidate.autoClearPlaintextAfterEncrypt !== "boolean" ||
-    !Number.isSafeInteger(candidate.backgroundClearSeconds) ||
-    candidate.backgroundClearSeconds === undefined ||
-    candidate.backgroundClearSeconds < 0 ||
-    candidate.backgroundClearSeconds > 86_400
+    typeof candidate.backgroundClearEnabled !== "boolean"
   ) {
     throw new AppError("STORAGE_FAILED")
   }
@@ -42,7 +38,7 @@ function validatePreferences(value: unknown): Preferences {
     defaultAlgorithm: candidate.defaultAlgorithm,
     qrErrorCorrection: candidate.qrErrorCorrection,
     autoClearPlaintextAfterEncrypt: candidate.autoClearPlaintextAfterEncrypt,
-    backgroundClearSeconds: candidate.backgroundClearSeconds,
+    backgroundClearEnabled: candidate.backgroundClearEnabled,
   }
 }
 

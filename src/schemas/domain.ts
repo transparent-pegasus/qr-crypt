@@ -47,7 +47,7 @@ export interface Preferences {
   defaultAlgorithm: UiAlgorithm
   qrErrorCorrection: QrEcLevel
   autoClearPlaintextAfterEncrypt: boolean
-  backgroundClearSeconds: number
+  backgroundClearEnabled: boolean
 }
 
 export function toWireAlgorithm(algorithm: UiAlgorithm): WireAlgorithm {

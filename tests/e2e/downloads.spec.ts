@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test"
 import { PNG } from "pngjs"
 import {
   BinaryBitmap,
+  DecodeHintType,
   HybridBinarizer,
   QRCodeReader,
   RGBLuminanceSource,
@@ -11,13 +12,55 @@ import { createSymmetricKey, encryptWithStoredKey } from "./helpers"
 
 function decodePng(buffer: Buffer): string {
   const png = PNG.sync.read(buffer)
-  const luminance = new Uint8ClampedArray(png.width * png.height)
-  for (let index = 0; index < luminance.length; index += 1) {
-    luminance[index] = png.data[index * 4]!
+  const isDark = (x: number, y: number) => png.data[(y * png.width + x) * 4]! < 128
+  let finderX = -1
+  let finderY = -1
+  for (let y = 0; y < png.height && finderY < 0; y += 1) {
+    for (let x = 0; x < png.width; x += 1) {
+      if (!isDark(x, y)) continue
+      finderX = x
+      finderY = y
+      break
+    }
   }
-  const source = new RGBLuminanceSource(luminance, png.width, png.height)
+  if (finderX < 0 || finderY < 0) throw new Error("Downloaded PNG has no QR modules")
+
+  // The first dark run is the seven-module top edge of the top-left finder.
+  // Derive the QR version, then sample module centers to remove fractional
+  // 512px canvas scaling before passing the downloaded image to ZXing.
+  let finderWidth = 0
+  while (finderX + finderWidth < png.width && isDark(finderX + finderWidth, finderY)) {
+    finderWidth += 1
+  }
+  const estimatedModules = png.width / (finderWidth / 7) - 8
+  const version = Math.round((estimatedModules - 21) / 4) + 1
+  if (version < 1 || version > 40) throw new Error("Downloaded PNG has invalid QR size")
+  const moduleCount = 17 + version * 4
+  const quietModules = 4
+  const outputScale = 4
+  const outputWidth = (moduleCount + quietModules * 2) * outputScale
+  const luminance = new Uint8ClampedArray(outputWidth * outputWidth).fill(255)
+  const sourcePitch = png.width / (moduleCount + quietModules * 2)
+  for (let row = 0; row < moduleCount; row += 1) {
+    for (let column = 0; column < moduleCount; column += 1) {
+      const sourceX = Math.floor((quietModules + column + 0.5) * sourcePitch)
+      const sourceY = Math.floor((quietModules + row + 0.5) * sourcePitch)
+      if (!isDark(sourceX, sourceY)) continue
+      const outputX = (quietModules + column) * outputScale
+      const outputY = (quietModules + row) * outputScale
+      for (let y = 0; y < outputScale; y += 1) {
+        luminance.fill(
+          0,
+          (outputY + y) * outputWidth + outputX,
+          (outputY + y) * outputWidth + outputX + outputScale,
+        )
+      }
+    }
+  }
+  const source = new RGBLuminanceSource(luminance, outputWidth, outputWidth)
+  const hints = new Map([[DecodeHintType.PURE_BARCODE, true]])
   return new QRCodeReader()
-    .decode(new BinaryBitmap(new HybridBinarizer(source)))
+    .decode(new BinaryBitmap(new HybridBinarizer(source)), hints)
     .getText()
 }
 

@@ -276,37 +276,41 @@ describe("preferences and plaintext non-persistence", () => {
     expect(await getPreferences()).toMatchObject({
       defaultAlgorithm: "A256GCM",
       qrErrorCorrection: "Q",
-      autoClearPlaintextAfterEncrypt: false,
-      backgroundClearSeconds: 300,
+      autoClearPlaintextAfterEncrypt: true,
+      backgroundClearEnabled: true,
     })
     expect(
       await updatePreferences({
         defaultAlgorithm: "RSA-HYBRID",
         qrErrorCorrection: "M",
-        autoClearPlaintextAfterEncrypt: true,
-        backgroundClearSeconds: 12,
+        autoClearPlaintextAfterEncrypt: false,
+        backgroundClearEnabled: false,
       }),
     ).toEqual({
       defaultAlgorithm: "RSA-HYBRID",
       qrErrorCorrection: "M",
-      autoClearPlaintextAfterEncrypt: true,
-      backgroundClearSeconds: 12,
+      autoClearPlaintextAfterEncrypt: false,
+      backgroundClearEnabled: false,
     })
-    await expect(updatePreferences({ backgroundClearSeconds: -1 })).rejects.toMatchObject(
-      { code: "STORAGE_FAILED" },
-    )
+    await expect(
+      updatePreferences({
+        backgroundClearEnabled: "invalid" as unknown as boolean,
+      }),
+    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
     await (
       await getDb()
     ).put(STORE_PREFERENCES, {
       key: "preferences",
-      value: { qrErrorCorrection: "H" },
+      value: { qrErrorCorrection: "H", backgroundClearSeconds: 12 },
     })
-    expect(await getPreferences()).toMatchObject({
+    const migrated = await getPreferences()
+    expect(migrated).toMatchObject({
       defaultAlgorithm: "A256GCM",
       qrErrorCorrection: "H",
-      autoClearPlaintextAfterEncrypt: false,
-      backgroundClearSeconds: 300,
+      autoClearPlaintextAfterEncrypt: true,
+      backgroundClearEnabled: true,
     })
+    expect(migrated).not.toHaveProperty("backgroundClearSeconds")
   })
 
   it("stores AES/RSA ciphertext artifacts without any plaintext representation", async () => {

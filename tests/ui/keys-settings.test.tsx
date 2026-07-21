@@ -6,8 +6,10 @@ import {
   clearAllKeys,
   deleteEntireDatabase,
   fakeFeatures,
+  fakePreferences,
   renderQrDataUrl,
   triggerDownload,
+  updatePreferences,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
 
@@ -57,6 +59,33 @@ describe("settings", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
+  it("defaults both plaintext auto-clear switches to ON and persists toggles", async () => {
+    const user = userEvent.setup()
+    await renderApp("/settings")
+    const afterEncrypt = await screen.findByRole("switch", {
+      name: "暗号化後に平文を自動消去",
+    })
+    const inBackground = screen.getByRole("switch", {
+      name: "バックグラウンド移行後に自動消去",
+    })
+    expect(afterEncrypt).toBeChecked()
+    expect(inBackground).toBeChecked()
+    expect(
+      screen.getByText("有効時はバックグラウンド移行から約5分後に平文を消去します。"),
+    ).toBeInTheDocument()
+
+    await user.click(afterEncrypt)
+    await user.click(inBackground)
+    await waitFor(() => {
+      expect(fakePreferences.autoClearPlaintextAfterEncrypt).toBe(false)
+      expect(fakePreferences.backgroundClearEnabled).toBe(false)
+    })
+    expect(updatePreferences).toHaveBeenCalledWith({
+      autoClearPlaintextAfterEncrypt: false,
+    })
+    expect(updatePreferences).toHaveBeenCalledWith({ backgroundClearEnabled: false })
+  })
+
   it("requires an exact 全削除 match for both destructive scopes", async () => {
     const user = userEvent.setup()
     await renderApp("/settings")
@@ -104,9 +133,14 @@ describe("settings", () => {
     })
     expect(
       await screen.findByText(
-        "この機能は利用できません: Service Worker。オフライン起動と更新通知を利用できません。",
+        "この機能は利用できません: Service Worker。オフライン起動を利用できません。",
       ),
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "更新を確認" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "更新を確認" })).not.toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "アプリの更新は行わない方針です。新しいバージョンの利用には端末の完全フォーマット後の再インストールが必要です。",
+      ),
+    ).toBeInTheDocument()
   })
 })

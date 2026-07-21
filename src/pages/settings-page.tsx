@@ -5,8 +5,6 @@ import {
   ChevronDown,
   Database,
   Eraser,
-  LoaderCircle,
-  RefreshCw,
   ShieldAlert,
   Trash2,
   TriangleAlert,
@@ -19,7 +17,7 @@ import {
   useTransientClear,
   type Theme,
 } from "@/app/providers"
-import { usePwaUpdate } from "@/components/pwa-update-prompt"
+import { usePwaOfflineReady } from "@/components/pwa-offline-ready"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
@@ -59,13 +57,6 @@ import { clearAllQrArtifacts, listQrArtifacts } from "@/storage/qr-repository"
 
 type TypedDeleteAction = "keys" | "reset"
 
-const CLEAR_OPTIONS = [
-  { value: 60, label: "1分" },
-  { value: 300, label: "5分" },
-  { value: 900, label: "15分" },
-  { value: 0, label: "即時" },
-] as const
-
 export function SettingsPage() {
   const features = useFeatureSupport()
   const { theme, setTheme } = useTheme()
@@ -77,7 +68,7 @@ export function SettingsPage() {
     error: preferencesError,
     updatePreferences,
   } = usePreferences()
-  const pwa = usePwaUpdate()
+  const pwa = usePwaOfflineReady()
   const [qrCount, setQrCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [clearQrOpen, setClearQrOpen] = useState(false)
@@ -159,17 +150,6 @@ export function SettingsPage() {
   const standalone =
     window.matchMedia("(display-mode: standalone)").matches ||
     Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
-  const clearValues = CLEAR_OPTIONS.some(
-    (option) => option.value === preferences.backgroundClearSeconds,
-  )
-    ? CLEAR_OPTIONS
-    : [
-        ...CLEAR_OPTIONS,
-        {
-          value: preferences.backgroundClearSeconds,
-          label: `${preferences.backgroundClearSeconds}秒`,
-        },
-      ]
 
   return (
     <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6">
@@ -244,28 +224,28 @@ export function SettingsPage() {
             aria-label="暗号化後に平文を自動消去"
           />
         </div>
-        <SettingField
-          label="バックグラウンド移行後の自動消去時間"
-          htmlFor="background-clear"
-        >
-          <Select
-            value={String(preferences.backgroundClearSeconds)}
-            onValueChange={(value) =>
-              void savePreference({ backgroundClearSeconds: Number(value) })
+        <div className="flex min-h-11 items-center justify-between gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="background-clear" className="leading-relaxed">
+              バックグラウンド移行後に自動消去
+            </Label>
+            <p
+              id="background-clear-description"
+              className="text-xs leading-relaxed text-muted-foreground"
+            >
+              有効時はバックグラウンド移行から約5分後に平文を消去します。
+            </p>
+          </div>
+          <Switch
+            id="background-clear"
+            checked={preferences.backgroundClearEnabled}
+            onCheckedChange={(checked) =>
+              void savePreference({ backgroundClearEnabled: checked })
             }
-          >
-            <SelectTrigger id="background-clear" className="h-11 text-base">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {clearValues.map((option) => (
-                <SelectItem key={option.value} value={String(option.value)}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingField>
+            aria-label="バックグラウンド移行後に自動消去"
+            aria-describedby="background-clear-description"
+          />
+        </div>
         <Button
           type="button"
           variant="secondary"
@@ -306,30 +286,13 @@ export function SettingsPage() {
             <AlertCircle aria-hidden="true" className="size-4" />
             <AlertDescription>
               この機能は利用できません: Service
-              Worker。オフライン起動と更新通知を利用できません。
+              Worker。オフライン起動を利用できません。
             </AlertDescription>
           </Alert>
         )}
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 w-full cursor-pointer focus-visible:ring-2"
-          disabled={!features.serviceWorker || pwa.checking}
-          onClick={() => void pwa.checkForUpdate()}
-        >
-          {pwa.checking ? (
-            <LoaderCircle aria-hidden="true" className="animate-spin" />
-          ) : (
-            <RefreshCw aria-hidden="true" />
-          )}
-          {pwa.checking ? "確認中…" : "更新を確認"}
-        </Button>
-        {pwa.needRefresh && (
-          <p className="flex gap-2 text-sm text-muted-foreground" role="status">
-            <RefreshCw aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            新しいバージョンがあります。画面の更新通知から「更新する」を選んでください。
-          </p>
-        )}
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          アプリの更新は行わない方針です。新しいバージョンの利用には端末の完全フォーマット後の再インストールが必要です。
+        </p>
         <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
           <InfoRow label="バージョン" value={__APP_VERSION__} mono />
           <InfoRow label="ビルド" value={env.buildSha.slice(0, 7)} mono />
@@ -424,7 +387,7 @@ export function SettingsPage() {
                   <li>OS・ブラウザー・ファームウェアの侵害</li>
                   <li>キーロガー・画面録画・スクリーンショット</li>
                   <li>カメラフレームを取得するマルウェア</li>
-                  <li>PWA初回取得時・更新時の供給網侵害</li>
+                  <li>PWA初回取得時・再インストール時の供給網侵害</li>
                   <li>端末の物理的な窃取</li>
                   <li>ユーザー自身による秘密QRの誤共有</li>
                   <li>ブラウザーデータ削除による鍵の消失</li>

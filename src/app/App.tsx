@@ -7,7 +7,7 @@ import {
 } from "@/lib/feature-detect"
 import { createAppRouter } from "@/app/router"
 import { AppProviders, ThemeProvider } from "@/app/providers"
-import type { UseRegisterSwHook } from "@/components/pwa-update-prompt"
+import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
 
 export interface AppProps {
   detectFeatures?: () => FeatureSupport

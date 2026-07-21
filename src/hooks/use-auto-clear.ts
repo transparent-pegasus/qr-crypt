@@ -1,21 +1,21 @@
 import { useEffect, useRef } from "react"
+import { env } from "@/schemas/env-schema"
 
 export interface UseAutoClearOptions {
-  seconds: number
+  enabled: boolean
   onClear: () => void
   clearNonce?: number
   now?: () => number
 }
 
 export function useAutoClear({
-  seconds,
+  enabled,
   onClear,
   clearNonce,
   now = Date.now,
 }: UseAutoClearOptions): void {
   const onClearRef = useRef(onClear)
   const nowRef = useRef(now)
-  const secondsRef = useRef(seconds)
   const deadlineRef = useRef<number | null>(null)
   const hiddenAtRef = useRef<number | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -25,13 +25,24 @@ export function useAutoClear({
   useEffect(() => {
     onClearRef.current = onClear
     nowRef.current = now
-    secondsRef.current = seconds
-  }, [now, onClear, seconds])
+  }, [now, onClear])
 
   useEffect(() => {
     const cancelTimer = () => {
       if (timerRef.current !== null) clearTimeout(timerRef.current)
       timerRef.current = null
+    }
+
+    const resetDeadline = () => {
+      cancelTimer()
+      deadlineRef.current = null
+      hiddenAtRef.current = null
+      clearedRef.current = false
+    }
+
+    if (!enabled) {
+      resetDeadline()
+      return
     }
 
     const clearOnce = () => {
@@ -46,7 +57,7 @@ export function useAutoClear({
       cancelTimer()
       clearedRef.current = false
       hiddenAtRef.current = hiddenAt
-      const delay = Math.max(0, secondsRef.current * 1000)
+      const delay = Math.max(0, env.autoClearSeconds * 1000)
       deadlineRef.current = hiddenAt + delay
       if (delay === 0 || nowRef.current() >= deadlineRef.current) {
         clearOnce()
@@ -64,44 +75,20 @@ export function useAutoClear({
     }
 
     const handleVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        scheduleFrom(nowRef.current())
-      } else {
-        handleReturn()
-      }
+      if (document.visibilityState === "hidden") scheduleFrom(nowRef.current())
+      else handleReturn()
     }
 
     document.addEventListener("visibilitychange", handleVisibility)
     window.addEventListener("pageshow", handleReturn)
+    if (document.visibilityState === "hidden") scheduleFrom(nowRef.current())
+
     return () => {
       document.removeEventListener("visibilitychange", handleVisibility)
       window.removeEventListener("pageshow", handleReturn)
-      cancelTimer()
+      resetDeadline()
     }
-  }, [])
-
-  useEffect(() => {
-    const hiddenAt = hiddenAtRef.current
-    if (hiddenAt === null || clearedRef.current) return
-    if (timerRef.current !== null) clearTimeout(timerRef.current)
-    const deadline = hiddenAt + Math.max(0, seconds * 1000)
-    deadlineRef.current = deadline
-    const remaining = deadline - nowRef.current()
-    if (remaining <= 0) {
-      clearedRef.current = true
-      deadlineRef.current = null
-      timerRef.current = null
-      onClearRef.current()
-      return
-    }
-    timerRef.current = setTimeout(() => {
-      if (clearedRef.current) return
-      clearedRef.current = true
-      deadlineRef.current = null
-      timerRef.current = null
-      onClearRef.current()
-    }, remaining)
-  }, [seconds])
+  }, [enabled])
 
   useEffect(() => {
     if (clearNonce === undefined || clearNonce === initialNonceRef.current) return

@@ -4,10 +4,8 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
   fakeArtifacts,
-  fakePwa,
   renderQrDataUrl,
   saveQrArtifact,
-  updateServiceWorker,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
 
@@ -97,25 +95,16 @@ describe("encrypt page", () => {
     ).toEqual(["oc-theme"])
   })
 
-  it("does not apply a pending PWA update automatically and preserves plaintext", async () => {
-    fakePwa.needRefresh = true
+  it("clears plaintext after successful encryption by default", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
-    const textarea = await screen.findByLabelText("平文")
-    await user.type(textarea, "更新前に保持する平文")
+    await chooseSelectOption(user, "使用鍵", "共通鍵A — 0017")
+    const plaintext = await screen.findByLabelText("平文")
+    await user.type(plaintext, "既定で消去される平文")
+    await user.click(screen.getByRole("button", { name: "暗号化する" }))
 
-    expect(screen.getByText("新しいバージョンがあります")).toBeInTheDocument()
-    expect(textarea).toHaveValue("更新前に保持する平文")
-    expect(updateServiceWorker).not.toHaveBeenCalled()
-
-    await user.click(screen.getByRole("button", { name: "更新する" }))
-    const dialog = await screen.findByRole("alertdialog")
-    expect(within(dialog).getByText(/入力中の平文は消去されます/)).toBeInTheDocument()
-    expect(updateServiceWorker).not.toHaveBeenCalled()
-    expect(textarea).toHaveValue("更新前に保持する平文")
-
-    await user.click(within(dialog).getByRole("button", { name: "更新する" }))
-    expect(updateServiceWorker).toHaveBeenCalledTimes(1)
-    expect(updateServiceWorker).toHaveBeenCalledWith(true)
+    expect(await screen.findByText("暗号化が完了しました")).toBeInTheDocument()
+    expect(plaintext).toHaveValue("")
+    expect(screen.getByText("設定に従って平文を消去しました")).toBeInTheDocument()
   })
 })

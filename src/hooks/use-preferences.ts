@@ -9,8 +9,8 @@ import {
 const DEFAULT_PREFERENCES: Preferences = {
   defaultAlgorithm: env.defaultAlgorithm,
   qrErrorCorrection: env.qrErrorCorrection,
-  autoClearPlaintextAfterEncrypt: false,
-  backgroundClearSeconds: env.autoClearSeconds,
+  autoClearPlaintextAfterEncrypt: true,
+  backgroundClearEnabled: true,
 }
 
 export interface UsePreferencesResult {
