@@ -24,8 +24,9 @@ export class TransferAssembler {
     throw new Error("NOT_IMPLEMENTED: WP-12 TransferAssembler")
   }
 
-  // フレーム文字列(OCF2:…)を 1 枚受け取り、遷移後の状態を返す
-  add(frameText: string): TransferState {
+  // フレーム文字列(OCF2:…)を 1 枚受け取り、遷移後の状態を返す。
+  // 完成時の SHA-256 照合に WebCrypto を使うため async。
+  add(frameText: string): Promise<TransferState> {
     void frameText
     throw new Error("NOT_IMPLEMENTED: WP-12 TransferAssembler.add")
   }
