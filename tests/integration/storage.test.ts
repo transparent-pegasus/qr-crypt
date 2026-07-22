@@ -7,10 +7,11 @@ import {
   createSymmetricKeyRecord,
 } from "@/crypto/key-generation"
 import { generateArtifactId, generateKeyId } from "@/crypto/random"
-import { encryptRsaHybrid } from "@/crypto/rsa-hybrid"
+import { encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import { toBase64Url } from "@/lib/base64url"
 import { bytesToHex, utf8ByteLength, utf8ToBytes } from "@/lib/bytes"
 import { encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
+import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
 import type { StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
 import {
   closeDb,
@@ -19,6 +20,8 @@ import {
   getDb,
   STORE_APP_METADATA,
   STORE_KEYS,
+  STORE_PQ_IDENTITIES,
+  STORE_PQ_PUBLIC_BUNDLES,
   STORE_PREFERENCES,
   STORE_QR_ARTIFACTS,
 } from "@/storage/database"
@@ -85,11 +88,18 @@ async function qrArtifact(
 }
 
 describe("database creation and migrations", () => {
-  it("creates all v1 stores/indexes and reopens without rerunning destructive setup", async () => {
+  it("creates all v2 stores/indexes and reopens without rerunning destructive setup", async () => {
     const database = await getDb()
     expect(database.version).toBe(DB_VERSION)
     expect(Array.from(database.objectStoreNames).sort()).toEqual(
-      [STORE_APP_METADATA, STORE_KEYS, STORE_PREFERENCES, STORE_QR_ARTIFACTS].sort(),
+      [
+        STORE_APP_METADATA,
+        STORE_KEYS,
+        STORE_PQ_IDENTITIES,
+        STORE_PQ_PUBLIC_BUNDLES,
+        STORE_PREFERENCES,
+        STORE_QR_ARTIFACTS,
+      ].sort(),
     )
     const keyTx = database.transaction(STORE_KEYS)
     expect(Array.from(keyTx.store.indexNames).sort()).toEqual([
@@ -104,7 +114,7 @@ describe("database creation and migrations", () => {
     const record = await createSymmetricKeyRecord("再オープン", NOW)
     await saveKeyRecord(record)
     closeDb()
-    expect((await getDb()).version).toBe(1)
+    expect((await getDb()).version).toBe(2)
     expect((await getKeyRecord(record.id))?.fingerprint).toBe(record.fingerprint)
   })
 })
@@ -313,27 +323,67 @@ describe("preferences and plaintext non-persistence", () => {
     expect(migrated).not.toHaveProperty("backgroundClearSeconds")
   })
 
-  it("stores AES/RSA ciphertext artifacts without any plaintext representation", async () => {
+  it("rejects disguised message artifacts before writing and leaves no plaintext in any store", async () => {
     const secret = "秘密テキストXYZ-検査用"
     const plaintext = utf8ToBytes(secret)
     const aesRecord = await createSymmetricKeyRecord("AES保管", NOW)
-    const rsaRecord = await createRsaKeyPairRecord("RSA保管", NOW + 1)
     await saveKeyRecord(aesRecord)
-    await saveKeyRecord(rsaRecord)
+    const keyEnvelope = await buildSymmetricKeyEnvelope(aesRecord)
+    const retainedKeyQr = await qrArtifact("鍵QR", keyEnvelope)
+    await saveQrArtifact(retainedKeyQr)
+
     const aesEnvelope = await encryptWithAesKey({
       key: aesRecord.symmetricKey!,
       keyId: aesRecord.id,
       plaintext,
       now: NOW + 2,
     })
-    const rsaEnvelope = await encryptRsaHybrid({
-      publicKey: rsaRecord.publicKey!,
-      recipientKeyId: rsaRecord.id,
-      plaintext,
-      now: NOW + 3,
+    const ocm1 = encodeEnvelopeToPayload(aesEnvelope)
+    const recipientKemKeyId = generateKeyId()
+    const ocm2 = buildV2Payload(
+      "pq-message",
+      encodeMlKemEnvelopeV2({
+        version: 2,
+        type: "pq-message",
+        suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+        recipientKemKeyId,
+        kemCiphertext: new Uint8Array(1088),
+        hkdfSalt: new Uint8Array(32),
+        iv: new Uint8Array(12),
+        ciphertext: new Uint8Array(16),
+      }),
+    )
+    const ocf2 = encodeFrameToPayload({
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16),
+      artifactType: "pq-message",
+      frameIndex: 0,
+      frameCount: 1,
+      totalByteLength: 1,
+      payloadSha256: new Uint8Array(32),
+      chunk: Uint8Array.of(1),
     })
-    await saveQrArtifact(await qrArtifact("AES暗号文", aesEnvelope))
-    await saveQrArtifact(await qrArtifact("RSA暗号文", rsaEnvelope))
+
+    const rawCountBefore = await (await getDb()).count(STORE_QR_ARTIFACTS)
+    for (const [index, payload] of [ocm1, ocm2, ocf2].entries()) {
+      const disguised = {
+        ...retainedKeyQr,
+        id: generateArtifactId(),
+        name: `偽装-${index}`,
+        kind: "public-key",
+        sensitivity: "public",
+        algorithm: index === 0 ? "A256GCM" : "ML-KEM-768",
+        payload,
+        payloadSha256: await payloadSha256Hex(payload),
+        byteLength: utf8ByteLength(payload),
+        keyId: recipientKemKeyId,
+      } as StoredQrArtifact
+      await expect(saveQrArtifact(disguised)).rejects.toMatchObject({
+        code: "STORAGE_FAILED",
+      })
+      expect(await (await getDb()).count(STORE_QR_ARTIFACTS)).toBe(rawCountBefore)
+    }
 
     const standardBase64 = btoa(String.fromCharCode(...plaintext))
     const needles = [
@@ -369,9 +419,16 @@ describe("preferences and plaintext non-persistence", () => {
       STORE_QR_ARTIFACTS,
       STORE_PREFERENCES,
       STORE_APP_METADATA,
+      STORE_PQ_IDENTITIES,
+      STORE_PQ_PUBLIC_BUNDLES,
     ] as const) {
       for (const record of await database.getAll(store)) inspect(record)
     }
+    expect(
+      (await database.getAll(STORE_QR_ARTIFACTS)).filter(
+        (record) => record.kind === "ciphertext",
+      ),
+    ).toEqual([])
   })
 
   it("builds OCP1 public-key artifacts for the documented text export path", async () => {

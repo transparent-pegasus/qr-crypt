@@ -9,6 +9,31 @@ export interface SaveQrArtifactOptions {
   allowDuplicate?: boolean
 }
 
+const ACTIVE_QR_ARTIFACT_KINDS = new Set([
+  "symmetric-key",
+  "public-key",
+  "encrypted-private-key",
+])
+
+// This check intentionally runs before schema decoding and before getDb(). A caller
+// that bypasses TypeScript therefore cannot cause a write transaction to be opened
+// for any message artifact.
+function assertActiveArtifactKind(value: unknown): void {
+  try {
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("kind" in value) ||
+      typeof value.kind !== "string" ||
+      !ACTIVE_QR_ARTIFACT_KINDS.has(value.kind)
+    ) {
+      throw new AppError("STORAGE_FAILED")
+    }
+  } catch {
+    throw new AppError("STORAGE_FAILED")
+  }
+}
+
 function checkedArtifact(value: unknown): StoredQrArtifact {
   try {
     return validateStoredQrArtifact(value)
@@ -31,6 +56,7 @@ export async function saveQrArtifact(
   artifact: StoredQrArtifact,
   options?: SaveQrArtifactOptions,
 ): Promise<void> {
+  assertActiveArtifactKind(artifact)
   const checked = checkedArtifact(artifact)
   try {
     const database = await getDb()

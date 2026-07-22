@@ -6,11 +6,30 @@ import type {
   PublicKeyEnvelopeV1,
   SymmetricKeyEnvelopeV1,
 } from "@/crypto/envelope"
+import type {
+  DsaPublicKeyEnvelopeV2,
+  KemPublicKeyEnvelopeV2,
+  MlKemMessageEnvelopeV2,
+  PublicIdentityBundleV2,
+  QrFrameV2,
+} from "@/schemas/domain"
 import { Decoder, Encoder, Tag } from "cbor-x"
 import { AppError, toAppError } from "@/crypto/errors"
+import {
+  decodeDsaPublicKeyEnvelopeV2,
+  decodeKemPublicKeyEnvelopeV2,
+  decodeMlKemEnvelopeV2,
+  decodePublicIdentityBundleV2,
+} from "@/crypto/pq/canonical-cbor"
+import {
+  validateMlKemEnvelopeV2,
+  validatePublicIdentityBundleV2,
+  validateQrFrameV2,
+} from "@/crypto/pq/validation"
 import { fromBase64Url, toBase64Url } from "@/lib/base64url"
 import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
 import { MAX_PAYLOAD_CHARS } from "@/lib/limits"
+import { classifyV2Payload, decodeFramePayload, splitV2Payload } from "@/qr/payload-v2"
 import { validateDecodedEnvelope } from "@/schemas/envelope-schema"
 
 export const QR_PREFIX = {
@@ -27,6 +46,11 @@ export type DecodedPayload =
   | { kind: "message"; envelope: MessageEnvelope }
   | { kind: "symmetric-key"; envelope: SymmetricKeyEnvelopeV1 }
   | { kind: "public-key"; envelope: PublicKeyEnvelopeV1 }
+  | { kind: "pq-message"; envelope: MlKemMessageEnvelopeV2 }
+  | { kind: "pq-kem-public-key"; envelope: KemPublicKeyEnvelopeV2 }
+  | { kind: "pq-dsa-public-key"; envelope: DsaPublicKeyEnvelopeV2 }
+  | { kind: "pq-public-identity"; envelope: PublicIdentityBundleV2 }
+  | { kind: "frame"; envelope: QrFrameV2; frame: QrFrameV2 }
 
 const encoder = new Encoder({ useRecords: false, tagUint8Array: false })
 const decoder = new Decoder({
@@ -115,7 +139,7 @@ export function encodeEnvelopeToPayload(envelope: AnyEnvelopeV1): string {
   }
 }
 
-export function decodePayload(text: string): DecodedPayload {
+function decodeV1Payload(text: string): DecodedPayload {
   const prefixEntry = Object.entries(QR_PREFIX).find(([, prefix]) =>
     text.startsWith(prefix),
   ) as [keyof typeof QR_PREFIX, string] | undefined
@@ -150,6 +174,11 @@ export function decodePayload(text: string): DecodedPayload {
 
   const envelope = validateDecodedEnvelope(decoded, prefixKind)
   if (prefixKind === "message") {
+    // RSA source remains available until WP-14, but historical OCM1-RSA input is
+    // deliberately no longer accepted at the shared decode boundary.
+    if (envelope.algorithm === "RSA-OAEP-3072+A256GCM") {
+      throw new AppError("UNSUPPORTED_ALGORITHM")
+    }
     return { kind: "message", envelope: envelope as MessageEnvelope }
   }
   if (prefixKind === "symmetric-key") {
@@ -159,6 +188,52 @@ export function decodePayload(text: string): DecodedPayload {
     }
   }
   return { kind: "public-key", envelope: envelope as PublicKeyEnvelopeV1 }
+}
+
+function decodeV2Payload(text: string): DecodedPayload {
+  const classified = classifyV2Payload(text)
+  if (classified === null) throw new AppError("INVALID_QR_PREFIX")
+  if (classified.kind === "frame") {
+    const frame = validateQrFrameV2(decodeFramePayload(text))
+    if (frame.artifactType === "encrypted-seed-backup") {
+      throw new AppError("UNSUPPORTED_ALGORITHM")
+    }
+    return { kind: "frame", envelope: frame, frame }
+  }
+
+  const artifact = splitV2Payload(text)
+  switch (artifact.kind) {
+    case "pq-message":
+      return {
+        kind: artifact.kind,
+        envelope: validateMlKemEnvelopeV2(decodeMlKemEnvelopeV2(artifact.bytes)),
+      }
+    case "pq-public-identity":
+      return {
+        kind: artifact.kind,
+        envelope: validatePublicIdentityBundleV2(
+          decodePublicIdentityBundleV2(artifact.bytes),
+        ),
+      }
+    case "pq-kem-public-key":
+      return {
+        kind: artifact.kind,
+        envelope: decodeKemPublicKeyEnvelopeV2(artifact.bytes),
+      }
+    case "pq-dsa-public-key":
+      return {
+        kind: artifact.kind,
+        envelope: decodeDsaPublicKeyEnvelopeV2(artifact.bytes),
+      }
+    case "encrypted-seed-backup":
+      throw new AppError("UNSUPPORTED_ALGORITHM")
+  }
+}
+
+// Prefix classification is the single convergence point for v1 and v2 input. v1
+// validation order remains unchanged once dispatch has selected that branch.
+export function decodePayload(text: string): DecodedPayload {
+  return classifyV2Payload(text) === null ? decodeV1Payload(text) : decodeV2Payload(text)
 }
 
 export async function payloadSha256Hex(payload: string): Promise<string> {

@@ -1,9 +1,17 @@
 // 鍵・QR アーティファクト関連の実行時検証。
 // ドメイン型そのものは domain.ts が単一所有(ここは zod スキーマのみ)。
 import { z } from "zod"
-import { KEY_ID_PATTERN } from "@/lib/limits"
-import type { StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
+import { DSA_SEED_BYTES, IV_BYTES, KEM_SEED_BYTES, KEY_ID_PATTERN } from "@/lib/limits"
+import type {
+  PostQuantumIdentity,
+  PqPublicBundleRecord,
+  QrArtifactKind,
+  StoredKeyRecord,
+  StoredQrArtifact,
+} from "@/schemas/domain"
 import { sensitivityForKind } from "@/schemas/domain"
+import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
+import { decodePayload } from "@/qr/payload"
 
 // 制御文字(C0 領域と DEL)を含むか。正規表現リテラルに制御文字を
 // 埋め込まないため、コードポイント判定で実装する。
@@ -36,6 +44,7 @@ export const keyIdSchema = z.string().regex(KEY_ID_PATTERN)
 
 const fingerprintSchema = z.string().regex(/^[0-9a-f]{64}$/u)
 const timestampSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
+const pqTimestampSchema = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 
 function isCryptoKey(value: unknown): value is CryptoKey {
   return (
@@ -140,7 +149,12 @@ export function validateStoredKeyRecord(value: unknown): StoredKeyRecord {
   return record as StoredKeyRecord
 }
 
-const storedQrArtifactSchema = z
+// v1 read/migration boundary. This deliberately retains ciphertext so the v2
+// versionchange transaction can classify and purge old rows before active reads.
+export type LegacyStoredKeyRecordV1 = StoredKeyRecord
+export type LegacyStoredQrArtifactV1 = StoredQrArtifact
+
+export const legacyStoredQrArtifactV1Schema = z
   .object({
     id: keyIdSchema,
     name: qrNameSchema,
@@ -156,10 +170,296 @@ const storedQrArtifactSchema = z
   })
   .strict()
 
-export function validateStoredQrArtifact(value: unknown): StoredQrArtifact {
-  const artifact = storedQrArtifactSchema.parse(value)
+export function validateLegacyStoredKeyRecordV1(value: unknown): LegacyStoredKeyRecordV1 {
+  return validateStoredKeyRecord(value)
+}
+
+export function validateLegacyStoredQrArtifactV1(
+  value: unknown,
+): LegacyStoredQrArtifactV1 {
+  const artifact = legacyStoredQrArtifactV1Schema.parse(value)
   if (artifact.sensitivity !== sensitivityForKind(artifact.kind)) {
     throw new Error("invalid QR sensitivity")
   }
-  return artifact as StoredQrArtifact
+  return artifact as LegacyStoredQrArtifactV1
+}
+
+export type ActiveStoredQrArtifactKind = Exclude<QrArtifactKind, "ciphertext">
+export type ActiveStoredQrArtifact = Omit<StoredQrArtifact, "kind"> & {
+  kind: ActiveStoredQrArtifactKind
+}
+
+const activeQrArtifactCommon = {
+  id: keyIdSchema,
+  name: qrNameSchema,
+  algorithm: z.string().min(1),
+  payload: z.string().min(1),
+  payloadSha256: fingerprintSchema,
+  byteLength: z.number().int().nonnegative(),
+  createdAt: timestampSchema,
+  keyId: keyIdSchema.optional(),
+  lastViewedAt: timestampSchema.optional(),
+}
+
+export const activeStoredQrArtifactSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      ...activeQrArtifactCommon,
+      kind: z.literal("symmetric-key"),
+      sensitivity: z.literal("secret"),
+    })
+    .strict(),
+  z
+    .object({
+      ...activeQrArtifactCommon,
+      kind: z.literal("public-key"),
+      sensitivity: z.literal("public"),
+    })
+    .strict(),
+  z
+    .object({
+      ...activeQrArtifactCommon,
+      kind: z.literal("encrypted-private-key"),
+      sensitivity: z.literal("secret"),
+    })
+    .strict(),
+])
+
+export function validateStoredQrArtifact(value: unknown): ActiveStoredQrArtifact {
+  const artifact = activeStoredQrArtifactSchema.parse(value)
+  const decoded = decodePayload(artifact.payload)
+  const expectedKind =
+    artifact.kind === "symmetric-key"
+      ? "symmetric-key"
+      : artifact.kind === "public-key"
+        ? "public-key"
+        : undefined
+  if (
+    expectedKind === undefined ||
+    decoded.kind !== expectedKind ||
+    decoded.envelope.algorithm !== artifact.algorithm ||
+    (artifact.keyId !== undefined && decoded.envelope.keyId !== artifact.keyId)
+  ) {
+    throw new Error("QR kind and payload do not match")
+  }
+  return artifact as ActiveStoredQrArtifact
+}
+
+const bytes = (length: number) =>
+  z.instanceof(Uint8Array).refine((value) => value.byteLength === length)
+
+const kemEncryptedSeedSchema = z
+  .object({
+    iv: bytes(IV_BYTES),
+    ciphertext: bytes(KEM_SEED_BYTES + 16),
+  })
+  .strict()
+
+const signingEncryptedSeedSchema = z
+  .object({
+    iv: bytes(IV_BYTES),
+    ciphertext: bytes(DSA_SEED_BYTES + 16),
+  })
+  .strict()
+
+const kemMaterialSchema = z.discriminatedUnion("algorithm", [
+  z
+    .object({
+      algorithm: z.literal("ML-KEM-768"),
+      keyId: keyIdSchema,
+      publicKey: bytes(KEM_SIZES["ML-KEM-768"].publicKeyBytes),
+      encryptedSeed: kemEncryptedSeedSchema,
+      fingerprint: fingerprintSchema,
+    })
+    .strict(),
+  z
+    .object({
+      algorithm: z.literal("ML-KEM-1024"),
+      keyId: keyIdSchema,
+      publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
+      encryptedSeed: kemEncryptedSeedSchema,
+      fingerprint: fingerprintSchema,
+    })
+    .strict(),
+])
+
+const signingMaterialSchema = z.discriminatedUnion("algorithm", [
+  z
+    .object({
+      algorithm: z.literal("ML-DSA-65"),
+      keyId: keyIdSchema,
+      publicKey: bytes(DSA_SIZES["ML-DSA-65"].publicKeyBytes),
+      encryptedSeed: signingEncryptedSeedSchema,
+      fingerprint: fingerprintSchema,
+    })
+    .strict(),
+  z
+    .object({
+      algorithm: z.literal("ML-DSA-87"),
+      keyId: keyIdSchema,
+      publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
+      encryptedSeed: signingEncryptedSeedSchema,
+      fingerprint: fingerprintSchema,
+    })
+    .strict(),
+])
+
+const postQuantumIdentitySchema = z
+  .object({
+    id: keyIdSchema,
+    name: keyNameSchema,
+    profile: z.enum(["balanced", "maximum"]),
+    kem: kemMaterialSchema,
+    signing: signingMaterialSchema,
+    identityFingerprint: fingerprintSchema,
+    status: z.enum(["active", "rotated", "revoked"]),
+    rotatedFromId: keyIdSchema.optional(),
+    rotatedAt: pqTimestampSchema.optional(),
+    revokedAt: pqTimestampSchema.optional(),
+    createdAt: pqTimestampSchema,
+    lastUsedAt: pqTimestampSchema.optional(),
+  })
+  .strict()
+  .superRefine((identity, context) => {
+    const profileMatches =
+      (identity.profile === "balanced" &&
+        identity.kem.algorithm === "ML-KEM-768" &&
+        identity.signing.algorithm === "ML-DSA-65") ||
+      (identity.profile === "maximum" &&
+        identity.kem.algorithm === "ML-KEM-1024" &&
+        identity.signing.algorithm === "ML-DSA-87")
+    if (!profileMatches) {
+      context.addIssue({ code: "custom", path: ["profile"], message: "profile mismatch" })
+    }
+    if (new Set([identity.id, identity.kem.keyId, identity.signing.keyId]).size !== 3) {
+      context.addIssue({ code: "custom", path: ["id"], message: "key IDs must differ" })
+    }
+    if (identity.rotatedFromId === identity.id) {
+      context.addIssue({
+        code: "custom",
+        path: ["rotatedFromId"],
+        message: "identity cannot rotate from itself",
+      })
+    }
+    if (
+      (identity.status === "active" &&
+        (identity.rotatedAt !== undefined || identity.revokedAt !== undefined)) ||
+      (identity.status === "rotated" &&
+        (identity.rotatedAt === undefined || identity.revokedAt !== undefined)) ||
+      (identity.status === "revoked" && identity.revokedAt === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "invalid status dates",
+      })
+    }
+    for (const [path, date] of [
+      ["rotatedAt", identity.rotatedAt],
+      ["revokedAt", identity.revokedAt],
+      ["lastUsedAt", identity.lastUsedAt],
+    ] as const) {
+      if (date !== undefined && date < identity.createdAt) {
+        context.addIssue({
+          code: "custom",
+          path: [path],
+          message: "date predates identity",
+        })
+      }
+    }
+  })
+
+export function validatePostQuantumIdentity(value: unknown): PostQuantumIdentity {
+  return postQuantumIdentitySchema.parse(value) as PostQuantumIdentity
+}
+
+const bundleKemSchema = z.discriminatedUnion("algorithm", [
+  z
+    .object({
+      algorithm: z.literal("ML-KEM-768"),
+      keyId: keyIdSchema,
+      publicKey: bytes(KEM_SIZES["ML-KEM-768"].publicKeyBytes),
+      fingerprint: fingerprintSchema,
+    })
+    .strict(),
+  z
+    .object({
+      algorithm: z.literal("ML-KEM-1024"),
+      keyId: keyIdSchema,
+      publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
+      fingerprint: fingerprintSchema,
+    })
+    .strict(),
+])
+
+const bundleSigningSchema = z.discriminatedUnion("algorithm", [
+  z
+    .object({
+      algorithm: z.literal("ML-DSA-65"),
+      keyId: keyIdSchema,
+      publicKey: bytes(DSA_SIZES["ML-DSA-65"].publicKeyBytes),
+      fingerprint: fingerprintSchema,
+    })
+    .strict(),
+  z
+    .object({
+      algorithm: z.literal("ML-DSA-87"),
+      keyId: keyIdSchema,
+      publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
+      fingerprint: fingerprintSchema,
+    })
+    .strict(),
+])
+
+const pqPublicBundleRecordSchema = z
+  .object({
+    recordId: keyIdSchema,
+    identityId: keyIdSchema,
+    name: keyNameSchema.optional(),
+    kem: bundleKemSchema,
+    signing: bundleSigningSchema,
+    identityFingerprint: fingerprintSchema,
+    trust: z.enum(["unverified", "fingerprint-confirmed"]),
+    trustConfirmedAt: pqTimestampSchema.optional(),
+    revokedAt: pqTimestampSchema.optional(),
+    bundleCreatedAt: pqTimestampSchema,
+    importedAt: pqTimestampSchema,
+    lastUsedAt: pqTimestampSchema.optional(),
+  })
+  .strict()
+  .superRefine((record, context) => {
+    const algorithmsMatch =
+      (record.kem.algorithm === "ML-KEM-768" &&
+        record.signing.algorithm === "ML-DSA-65") ||
+      (record.kem.algorithm === "ML-KEM-1024" && record.signing.algorithm === "ML-DSA-87")
+    if (!algorithmsMatch) {
+      context.addIssue({
+        code: "custom",
+        path: ["signing", "algorithm"],
+        message: "profile mismatch",
+      })
+    }
+    if (
+      (record.trust === "unverified" && record.trustConfirmedAt !== undefined) ||
+      (record.trust === "fingerprint-confirmed" && record.trustConfirmedAt === undefined)
+    ) {
+      context.addIssue({ code: "custom", path: ["trust"], message: "invalid trust date" })
+    }
+    for (const [path, date] of [
+      ["trustConfirmedAt", record.trustConfirmedAt],
+      ["revokedAt", record.revokedAt],
+      ["lastUsedAt", record.lastUsedAt],
+    ] as const) {
+      if (date !== undefined && date < record.importedAt) {
+        context.addIssue({
+          code: "custom",
+          path: [path],
+          message: "date predates import",
+        })
+      }
+    }
+  })
+
+export function validatePqPublicBundleRecord(value: unknown): PqPublicBundleRecord {
+  return pqPublicBundleRecordSchema.parse(value) as PqPublicBundleRecord
 }

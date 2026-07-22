@@ -137,17 +137,15 @@ async function decodePng(payload: string): Promise<string> {
 }
 
 describe("deterministic payload encoding and strict decoding", () => {
-  it("round-trips AES/RSA messages, symmetric keys, and public keys", () => {
-    for (const envelope of [
-      aesEnvelope(),
-      rsaEnvelope(),
-      symmetricEnvelope,
-      publicEnvelope,
-    ]) {
+  it("round-trips active v1 payloads and explicitly rejects OCM1-RSA", () => {
+    for (const envelope of [aesEnvelope(), symmetricEnvelope, publicEnvelope]) {
       const payload = encodeEnvelopeToPayload(envelope)
       const decoded = decodePayload(payload)
       expect(decoded.envelope).toEqual(envelope)
     }
+    expect(() => decodePayload(encodeEnvelopeToPayload(rsaEnvelope()))).toThrow(
+      "UNSUPPORTED_ALGORITHM",
+    )
   })
 
   it("normalizes property insertion order to a byte-identical payload", () => {

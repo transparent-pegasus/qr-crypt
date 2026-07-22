@@ -1,18 +1,24 @@
-// IndexedDB 接続(spec §15)。DB 名 qrypt / version 1。
+// IndexedDB 接続(spec §15)。DB 名 qrypt / version 2。
 // upgrade 処理は migrations.ts の版別マップに委譲する(plan §12-7)。
 import { deleteDB, openDB } from "idb"
 import type { DBSchema, IDBPDatabase } from "idb"
 import { AppError, toAppError } from "@/crypto/errors"
-import type { StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
+import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
+import type {
+  LegacyStoredKeyRecordV1,
+  LegacyStoredQrArtifactV1,
+} from "@/schemas/key-schema"
 import { applyMigrations } from "@/storage/migrations"
 
 export const DB_NAME = "qrypt"
-export const DB_VERSION = 1
+export const DB_VERSION = 2
 
 export const STORE_KEYS = "keys"
 export const STORE_QR_ARTIFACTS = "qrArtifacts"
 export const STORE_PREFERENCES = "preferences"
 export const STORE_APP_METADATA = "appMetadata"
+export const STORE_PQ_IDENTITIES = "pqIdentities"
+export const STORE_PQ_PUBLIC_BUNDLES = "pqPublicBundles"
 
 export interface KeyValueRow {
   key: string
@@ -22,17 +28,31 @@ export interface KeyValueRow {
 export interface OfflineCipherDb extends DBSchema {
   keys: {
     key: string
-    value: StoredKeyRecord
+    value: LegacyStoredKeyRecordV1
     indexes: { "by-fingerprint": string; "by-createdAt": number }
   }
   qrArtifacts: {
     key: string
-    value: StoredQrArtifact
+    value: LegacyStoredQrArtifactV1
     // by-payloadSha256 は非 unique(意図的な重複保存を許可。plan §13 C9)
     indexes: { "by-payloadSha256": string; "by-createdAt": number }
   }
   preferences: { key: string; value: KeyValueRow }
   appMetadata: { key: string; value: KeyValueRow }
+  pqIdentities: {
+    key: string
+    value: PostQuantumIdentity
+    indexes: {
+      "by-createdAt": number
+      "by-kemKeyId": string
+      "by-signingKeyId": string
+    }
+  }
+  pqPublicBundles: {
+    key: string
+    value: PqPublicBundleRecord
+    indexes: { "by-identityId": string }
+  }
 }
 
 let databasePromise: Promise<IDBPDatabase<OfflineCipherDb>> | undefined
@@ -44,6 +64,13 @@ export const DATABASE_OPEN_BLOCKED_TIMEOUT_MS = 3_000
 
 export interface DeleteEntireDatabaseOptions {
   timeoutMs?: number
+  onBlocked?: () => void
+}
+
+export interface GetDatabaseOptions {
+  timeoutMs?: number
+  onBlocked?: () => void
+  onBlocking?: () => void
 }
 
 // WipeCoordinator step 1. This barrier is intentionally one-way in production.
@@ -67,7 +94,16 @@ export function resetDatabaseAccessBarrierForTesting(): void {
   databaseAccessBarrier = false
 }
 
-function openApplicationDatabase(): Promise<IDBPDatabase<OfflineCipherDb>> {
+function timeoutOrDefault(value: number | undefined, fallback: number): number {
+  if (value === undefined) return fallback
+  if (!Number.isSafeInteger(value) || value < 0) throw new AppError("STORAGE_FAILED")
+  return value
+}
+
+function openApplicationDatabase(
+  options: GetDatabaseOptions,
+): Promise<IDBPDatabase<OfflineCipherDb>> {
+  const timeoutMs = timeoutOrDefault(options.timeoutMs, DATABASE_OPEN_BLOCKED_TIMEOUT_MS)
   return new Promise((resolve, reject) => {
     let settled = false
     let blockedTimeoutId: ReturnType<typeof setTimeout> | undefined
@@ -80,14 +116,25 @@ function openApplicationDatabase(): Promise<IDBPDatabase<OfflineCipherDb>> {
         applyMigrations(database, oldVersion, transaction)
       },
       blocked() {
+        try {
+          options.onBlocked?.()
+        } catch {
+          // Notification callbacks cannot weaken the storage fail-closed path.
+        }
         blockedTimeoutId ??= setTimeout(() => {
           if (settled) return
           settled = true
           reject(new AppError("RESET_FAILED"))
-        }, DATABASE_OPEN_BLOCKED_TIMEOUT_MS)
+        }, timeoutMs)
       },
       blocking() {
-        closeDb()
+        try {
+          options.onBlocking?.()
+        } catch {
+          // Closing this connection is mandatory even if notification code fails.
+        } finally {
+          closeDb()
+        }
       },
       terminated() {
         databaseInstance = undefined
@@ -114,9 +161,11 @@ function openApplicationDatabase(): Promise<IDBPDatabase<OfflineCipherDb>> {
   })
 }
 
-export async function getDb(): Promise<IDBPDatabase<OfflineCipherDb>> {
+export async function getDb(
+  options: GetDatabaseOptions = {},
+): Promise<IDBPDatabase<OfflineCipherDb>> {
   assertDatabaseAccessAllowed()
-  databasePromise ??= openApplicationDatabase()
+  databasePromise ??= openApplicationDatabase(options)
   try {
     const database = await databasePromise
     if (databaseAccessBarrier) {
@@ -145,7 +194,7 @@ export function closeDb(): void {
 export async function deleteEntireDatabase(
   options: DeleteEntireDatabaseOptions = {},
 ): Promise<void> {
-  const timeoutMs = Math.max(0, options.timeoutMs ?? DATABASE_DELETE_TIMEOUT_MS)
+  const timeoutMs = timeoutOrDefault(options.timeoutMs, DATABASE_DELETE_TIMEOUT_MS)
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   let blocked = false
   try {
@@ -153,6 +202,11 @@ export async function deleteEntireDatabase(
     const deletion = deleteDB(DB_NAME, {
       blocked() {
         blocked = true
+        try {
+          options.onBlocked?.()
+        } catch {
+          // The timeout remains authoritative even if a UI observer fails.
+        }
       },
     })
     await Promise.race([

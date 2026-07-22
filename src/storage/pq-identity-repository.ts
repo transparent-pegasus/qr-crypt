@@ -6,57 +6,153 @@
 //   - 署名: status="active" の signing のみ(revoked/rotated は署名不可)
 //   - 展開済み秘密鍵は絶対に永続化しない(シードの EncryptedSecret のみ)
 import type { PostQuantumIdentity } from "@/schemas/domain"
+import { AppError, toAppError } from "@/crypto/errors"
+import { validatePostQuantumIdentity } from "@/schemas/key-schema"
+import { getDb, STORE_PQ_IDENTITIES } from "@/storage/database"
 
-export function listIdentities(): Promise<PostQuantumIdentity[]> {
-  throw new Error("NOT_IMPLEMENTED: WP-13 listIdentities")
+function checkedIdentity(value: unknown): PostQuantumIdentity {
+  try {
+    return validatePostQuantumIdentity(value)
+  } catch {
+    throw new AppError("STORAGE_FAILED")
+  }
 }
 
-export function getIdentity(id: string): Promise<PostQuantumIdentity | undefined> {
-  void id
-  throw new Error("NOT_IMPLEMENTED: WP-13 getIdentity")
+function safeIdentity(value: unknown): PostQuantumIdentity | undefined {
+  try {
+    return validatePostQuantumIdentity(value)
+  } catch {
+    return undefined
+  }
 }
 
-export function findIdentityByKemKeyId(
+export async function listIdentities(): Promise<PostQuantumIdentity[]> {
+  try {
+    return (await (await getDb()).getAll(STORE_PQ_IDENTITIES))
+      .map(safeIdentity)
+      .filter((identity): identity is PostQuantumIdentity => identity !== undefined)
+      .sort((a, b) => b.createdAt - a.createdAt)
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
+}
+
+export async function getIdentity(id: string): Promise<PostQuantumIdentity | undefined> {
+  try {
+    const value = await (await getDb()).get(STORE_PQ_IDENTITIES, id)
+    return value === undefined ? undefined : checkedIdentity(value)
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
+}
+
+export async function findIdentityByKemKeyId(
   kemKeyId: string,
 ): Promise<PostQuantumIdentity | undefined> {
-  void kemKeyId
-  throw new Error("NOT_IMPLEMENTED: WP-13 findIdentityByKemKeyId")
+  try {
+    const value = await (
+      await getDb()
+    ).getFromIndex(STORE_PQ_IDENTITIES, "by-kemKeyId", kemKeyId)
+    // Rotated and revoked rows remain valid decrypt recipients. Physical deletion is
+    // the only state that removes a KEM key from this lookup.
+    return value === undefined ? undefined : checkedIdentity(value)
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
 }
 
-export function findIdentityBySigningKeyId(
+export async function findIdentityBySigningKeyId(
   signingKeyId: string,
 ): Promise<PostQuantumIdentity | undefined> {
-  void signingKeyId
-  throw new Error("NOT_IMPLEMENTED: WP-13 findIdentityBySigningKeyId")
+  try {
+    const value = await (
+      await getDb()
+    ).getFromIndex(STORE_PQ_IDENTITIES, "by-signingKeyId", signingKeyId)
+    if (value === undefined) return undefined
+    const identity = checkedIdentity(value)
+    return identity.status === "active" ? identity : undefined
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
 }
 
-export function saveIdentity(identity: PostQuantumIdentity): Promise<void> {
-  void identity
-  throw new Error("NOT_IMPLEMENTED: WP-13 saveIdentity")
+export async function saveIdentity(identity: PostQuantumIdentity): Promise<void> {
+  const checked = checkedIdentity(identity)
+  if (checked.status !== "active") throw new AppError("STORAGE_FAILED")
+  try {
+    await (await getDb()).add(STORE_PQ_IDENTITIES, checked)
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
 }
 
 // ローテーション(rotateIdentity の結果 2 行を単一 transaction で保存)
-export function saveRotation(args: {
+export async function saveRotation(args: {
   next: PostQuantumIdentity
   previous: PostQuantumIdentity
 }): Promise<void> {
-  void args
-  throw new Error("NOT_IMPLEMENTED: WP-13 saveRotation")
+  const next = checkedIdentity(args.next)
+  const previous = checkedIdentity(args.previous)
+  if (
+    next.status !== "active" ||
+    previous.status !== "rotated" ||
+    next.rotatedFromId !== previous.id ||
+    previous.rotatedAt === undefined ||
+    next.createdAt !== previous.rotatedAt
+  ) {
+    throw new AppError("STORAGE_FAILED")
+  }
+  try {
+    const database = await getDb()
+    const tx = database.transaction(STORE_PQ_IDENTITIES, "readwrite")
+    const persisted = await tx.store.get(previous.id)
+    if (
+      persisted === undefined ||
+      persisted.status !== "active" ||
+      persisted.kem.keyId !== previous.kem.keyId ||
+      persisted.signing.keyId !== previous.signing.keyId ||
+      persisted.identityFingerprint !== previous.identityFingerprint
+    ) {
+      throw new AppError("STORAGE_FAILED")
+    }
+    await tx.store.put(previous)
+    await tx.store.add(next)
+    await tx.done
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
 }
 
-export function revokeIdentity(id: string, revokedAt: number): Promise<void> {
-  void id
-  void revokedAt
-  throw new Error("NOT_IMPLEMENTED: WP-13 revokeIdentity")
+export async function revokeIdentity(id: string, revokedAt: number): Promise<void> {
+  try {
+    const database = await getDb()
+    const tx = database.transaction(STORE_PQ_IDENTITIES, "readwrite")
+    const existing = await tx.store.get(id)
+    if (existing === undefined) throw new AppError("KEY_NOT_FOUND")
+    await tx.store.put(checkedIdentity({ ...existing, status: "revoked", revokedAt }))
+    await tx.done
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
 }
 
-export function deleteIdentity(id: string): Promise<void> {
-  void id
-  throw new Error("NOT_IMPLEMENTED: WP-13 deleteIdentity")
+export async function deleteIdentity(id: string): Promise<void> {
+  try {
+    await (await getDb()).delete(STORE_PQ_IDENTITIES, id)
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
 }
 
-export function markIdentityUsed(id: string, usedAt: number): Promise<void> {
-  void id
-  void usedAt
-  throw new Error("NOT_IMPLEMENTED: WP-13 markIdentityUsed")
+export async function markIdentityUsed(id: string, usedAt: number): Promise<void> {
+  try {
+    const database = await getDb()
+    const tx = database.transaction(STORE_PQ_IDENTITIES, "readwrite")
+    const existing = await tx.store.get(id)
+    if (existing === undefined) throw new AppError("KEY_NOT_FOUND")
+    await tx.store.put(checkedIdentity({ ...existing, lastUsedAt: usedAt }))
+    await tx.done
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
 }

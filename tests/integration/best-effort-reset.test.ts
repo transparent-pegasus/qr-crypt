@@ -217,9 +217,9 @@ describe("best-effort local reset", () => {
     await expect(
       bestEffortLocalReset({ reason: "online-detected", resetChurnMb: 0 }),
     ).resolves.toEqual({ ok: true, failedSteps: [] })
-    expect(
-      (await indexedDB.databases()).some((entry) => entry.name === "qrypt"),
-    ).toBe(false)
+    expect((await indexedDB.databases()).some((entry) => entry.name === "qrypt")).toBe(
+      false,
+    )
   })
 })
 
@@ -257,10 +257,17 @@ describe("boot storage APIs and barrier", () => {
   it("turns a blocked delete timeout into RESET_FAILED", async () => {
     await getDb()
     const blocker = await openDB("qrypt")
+    let blockedNotifications = 0
     try {
-      await expect(deleteEntireDatabase({ timeoutMs: 10 })).rejects.toMatchObject({
-        code: "RESET_FAILED",
-      })
+      await expect(
+        deleteEntireDatabase({
+          timeoutMs: 10,
+          onBlocked() {
+            blockedNotifications += 1
+          },
+        }),
+      ).rejects.toMatchObject({ code: "RESET_FAILED" })
+      expect(blockedNotifications).toBe(1)
     } finally {
       blocker.close()
     }
