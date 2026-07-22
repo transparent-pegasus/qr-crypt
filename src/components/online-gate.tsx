@@ -42,7 +42,7 @@ export function OnlineGate({ children }: { children: ReactNode }) {
   return online ? <OnlineInstallScreen /> : children
 }
 
-function OnlineInstallScreen() {
+export function OnlineInstallScreen() {
   const { offlineReady, error: registrationError } = usePwaOfflineReady()
   const [installed, setInstalled] = useState(isStandalone)
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(

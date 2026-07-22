@@ -1,16 +1,25 @@
-import { useMemo } from "react"
+import { useCallback, useMemo, type ReactNode } from "react"
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react"
 import { RouterProvider } from "react-router-dom"
+import type { BootController } from "@/app/boot/boot-controller"
+import { useBootState } from "@/app/boot/use-boot-state"
 import {
   detectFeatures as detectBrowserFeatures,
   type FeatureSupport,
 } from "@/lib/feature-detect"
 import { createAppRouter } from "@/app/router"
-import { AppProviders, ThemeProvider } from "@/app/providers"
-import { OnlineGate } from "@/components/online-gate"
+import {
+  AppProviders,
+  ThemeProvider,
+  useSensitiveSession,
+  useTransientClear,
+} from "@/app/providers"
+import { OnlineGate, OnlineInstallScreen } from "@/components/online-gate"
 import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
+import { userMessageFor } from "@/crypto/errors"
 
 export interface AppProps {
+  bootController?: BootController
   detectFeatures?: () => FeatureSupport
   pwaHook?: UseRegisterSwHook
 }
@@ -64,10 +73,87 @@ function UnsupportedBrowser({ features }: { features: FeatureSupport }) {
   )
 }
 
-export function App({ detectFeatures, pwaHook }: AppProps) {
+function BootStatusScreen({ children }: { children: ReactNode }) {
+  return (
+    <main className="grid min-h-dvh place-items-center bg-background p-4 text-foreground">
+      <section className="w-full max-w-md space-y-3 rounded-xl border bg-card p-6 shadow-sm">
+        {children}
+      </section>
+    </main>
+  )
+}
+
+function OfflineApplication() {
+  const router = useMemo(() => createAppRouter(), [])
+  return (
+    <OnlineGate>
+      <RouterProvider router={router} />
+    </OnlineGate>
+  )
+}
+
+function BootGate({ controller }: { controller: BootController | undefined }) {
+  const { clearTransient } = useTransientClear()
+  const { resetSensitiveSession } = useSensitiveSession()
+  const resetTransient = useCallback(() => {
+    clearTransient()
+    resetSensitiveSession()
+  }, [clearTransient, resetSensitiveSession])
+  const state = useBootState({
+    ...(controller ? { controller } : {}),
+    resetTransient,
+  })
+
+  switch (state.kind) {
+    case "unknown":
+    case "probing":
+      return (
+        <BootStatusScreen>
+          <p role="status" className="text-sm text-muted-foreground">
+            ネットワーク到達性とローカルデータを確認しています…
+          </p>
+        </BootStatusScreen>
+      )
+    case "offline-confirmed":
+      return <OfflineApplication />
+    case "network-confirmed":
+      return <OnlineInstallScreen />
+    case "wiping":
+      return (
+        <BootStatusScreen>
+          <h1 className="text-xl font-bold">ローカルデータを初期化しています</h1>
+          <p role="status" className="text-sm text-muted-foreground">
+            完了するまでこの画面を閉じないでください。
+          </p>
+        </BootStatusScreen>
+      )
+    case "wiped":
+      return (
+        <BootStatusScreen>
+          <h1 className="text-xl font-bold">
+            オンラインを検出したため、ローカルデータを初期化しました
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            論理削除を試行しました(物理消去は未保証)
+          </p>
+        </BootStatusScreen>
+      )
+    case "partial-failure":
+      return (
+        <BootStatusScreen>
+          <p className="font-mono text-xs text-destructive">RESET_FAILED</p>
+          <h1 className="text-xl font-bold">{userMessageFor("RESET_FAILED")}</h1>
+          <p className="text-sm text-muted-foreground">
+            論理削除を試行しました(物理消去は未保証)
+          </p>
+        </BootStatusScreen>
+      )
+  }
+}
+
+export function App({ bootController, detectFeatures, pwaHook }: AppProps) {
   const detector = detectFeatures ?? detectBrowserFeatures
   const features = useMemo(() => detector(), [detector])
-  const router = useMemo(() => createAppRouter(), [])
 
   if (!features.webCrypto || !features.indexedDb) {
     return (
@@ -79,9 +165,7 @@ export function App({ detectFeatures, pwaHook }: AppProps) {
 
   return (
     <AppProviders features={features} pwaHook={pwaHook}>
-      <OnlineGate>
-        <RouterProvider router={router} />
-      </OnlineGate>
+      <BootGate controller={bootController} />
     </AppProviders>
   )
 }
