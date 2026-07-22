@@ -43,6 +43,15 @@ jobs:
       - name: Unit tests
         run: aube test
 
+      - name: Post-quantum known-answer tests
+        run: aube test:pq-vectors
+
+      - name: Post-quantum integration tests
+        run: aube test:pq
+
+      - name: Multipart QR tests
+        run: aube test:qr-multipart
+
       - name: Build production PWA
         run: aube build:prod
         env:
