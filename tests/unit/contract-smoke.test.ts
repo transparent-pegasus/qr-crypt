@@ -12,7 +12,7 @@ import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
 
 describe("contract smoke", () => {
   it("error model exposes all 15 spec codes with Japanese user messages", () => {
-    expect(ERROR_CODES).toHaveLength(15)
+    expect(ERROR_CODES).toHaveLength(20)
     const error = new AppError("DECRYPTION_FAILED")
     expect(error.code).toBe("DECRYPTION_FAILED")
     expect(error.userMessage).toBe(

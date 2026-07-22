@@ -16,6 +16,12 @@ export const ERROR_CODES = [
   "CAMERA_NOT_AVAILABLE",
   "DUPLICATE_KEY",
   "DUPLICATE_QR",
+  // v2(ポスト量子)追加。plan2.1 §H。
+  "SIGNATURE_INVALID",
+  "SIGNING_KEY_NOT_FOUND",
+  "FRAME_MISMATCH",
+  "WORKER_UNAVAILABLE",
+  "RESET_FAILED",
 ] as const
 
 export type ErrorCode = (typeof ERROR_CODES)[number]
@@ -41,6 +47,15 @@ const USER_MESSAGES: Record<ErrorCode, string> = {
   CAMERA_NOT_AVAILABLE: "カメラを利用できません。",
   DUPLICATE_KEY: "同じ内容の鍵がすでに保存されています。",
   DUPLICATE_QR: "同じ内容のQRコードがすでに保存されています。",
+  SIGNATURE_INVALID:
+    "署名を検証できませんでした。送信者の署名鍵、または内容が一致していません。",
+  SIGNING_KEY_NOT_FOUND:
+    "この署名に対応する送信者の署名鍵が見つかりません。先に署名検証用の公開鍵を取り込んでください。",
+  FRAME_MISMATCH:
+    "異なる転送のQRコードが混在しています。読み取り状態を破棄してやり直してください。",
+  WORKER_UNAVAILABLE:
+    "この端末では暗号処理を安全に実行できませんでした。対応ブラウザーで開き直してください。",
+  RESET_FAILED: "ローカルデータの初期化中に一部の操作が完了しませんでした。",
 }
 
 export function userMessageFor(code: ErrorCode): string {

@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { vi } from "vitest"
 import type { RegisterSWOptions } from "virtual:pwa-register/react"
-import type { ErrorCode } from "@/crypto/errors"
+import { type ErrorCode, userMessageFor } from "@/crypto/errors"
 import type {
   AesMessageEnvelopeV1,
   PublicKeyEnvelopeV1,
@@ -97,26 +97,9 @@ export class FakeAppError extends Error {
   }
 }
 
+// 実装(純粋な errors.ts)へ委譲し、コード追加時のドリフトを防ぐ。
 export function fakeUserMessageFor(code: ErrorCode): string {
-  const messages: Record<ErrorCode, string> = {
-    UNSUPPORTED_BROWSER: "このブラウザーでは必要な機能を利用できません。",
-    INVALID_QR_PREFIX: "このQRコードは本アプリの形式ではありません。",
-    INVALID_QR_PAYLOAD: "QRコードの内容を読み取れませんでした。",
-    UNSUPPORTED_PROTOCOL_VERSION: "対応していないバージョンです。",
-    UNSUPPORTED_ALGORITHM: "対応していない暗号方式です。",
-    KEY_NOT_FOUND: "対応する鍵が見つかりません。",
-    KEY_TYPE_MISMATCH: "選択した鍵は使用できません。",
-    ENCRYPTION_FAILED: "暗号化に失敗しました。",
-    DECRYPTION_FAILED:
-      "復号できませんでした。鍵、暗号方式、または暗号文が一致していません。",
-    QR_TOO_LARGE: "データ量が多いためQRコードを生成できません。",
-    STORAGE_FAILED: "保存領域の操作に失敗しました。",
-    CAMERA_PERMISSION_DENIED: "カメラの使用が許可されていません。",
-    CAMERA_NOT_AVAILABLE: "カメラを利用できません。",
-    DUPLICATE_KEY: "同じ内容の鍵がすでに保存されています。",
-    DUPLICATE_QR: "同じ内容のQRコードがすでに保存されています。",
-  }
-  return messages[code]
+  return userMessageFor(code)
 }
 
 export function fakeToAppError(error: unknown, fallback: ErrorCode) {
