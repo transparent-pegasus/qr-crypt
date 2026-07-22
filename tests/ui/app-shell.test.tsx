@@ -20,6 +20,7 @@ describe("app shell and feature gate", () => {
     expect(navigation).toHaveClass("fixed", "bottom-0", "pb-safe")
     const links = within(navigation).getAllByRole("link")
     expect(links).toHaveLength(4)
+    await waitFor(() => expect(links[0]).toHaveAttribute("aria-current", "page"))
     expect(links.map((link) => link.textContent)).toEqual(
       expect.arrayContaining(["暗号化現在のページ", "鍵", "保存済み", "設定"]),
     )
@@ -38,7 +39,7 @@ describe("app shell and feature gate", () => {
   it("supports keyboard navigation with visible-focus classes and Space activation", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
-    const navigation = screen.getByRole("navigation", {
+    const navigation = await screen.findByRole("navigation", {
       name: "メインナビゲーション",
     })
     const links = within(navigation).getAllByRole("link")
