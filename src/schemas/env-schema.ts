@@ -12,7 +12,8 @@ export interface AppEnv {
   qrErrorCorrection: QrEcLevel
   qrRenderSize: number
   maxPlaintextBytes: number
-  enableRsa: boolean
+  // RSA は廃止済み。互換的にプロパティを公開するが常に false。
+  enableRsa: false
   enableEcdh: boolean
   enableMlKem: boolean
   enableMlDsa: boolean
@@ -48,14 +49,14 @@ const rawSchema = z.object({
   VITE_APP_NAME: z.string().min(1).default("Qrypt"),
   VITE_APP_SHORT_NAME: z.string().min(1).default("Qrypt"),
   VITE_DEFAULT_ALGORITHM: z
-    .enum(["A256GCM", "RSA-HYBRID", "MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"])
+    .enum(["A256GCM", "MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"])
     .default("A256GCM"),
   VITE_DEFAULT_PQ_PROFILE: z.enum(["balanced", "maximum"]).default("balanced"),
   VITE_QR_ERROR_CORRECTION: z.enum(["L", "M", "Q", "H"]).default("Q"),
   VITE_QR_RENDER_SIZE: intFromString(512, 128, 1024),
   VITE_MAX_PLAINTEXT_BYTES: intFromString(4096, 1, 16384),
-  // 既定 true は WP-14(RSA 削除)で false へ反転する(plan2.1 §E4)
-  VITE_ENABLE_RSA: boolFromString("true"),
+  // 廃止済みの互換変数。true も受理するが parse 後は常に false。
+  VITE_ENABLE_RSA: boolFromString("false"),
   VITE_ENABLE_ECDH: boolFromString("false"),
   VITE_ENABLE_ML_KEM: boolFromString("true"),
   VITE_ENABLE_ML_DSA: boolFromString("true"),
@@ -88,11 +89,7 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     )
   }
   let defaultAlgorithm: UiAlgorithm = v.VITE_DEFAULT_ALGORITHM
-  // 2) RSA 無効時に既定方式が RSA を指していたら A256GCM へ正規化(C14)
-  if (!v.VITE_ENABLE_RSA && defaultAlgorithm === "RSA-HYBRID") {
-    defaultAlgorithm = "A256GCM"
-  }
-  // 3) ML-KEM 無効時に既定方式が PQ を指していたら A256GCM へ正規化
+  // 2) ML-KEM 無効時に既定方式が PQ を指していたら A256GCM へ正規化
   if (
     !v.VITE_ENABLE_ML_KEM &&
     (defaultAlgorithm === "MLKEM768_A256GCM" ||
@@ -100,11 +97,11 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
   ) {
     defaultAlgorithm = "A256GCM"
   }
-  // 4) ML-DSA 無効時に既定方式が署名付き PQ なら非署名 PQ へ正規化
+  // 3) ML-DSA 無効時に既定方式が署名付き PQ なら非署名 PQ へ正規化
   if (!v.VITE_ENABLE_ML_DSA && defaultAlgorithm === "MLKEM768_MLDSA65_A256GCM") {
     defaultAlgorithm = "MLKEM768_A256GCM"
   }
-  // 5) 署名必須なら既定 PQ 方式を署名付きへ正規化(plan2.1 §I。A256GCM は対象外)
+  // 4) 署名必須なら既定 PQ 方式を署名付きへ正規化(plan2.1 §I。A256GCM は対象外)
   if (v.VITE_REQUIRE_SIGNATURE && defaultAlgorithm === "MLKEM768_A256GCM") {
     defaultAlgorithm = "MLKEM768_MLDSA65_A256GCM"
   }
@@ -116,7 +113,8 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     qrErrorCorrection: v.VITE_QR_ERROR_CORRECTION,
     qrRenderSize: v.VITE_QR_RENDER_SIZE,
     maxPlaintextBytes: v.VITE_MAX_PLAINTEXT_BYTES,
-    enableRsa: v.VITE_ENABLE_RSA,
+    // VITE_ENABLE_RSA=true は廃止互換として無視する(plan2.1 §E4)。
+    enableRsa: false,
     enableEcdh: v.VITE_ENABLE_ECDH,
     enableMlKem: v.VITE_ENABLE_ML_KEM,
     enableMlDsa: v.VITE_ENABLE_ML_DSA,

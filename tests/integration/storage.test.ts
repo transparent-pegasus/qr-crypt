@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
 import {
-  buildPublicKeyEnvelope,
   buildSymmetricKeyEnvelope,
-  createRsaKeyPairRecord,
   createSymmetricKeyRecord,
 } from "@/crypto/key-generation"
 import { generateArtifactId, generateKeyId } from "@/crypto/random"
@@ -58,20 +56,10 @@ async function qrArtifact(
   overrides: Partial<StoredQrArtifact> = {},
 ): Promise<StoredQrArtifact> {
   const payload = encodeEnvelopeToPayload(envelope)
-  const kind =
-    envelope.type === "message"
-      ? "ciphertext"
-      : envelope.type === "symmetric-key"
-        ? "symmetric-key"
-        : "public-key"
-  const sensitivity =
-    kind === "ciphertext" ? "confidential" : kind === "public-key" ? "public" : "secret"
-  const keyId =
-    envelope.type === "message"
-      ? envelope.algorithm === "A256GCM"
-        ? envelope.keyId
-        : envelope.recipientKeyId
-      : envelope.keyId
+  const kind = envelope.type === "symmetric-key" ? "symmetric-key" : "public-key"
+  const sensitivity = kind === "public-key" ? "public" : "secret"
+  if (envelope.type === "message") throw new Error("message artifacts are not persistent")
+  const keyId = envelope.keyId
   return {
     id: generateArtifactId(),
     name,
@@ -122,7 +110,7 @@ describe("database creation and migrations", () => {
 describe("key repository", () => {
   it("supports CRUD, lookup, atomic usage increments, and CryptoKey reuse after reopen", async () => {
     const first = await createSymmetricKeyRecord("鍵A", NOW)
-    const second = await createRsaKeyPairRecord("鍵B", NOW + 1)
+    const second = await createSymmetricKeyRecord("鍵B", NOW + 1)
     await saveKeyRecord(first)
     await saveKeyRecord(second)
     expect((await listKeyRecords()).map((record) => record.id)).toEqual([
@@ -195,24 +183,6 @@ describe("key repository", () => {
       code: "STORAGE_FAILED",
     })
   })
-
-  it("retains an RSA pair record whose non-extractable private key was lost", async () => {
-    const pair = await createRsaKeyPairRecord("秘密鍵消失", NOW)
-    const publicOnlyPair: StoredKeyRecord = {
-      id: pair.id,
-      name: pair.name,
-      kind: "rsa-key-pair",
-      algorithm: pair.algorithm,
-      fingerprint: pair.fingerprint,
-      createdAt: pair.createdAt,
-      useCount: pair.useCount,
-      publicKey: pair.publicKey!,
-    }
-    await saveKeyRecord(publicOnlyPair)
-    const restored = await getKeyRecord(pair.id)
-    expect(restored?.kind).toBe("rsa-key-pair")
-    expect(restored?.privateKey).toBeUndefined()
-  })
 })
 
 describe("QR repository", () => {
@@ -284,20 +254,20 @@ describe("QR repository", () => {
 describe("preferences and plaintext non-persistence", () => {
   it("uses env defaults and validates persisted updates", async () => {
     expect(await getPreferences()).toMatchObject({
-      defaultAlgorithm: "A256GCM",
+      defaultAlgorithm: "MLKEM768_A256GCM",
       qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
     })
     expect(
       await updatePreferences({
-        defaultAlgorithm: "RSA-HYBRID",
+        defaultAlgorithm: "MLKEM768_MLDSA65_A256GCM",
         qrErrorCorrection: "M",
         autoClearPlaintextAfterEncrypt: false,
         backgroundClearEnabled: false,
       }),
     ).toMatchObject({
-      defaultAlgorithm: "RSA-HYBRID",
+      defaultAlgorithm: "MLKEM768_MLDSA65_A256GCM",
       qrErrorCorrection: "M",
       autoClearPlaintextAfterEncrypt: false,
       backgroundClearEnabled: false,
@@ -315,7 +285,7 @@ describe("preferences and plaintext non-persistence", () => {
     })
     const migrated = await getPreferences()
     expect(migrated).toMatchObject({
-      defaultAlgorithm: "A256GCM",
+      defaultAlgorithm: "MLKEM768_A256GCM",
       qrErrorCorrection: "H",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
@@ -426,16 +396,8 @@ describe("preferences and plaintext non-persistence", () => {
     }
     expect(
       (await database.getAll(STORE_QR_ARTIFACTS)).filter(
-        (record) => record.kind === "ciphertext",
+        (record) => (record as { kind: string }).kind === "ciphertext",
       ),
     ).toEqual([])
-  })
-
-  it("builds OCP1 public-key artifacts for the documented text export path", async () => {
-    const pair = await createRsaKeyPairRecord("公開鍵", NOW)
-    const envelope = await buildPublicKeyEnvelope(pair)
-    const artifact = await qrArtifact("公開鍵", envelope)
-    expect(artifact.payload).toMatch(/^OCP1:/u)
-    expect(artifact.sensitivity).toBe("public")
   })
 })

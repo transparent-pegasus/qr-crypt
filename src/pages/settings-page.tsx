@@ -11,6 +11,7 @@ import {
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
+import { armMaintenanceToken } from "@/app/boot/boot-controller"
 import {
   useFeatureSupport,
   useTheme,
@@ -31,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Collapsible,
   CollapsibleContent,
@@ -51,6 +53,16 @@ import { useKeys } from "@/hooks/use-keys"
 import { usePreferences } from "@/hooks/use-preferences"
 import type { Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
+import {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
+  FRAME_INTERVAL_MS_MAX,
+  FRAME_INTERVAL_MS_MIN,
+  RESET_CHURN_MB_MAX,
+  RESET_CHURN_MB_MIN,
+  TRANSFER_TIMEOUT_MINUTES_MAX,
+  TRANSFER_TIMEOUT_MINUTES_MIN,
+} from "@/lib/limits"
 import { deleteEntireDatabase } from "@/storage/database"
 import { clearAllKeys } from "@/storage/key-repository"
 import { clearAllQrArtifacts, listQrArtifacts } from "@/storage/qr-repository"
@@ -75,13 +87,28 @@ export function SettingsPage() {
   const [typedAction, setTypedAction] = useState<TypedDeleteAction | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
   const [securityOpen, setSecurityOpen] = useState(true)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [working, setWorking] = useState(false)
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
+  const [maintenanceConfirmation, setMaintenanceConfirmation] = useState("")
+  const [maintenanceAcknowledged, setMaintenanceAcknowledged] = useState(false)
+  const [navigatorOnline, setNavigatorOnline] = useState(() => navigator.onLine)
+
+  useEffect(() => {
+    const sync = () => setNavigatorOnline(navigator.onLine)
+    window.addEventListener("online", sync)
+    window.addEventListener("offline", sync)
+    return () => {
+      window.removeEventListener("online", sync)
+      window.removeEventListener("offline", sync)
+    }
+  }, [])
 
   const loadQrCount = useCallback(async () => {
     try {
       setQrCount((await listQrArtifacts()).length)
     } catch {
-      setError("保存済みQRの件数を取得できませんでした。")
+      setError("保存済み鍵QRの件数を取得できませんでした。")
     }
   }, [])
 
@@ -109,9 +136,9 @@ export function SettingsPage() {
       await clearAllQrArtifacts()
       setClearQrOpen(false)
       await loadQrCount()
-      toast.success("すべての保存QRを消去しました")
+      toast.success("すべての保存済み鍵QRを消去しました")
     } catch {
-      setError("保存済みQRを消去できませんでした。")
+      setError("保存済み鍵QRを消去できませんでした。")
     } finally {
       setWorking(false)
     }
@@ -136,7 +163,7 @@ export function SettingsPage() {
         clearTransient()
         await refreshKeys()
         await loadQrCount()
-        toast.success("全ローカルデータを初期化しました")
+        toast.success("論理削除を試行しました(物理消去は未保証)")
       }
       setTypedAction(null)
       setDeleteConfirmation("")
@@ -147,12 +174,49 @@ export function SettingsPage() {
     }
   }
 
+  const saveIntegerPreference = (
+    key: "frameBytes" | "frameIntervalMs" | "transferTimeoutMinutes" | "resetChurnMb",
+    raw: string,
+    minimum: number,
+    maximum: number,
+  ) => {
+    const value = Number(raw)
+    if (Number.isSafeInteger(value) && value >= minimum && value <= maximum) {
+      void savePreference({ [key]: value })
+    }
+  }
+
+  const armMaintenance = async () => {
+    if (
+      navigatorOnline ||
+      maintenanceConfirmation !== "鍵を保持して更新" ||
+      !maintenanceAcknowledged
+    ) {
+      return
+    }
+    setWorking(true)
+    setError(null)
+    try {
+      await armMaintenanceToken()
+      setMaintenanceOpen(false)
+      setMaintenanceConfirmation("")
+      setMaintenanceAcknowledged(false)
+      toast.success("次の一回だけ鍵を保持する設定を arm しました")
+    } catch {
+      setError(
+        "maintenance tokenを設定できませんでした。オフライン状態を確認してください。",
+      )
+    } finally {
+      setWorking(false)
+    }
+  }
+
   const standalone =
     window.matchMedia("(display-mode: standalone)").matches ||
     Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
 
   return (
-    <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6">
+    <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={working}>
       <h2 className="text-[1.375rem] font-bold tracking-tight">設定</h2>
 
       {(error || preferencesError || pwa.error) && (
@@ -177,9 +241,14 @@ export function SettingsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="A256GCM">{ALGORITHM_LABELS.A256GCM}</SelectItem>
-              {env.enableRsa && (
-                <SelectItem value="RSA-HYBRID">
-                  {ALGORITHM_LABELS["RSA-HYBRID"]}
+              {env.enableMlKem && !preferences.requireSignature && (
+                <SelectItem value="MLKEM768_A256GCM">
+                  {ALGORITHM_LABELS.MLKEM768_A256GCM}
+                </SelectItem>
+              )}
+              {env.enableMlKem && env.enableMlDsa && (
+                <SelectItem value="MLKEM768_MLDSA65_A256GCM">
+                  {ALGORITHM_LABELS.MLKEM768_MLDSA65_A256GCM}
                 </SelectItem>
               )}
             </SelectContent>
@@ -209,6 +278,193 @@ export function SettingsPage() {
           </p>
         </SettingField>
       </SettingsCard>
+
+      <SettingsCard title="ポスト量子メッセージ">
+        <div className="flex min-h-11 items-center justify-between gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="require-signature">署名を必須にする</Label>
+            <p className="text-xs text-muted-foreground">
+              {env.requireSignature
+                ? "環境設定で必須化されているため解除できません。"
+                : "有効時は非署名のポスト量子方式を選択肢から隠します。"}
+            </p>
+          </div>
+          <Switch
+            id="require-signature"
+            aria-label="署名を必須にする"
+            checked={preferences.requireSignature}
+            disabled={env.requireSignature || preferencesLoading}
+            onCheckedChange={(checked) =>
+              void savePreference({
+                requireSignature: checked,
+                ...(checked && preferences.defaultAlgorithm === "MLKEM768_A256GCM"
+                  ? { defaultAlgorithm: "MLKEM768_MLDSA65_A256GCM" }
+                  : {}),
+              })
+            }
+          />
+        </div>
+        <SettingField
+          label={`1フレームの生データ (${FRAME_BYTES_MIN}–${FRAME_BYTES_MAX} bytes)`}
+          htmlFor="frame-bytes"
+        >
+          <Input
+            id="frame-bytes"
+            type="number"
+            min={FRAME_BYTES_MIN}
+            max={FRAME_BYTES_MAX}
+            value={preferences.frameBytes}
+            onChange={(event) =>
+              saveIntegerPreference(
+                "frameBytes",
+                event.target.value,
+                FRAME_BYTES_MIN,
+                FRAME_BYTES_MAX,
+              )
+            }
+          />
+        </SettingField>
+        <SettingField
+          label={`フレーム切替間隔 (${FRAME_INTERVAL_MS_MIN}–${FRAME_INTERVAL_MS_MAX} ms)`}
+          htmlFor="frame-interval"
+        >
+          <Input
+            id="frame-interval"
+            type="number"
+            min={FRAME_INTERVAL_MS_MIN}
+            max={FRAME_INTERVAL_MS_MAX}
+            value={preferences.frameIntervalMs}
+            onChange={(event) =>
+              saveIntegerPreference(
+                "frameIntervalMs",
+                event.target.value,
+                FRAME_INTERVAL_MS_MIN,
+                FRAME_INTERVAL_MS_MAX,
+              )
+            }
+          />
+        </SettingField>
+        <SettingField
+          label={`読取状態の期限 (${TRANSFER_TIMEOUT_MINUTES_MIN}–${TRANSFER_TIMEOUT_MINUTES_MAX} 分)`}
+          htmlFor="transfer-timeout"
+        >
+          <Input
+            id="transfer-timeout"
+            type="number"
+            min={TRANSFER_TIMEOUT_MINUTES_MIN}
+            max={TRANSFER_TIMEOUT_MINUTES_MAX}
+            value={preferences.transferTimeoutMinutes}
+            onChange={(event) =>
+              saveIntegerPreference(
+                "transferTimeoutMinutes",
+                event.target.value,
+                TRANSFER_TIMEOUT_MINUTES_MIN,
+                TRANSFER_TIMEOUT_MINUTES_MAX,
+              )
+            }
+          />
+        </SettingField>
+        <p className="text-xs text-muted-foreground">
+          OCF2フレームの誤り訂正は常にQです。
+        </p>
+      </SettingsCard>
+
+      <SettingsCard title="オンライン検出時の保護">
+        <div className="flex min-h-11 items-center justify-between gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="wipe-on-online">
+              オンライン確定時にローカルデータを初期化
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              既定ON。専用sentinelの本文一致後だけ実行します。
+            </p>
+          </div>
+          <Switch
+            id="wipe-on-online"
+            aria-label="オンライン確定時にローカルデータを初期化"
+            checked={preferences.wipeOnOnline}
+            onCheckedChange={(checked) => void savePreference({ wipeOnOnline: checked })}
+          />
+        </div>
+        {!preferences.wipeOnOnline && (
+          <Alert variant="destructive" role="alert">
+            <TriangleAlert aria-hidden="true" className="size-4" />
+            <AlertTitle>ローカルデータが残り続けます</AlertTitle>
+            <AlertDescription>
+              永続OFFでは、接続を検出しても鍵とローカルデータを自動初期化しません。
+            </AlertDescription>
+          </Alert>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full"
+          disabled={navigatorOnline}
+          onClick={() => {
+            setMaintenanceConfirmation("")
+            setMaintenanceAcknowledged(false)
+            setMaintenanceOpen(true)
+          }}
+        >
+          次の一回だけ鍵を保持して更新
+        </Button>
+        <p className="text-xs text-muted-foreground">
+          オフライン中だけ arm できます。暗号文保存の救済経路ではなく、次の verified
+          transition 後に必ず失効します。
+        </p>
+        {navigatorOnline && (
+          <p className="text-xs text-destructive">オンライン中は設定できません。</p>
+        )}
+      </SettingsCard>
+
+      <Card>
+        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <CardHeader className="p-4 pb-3">
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 w-full justify-between px-0"
+              >
+                Advanced: reset churn
+                <ChevronDown
+                  aria-hidden="true"
+                  className={advancedOpen ? "rotate-180" : ""}
+                />
+              </Button>
+            </CollapsibleTrigger>
+          </CardHeader>
+          <CollapsibleContent>
+            <CardContent className="space-y-3 p-4 pt-0">
+              <SettingField
+                label={`reset churn (${RESET_CHURN_MB_MIN}–${RESET_CHURN_MB_MAX} MB)`}
+                htmlFor="reset-churn"
+              >
+                <Input
+                  id="reset-churn"
+                  type="number"
+                  min={RESET_CHURN_MB_MIN}
+                  max={RESET_CHURN_MB_MAX}
+                  value={preferences.resetChurnMb}
+                  onChange={(event) =>
+                    saveIntegerPreference(
+                      "resetChurnMb",
+                      event.target.value,
+                      RESET_CHURN_MB_MIN,
+                      RESET_CHURN_MB_MAX,
+                    )
+                  }
+                />
+              </SettingField>
+              <Alert variant="destructive">
+                <AlertDescription>
+                  既定は0です。churnは消去保証にならず、物理データの回収不能を保証しません。
+                </AlertDescription>
+              </Alert>
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
 
       <SettingsCard title="平文の扱い">
         <div className="flex min-h-11 items-center justify-between gap-4">
@@ -285,8 +541,7 @@ export function SettingsPage() {
           <Alert variant="destructive">
             <AlertCircle aria-hidden="true" className="size-4" />
             <AlertDescription>
-              この機能は利用できません: Service
-              Worker。オフライン起動を利用できません。
+              この機能は利用できません: Service Worker。オフライン起動を利用できません。
             </AlertDescription>
           </Alert>
         )}
@@ -297,7 +552,7 @@ export function SettingsPage() {
           <InfoRow label="バージョン" value={__APP_VERSION__} mono />
           <InfoRow label="ビルド" value={env.buildSha.slice(0, 7)} mono />
           <InfoRow label="保存鍵" value={`${keys.length} 件`} mono />
-          <InfoRow label="保存QR" value={`${qrCount} 件`} mono />
+          <InfoRow label="保存済み鍵QR" value={`${qrCount} 件`} mono />
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">
           オフライン利用準備状態は資産の保存状態を示します。安全性を示すものではありません。
@@ -319,7 +574,7 @@ export function SettingsPage() {
             onClick={() => setClearQrOpen(true)}
           >
             <Trash2 aria-hidden="true" />
-            すべての保存QRを消去
+            すべての保存済み鍵QRを消去
           </Button>
           <Button
             type="button"
@@ -396,6 +651,19 @@ export function SettingsPage() {
               <p>
                 オフライン表示は現在のネットワーク状態を示す補助情報であり、安全性の証明ではありません。
               </p>
+              <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+                <li>採用している noble の本アプリ統合は独立監査を完了していません。</li>
+                <li>JavaScript実装はサイドチャネル耐性を保証しません。</li>
+                <li>
+                  JavaScriptとGCのため、メモリー上の秘密値を完全消去できる保証はありません。
+                </li>
+                <li>
+                  resetはローカルデータの論理削除を試行します。物理消去は保証しません(LevelDB・SSDウェアレベリングを含む)。
+                </li>
+              </ul>
+              <p>
+                wipe-on-onlineは、接続後に現在のコードが実行できた場合の残存データ低減です。同一オリジンの悪意あるコード、物理回収、更新前に実行される侵害コードを防ぎません。
+              </p>
             </CardContent>
           </CollapsibleContent>
         </Collapsible>
@@ -415,9 +683,9 @@ export function SettingsPage() {
       <AlertDialog open={clearQrOpen} onOpenChange={setClearQrOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>すべての保存QRを消去しますか</AlertDialogTitle>
+            <AlertDialogTitle>すべての保存済み鍵QRを消去しますか</AlertDialogTitle>
             <AlertDialogDescription>
-              アプリ内に保存したQRをすべて削除します。鍵本体は削除しません。
+              アプリ内に保存した鍵QRをすべて削除します。鍵本体は削除しません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -428,6 +696,64 @@ export function SettingsPage() {
               onClick={() => void clearSavedQr()}
             >
               消去する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={maintenanceOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMaintenanceOpen(false)
+            setMaintenanceConfirmation("")
+            setMaintenanceAcknowledged(false)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>次の一回だけ鍵を保持して更新</AlertDialogTitle>
+            <AlertDialogDescription>
+              次のオンライン確定時にwipeを一度だけ抑止します。実行するには「鍵を保持して更新」と入力し、注意事項を確認してください。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="maintenance-confirmation">確認文字列</Label>
+              <Input
+                id="maintenance-confirmation"
+                value={maintenanceConfirmation}
+                onChange={(event) => setMaintenanceConfirmation(event.target.value)}
+                autoComplete="off"
+                placeholder="鍵を保持して更新"
+              />
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="maintenance-ack"
+                checked={maintenanceAcknowledged}
+                onCheckedChange={(checked) =>
+                  setMaintenanceAcknowledged(checked === true)
+                }
+              />
+              <Label htmlFor="maintenance-ack">
+                一回限りであり、更新後のコードや端末の安全性を保証しないことを理解しました
+              </Label>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                working ||
+                navigatorOnline ||
+                maintenanceConfirmation !== "鍵を保持して更新" ||
+                !maintenanceAcknowledged
+              }
+              onClick={() => void armMaintenance()}
+            >
+              maintenance tokenをarm
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -471,7 +797,7 @@ export function SettingsPage() {
               disabled={deleteConfirmation !== "全削除" || working}
               onClick={() => void performTypedDelete()}
             >
-              {working ? "消去中…" : "完全に消去する"}
+              {working ? "消去中…" : "論理削除を実行"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

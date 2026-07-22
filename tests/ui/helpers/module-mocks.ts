@@ -30,18 +30,44 @@ vi.mock("@/crypto/aes-gcm", () => ({
   encryptWithAesKey: fakes.encryptWithAesKey,
   decryptWithAesKey: fakes.decryptWithAesKey,
 }))
-vi.mock("@/crypto/rsa-hybrid", () => ({
-  generateRsaKeyPair: fakes.generateRsaKeyPair,
-  encryptRsaHybrid: fakes.encryptRsaHybrid,
-  decryptRsaHybrid: fakes.decryptRsaHybrid,
-}))
 vi.mock("@/crypto/key-generation", () => ({
   createSymmetricKeyRecord: fakes.createSymmetricKeyRecord,
-  createRsaKeyPairRecord: fakes.createRsaKeyPairRecord,
   importSymmetricKeyRecord: fakes.importSymmetricKeyRecord,
-  importPublicKeyRecord: fakes.importPublicKeyRecord,
   buildSymmetricKeyEnvelope: fakes.buildSymmetricKeyEnvelope,
-  buildPublicKeyEnvelope: fakes.buildPublicKeyEnvelope,
+}))
+vi.mock("@/crypto/pq/worker-client", () => ({
+  createPqCryptoClient: fakes.createPqCryptoClient,
+}))
+vi.mock("@/crypto/pq/identity", () => ({
+  createIdentity: fakes.createIdentity,
+  rotateIdentity: fakes.rotateIdentity,
+  buildPublicBundle: fakes.buildPublicBundle,
+}))
+vi.mock("@/crypto/pq/ml-kem-envelope", () => ({
+  encryptPq: fakes.encryptPq,
+}))
+vi.mock("@/crypto/pq/decrypt-orchestrator", () => ({
+  decryptPqMessage: fakes.decryptPqMessage,
+}))
+vi.mock("@/crypto/pq/wire-bytes", () => ({
+  pqKeyFingerprint: fakes.pqKeyFingerprint,
+  pqIdentityFingerprint: fakes.pqIdentityFingerprint,
+}))
+vi.mock("@/crypto/pq/canonical-cbor", () => ({
+  encodeUnsignedMessageBodyV2: fakes.encodeUnsignedMessageBodyV2,
+  encodeSignedMessageV2: fakes.encodeSignedMessageV2,
+  encodeMlKemEnvelopeV2: fakes.encodeMlKemEnvelopeV2,
+  decodeMlKemEnvelopeV2: fakes.decodeMlKemEnvelopeV2,
+  encodePublicIdentityBundleV2: fakes.encodePublicIdentityBundleV2,
+  decodePublicIdentityBundleV2: fakes.decodePublicIdentityBundleV2,
+  encodeKemPublicKeyEnvelopeV2: fakes.encodeKemPublicKeyEnvelopeV2,
+  decodeKemPublicKeyEnvelopeV2: fakes.decodeKemPublicKeyEnvelopeV2,
+  encodeDsaPublicKeyEnvelopeV2: fakes.encodeDsaPublicKeyEnvelopeV2,
+  decodeDsaPublicKeyEnvelopeV2: fakes.decodeDsaPublicKeyEnvelopeV2,
+}))
+vi.mock("@/crypto/vault/vault-key", () => ({
+  getOrCreateVaultKey: fakes.getOrCreateVaultKey,
+  dropVaultKeyCache: vi.fn(),
 }))
 
 vi.mock("@/qr/payload", () => ({
@@ -68,6 +94,16 @@ vi.mock("@/qr/export-image", () => ({
 vi.mock("@/qr/decode", () => ({
   startQrScan: fakes.startQrScan,
 }))
+vi.mock("@/qr/multipart/split", () => ({
+  splitIntoFrames: fakes.splitIntoFrames,
+}))
+vi.mock("@/qr/multipart/assemble", () => ({
+  TransferAssembler: fakes.FakeTransferAssembler,
+}))
+vi.mock("@/qr/payload-v2", () => ({
+  buildV2Payload: fakes.buildV2Payload,
+  encodeFrameToPayload: fakes.encodeFrameToPayload,
+}))
 
 vi.mock("@/storage/key-repository", () => ({
   listKeyRecords: fakes.listKeyRecords,
@@ -88,6 +124,24 @@ vi.mock("@/storage/qr-repository", () => ({
   markQrViewed: fakes.markQrViewed,
   clearAllQrArtifacts: fakes.clearAllQrArtifacts,
 }))
+vi.mock("@/storage/pq-identity-repository", () => ({
+  listIdentities: fakes.listIdentities,
+  saveIdentity: fakes.saveIdentity,
+  saveRotation: fakes.saveRotation,
+  revokeIdentity: fakes.revokeIdentity,
+  deleteIdentity: fakes.deleteIdentity,
+  markIdentityUsed: fakes.markIdentityUsed,
+}))
+vi.mock("@/storage/pq-bundle-repository", () => ({
+  listBundles: fakes.listBundles,
+  saveBundle: fakes.saveBundle,
+  confirmBundleFingerprint: fakes.confirmBundleFingerprint,
+  revokeBundle: fakes.revokeBundle,
+  deleteBundle: fakes.deleteBundle,
+  markBundleUsed: fakes.markBundleUsed,
+  findBundleBySigningKeyId: fakes.findBundleBySigningKeyId,
+  findBundleByKemKeyId: fakes.findBundleByKemKeyId,
+}))
 vi.mock("@/storage/preferences-repository", () => ({
   getPreferences: fakes.getPreferences,
   updatePreferences: fakes.updatePreferences,
@@ -103,4 +157,9 @@ vi.mock("virtual:pwa-register/react", () => ({
 }))
 vi.mock("@/hooks/use-register-sw", () => ({
   useDefaultRegisterSW: fakes.useFakeRegisterSW,
+}))
+
+vi.mock("@/app/boot/boot-controller", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/app/boot/boot-controller")>()),
+  armMaintenanceToken: fakes.armMaintenanceToken,
 }))

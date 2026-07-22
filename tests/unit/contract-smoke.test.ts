@@ -6,7 +6,7 @@ import { AppError, ERROR_CODES, toAppError, userMessageFor } from "@/crypto/erro
 import { KEY_ID_PATTERN, MAX_CIPHERTEXT_BYTES, MAX_PLAINTEXT_BYTES } from "@/lib/limits"
 import { ecLevelFor, payloadFits, qrByteCapacity } from "@/qr/encode"
 import { QR_PREFIX } from "@/qr/payload"
-import { sensitivityForKind, toUiAlgorithm, toWireAlgorithm } from "@/schemas/domain"
+import { toUiAlgorithm, toWireAlgorithm } from "@/schemas/domain"
 import { env, parseAppEnv } from "@/schemas/env-schema"
 import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
 
@@ -23,29 +23,18 @@ describe("contract smoke", () => {
     expect(toAppError(error, "STORAGE_FAILED")).toBe(error)
   })
 
-  it("algorithm ids round-trip between UI and wire layers", () => {
+  it("keeps only the active A256GCM v1 mapper", () => {
     expect(toWireAlgorithm("A256GCM")).toBe("A256GCM")
-    expect(toWireAlgorithm("RSA-HYBRID")).toBe("RSA-OAEP-3072+A256GCM")
     expect(toUiAlgorithm("A256GCM")).toBe("A256GCM")
-    expect(toUiAlgorithm("RSA-OAEP-3072+A256GCM")).toBe("RSA-HYBRID")
-  })
-
-  it("sensitivity mapping follows spec §14", () => {
-    expect(sensitivityForKind("public-key")).toBe("public")
-    expect(sensitivityForKind("ciphertext")).toBe("confidential")
-    expect(sensitivityForKind("symmetric-key")).toBe("secret")
-    expect(sensitivityForKind("encrypted-private-key")).toBe("secret")
+    expect(() => toWireAlgorithm("MLKEM768_A256GCM")).toThrow(TypeError)
   })
 
   it("env parsing applies defaults and cross-field normalization", () => {
     expect(env.maxPlaintextBytes).toBe(4096)
     expect(MAX_PLAINTEXT_BYTES).toBe(env.maxPlaintextBytes)
     expect(MAX_CIPHERTEXT_BYTES).toBe(MAX_PLAINTEXT_BYTES + 16)
-    const normalized = parseAppEnv({
-      VITE_ENABLE_RSA: "false",
-      VITE_DEFAULT_ALGORITHM: "RSA-HYBRID",
-    })
-    expect(normalized.defaultAlgorithm).toBe("A256GCM")
+    const normalized = parseAppEnv({ VITE_ENABLE_RSA: "true" })
+    expect(normalized.enableRsa).toBe(false)
     expect(normalized.buildSha).toBe("development")
     expect(() => parseAppEnv({ VITE_ENABLE_RSA: "yes" })).toThrow("環境変数が不正です")
     expect(() => parseAppEnv({ VITE_QR_RENDER_SIZE: "abc" })).toThrow(
@@ -61,10 +50,9 @@ describe("contract smoke", () => {
     expect(payloadFits("a".repeat(1663), "Q")).toBe(true)
     expect(payloadFits("a".repeat(1664), "Q")).toBe(false)
     const prefs = { qrErrorCorrection: "L" as const }
-    expect(ecLevelFor("ciphertext", prefs)).toBe("L")
-    expect(ecLevelFor("symmetric-key", prefs)).toBe("H")
-    expect(ecLevelFor("public-key", prefs)).toBe("H")
-    expect(ecLevelFor("encrypted-private-key", prefs)).toBe("H")
+    expect(ecLevelFor("message", prefs)).toBe("L")
+    expect(ecLevelFor("stored-key", prefs)).toBe("H")
+    expect(ecLevelFor("multipart-frame", prefs)).toBe("Q")
   })
 
   it("payload prefixes match the protocol doc", () => {

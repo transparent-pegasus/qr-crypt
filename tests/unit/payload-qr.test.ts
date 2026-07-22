@@ -47,27 +47,6 @@ function aesEnvelope(plaintextBytes = 12): AnyEnvelopeV1 {
   }
 }
 
-function rsaEnvelope(plaintextBytes = 12): AnyEnvelopeV1 {
-  const aad = buildAad({
-    v: 1,
-    type: "message",
-    algorithm: "RSA-OAEP-3072+A256GCM",
-    keyId: KEY_ID,
-    createdAt: CREATED_AT,
-  })
-  return {
-    v: 1,
-    type: "message",
-    algorithm: "RSA-OAEP-3072+A256GCM",
-    recipientKeyId: KEY_ID,
-    createdAt: CREATED_AT,
-    wrappedKey: new Uint8Array(384),
-    iv: new Uint8Array(12),
-    ciphertext: new Uint8Array(plaintextBytes + 16),
-    aad,
-  }
-}
-
 const symmetricEnvelope: AnyEnvelopeV1 = {
   v: 1,
   type: "symmetric-key",
@@ -137,15 +116,12 @@ async function decodePng(payload: string): Promise<string> {
 }
 
 describe("deterministic payload encoding and strict decoding", () => {
-  it("round-trips active v1 payloads and explicitly rejects OCM1-RSA", () => {
+  it("round-trips active v1 payloads", () => {
     for (const envelope of [aesEnvelope(), symmetricEnvelope, publicEnvelope]) {
       const payload = encodeEnvelopeToPayload(envelope)
       const decoded = decodePayload(payload)
       expect(decoded.envelope).toEqual(envelope)
     }
-    expect(() => decodePayload(encodeEnvelopeToPayload(rsaEnvelope()))).toThrow(
-      "UNSUPPORTED_ALGORITHM",
-    )
   })
 
   it("normalizes property insertion order to a byte-identical payload", () => {
@@ -179,6 +155,15 @@ describe("deterministic payload encoding and strict decoding", () => {
     expect(() => decodePayload(rawPayload("OCP1:", valid))).toThrow("INVALID_QR_PAYLOAD")
     expect(() =>
       decodePayload(rawPayload("OCK1:", { ...valid, algorithm: "UNKNOWN" })),
+    ).toThrow("UNSUPPORTED_ALGORITHM")
+    expect(() =>
+      decodePayload(
+        rawPayload("OCM1:", {
+          v: 1,
+          type: "message",
+          algorithm: "RSA-OAEP-3072+A256GCM",
+        }),
+      ),
     ).toThrow("UNSUPPORTED_ALGORITHM")
     const missing = {
       v: valid.v,
@@ -245,24 +230,19 @@ describe("QR sizing, rendering, and production decoder round-trips", () => {
     }
   })
 
-  it("uses preferences only for ciphertext and fixes every key QR to H", () => {
+  it("separates message, stored-key, and OCF2 EC policies", () => {
     const prefs = { qrErrorCorrection: "L" as const }
-    expect(ecLevelFor("ciphertext", prefs)).toBe("L")
-    expect(ecLevelFor("symmetric-key", prefs)).toBe("H")
-    expect(ecLevelFor("public-key", prefs)).toBe("H")
-    expect(ecLevelFor("encrypted-private-key", prefs)).toBe("H")
+    expect(ecLevelFor("message", prefs)).toBe("L")
+    expect(ecLevelFor("stored-key", prefs)).toBe("H")
+    expect(ecLevelFor("multipart-frame", prefs)).toBe("Q")
   })
 
   it("estimates by constructing same-sized envelopes", async () => {
     for (const length of [0, 512, MAX_PLAINTEXT_BYTES]) {
       const aesActual = encodeEnvelopeToPayload(aesEnvelope(length)).length
-      const rsaActual = encodeEnvelopeToPayload(rsaEnvelope(length)).length
       const aesEstimate = estimatePayloadChars(length, "A256GCM")
-      const rsaEstimate = estimatePayloadChars(length, "RSA-HYBRID")
       expect(aesEstimate).toBeGreaterThanOrEqual(aesActual)
       expect(aesEstimate - aesActual).toBeLessThanOrEqual(16)
-      expect(rsaEstimate).toBeGreaterThanOrEqual(rsaActual)
-      expect(rsaEstimate - rsaActual).toBeLessThanOrEqual(16)
     }
     expect(estimatePayloadChars(MAX_PLAINTEXT_BYTES, "A256GCM")).toBeGreaterThan(
       qrByteCapacity("Q"),

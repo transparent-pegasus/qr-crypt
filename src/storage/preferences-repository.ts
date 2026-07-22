@@ -23,7 +23,6 @@ const PREFERENCES_KEY = "preferences"
 
 const UI_ALGORITHMS: readonly UiAlgorithm[] = [
   "A256GCM",
-  "RSA-HYBRID",
   "MLKEM768_A256GCM",
   "MLKEM768_MLDSA65_A256GCM",
 ]
@@ -48,7 +47,10 @@ function defaults(): Preferences {
 
 function isIntInRange(value: unknown, min: number, max: number): value is number {
   return (
-    typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= min &&
+    value <= max
   )
 }
 
@@ -57,8 +59,19 @@ function validatePreferences(value: unknown): Preferences {
     throw new AppError("STORAGE_FAILED")
   }
   const candidate = value as Partial<Preferences>
+  const rawDefaultAlgorithm = (value as Record<string, unknown>).defaultAlgorithm
+  const signatureRequired = candidate.requireSignature === true || env.requireSignature
+  // v1 の RSA preference は運用経路を復活させず、安全側の A256GCM へ移す。
+  const normalizedDefaultAlgorithm =
+    rawDefaultAlgorithm === "RSA-HYBRID"
+      ? "A256GCM"
+      : signatureRequired && rawDefaultAlgorithm === "MLKEM768_A256GCM"
+        ? env.enableMlDsa
+          ? "MLKEM768_MLDSA65_A256GCM"
+          : "A256GCM"
+        : rawDefaultAlgorithm
   if (
-    !UI_ALGORITHMS.includes(candidate.defaultAlgorithm as UiAlgorithm) ||
+    !UI_ALGORITHMS.includes(normalizedDefaultAlgorithm as UiAlgorithm) ||
     !PQ_PROFILES_ALLOWED.includes(candidate.defaultPqProfile as PqProfileId) ||
     typeof candidate.requireSignature !== "boolean" ||
     !EC_LEVELS.includes(candidate.qrErrorCorrection as QrEcLevel) ||
@@ -81,10 +94,10 @@ function validatePreferences(value: unknown): Preferences {
     throw new AppError("STORAGE_FAILED")
   }
   return {
-    defaultAlgorithm: candidate.defaultAlgorithm as UiAlgorithm,
+    defaultAlgorithm: normalizedDefaultAlgorithm as UiAlgorithm,
     defaultPqProfile: candidate.defaultPqProfile as PqProfileId,
     // env の署名必須は floor(plan2.1 §I)
-    requireSignature: candidate.requireSignature || env.requireSignature,
+    requireSignature: signatureRequired,
     qrErrorCorrection: candidate.qrErrorCorrection as QrEcLevel,
     autoClearPlaintextAfterEncrypt: candidate.autoClearPlaintextAfterEncrypt,
     backgroundClearEnabled: candidate.backgroundClearEnabled,

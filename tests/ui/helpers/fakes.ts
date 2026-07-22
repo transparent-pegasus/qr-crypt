@@ -5,11 +5,23 @@ import { AppError, type ErrorCode, userMessageFor } from "@/crypto/errors"
 import type {
   AesMessageEnvelopeV1,
   PublicKeyEnvelopeV1,
-  RsaHybridEnvelopeV1,
   SymmetricKeyEnvelopeV1,
 } from "@/crypto/envelope"
 import type { FeatureSupport } from "@/lib/feature-detect"
-import type { Preferences, StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
+import type { TransferState } from "@/qr/multipart/transfer-state"
+import type {
+  DsaPublicKeyEnvelopeV2,
+  KemPublicKeyEnvelopeV2,
+  MlKemMessageEnvelopeV2,
+  PostQuantumIdentity,
+  PqPublicBundleRecord,
+  Preferences,
+  PublicIdentityBundleV2,
+  QrFrameV2,
+  StoredKeyRecord,
+  StoredQrArtifact,
+  V2ArtifactType,
+} from "@/schemas/domain"
 import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
 
 const encoder = new TextEncoder()
@@ -67,6 +79,66 @@ function defaultKeys(): StoredKeyRecord[] {
 
 export const fakeKeys: StoredKeyRecord[] = defaultKeys()
 export const fakeArtifacts: StoredQrArtifact[] = []
+
+const IDENTITY_ID = "I".repeat(22)
+const KEM_KEY_ID = "K".repeat(22)
+const SIGNING_KEY_ID = "S".repeat(22)
+const BUNDLE_RECORD_ID = "R".repeat(22)
+
+function defaultIdentity(): PostQuantumIdentity {
+  return {
+    id: IDENTITY_ID,
+    name: "自分のPQ ID",
+    profile: "balanced",
+    kem: {
+      algorithm: "ML-KEM-768",
+      keyId: KEM_KEY_ID,
+      publicKey: new Uint8Array(1184).fill(1),
+      encryptedSeed: { iv: new Uint8Array(12), ciphertext: new Uint8Array(80) },
+      fingerprint: "1".repeat(64),
+    },
+    signing: {
+      algorithm: "ML-DSA-65",
+      keyId: SIGNING_KEY_ID,
+      publicKey: new Uint8Array(1952).fill(2),
+      encryptedSeed: { iv: new Uint8Array(12), ciphertext: new Uint8Array(48) },
+      fingerprint: "2".repeat(64),
+    },
+    identityFingerprint: "3".repeat(64),
+    status: "active",
+    createdAt: 1_723_000_000_000,
+  }
+}
+
+function recordFromIdentity(identity: PostQuantumIdentity): PqPublicBundleRecord {
+  return {
+    recordId: BUNDLE_RECORD_ID,
+    identityId: "P".repeat(22),
+    name: "確認済みの相手",
+    kem: {
+      algorithm: identity.kem.algorithm,
+      keyId: "Q".repeat(22),
+      publicKey: Uint8Array.from(identity.kem.publicKey),
+      fingerprint: "4".repeat(64),
+    },
+    signing: {
+      algorithm: identity.signing.algorithm,
+      keyId: "T".repeat(22),
+      publicKey: Uint8Array.from(identity.signing.publicKey),
+      fingerprint: "5".repeat(64),
+    },
+    identityFingerprint: "6".repeat(64),
+    trust: "fingerprint-confirmed",
+    trustConfirmedAt: 1_723_000_000_010,
+    bundleCreatedAt: 1_723_000_000_000,
+    importedAt: 1_723_000_000_005,
+  }
+}
+
+export const fakeIdentities: PostQuantumIdentity[] = [defaultIdentity()]
+export const fakeBundles: PqPublicBundleRecord[] = [
+  recordFromIdentity(fakeIdentities[0]!),
+]
 export const fakePreferences: Preferences = {
   ...PQ_PREFERENCE_DEFAULTS,
   defaultAlgorithm: "A256GCM",
@@ -86,7 +158,20 @@ export const fakePwa = {
 
 let artifactCounter = 0
 let keyCounter = 0
-let lastMessageEnvelope: AesMessageEnvelopeV1 | RsaHybridEnvelopeV1 | null = null
+let lastMessageEnvelope: AesMessageEnvelopeV1 | null = null
+let lastPqEnvelope: MlKemMessageEnvelopeV2 = {
+  version: 2,
+  type: "pq-message",
+  suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+  recipientKemKeyId: KEM_KEY_ID,
+  kemCiphertext: new Uint8Array(1088),
+  hkdfSalt: new Uint8Array(32),
+  iv: new Uint8Array(12),
+  ciphertext: new Uint8Array(128),
+}
+let lastPublicBundle: PublicIdentityBundleV2 | null = null
+let lastKemEnvelope: KemPublicKeyEnvelopeV2 | null = null
+let lastDsaEnvelope: DsaPublicKeyEnvelopeV2 | null = null
 
 // errors.ts は純粋(依存ゼロ)のためモックせず実物を使う。
 // FakeAppError の別クラス化は vi.mock factory ↔ fakes の循環初期化を起こすため
@@ -167,37 +252,6 @@ export const encryptWithAesKey = vi.fn(
 )
 export const decryptWithAesKey = vi.fn(async () => encoder.encode("復号済み平文"))
 export const generateAesKey = vi.fn(async () => cryptoKey("secret"))
-export const encryptRsaHybrid = vi.fn(
-  async ({
-    recipientKeyId,
-    plaintext,
-    now,
-  }: {
-    recipientKeyId: string
-    plaintext: Uint8Array
-    now: number
-  }) => {
-    const envelope: RsaHybridEnvelopeV1 = {
-      v: 1,
-      type: "message",
-      algorithm: "RSA-OAEP-3072+A256GCM",
-      recipientKeyId,
-      createdAt: now,
-      wrappedKey: new Uint8Array(384),
-      iv: new Uint8Array(12),
-      ciphertext: new Uint8Array([...plaintext, ...new Uint8Array(16)]),
-      aad: encoder.encode(`OCAAD1|${recipientKeyId}`),
-    }
-    lastMessageEnvelope = envelope
-    return envelope
-  },
-)
-export const decryptRsaHybrid = vi.fn(async () => encoder.encode("RSA復号済み平文"))
-export const generateRsaKeyPair = vi.fn(async () => ({
-  publicKey: cryptoKey("public"),
-  privateKey: cryptoKey("private"),
-}))
-
 function generatedFingerprint(counter: number): string {
   return counter.toString(16).padStart(64, "0")
 }
@@ -217,22 +271,6 @@ export const createSymmetricKeyRecord = vi.fn(
     }
   },
 )
-export const createRsaKeyPairRecord = vi.fn(
-  async (name: string, now: number): Promise<StoredKeyRecord> => {
-    keyCounter += 1
-    return {
-      id: `generated-rsa-${keyCounter}`,
-      name,
-      kind: "rsa-key-pair",
-      algorithm: "RSA-OAEP-3072",
-      fingerprint: generatedFingerprint(200 + keyCounter),
-      createdAt: now,
-      useCount: 0,
-      publicKey: cryptoKey("public"),
-      privateKey: cryptoKey("private"),
-    }
-  },
-)
 export const buildSymmetricKeyEnvelope = vi.fn(
   async (record: StoredKeyRecord): Promise<SymmetricKeyEnvelopeV1> => ({
     v: 1,
@@ -241,16 +279,6 @@ export const buildSymmetricKeyEnvelope = vi.fn(
     keyId: record.id,
     createdAt: record.createdAt,
     key: new Uint8Array(32),
-  }),
-)
-export const buildPublicKeyEnvelope = vi.fn(
-  async (record: StoredKeyRecord): Promise<PublicKeyEnvelopeV1> => ({
-    v: 1,
-    type: "public-key",
-    algorithm: "RSA-OAEP-3072",
-    keyId: record.id,
-    createdAt: record.createdAt,
-    spki: new Uint8Array(400),
   }),
 )
 export const importSymmetricKeyRecord = vi.fn(
@@ -265,30 +293,11 @@ export const importSymmetricKeyRecord = vi.fn(
     symmetricKey: cryptoKey("secret"),
   }),
 )
-export const importPublicKeyRecord = vi.fn(
-  async (name: string, envelope: PublicKeyEnvelopeV1, now: number) => ({
-    id: envelope.keyId,
-    name,
-    kind: "public-key" as const,
-    algorithm: "RSA-OAEP-3072",
-    fingerprint: generatedFingerprint(302),
-    createdAt: now,
-    useCount: 0,
-    publicKey: cryptoKey("public"),
-  }),
-)
-
 export const encodeEnvelopeToPayload = vi.fn(
-  (
-    envelope:
-      | AesMessageEnvelopeV1
-      | RsaHybridEnvelopeV1
-      | SymmetricKeyEnvelopeV1
-      | PublicKeyEnvelopeV1,
-  ) => {
+  (envelope: AesMessageEnvelopeV1 | SymmetricKeyEnvelopeV1 | PublicKeyEnvelopeV1) => {
     if (envelope.type === "message") {
       lastMessageEnvelope = envelope
-      return `OCM1:${"keyId" in envelope ? envelope.keyId : envelope.recipientKeyId}`
+      return `OCM1:${envelope.keyId}`
     }
     if (envelope.type === "symmetric-key") return `OCK1:${envelope.keyId}`
     return `OCP1:${envelope.keyId}`
@@ -339,6 +348,47 @@ export const decodePayload = vi.fn((payload: string) => {
       } satisfies PublicKeyEnvelopeV1,
     }
   }
+  if (payload.startsWith("OCM2:")) {
+    return { kind: "pq-message" as const, envelope: lastPqEnvelope }
+  }
+  if (payload.startsWith("OCI2:")) {
+    return {
+      kind: "pq-public-identity" as const,
+      envelope: lastPublicBundle ?? buildPublicBundle(fakeIdentities[0]!),
+    }
+  }
+  if (payload.startsWith("OCP2:")) {
+    return {
+      kind: "pq-kem-public-key" as const,
+      envelope:
+        lastKemEnvelope ??
+        ({
+          version: 2,
+          type: "pq-kem-public-key",
+          identityId: IDENTITY_ID,
+          algorithm: "ML-KEM-768",
+          keyId: KEM_KEY_ID,
+          publicKey: new Uint8Array(1184),
+          createdAt: 1_723_000_000_000,
+        } satisfies KemPublicKeyEnvelopeV2),
+    }
+  }
+  if (payload.startsWith("OCS2:")) {
+    return {
+      kind: "pq-dsa-public-key" as const,
+      envelope:
+        lastDsaEnvelope ??
+        ({
+          version: 2,
+          type: "pq-dsa-public-key",
+          identityId: IDENTITY_ID,
+          algorithm: "ML-DSA-65",
+          keyId: SIGNING_KEY_ID,
+          publicKey: new Uint8Array(1952),
+          createdAt: 1_723_000_000_000,
+        } satisfies DsaPublicKeyEnvelopeV2),
+    }
+  }
   throw new FakeAppError("INVALID_QR_PREFIX")
 })
 export const payloadSha256Hex = vi.fn(async (payload: string) =>
@@ -355,12 +405,10 @@ export const payloadFits = vi.fn(
   (payload: string, level: "L" | "M" | "Q" | "H") =>
     payload.length <= qrByteCapacity(level),
 )
-export const estimatePayloadChars = vi.fn(
-  (bytes: number, algorithm: "A256GCM" | "RSA-HYBRID") =>
-    bytes * 2 + (algorithm === "A256GCM" ? 220 : 760),
-)
-export const ecLevelFor = vi.fn((kind: StoredQrArtifact["kind"], prefs: Preferences) =>
-  kind === "ciphertext" ? prefs.qrErrorCorrection : "H",
+export const estimatePayloadChars = vi.fn((bytes: number) => bytes * 2 + 220)
+export const ecLevelFor = vi.fn(
+  (kind: "message" | "stored-key" | "multipart-frame", prefs: Preferences) =>
+    kind === "message" ? prefs.qrErrorCorrection : kind === "multipart-frame" ? "Q" : "H",
 )
 export const qrPngBlob = vi.fn(async () => new Blob(["png"]))
 export const qrSvgBlob = vi.fn(async () => new Blob(["svg"]))
@@ -393,6 +441,280 @@ export function emitScanError(code: ErrorCode): void {
   scanErrorCallback?.(new FakeAppError(code))
 }
 
+export const disposePqClient = vi.fn()
+export const createPqCryptoClient = vi.fn(() => ({ dispose: disposePqClient }))
+export const getOrCreateVaultKey = vi.fn(async () => cryptoKey("secret"))
+export const registerPqCryptoClientForWipe = vi.fn(() => () => undefined)
+
+export const buildPublicBundle = vi.fn(
+  (identity: PostQuantumIdentity): PublicIdentityBundleV2 => ({
+    version: 2,
+    type: "pq-public-identity",
+    identityId: identity.id,
+    name: identity.name,
+    kem: {
+      algorithm: identity.kem.algorithm,
+      keyId: identity.kem.keyId,
+      publicKey: identity.kem.publicKey,
+    },
+    signing: {
+      algorithm: identity.signing.algorithm,
+      keyId: identity.signing.keyId,
+      publicKey: identity.signing.publicKey,
+    },
+    createdAt: identity.createdAt,
+  }),
+)
+
+export const createIdentity = vi.fn(
+  async ({ name, now }: { name: string; now: number }) => ({
+    ...defaultIdentity(),
+    id: `N${String(++keyCounter).padStart(21, "0")}`,
+    name,
+    kem: {
+      ...defaultIdentity().kem,
+      keyId: `K${String(keyCounter).padStart(21, "0")}`,
+    },
+    signing: {
+      ...defaultIdentity().signing,
+      keyId: `S${String(keyCounter).padStart(21, "0")}`,
+    },
+    createdAt: now,
+  }),
+)
+
+export const rotateIdentity = vi.fn(
+  async ({ current, now }: { current: PostQuantumIdentity; now: number }) => ({
+    previous: { ...current, status: "rotated" as const, rotatedAt: now },
+    next: {
+      ...(await createIdentity({ name: current.name, now })),
+      rotatedFromId: current.id,
+    },
+  }),
+)
+
+export const pqKeyFingerprint = vi.fn(async (role: "kem" | "signing") =>
+  (role === "kem" ? "7" : "8").repeat(64),
+)
+export const pqIdentityFingerprint = vi.fn(async () => "9".repeat(64))
+
+export const encodeUnsignedMessageBodyV2 = vi.fn(
+  (body: { plaintext: Uint8Array }) => new Uint8Array(body.plaintext.byteLength + 96),
+)
+export const encodeSignedMessageV2 = vi.fn(
+  (message: { body: { plaintext: Uint8Array }; signature: { value: Uint8Array } }) =>
+    new Uint8Array(
+      message.body.plaintext.byteLength + message.signature.value.byteLength + 128,
+    ),
+)
+export const encodeMlKemEnvelopeV2 = vi.fn((envelope: MlKemMessageEnvelopeV2) => {
+  return new Uint8Array(
+    envelope.kemCiphertext.byteLength + envelope.ciphertext.byteLength + 128,
+  )
+})
+export const decodeMlKemEnvelopeV2 = vi.fn(() => lastPqEnvelope)
+export const encodePublicIdentityBundleV2 = vi.fn((bundle: PublicIdentityBundleV2) => {
+  lastPublicBundle = bundle
+  return new Uint8Array(3_400)
+})
+export const decodePublicIdentityBundleV2 = vi.fn(
+  () => lastPublicBundle ?? buildPublicBundle(fakeIdentities[0]!),
+)
+export const encodeKemPublicKeyEnvelopeV2 = vi.fn((envelope: KemPublicKeyEnvelopeV2) => {
+  lastKemEnvelope = envelope
+  return new Uint8Array(1_350)
+})
+export const decodeKemPublicKeyEnvelopeV2 = vi.fn(
+  () =>
+    lastKemEnvelope ??
+    (decodePayload("OCP2:fake") as { envelope: KemPublicKeyEnvelopeV2 }).envelope,
+)
+export const encodeDsaPublicKeyEnvelopeV2 = vi.fn((envelope: DsaPublicKeyEnvelopeV2) => {
+  lastDsaEnvelope = envelope
+  return new Uint8Array(2_150)
+})
+export const decodeDsaPublicKeyEnvelopeV2 = vi.fn(
+  () =>
+    lastDsaEnvelope ??
+    (decodePayload("OCS2:fake") as { envelope: DsaPublicKeyEnvelopeV2 }).envelope,
+)
+
+export const splitIntoFrames = vi.fn(
+  async ({
+    artifactType,
+    artifactBytes,
+    frameBytes,
+  }: {
+    artifactType: V2ArtifactType
+    artifactBytes: Uint8Array
+    frameBytes: number
+  }): Promise<QrFrameV2[]> => {
+    const frameCount = Math.max(1, Math.ceil(artifactBytes.byteLength / frameBytes))
+    return Array.from({ length: frameCount }, (_, frameIndex) => ({
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16).fill(3),
+      artifactType,
+      frameIndex,
+      frameCount,
+      totalByteLength: artifactBytes.byteLength,
+      payloadSha256: new Uint8Array(32),
+      chunk: artifactBytes.slice(frameIndex * frameBytes, (frameIndex + 1) * frameBytes),
+    }))
+  },
+)
+
+const V2_PREFIX: Record<V2ArtifactType, string> = {
+  "pq-message": "OCM2:",
+  "pq-public-identity": "OCI2:",
+  "pq-kem-public-key": "OCP2:",
+  "pq-dsa-public-key": "OCS2:",
+  "encrypted-seed-backup": "OCB2:",
+}
+export const buildV2Payload = vi.fn((kind: V2ArtifactType) => `${V2_PREFIX[kind]}fake`)
+export const encodeFrameToPayload = vi.fn(
+  (frame: QrFrameV2) =>
+    `OCF2:${Array.from(frame.transferId).join("")}:${frame.frameIndex}:${frame.frameCount}:${frame.artifactType}`,
+)
+
+export function multipartPayload(
+  transfer: string,
+  index: number,
+  count: number,
+  artifactType: V2ArtifactType = "pq-public-identity",
+): string {
+  return `OCF2:${transfer}:${index}:${count}:${artifactType}`
+}
+
+export class FakeTransferAssembler {
+  readonly #timeoutMs: number
+  #transfer: string | null = null
+  #artifactType: V2ArtifactType = "pq-public-identity"
+  #count = 0
+  #received = new Set<number>()
+  #expiresAt = 0
+  #terminal: TransferState | null = null
+
+  constructor(options: { transferTimeoutMinutes: number }) {
+    this.#timeoutMs = options.transferTimeoutMinutes * 60_000
+  }
+
+  async add(payload: string): Promise<TransferState> {
+    if (this.#terminal) return this.#terminal
+    const match = /^OCF2:([^:]+):(\d+):(\d+):(.+)$/u.exec(payload)
+    if (!match) return this.#fail("INVALID_QR_PAYLOAD")
+    const transfer = match[1]!
+    const index = Number(match[2])
+    const count = Number(match[3])
+    const artifactType = match[4] as V2ArtifactType
+    if (this.#transfer === null) {
+      this.#transfer = transfer
+      this.#artifactType = artifactType
+      this.#count = count
+      this.#expiresAt = Date.now() + this.#timeoutMs
+    } else if (
+      transfer !== this.#transfer ||
+      count !== this.#count ||
+      artifactType !== this.#artifactType
+    ) {
+      return this.#fail("FRAME_MISMATCH")
+    }
+    this.#received.add(index)
+    if (this.#received.size === this.#count) {
+      this.#terminal = {
+        kind: "complete",
+        transferId: encoder.encode(transfer).slice(0, 16),
+        artifactType: this.#artifactType,
+        artifactBytes: Uint8Array.of(this.#count),
+      }
+    }
+    return this.state()
+  }
+
+  state(): TransferState {
+    if (this.#terminal) return this.#terminal
+    if (this.#transfer === null) return { kind: "idle" }
+    if (Date.now() >= this.#expiresAt) {
+      this.discard()
+      return { kind: "idle" }
+    }
+    const missingIndexes = Array.from(
+      { length: this.#count },
+      (_, index) => index,
+    ).filter((index) => !this.#received.has(index))
+    return {
+      kind: "collecting",
+      transferId: encoder.encode(this.#transfer).slice(0, 16),
+      artifactType: this.#artifactType,
+      frameCount: this.#count,
+      receivedIndexes: new Set(this.#received),
+      missingIndexes,
+      expiresAt: this.#expiresAt,
+    }
+  }
+
+  discard(): void {
+    this.#transfer = null
+    this.#count = 0
+    this.#received.clear()
+    this.#terminal = null
+  }
+
+  #fail(code: ErrorCode): TransferState {
+    this.#terminal = { kind: "error", code }
+    return this.#terminal
+  }
+}
+
+export const encryptPq = vi.fn(
+  async ({
+    recipient,
+    plaintext,
+    sign,
+    now,
+  }: {
+    recipient: PqPublicBundleRecord
+    plaintext: Uint8Array
+    sign?: { identity: PostQuantumIdentity }
+    now: number
+  }) => {
+    void now
+    lastPqEnvelope = {
+      version: 2,
+      type: "pq-message",
+      suite:
+        sign === undefined
+          ? "ML-KEM-768+HKDF-SHA256+A256GCM"
+          : "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+      recipientKemKeyId: recipient.kem.keyId,
+      kemCiphertext: new Uint8Array(1088),
+      hkdfSalt: new Uint8Array(32),
+      iv: new Uint8Array(12),
+      ciphertext: new Uint8Array(plaintext.byteLength + (sign ? 3_500 : 128)),
+    }
+    return lastPqEnvelope
+  },
+)
+
+export const fakePqDecrypt = {
+  kind: "signed-valid" as "unsigned" | "signed-valid" | "signed-key-unknown",
+}
+export const decryptPqMessage = vi.fn(async () => {
+  if (fakePqDecrypt.kind === "signed-key-unknown") {
+    return { kind: "signed-key-unknown" as const, senderSigningKeyId: "T".repeat(22) }
+  }
+  if (fakePqDecrypt.kind === "unsigned") {
+    return { kind: "unsigned" as const, plaintext: encoder.encode("PQ復号済み平文") }
+  }
+  return {
+    kind: "signed-valid" as const,
+    plaintext: encoder.encode("署名済みPQ復号結果"),
+    senderSigningKeyId: "T".repeat(22),
+  }
+})
+
+export const armMaintenanceToken = vi.fn(async () => undefined)
+
 export const listKeyRecords = vi.fn(async () => [...fakeKeys])
 export const saveKeyRecord = vi.fn(async (record: StoredKeyRecord) => {
   if (fakeKeys.some((item) => item.fingerprint === record.fingerprint)) {
@@ -424,6 +746,69 @@ export const markKeyUsed = vi.fn(async (id: string, when: number) => {
 export const clearAllKeys = vi.fn(async () => {
   fakeKeys.splice(0)
 })
+
+export const listIdentities = vi.fn(async () => [...fakeIdentities])
+export const saveIdentity = vi.fn(async (identity: PostQuantumIdentity) => {
+  fakeIdentities.unshift(identity)
+})
+export const saveRotation = vi.fn(
+  async ({
+    next,
+    previous,
+  }: {
+    next: PostQuantumIdentity
+    previous: PostQuantumIdentity
+  }) => {
+    const index = fakeIdentities.findIndex((identity) => identity.id === previous.id)
+    if (index >= 0) fakeIdentities[index] = previous
+    fakeIdentities.unshift(next)
+  },
+)
+export const revokeIdentity = vi.fn(async (id: string, revokedAt: number) => {
+  const index = fakeIdentities.findIndex((identity) => identity.id === id)
+  if (index >= 0) {
+    fakeIdentities[index] = {
+      ...fakeIdentities[index]!,
+      status: "revoked",
+      revokedAt,
+    }
+  }
+})
+export const deleteIdentity = vi.fn(async (id: string) => {
+  const index = fakeIdentities.findIndex((identity) => identity.id === id)
+  if (index >= 0) fakeIdentities.splice(index, 1)
+})
+export const markIdentityUsed = vi.fn(async () => undefined)
+
+export const listBundles = vi.fn(async () => [...fakeBundles])
+export const saveBundle = vi.fn(async (record: PqPublicBundleRecord) => {
+  fakeBundles.unshift(record)
+})
+export const confirmBundleFingerprint = vi.fn(async (recordId: string, when: number) => {
+  const index = fakeBundles.findIndex((record) => record.recordId === recordId)
+  if (index >= 0) {
+    fakeBundles[index] = {
+      ...fakeBundles[index]!,
+      trust: "fingerprint-confirmed",
+      trustConfirmedAt: when,
+    }
+  }
+})
+export const revokeBundle = vi.fn(async (recordId: string, revokedAt: number) => {
+  const index = fakeBundles.findIndex((record) => record.recordId === recordId)
+  if (index >= 0) fakeBundles[index] = { ...fakeBundles[index]!, revokedAt }
+})
+export const deleteBundle = vi.fn(async (recordId: string) => {
+  const index = fakeBundles.findIndex((record) => record.recordId === recordId)
+  if (index >= 0) fakeBundles.splice(index, 1)
+})
+export const markBundleUsed = vi.fn(async () => undefined)
+export const findBundleBySigningKeyId = vi.fn(async (keyId: string) =>
+  fakeBundles.find((record) => record.signing.keyId === keyId),
+)
+export const findBundleByKemKeyId = vi.fn(async (keyId: string) =>
+  fakeBundles.find((record) => record.kem.keyId === keyId),
+)
 
 export const listQrArtifacts = vi.fn(async () => [...fakeArtifacts])
 export const saveQrArtifact = vi.fn(
@@ -464,6 +849,8 @@ export const updatePreferences = vi.fn(async (patch: Partial<Preferences>) => {
 export const deleteEntireDatabase = vi.fn(async () => {
   fakeKeys.splice(0)
   fakeArtifacts.splice(0)
+  fakeIdentities.splice(0)
+  fakeBundles.splice(0)
 })
 export const getDb = vi.fn()
 export const closeDb = vi.fn()
@@ -479,6 +866,9 @@ export function useFakeRegisterSW(_options?: RegisterSWOptions) {
 export function resetFakes(): void {
   fakeKeys.splice(0, fakeKeys.length, ...defaultKeys())
   fakeArtifacts.splice(0)
+  const identity = defaultIdentity()
+  fakeIdentities.splice(0, fakeIdentities.length, identity)
+  fakeBundles.splice(0, fakeBundles.length, recordFromIdentity(identity))
   Object.assign(fakePreferences, {
     ...PQ_PREFERENCE_DEFAULTS,
     defaultAlgorithm: "A256GCM",
@@ -496,6 +886,20 @@ export function resetFakes(): void {
   artifactCounter = 0
   keyCounter = 0
   lastMessageEnvelope = null
+  lastPqEnvelope = {
+    version: 2,
+    type: "pq-message",
+    suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+    recipientKemKeyId: identity.kem.keyId,
+    kemCiphertext: new Uint8Array(1088),
+    hkdfSalt: new Uint8Array(32),
+    iv: new Uint8Array(12),
+    ciphertext: new Uint8Array(32),
+  }
+  lastPublicBundle = null
+  lastKemEnvelope = null
+  lastDsaEnvelope = null
+  fakePqDecrypt.kind = "signed-valid"
   scanTextCallback = null
   scanErrorCallback = null
   vi.clearAllMocks()

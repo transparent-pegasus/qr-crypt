@@ -3,47 +3,36 @@ import { Link } from "react-router-dom"
 import {
   AlertCircle,
   CheckCircle2,
-  ChevronDown,
   Clipboard,
   Download,
   Eraser,
   FileCode2,
   LoaderCircle,
   Lock,
-  Save,
   ScanLine,
 } from "lucide-react"
 import { toast } from "sonner"
-import { encryptWithAesKey, decryptWithAesKey } from "@/crypto/aes-gcm"
-import { AppError, toAppError } from "@/crypto/errors"
-import type { MessageEnvelope } from "@/crypto/envelope"
+import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
+import { AppError, toAppError, userMessageFor } from "@/crypto/errors"
+import type { AesMessageEnvelopeV1 } from "@/crypto/envelope"
+import { decodeMlKemEnvelopeV2, encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
+import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
+import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
+import { resolveSuite } from "@/crypto/pq/suites"
+import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { generateArtifactId } from "@/crypto/random"
-import { decryptRsaHybrid, encryptRsaHybrid } from "@/crypto/rsa-hybrid"
 import {
   useFeatureSupport,
   useSensitiveSession,
   useTransientClear,
 } from "@/app/providers"
+import { AnimatedQrFrames } from "@/components/animated-qr-frames"
+import { MultipartScanPanel } from "@/components/multipart-scan-panel"
 import { QrDisplay } from "@/components/qr-display"
 import { QrScannerDialog } from "@/components/qr-scanner-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -55,18 +44,20 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { MultipartScanSession } from "@/features/multipart-scan-session"
 import {
   ALGORITHM_LABELS,
   formatDateTime,
-  formatFingerprint,
   formatSuggestedDate,
-  shortTechnicalId,
 } from "@/features/presentation"
+import { measurePqEnvelopeSize, type PqSizeBreakdown } from "@/features/pq-size-breakdown"
 import { useAutoClear } from "@/hooks/use-auto-clear"
 import { useKeys } from "@/hooks/use-keys"
+import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
+import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
-import { bytesToHex, bytesToUtf8, utf8ToBytes } from "@/lib/bytes"
-import { estimatePayloadChars, payloadFits, qrByteCapacity } from "@/qr/encode"
+import { bytesToUtf8, sha256Hex, utf8ToBytes } from "@/lib/bytes"
+import { ecLevelFor, estimatePayloadChars, payloadFits } from "@/qr/encode"
 import {
   buildExportFileName,
   copyTextToClipboard,
@@ -74,131 +65,261 @@ import {
   qrSvgBlob,
   triggerDownload,
 } from "@/qr/export-image"
+import { splitIntoFrames } from "@/qr/multipart/split"
+import { buildV2Payload } from "@/qr/payload-v2"
 import { decodePayload, encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
-import type { StoredKeyRecord, StoredQrArtifact, UiAlgorithm } from "@/schemas/domain"
-import { toUiAlgorithm } from "@/schemas/domain"
+import type {
+  MlKemMessageEnvelopeV2,
+  PostQuantumIdentity,
+  PqPublicBundleRecord,
+  QrFrameV2,
+  StoredKeyRecord,
+  UiAlgorithm,
+  WireSuite,
+} from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { qrNameSchema } from "@/schemas/key-schema"
 import { markKeyUsed } from "@/storage/key-repository"
-import { saveQrArtifact } from "@/storage/qr-repository"
+import { markBundleUsed } from "@/storage/pq-bundle-repository"
+import { markIdentityUsed } from "@/storage/pq-identity-repository"
 
 type PageMode = "encrypt" | "decrypt"
 
-interface EncryptionResult {
-  payload: string
-  envelope: MessageEnvelope
-  key: StoredKeyRecord
-}
+type EncryptionResult =
+  | {
+      kind: "aes"
+      payload: string
+      envelope: AesMessageEnvelopeV1
+      key: StoredKeyRecord
+      createdAt: number
+      totalBytes: number
+      sha256: string
+    }
+  | {
+      kind: "pq"
+      payload: string
+      envelope: MlKemMessageEnvelopeV2
+      frames: QrFrameV2[]
+      recipient: PqPublicBundleRecord
+      sender?: PostQuantumIdentity
+      createdAt: number
+      totalBytes: number
+      sha256: string
+    }
 
-function matchingKeys(
-  keys: StoredKeyRecord[],
-  algorithm: UiAlgorithm,
-  mode: PageMode,
-): StoredKeyRecord[] {
-  if (algorithm === "A256GCM") {
-    return keys.filter((key) => key.kind === "symmetric" && key.symmetricKey)
+type DecryptionResult =
+  | { kind: "unsigned"; text: string }
+  | {
+      kind: "signed-valid"
+      text: string
+      senderSigningKeyId: string
+      sender: PqPublicBundleRecord | undefined
+    }
+  | { kind: "signed-key-unknown"; senderSigningKeyId: string }
+  | { kind: "aes"; text: string }
+
+function algorithmOptions(requireSignature: boolean): UiAlgorithm[] {
+  const options: UiAlgorithm[] = ["A256GCM"]
+  if (env.enableMlKem && !requireSignature) options.push("MLKEM768_A256GCM")
+  if (env.enableMlKem && env.enableMlDsa) {
+    options.push("MLKEM768_MLDSA65_A256GCM")
   }
-  if (mode === "decrypt") {
-    return keys.filter((key) => key.kind === "rsa-key-pair" && key.privateKey)
-  }
-  return keys.filter(
-    (key) => (key.kind === "rsa-key-pair" || key.kind === "public-key") && key.publicKey,
-  )
+  return options
 }
 
-function messageKeyId(envelope: MessageEnvelope): string {
-  return "keyId" in envelope ? envelope.keyId : envelope.recipientKeyId
+function isSignedAlgorithm(algorithm: UiAlgorithm): boolean {
+  return algorithm === "MLKEM768_MLDSA65_A256GCM"
 }
 
-function messageCiphertextBytes(envelope: MessageEnvelope): number {
-  return envelope.ciphertext.byteLength
+function isPqAlgorithm(algorithm: UiAlgorithm): boolean {
+  return algorithm !== "A256GCM"
 }
 
 export function EncryptPage() {
   const { keys, loading: keysLoading, error: keysError } = useKeys()
+  const {
+    identities,
+    bundles,
+    loading: pqLoading,
+    error: pqError,
+    refresh: refreshPq,
+  } = usePqRecords()
   const { preferences, error: preferencesError } = usePreferences()
+  const getPqClient = usePqCryptoClient()
   const { camera } = useFeatureSupport()
   const { nonce } = useTransientClear()
   const { setSensitiveSession, resetSensitiveSession } = useSensitiveSession()
   const [mode, setMode] = useState<PageMode>("encrypt")
   const [algorithmOverride, setAlgorithmOverride] = useState<UiAlgorithm | null>(null)
-  const algorithm = algorithmOverride ?? preferences.defaultAlgorithm
   const [selectedKeyId, setSelectedKeyId] = useState("")
+  const [recipientRecordId, setRecipientRecordId] = useState("")
+  const [senderIdentityId, setSenderIdentityId] = useState("")
   const [plaintext, setPlaintext] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<EncryptionResult | null>(null)
-  const [qrName, setQrName] = useState("")
-  const [saved, setSaved] = useState(false)
-  const [duplicateArtifact, setDuplicateArtifact] = useState<StoredQrArtifact | null>(
-    null,
-  )
-  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [outputName, setOutputName] = useState("")
   const [decryptInput, setDecryptInput] = useState("")
-  const [decryptedText, setDecryptedText] = useState("")
+  const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [sizeBreakdown, setSizeBreakdown] = useState<PqSizeBreakdown | null>(null)
+  const [sizePending, setSizePending] = useState(false)
   const [clearStatus, setClearStatus] = useState("")
 
-  const parsedMessage = useMemo(() => {
-    if (!decryptInput.trim()) return null
+  const algorithms = useMemo(
+    () => algorithmOptions(preferences.requireSignature),
+    [preferences.requireSignature],
+  )
+  const algorithm = algorithms.includes(algorithmOverride as UiAlgorithm)
+    ? (algorithmOverride as UiAlgorithm)
+    : algorithms.includes(preferences.defaultAlgorithm)
+      ? preferences.defaultAlgorithm
+      : (algorithms.at(-1) ?? "A256GCM")
+  const signed = isSignedAlgorithm(algorithm)
+  const symmetricKeys = useMemo(
+    () =>
+      keys.filter((key) => key.kind === "symmetric" && key.symmetricKey !== undefined),
+    [keys],
+  )
+  const selectedKey = symmetricKeys.find((key) => key.id === selectedKeyId)
+  const recipients = useMemo(
+    () => bundles.filter((record) => record.revokedAt === undefined),
+    [bundles],
+  )
+  const selectedRecipient = recipients.find(
+    (record) => record.recordId === recipientRecordId,
+  )
+  const signingIdentities = useMemo(
+    () =>
+      identities.filter((identity) => {
+        if (identity.status !== "active") return false
+        if (!selectedRecipient) return identity.profile === "balanced"
+        try {
+          resolveSuite(selectedRecipient.kem.algorithm, identity.signing.algorithm)
+          return true
+        } catch {
+          return false
+        }
+      }),
+    [identities, selectedRecipient],
+  )
+  const selectedSender = signingIdentities.find(
+    (identity) => identity.id === senderIdentityId,
+  )
+  const plaintextBytes = useMemo(() => utf8ToBytes(plaintext), [plaintext])
+  const overPlaintextLimit = plaintextBytes.byteLength > env.maxPlaintextBytes
+  const canEncrypt =
+    plaintext.length > 0 &&
+    !overPlaintextLimit &&
+    !busy &&
+    (algorithm === "A256GCM"
+      ? selectedKey !== undefined
+      : selectedRecipient !== undefined && (!signed || selectedSender !== undefined))
+
+  const multipartSession = useMemo(
+    () => new MultipartScanSession(preferences.transferTimeoutMinutes),
+    [preferences.transferTimeoutMinutes],
+  )
+
+  const parsedDecrypt = useMemo(() => {
+    const input = decryptInput.trim()
+    if (!input) return null
     try {
-      const decoded = decodePayload(decryptInput.trim())
-      return decoded.kind === "message" ? decoded.envelope : null
+      const decoded = decodePayload(input)
+      return decoded.kind === "message" || decoded.kind === "pq-message" ? decoded : null
     } catch {
       return null
     }
   }, [decryptInput])
-  const decryptInputInvalid = decryptInput.trim().length > 0 && !parsedMessage
-  const activeAlgorithm = parsedMessage
-    ? toUiAlgorithm(parsedMessage.algorithm)
-    : algorithm
-  const eligibleKeys = matchingKeys(keys, activeAlgorithm, mode)
-  const matchedKey = parsedMessage
-    ? eligibleKeys.find((key) => key.id === messageKeyId(parsedMessage))
-    : undefined
-  const effectiveSelectedKeyId = eligibleKeys.some((key) => key.id === selectedKeyId)
-    ? selectedKeyId
-    : (matchedKey?.id ?? "")
-  const selectedKey = eligibleKeys.find((key) => key.id === effectiveSelectedKeyId)
+  const decryptInputInvalid = decryptInput.trim().length > 0 && parsedDecrypt === null
+  const decryptAesKey =
+    parsedDecrypt?.kind === "message"
+      ? symmetricKeys.find((key) => key.id === parsedDecrypt.envelope.keyId)
+      : undefined
+  const decryptIdentity =
+    parsedDecrypt?.kind === "pq-message"
+      ? identities.find(
+          (identity) => identity.kem.keyId === parsedDecrypt.envelope.recipientKemKeyId,
+        )
+      : undefined
+  const canDecrypt =
+    !busy &&
+    parsedDecrypt !== null &&
+    (parsedDecrypt.kind === "message"
+      ? decryptAesKey !== undefined
+      : decryptIdentity !== undefined)
 
-  const plaintextBytes = useMemo(
-    () => new TextEncoder().encode(plaintext).byteLength,
-    [plaintext],
-  )
-  const overPlaintextLimit = plaintextBytes > env.maxPlaintextBytes
-  const estimatedPayload = useMemo(() => {
-    try {
-      return estimatePayloadChars(plaintextBytes, algorithm)
-    } catch {
-      return Math.ceil(plaintextBytes * 1.5) + 256
+  useEffect(() => {
+    let active = true
+    if (!isPqAlgorithm(algorithm) || overPlaintextLimit) {
+      queueMicrotask(() => {
+        if (active) {
+          setSizeBreakdown(null)
+          setSizePending(false)
+        }
+      })
+      return () => {
+        active = false
+      }
     }
-  }, [algorithm, plaintextBytes])
-  const estimatedFits = estimatedPayload <= qrByteCapacity(preferences.qrErrorCorrection)
-  const canEncrypt =
-    plaintext.length > 0 && !overPlaintextLimit && Boolean(selectedKey) && !busy
+    queueMicrotask(() => {
+      if (active) setSizePending(true)
+    })
+    void measurePqEnvelopeSize({
+      plaintext: plaintextBytes,
+      kemAlgorithm: selectedRecipient?.kem.algorithm ?? "ML-KEM-768",
+      recipientKemKeyId: selectedRecipient?.kem.keyId ?? "A".repeat(22),
+      ...(signed
+        ? {
+            signingAlgorithm: selectedSender?.signing.algorithm ?? "ML-DSA-65",
+            senderSigningKeyId: selectedSender?.signing.keyId ?? "B".repeat(22),
+          }
+        : {}),
+      frameBytes: preferences.frameBytes,
+    })
+      .then((measured) => {
+        if (active) setSizeBreakdown(measured)
+      })
+      .catch(() => {
+        if (active) setSizeBreakdown(null)
+      })
+      .finally(() => {
+        if (active) setSizePending(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [
+    algorithm,
+    overPlaintextLimit,
+    plaintextBytes,
+    preferences.frameBytes,
+    selectedRecipient,
+    selectedSender,
+    signed,
+  ])
 
   useEffect(() => {
     setSensitiveSession({
       hasPlaintext: plaintext.length > 0,
-      hasDecrypted: decryptedText.length > 0,
+      hasDecrypted: decrypted !== null && decrypted.kind !== "signed-key-unknown",
       cryptoBusy: busy,
       secretVisible: false,
     })
-  }, [busy, decryptedText, plaintext, setSensitiveSession])
-
+  }, [busy, decrypted, plaintext, setSensitiveSession])
   useEffect(() => () => resetSensitiveSession(), [resetSensitiveSession])
 
   const clearTransient = useCallback(() => {
     setPlaintext("")
     setDecryptInput("")
-    setDecryptedText("")
+    setDecrypted(null)
     setResult(null)
-    setQrName("")
-    setSaved(false)
+    setOutputName("")
     setError(null)
+    multipartSession.discard()
     setClearStatus("自動消去しました")
     toast.info("自動消去しました")
-  }, [])
+  }, [multipartSession])
 
   useAutoClear({
     enabled: preferences.backgroundClearEnabled,
@@ -207,44 +328,72 @@ export function EncryptPage() {
   })
 
   const handleEncrypt = async () => {
-    if (!selectedKey || !canEncrypt) return
+    if (!canEncrypt) return
     setBusy(true)
     setError(null)
-    setSaved(false)
+    setResult(null)
     try {
       const now = Date.now()
-      const plaintextData = utf8ToBytes(plaintext)
-      const envelope =
-        algorithm === "A256GCM"
-          ? await encryptWithAesKey({
-              key: selectedKey.symmetricKey as CryptoKey,
-              keyId: selectedKey.id,
-              plaintext: plaintextData,
-              now,
-            })
-          : await encryptRsaHybrid({
-              publicKey: selectedKey.publicKey as CryptoKey,
-              recipientKeyId: selectedKey.id,
-              plaintext: plaintextData,
-              now,
-            })
-      const payload = encodeEnvelopeToPayload(envelope)
-      if (!payloadFits(payload, preferences.qrErrorCorrection)) {
-        throw new AppError("QR_TOO_LARGE")
+      if (algorithm === "A256GCM" && selectedKey?.symmetricKey) {
+        const envelope = await encryptWithAesKey({
+          key: selectedKey.symmetricKey,
+          keyId: selectedKey.id,
+          plaintext: plaintextBytes,
+          now,
+        })
+        const payload = encodeEnvelopeToPayload(envelope)
+        if (!payloadFits(payload, ecLevelFor("message", preferences))) {
+          throw new AppError("QR_TOO_LARGE")
+        }
+        setResult({
+          kind: "aes",
+          payload,
+          envelope,
+          key: selectedKey,
+          createdAt: now,
+          totalBytes: new TextEncoder().encode(payload).byteLength,
+          sha256: await payloadSha256Hex(payload),
+        })
+        await markKeyUsed(selectedKey.id, now).catch(() => undefined)
+      } else if (selectedRecipient) {
+        const sender = signed ? selectedSender : undefined
+        if (signed && sender === undefined) throw new AppError("KEY_NOT_FOUND")
+        const envelope = await encryptPq({
+          client: getPqClient(),
+          recipient: selectedRecipient,
+          plaintext: plaintextBytes,
+          ...(sender === undefined
+            ? {}
+            : { sign: { identity: sender, vaultKey: await getOrCreateVaultKey() } }),
+          now,
+        })
+        const artifactBytes = encodeMlKemEnvelopeV2(envelope)
+        const frames = await splitIntoFrames({
+          artifactType: "pq-message",
+          artifactBytes,
+          frameBytes: preferences.frameBytes,
+        })
+        setResult({
+          kind: "pq",
+          payload: buildV2Payload("pq-message", artifactBytes),
+          envelope,
+          frames,
+          recipient: selectedRecipient,
+          ...(sender === undefined ? {} : { sender }),
+          createdAt: now,
+          totalBytes: artifactBytes.byteLength,
+          sha256: await sha256Hex(artifactBytes),
+        })
+        await markBundleUsed(selectedRecipient.recordId, now).catch(() => undefined)
+        if (sender) await markIdentityUsed(sender.id, now).catch(() => undefined)
       }
-      setResult({ payload, envelope, key: selectedKey })
-      setQrName(`暗号文-${formatSuggestedDate(now)}`)
-      try {
-        await markKeyUsed(selectedKey.id, now)
-      } catch {
-        setError("暗号化は完了しましたが、鍵の使用記録を更新できませんでした。")
-      }
+      setOutputName(`暗号結果-${formatSuggestedDate(now)}`)
       if (preferences.autoClearPlaintextAfterEncrypt) {
         setPlaintext("")
         toast.info("設定に従って平文を消去しました")
       }
-    } catch (caught: unknown) {
-      setResult(null)
+      await refreshPq()
+    } catch (caught) {
       setError(toAppError(caught, "ENCRYPTION_FAILED").userMessage)
     } finally {
       setBusy(false)
@@ -252,111 +401,56 @@ export function EncryptPage() {
   }
 
   const handleDecrypt = async () => {
-    if (!parsedMessage || !selectedKey || busy) return
+    if (!canDecrypt || parsedDecrypt === null) return
     setBusy(true)
     setError(null)
-    setDecryptedText("")
+    setDecrypted(null)
     try {
-      const decrypted =
-        "keyId" in parsedMessage
-          ? await decryptWithAesKey({
-              key: selectedKey.symmetricKey as CryptoKey,
-              envelope: parsedMessage,
-            })
-          : await decryptRsaHybrid({
-              privateKey: selectedKey.privateKey as CryptoKey,
-              envelope: parsedMessage,
-            })
-      const completePlaintext = bytesToUtf8(decrypted)
-      setDecryptedText(completePlaintext)
-      try {
-        await markKeyUsed(selectedKey.id, Date.now())
-      } catch {
-        setError("復号は完了しましたが、鍵の使用記録を更新できませんでした。")
+      if (parsedDecrypt.kind === "message" && decryptAesKey?.symmetricKey) {
+        const plaintextResult = await decryptWithAesKey({
+          key: decryptAesKey.symmetricKey,
+          envelope: parsedDecrypt.envelope,
+        })
+        setDecrypted({ kind: "aes", text: bytesToUtf8(plaintextResult) })
+        await markKeyUsed(decryptAesKey.id, Date.now()).catch(() => undefined)
+      } else if (parsedDecrypt.kind === "pq-message" && decryptIdentity) {
+        const pqResult = await decryptPqMessage({
+          client: getPqClient(),
+          envelope: parsedDecrypt.envelope,
+          recipient: decryptIdentity,
+          vaultKey: await getOrCreateVaultKey(),
+          resolveSigningKey: async (keyId) => {
+            const record = bundles.find((bundle) => bundle.signing.keyId === keyId)
+            return record === undefined
+              ? undefined
+              : {
+                  algorithm: record.signing.algorithm,
+                  publicKey: record.signing.publicKey,
+                  revoked: record.revokedAt !== undefined,
+                }
+          },
+        })
+        if (pqResult.kind === "signed-key-unknown") {
+          setDecrypted(pqResult)
+        } else if (pqResult.kind === "unsigned") {
+          setDecrypted({ kind: "unsigned", text: bytesToUtf8(pqResult.plaintext) })
+        } else {
+          setDecrypted({
+            kind: "signed-valid",
+            text: bytesToUtf8(pqResult.plaintext),
+            senderSigningKeyId: pqResult.senderSigningKeyId,
+            sender: bundles.find(
+              (bundle) => bundle.signing.keyId === pqResult.senderSigningKeyId,
+            ),
+          })
+        }
+        await markIdentityUsed(decryptIdentity.id, Date.now()).catch(() => undefined)
       }
-    } catch {
-      setDecryptedText("")
-      setError("復号できませんでした。鍵、暗号方式、または暗号文が一致していません。")
+    } catch (caught) {
+      setDecrypted(null)
+      setError(toAppError(caught, "DECRYPTION_FAILED").userMessage)
     } finally {
       setBusy(false)
-    }
-  }
-
-  const makeArtifact = async (): Promise<StoredQrArtifact | null> => {
-    if (!result) return null
-    const parsedName = qrNameSchema.safeParse(qrName)
-    if (!parsedName.success) {
-      setError(parsedName.error.issues[0]?.message ?? "QR名を確認してください。")
-      return null
-    }
-    const id = generateArtifactId()
-    return {
-      id,
-      name: parsedName.data,
-      kind: "ciphertext",
-      sensitivity: "confidential",
-      algorithm: result.envelope.algorithm,
-      payload: result.payload,
-      payloadSha256: await payloadSha256Hex(result.payload),
-      byteLength: new TextEncoder().encode(result.payload).byteLength,
-      createdAt: result.envelope.createdAt,
-      keyId: messageKeyId(result.envelope),
-    }
-  }
-
-  const finishSave = () => {
-    setSaved(true)
-    setDuplicateArtifact(null)
-    toast.success("QRコードを保存しました")
-  }
-
-  const handleSave = async () => {
-    try {
-      const artifact = await makeArtifact()
-      if (!artifact) return
-      await saveQrArtifact(artifact)
-      finishSave()
-    } catch (caught: unknown) {
-      if (caught instanceof AppError && caught.code === "DUPLICATE_QR") {
-        const artifact = await makeArtifact()
-        if (artifact) setDuplicateArtifact(artifact)
-        return
-      }
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
-    }
-  }
-
-  const saveDuplicate = async () => {
-    if (!duplicateArtifact) return
-    try {
-      await saveQrArtifact(duplicateArtifact, { allowDuplicate: true })
-      finishSave()
-    } catch (caught: unknown) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
-    }
-  }
-
-  const exportQr = async (format: "png" | "svg") => {
-    if (!result) return
-    const parsedName = qrNameSchema.safeParse(qrName)
-    if (!parsedName.success) {
-      setError(parsedName.error.issues[0]?.message ?? "QR名を確認してください。")
-      return
-    }
-    try {
-      const id = generateArtifactId()
-      const blob =
-        format === "png"
-          ? await qrPngBlob(result.payload, {
-              ecLevel: preferences.qrErrorCorrection,
-              size: env.qrRenderSize,
-            })
-          : await qrSvgBlob(result.payload, {
-              ecLevel: preferences.qrErrorCorrection,
-            })
-      triggerDownload(blob, buildExportFileName(parsedName.data, id, format))
-    } catch (caught: unknown) {
-      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
     }
   }
 
@@ -370,17 +464,48 @@ export function EncryptPage() {
     }
   }
 
-  const modeChanged = (value: string) => {
-    const nextMode = value === "decrypt" ? "decrypt" : "encrypt"
-    setMode(nextMode)
-    setError(null)
-    setSelectedKeyId("")
+  const exportSingle = async (format: "png" | "svg") => {
+    if (result?.kind !== "aes") return
+    const parsedName = qrNameSchema.safeParse(outputName)
+    if (!parsedName.success) {
+      setError(parsedName.error.issues[0]?.message ?? "出力名を確認してください。")
+      return
+    }
+    try {
+      const id = generateArtifactId()
+      const ecLevel = ecLevelFor("message", preferences)
+      const blob =
+        format === "png"
+          ? await qrPngBlob(result.payload, { ecLevel, size: env.qrRenderSize })
+          : await qrSvgBlob(result.payload, { ecLevel })
+      triggerDownload(blob, buildExportFileName(parsedName.data, id, format))
+    } catch (caught) {
+      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+    }
   }
 
+  const aesEstimate = useMemo(() => {
+    if (algorithm !== "A256GCM") return null
+    try {
+      return estimatePayloadChars(plaintextBytes.byteLength, algorithm)
+    } catch {
+      return null
+    }
+  }, [algorithm, plaintextBytes.byteLength])
+
+  const resultSuite: WireSuite | "A256GCM" | null =
+    result?.kind === "aes" ? "A256GCM" : (result?.envelope.suite ?? null)
+
   return (
-    <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6">
+    <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={busy}>
       <h2 className="sr-only">暗号化と復号</h2>
-      <Tabs value={mode} onValueChange={modeChanged}>
+      <Tabs
+        value={mode}
+        onValueChange={(value) => {
+          setMode(value === "decrypt" ? "decrypt" : "encrypt")
+          setError(null)
+        }}
+      >
         <TabsList className="grid h-11 w-full grid-cols-2">
           <TabsTrigger value="encrypt" className="h-9 cursor-pointer">
             暗号化
@@ -399,30 +524,60 @@ export function EncryptPage() {
               value={algorithm}
               onValueChange={(value) => {
                 setAlgorithmOverride(value as UiAlgorithm)
-                setSelectedKeyId("")
                 setResult(null)
+                setError(null)
               }}
             >
               <SelectTrigger id="algorithm-select" className="h-11 text-base">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="A256GCM">{ALGORITHM_LABELS.A256GCM}</SelectItem>
-                {env.enableRsa && (
-                  <SelectItem value="RSA-HYBRID">
-                    {ALGORITHM_LABELS["RSA-HYBRID"]}
+                {algorithms.map((option) => (
+                  <SelectItem key={option} value={option}>
+                    {ALGORITHM_LABELS[option]}
                   </SelectItem>
-                )}
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          <KeySelector
-            keys={eligibleKeys}
-            value={effectiveSelectedKeyId}
-            onChange={setSelectedKeyId}
-            loading={keysLoading}
-          />
+          {algorithm === "A256GCM" ? (
+            <RecordSelect
+              id="key-select"
+              label="使用鍵"
+              value={selectedKeyId}
+              onChange={setSelectedKeyId}
+              loading={keysLoading}
+              items={symmetricKeys.map((key) => ({ value: key.id, label: key.name }))}
+            />
+          ) : (
+            <>
+              <RecordSelect
+                id="recipient-select"
+                label="受信者のML-KEM公開鍵"
+                value={recipientRecordId}
+                onChange={setRecipientRecordId}
+                loading={pqLoading}
+                items={recipients.map((record) => ({
+                  value: record.recordId,
+                  label: `${record.trust === "fingerprint-confirmed" ? "確認済み" : "未確認"} — ${record.trust === "fingerprint-confirmed" ? (record.name ?? record.kem.keyId) : record.kem.keyId}`,
+                }))}
+              />
+              {signed && (
+                <RecordSelect
+                  id="sender-select"
+                  label="自分のML-DSA署名ID"
+                  value={senderIdentityId}
+                  onChange={setSenderIdentityId}
+                  loading={pqLoading}
+                  items={signingIdentities.map((identity) => ({
+                    value: identity.id,
+                    label: identity.name,
+                  }))}
+                />
+              )}
+            </>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -431,7 +586,7 @@ export function EncryptPage() {
                 type="button"
                 variant="ghost"
                 className="h-11 cursor-pointer px-3 focus-visible:ring-2"
-                disabled={!plaintext}
+                disabled={!plaintext || busy}
                 onClick={() => setPlaintext("")}
               >
                 <Eraser aria-hidden="true" />
@@ -446,17 +601,14 @@ export function EncryptPage() {
               placeholder="暗号化する文章を入力してください"
               autoComplete="off"
               spellCheck={false}
+              disabled={busy}
             />
             <p
-              aria-live="polite"
-              className={`flex items-center justify-between gap-2 font-mono text-xs tabular-nums ${overPlaintextLimit ? "text-destructive" : "text-muted-foreground"}`}
+              className={`flex justify-between font-mono text-xs ${overPlaintextLimit ? "text-destructive" : "text-muted-foreground"}`}
             >
               <span>{plaintext.length} 文字</span>
-              <span className="flex items-center gap-1">
-                {overPlaintextLimit && (
-                  <AlertCircle aria-hidden="true" className="size-4" />
-                )}
-                {plaintextBytes} / {env.maxPlaintextBytes} bytes
+              <span>
+                {plaintextBytes.byteLength} / {env.maxPlaintextBytes} bytes
               </span>
             </p>
             {overPlaintextLimit && (
@@ -470,19 +622,45 @@ export function EncryptPage() {
             )}
           </div>
 
-          <div aria-live="polite" className="rounded-lg border bg-muted/50 p-3 text-sm">
-            <p className="font-mono tabular-nums">
-              予想ペイロード: 約 {estimatedPayload} 文字 / EC=
-              {preferences.qrErrorCorrection} 上限{" "}
-              {qrByteCapacity(preferences.qrErrorCorrection)}
-            </p>
-            {!estimatedFits && (
-              <p className="mt-2 flex gap-2 text-destructive" role="alert">
-                <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                QRコードに収まらない見込みです。入力を短くしてください。
-              </p>
-            )}
-          </div>
+          <Card aria-live="polite" aria-busy={sizePending}>
+            <CardHeader className="p-4 pb-3">
+              <CardTitle className="text-base">実測サイズ内訳</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 p-4 pt-0 text-sm">
+              <DetailRow label="本文" value={`${plaintextBytes.byteLength} bytes`} mono />
+              <DetailRow
+                label="KEM暗号文"
+                value={`${sizeBreakdown?.kemCiphertextBytes ?? 0} bytes`}
+                mono
+              />
+              <DetailRow
+                label="署名"
+                value={`${sizeBreakdown?.signatureBytes ?? 0} bytes`}
+                mono
+              />
+              <DetailRow
+                label="エンベロープ計"
+                value={
+                  algorithm === "A256GCM"
+                    ? `${aesEstimate ?? 0} bytes (QR文字列)`
+                    : sizePending
+                      ? "計算中…"
+                      : `${sizeBreakdown?.envelopeBytes ?? 0} bytes`
+                }
+                mono
+              />
+              <DetailRow
+                label="QR枚数"
+                value={`${algorithm === "A256GCM" ? 1 : (sizeBreakdown?.frameCount ?? 0)} 枚`}
+                mono
+              />
+              {signed && (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  短文でもポスト量子署名が本文より大幅に大きくなり、QR枚数を支配します。
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
           <Button
             type="button"
@@ -500,100 +678,108 @@ export function EncryptPage() {
         </>
       ) : (
         <>
-          <div className="space-y-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-full cursor-pointer focus-visible:ring-2"
-              disabled={!camera}
-              onClick={() => setScannerOpen(true)}
-            >
-              <ScanLine aria-hidden="true" />
-              QRを読み取る
-            </Button>
-            {!camera && (
-              <p className="flex gap-2 text-sm text-muted-foreground">
-                <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                この端末ではカメラを利用できません。ペイロードを貼り付けてください。
-              </p>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="decrypt-payload">暗号文ペイロード</Label>
-              <Textarea
-                id="decrypt-payload"
-                value={decryptInput}
-                onChange={(event) => {
-                  setDecryptInput(event.target.value)
-                  setDecryptedText("")
-                  setError(null)
-                }}
-                className="min-h-28 break-all font-mono text-base focus-visible:ring-2"
-                placeholder="OCM1: で始まるペイロードを貼り付けてください"
-                autoComplete="off"
-                spellCheck={false}
-              />
-            </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 w-full cursor-pointer focus-visible:ring-2"
+            disabled={!camera || busy}
+            onClick={() => setScannerOpen(true)}
+          >
+            <ScanLine aria-hidden="true" />
+            単枚QRを読み取る
+          </Button>
+          <div className="space-y-2">
+            <Label htmlFor="decrypt-payload">暗号文ペイロード</Label>
+            <Textarea
+              id="decrypt-payload"
+              value={decryptInput}
+              onChange={(event) => {
+                setDecryptInput(event.target.value)
+                setDecrypted(null)
+                setError(null)
+              }}
+              className="min-h-28 break-all font-mono text-base focus-visible:ring-2"
+              placeholder="OCM1: または OCM2: ペイロードを貼り付けてください"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={busy}
+            />
           </div>
-
           {decryptInputInvalid && (
             <Alert variant="destructive" role="alert">
-              <AlertCircle aria-hidden="true" className="size-4" />
               <AlertTitle>暗号文を確認できません</AlertTitle>
               <AlertDescription>
-                OCM1:で始まる本アプリの暗号文ペイロードを入力してください。
+                対応するOCM1/OCM2暗号文を入力してください。
               </AlertDescription>
             </Alert>
           )}
-
-          {parsedMessage && (
+          {parsedDecrypt && (
             <Card>
-              <CardHeader className="p-4 pb-3">
-                <CardTitle className="text-base">読取内容の確認</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2 p-4 pt-0 text-sm">
-                <DetailRow label="種別" value="暗号文" />
+              <CardContent className="space-y-2 p-4 text-sm">
                 <DetailRow
                   label="方式"
-                  value={ALGORITHM_LABELS[toUiAlgorithm(parsedMessage.algorithm)]}
+                  value={
+                    parsedDecrypt.kind === "message"
+                      ? "A256GCM"
+                      : parsedDecrypt.envelope.suite
+                  }
                 />
-                <DetailRow label="鍵ID" value={messageKeyId(parsedMessage)} mono />
                 <DetailRow
-                  label="作成日時"
-                  value={formatDateTime(parsedMessage.createdAt)}
+                  label="受信者鍵ID"
+                  value={
+                    parsedDecrypt.kind === "message"
+                      ? parsedDecrypt.envelope.keyId
+                      : parsedDecrypt.envelope.recipientKemKeyId
+                  }
+                  mono
                 />
               </CardContent>
             </Card>
           )}
-
-          {parsedMessage && !matchedKey && (
+          {parsedDecrypt && !canDecrypt && (
             <Alert variant="destructive" role="alert">
-              <AlertCircle aria-hidden="true" className="size-4" />
               <AlertTitle>KEY_NOT_FOUND</AlertTitle>
-              <AlertDescription>
-                この暗号文に対応する鍵が見つかりません(鍵ID:{" "}
-                {shortTechnicalId(messageKeyId(parsedMessage))})
-              </AlertDescription>
+              <AlertDescription>{userMessageFor("KEY_NOT_FOUND")}</AlertDescription>
             </Alert>
           )}
-
-          <KeySelector
-            keys={eligibleKeys}
-            value={effectiveSelectedKeyId}
-            onChange={setSelectedKeyId}
-            loading={keysLoading}
-          />
-
           <Button
             type="button"
             className="h-11 w-full cursor-pointer focus-visible:ring-2"
-            disabled={!parsedMessage || !selectedKey || busy}
+            disabled={!canDecrypt}
             onClick={() => void handleDecrypt()}
           >
             {busy && <LoaderCircle aria-hidden="true" className="animate-spin" />}
             {busy ? "復号中…" : "復号する"}
           </Button>
 
-          {decryptedText && (
+          <MultipartScanPanel
+            session={multipartSession}
+            cameraAvailable={camera && !scannerOpen}
+            onComplete={({ artifactType, artifactBytes }) => {
+              if (artifactType !== "pq-message") throw new AppError("INVALID_QR_PAYLOAD")
+              const envelope = decodeMlKemEnvelopeV2(artifactBytes)
+              setDecryptInput(
+                buildV2Payload("pq-message", encodeMlKemEnvelopeV2(envelope)),
+              )
+              setDecrypted(null)
+              setError(null)
+            }}
+          />
+
+          {decrypted?.kind === "signed-key-unknown" && (
+            <Alert variant="destructive" role="alert">
+              <AlertTitle>SIGNING_KEY_NOT_FOUND</AlertTitle>
+              <AlertDescription>
+                {userMessageFor("SIGNING_KEY_NOT_FOUND")} 鍵ID:{" "}
+                {decrypted.senderSigningKeyId}
+                <br />
+                <Link to="/keys" className="font-medium underline">
+                  署名鍵を取り込む
+                </Link>
+              </AlertDescription>
+            </Alert>
+          )}
+          {decrypted && decrypted.kind !== "signed-key-unknown" && (
             <Card>
               <CardHeader className="p-4 pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -602,8 +788,30 @@ export function EncryptPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 p-4 pt-0">
-                <p className="select-text whitespace-pre-wrap break-words rounded-md border bg-background p-3 text-sm leading-relaxed">
-                  {decryptedText}
+                {decrypted.kind === "unsigned" && (
+                  <p className="text-sm font-medium">署名なし (unsigned)</p>
+                )}
+                {decrypted.kind === "aes" && (
+                  <p className="text-sm font-medium">共通鍵メッセージ (署名なし)</p>
+                )}
+                {decrypted.kind === "signed-valid" && (
+                  <div className="space-y-1 text-sm">
+                    <p className="font-medium text-success">
+                      署名はこの鍵に対して有効です
+                    </p>
+                    <p className="font-mono text-xs break-all">
+                      送信者署名鍵ID: {decrypted.senderSigningKeyId}
+                    </p>
+                    <p>
+                      人物確認:{" "}
+                      {decrypted.sender?.trust === "fingerprint-confirmed"
+                        ? "人物確認済み"
+                        : "未確認 (鍵の有効性と人物確認は別です)"}
+                    </p>
+                  </div>
+                )}
+                <p className="select-text whitespace-pre-wrap break-words rounded-md border p-3 text-sm">
+                  {decrypted.text}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   復号結果はメモリー内だけに保持し、保存しません。
@@ -611,8 +819,8 @@ export function EncryptPage() {
                 <Button
                   type="button"
                   variant="secondary"
-                  className="h-11 w-full cursor-pointer focus-visible:ring-2"
-                  onClick={() => setDecryptedText("")}
+                  className="h-11 w-full cursor-pointer"
+                  onClick={() => setDecrypted(null)}
                 >
                   <Eraser aria-hidden="true" />
                   平文を消去
@@ -623,11 +831,13 @@ export function EncryptPage() {
         </>
       )}
 
-      {(keysError || preferencesError || error) && (
+      {(keysError || pqError || preferencesError || error) && (
         <Alert variant="destructive" role="alert">
           <AlertCircle aria-hidden="true" className="size-4" />
           <AlertTitle>操作を完了できません</AlertTitle>
-          <AlertDescription>{error ?? keysError ?? preferencesError}</AlertDescription>
+          <AlertDescription>
+            {error ?? keysError ?? pqError ?? preferencesError}
+          </AlertDescription>
         </Alert>
       )}
       <p aria-live="polite" className="sr-only">
@@ -644,13 +854,13 @@ export function EncryptPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 p-4 pt-0">
-              <p className="max-h-24 overflow-y-auto break-all rounded-md border bg-background p-3 font-mono text-xs">
+              <p className="max-h-24 overflow-y-auto break-all rounded-md border p-3 font-mono text-xs">
                 {result.payload}
               </p>
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 cursor-pointer focus-visible:ring-2"
+                className="h-11 cursor-pointer"
                 onClick={() => void copyPayload()}
               >
                 <Clipboard aria-hidden="true" />
@@ -659,128 +869,96 @@ export function EncryptPage() {
             </CardContent>
           </Card>
 
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">暗号文QR</h2>
+          {result.kind === "aes" ? (
             <QrDisplay
               payload={result.payload}
-              ecLevel={preferences.qrErrorCorrection}
+              ecLevel={ecLevelFor("message", preferences)}
               size={env.qrRenderSize}
               title="暗号文QR"
             />
-          </div>
+          ) : (
+            <AnimatedQrFrames
+              frames={result.frames}
+              frameIntervalMs={preferences.frameIntervalMs}
+              outputName={outputName || "pq-message"}
+              title="暗号文"
+            />
+          )}
 
           <div className="space-y-2">
-            <Label htmlFor="ciphertext-qr-name">QR名</Label>
+            <Label htmlFor="output-name">出力名</Label>
             <Input
-              id="ciphertext-qr-name"
-              value={qrName}
-              onChange={(event) => setQrName(event.target.value)}
-              className="h-11 text-base focus-visible:ring-2"
+              id="output-name"
+              value={outputName}
+              onChange={(event) => setOutputName(event.target.value)}
               maxLength={80}
+              className="h-11"
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              className="h-11 cursor-pointer focus-visible:ring-2"
-              onClick={() => void handleSave()}
-            >
-              <Save aria-hidden="true" />
-              保存
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 cursor-pointer focus-visible:ring-2"
-              onClick={() => void exportQr("png")}
-            >
-              <Download aria-hidden="true" />
-              PNG
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 cursor-pointer focus-visible:ring-2"
-              onClick={() => void exportQr("svg")}
-            >
-              <FileCode2 aria-hidden="true" />
-              SVG
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 cursor-pointer focus-visible:ring-2"
-              onClick={() => void copyPayload()}
-            >
-              <Clipboard aria-hidden="true" />
-              コピー
-            </Button>
-          </div>
-          {saved && (
-            <p className="flex items-center gap-2 text-sm text-success" role="status">
-              <CheckCircle2 aria-hidden="true" className="size-4" />
-              保存しました。
-              <Link to="/saved" className="underline">
-                保存済みを開く
-              </Link>
-            </p>
-          )}
-
-          <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-            <CollapsibleTrigger asChild>
+          {result.kind === "aes" && (
+            <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"
-                variant="ghost"
-                className="h-11 w-full cursor-pointer justify-between focus-visible:ring-2"
+                variant="outline"
+                className="h-11 cursor-pointer"
+                onClick={() => void exportSingle("png")}
               >
-                詳細
-                <ChevronDown
-                  aria-hidden="true"
-                  className={
-                    detailsOpen
-                      ? "rotate-180 transition-transform"
-                      : "transition-transform"
-                  }
-                />
+                <Download aria-hidden="true" />
+                PNG
               </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <Card>
-                <CardContent className="grid gap-2 p-4 text-sm">
-                  <DetailRow
-                    label="アルゴリズム"
-                    value={ALGORITHM_LABELS[toUiAlgorithm(result.envelope.algorithm)]}
-                  />
-                  <DetailRow label="鍵ID" value={messageKeyId(result.envelope)} mono />
-                  <DetailRow
-                    label="鍵指紋"
-                    value={formatFingerprint(result.key.fingerprint)}
-                    mono
-                  />
-                  <DetailRow
-                    label="作成日時"
-                    value={formatDateTime(result.envelope.createdAt)}
-                  />
-                  <DetailRow
-                    label="IV(hex)"
-                    value={bytesToHex(result.envelope.iv)}
-                    mono
-                  />
-                  <DetailRow
-                    label="暗号文サイズ"
-                    value={`${messageCiphertextBytes(result.envelope)} bytes`}
-                    mono
-                  />
-                  <DetailRow
-                    label="AAD内容"
-                    value={bytesToUtf8(result.envelope.aad)}
-                    mono
-                  />
-                </CardContent>
-              </Card>
-            </CollapsibleContent>
-          </Collapsible>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 cursor-pointer"
+                onClick={() => void exportSingle("svg")}
+              >
+                <FileCode2 aria-hidden="true" />
+                SVG
+              </Button>
+            </div>
+          )}
+
+          <Card aria-label="暗号結果詳細">
+            <CardHeader className="p-4 pb-3">
+              <CardTitle className="text-base">結果詳細</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 p-4 pt-0 text-sm">
+              <DetailRow label="使用暗号スイート" value={resultSuite ?? "—"} />
+              <DetailRow
+                label="受信者鍵ID"
+                value={
+                  result.kind === "aes"
+                    ? result.envelope.keyId
+                    : result.envelope.recipientKemKeyId
+                }
+                mono
+              />
+              <DetailRow
+                label="送信者署名鍵ID"
+                value={
+                  result.kind === "pq" ? (result.sender?.signing.keyId ?? "なし") : "なし"
+                }
+                mono
+              />
+              <DetailRow label="総データ量" value={`${result.totalBytes} bytes`} mono />
+              <DetailRow
+                label="QRフレーム数"
+                value={`${result.kind === "pq" ? result.frames.length : 1} 枚`}
+                mono
+              />
+              <DetailRow label="暗号化日時" value={formatDateTime(result.createdAt)} />
+              <DetailRow
+                label="署名"
+                value={result.kind === "pq" && result.sender ? "あり" : "なし"}
+              />
+              <DetailRow
+                label="ポスト量子プロファイル"
+                value={result.kind === "pq" ? "balanced" : "対象外"}
+              />
+              <DetailRow label="全体SHA-256" value={result.sha256} mono />
+            </CardContent>
+          </Card>
         </section>
       )}
 
@@ -791,61 +969,41 @@ export function EncryptPage() {
         cameraAvailable={camera}
         onScan={(payload) => {
           setDecryptInput(payload)
+          setDecrypted(null)
           setError(null)
-          setDecryptedText("")
         }}
       />
-
-      <AlertDialog
-        open={duplicateArtifact !== null}
-        onOpenChange={(open) => {
-          if (!open) setDuplicateArtifact(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>同じ内容のQRが保存済みです</AlertDialogTitle>
-            <AlertDialogDescription>
-              別の名前とIDで重複保存しますか。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void saveDuplicate()}>
-              重複して保存
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </section>
   )
 }
 
-function KeySelector({
-  keys,
+function RecordSelect({
+  id,
+  label,
   value,
   onChange,
   loading,
+  items,
 }: {
-  keys: StoredKeyRecord[]
+  id: string
+  label: string
   value: string
   onChange: (value: string) => void
   loading: boolean
+  items: { value: string; label: string }[]
 }) {
   return (
     <div className="space-y-2">
-      <Label htmlFor="key-select">使用鍵</Label>
-      {keys.length > 0 ? (
+      <Label htmlFor={id}>{label}</Label>
+      {items.length > 0 ? (
         <Select value={value} onValueChange={onChange}>
-          <SelectTrigger id="key-select" className="h-11 text-base">
-            <SelectValue
-              placeholder={loading ? "鍵を読み込んでいます…" : "鍵を選択してください"}
-            />
+          <SelectTrigger id={id} className="h-11 text-base">
+            <SelectValue placeholder={loading ? "読み込み中…" : "選択してください"} />
           </SelectTrigger>
           <SelectContent>
-            {keys.map((key) => (
-              <SelectItem key={key.id} value={key.id}>
-                {key.name} — {formatFingerprint(key.fingerprint).split(" ")[0]}
+            {items.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -854,7 +1012,7 @@ function KeySelector({
         <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
           使用できる鍵がありません。{" "}
           <Link to="/keys" className="font-medium text-primary underline">
-            鍵ページで作成してください
+            鍵ページを開く
           </Link>
         </div>
       )}
@@ -872,7 +1030,7 @@ function DetailRow({
   mono?: boolean
 }) {
   return (
-    <div className="grid grid-cols-[7rem_1fr] gap-2 border-b py-1.5 last:border-0">
+    <div className="grid grid-cols-[8.5rem_1fr] gap-2 border-b py-1.5 last:border-0">
       <span className="text-muted-foreground">{label}</span>
       <span className={`min-w-0 break-all ${mono ? "font-mono text-xs" : ""}`}>
         {value}
