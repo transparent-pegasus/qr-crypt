@@ -826,7 +826,7 @@ export function KeysPage() {
           {symmetricQr && (
             <div className="space-y-4">
               <Alert variant="destructive">
-                <AlertTitle>最高機密</AlertTitle>
+                <AlertTitle>機密情報</AlertTitle>
                 <AlertDescription>
                   第三者に見せると、過去と将来の暗号文を復号されるおそれがあります。
                 </AlertDescription>

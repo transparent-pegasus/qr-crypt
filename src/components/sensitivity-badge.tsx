@@ -22,7 +22,7 @@ export function SensitivityBadge({ sensitivity }: { sensitivity: Sensitivity }) 
   return (
     <Badge variant="destructive" className="gap-1">
       <TriangleAlert aria-hidden="true" className="size-3.5" />
-      最高機密
+      機密情報
     </Badge>
   )
 }

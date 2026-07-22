@@ -23,7 +23,7 @@ export function SensitiveDataWarning({
     <div className="space-y-3">
       <Alert variant="destructive">
         <TriangleAlert aria-hidden="true" className="size-4" />
-        <AlertTitle>最高機密の情報です</AlertTitle>
+        <AlertTitle>機密情報です</AlertTitle>
         <AlertDescription>{SECRET_QR_WARNING}</AlertDescription>
       </Alert>
       {strong && (

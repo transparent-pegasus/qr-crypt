@@ -28,7 +28,7 @@ test("共通鍵生成から暗号文 QR の保存、改名、削除、鍵全消�
   await initialWarning.getByRole("button", { name: "表示する" }).click()
 
   const keyQrDialog = page.getByRole("dialog", { name: /共通鍵QR/ })
-  await expect(keyQrDialog.getByText("最高機密の情報です")).toBeVisible()
+  await expect(keyQrDialog.getByText("機密情報です")).toBeVisible()
   const keyQrSave = keyQrDialog.getByRole("button", { name: "保存", exact: true })
   await expect(keyQrSave).toBeDisabled()
   await keyQrDialog.getByRole("checkbox", { name: "リスクを理解しました" }).check()
