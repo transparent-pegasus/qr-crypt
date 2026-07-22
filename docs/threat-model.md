@@ -8,7 +8,7 @@
 | AES 共通鍵 | IndexedDB(CryptoKey, extractable — QR 交換仕様上の要件) | 最高 |
 | RSA 秘密鍵 | IndexedDB(CryptoKey, **non-extractable**) | 最高 |
 | 共通鍵 QR / 秘密鍵バックアップ QR(将来) | IndexedDB `qrArtifacts` / 画像出力 | 最高 |
-| 暗号文 QR | 同上 | 機密(鍵無しでは復号不能) |
+| 暗号文 QR | 永続化しない(セッションメモリー+利用者明示のエクスポートのみ) | 機密(鍵無しでは復号不能) |
 | 公開鍵 QR | 同上 | 公開 |
 | 設定(方式・EC レベル等) | IndexedDB / テーマのみ localStorage | 低 |
 
@@ -48,7 +48,7 @@
 | T8 | ブラウザー内平文の残留 | タブ放置・端末貸与 | 暗号化後自動消去は既定 ON、バックグラウンド自動消去も既定 ON・固定遅延、「すべての平文を消去」、リロード非復元 | メモリーフォレンジック(非目標 1/5) |
 | T9 | IV 再利用による GCM 破壊 | 実装バグ | IV は暗号化毎に CSPRNG 12B。再利用検出テスト・鍵毎新規生成。カウンター方式を採らず状態を持たない | 2^-96 衝突(無視可能水準) |
 | T10 | ダウングレード・混同攻撃 | alg/type 書き換え | AAD に algorithm/type/v を封入(書き換えはタグ検証で失敗)、未知バージョン・方式は拒否 | — |
-| T11 | ストレージ経由の情報漏洩 | localStorage 誤用 | localStorage はテーマのみ(自動テストで検査)、平文非保存テスト、QR ペイロードは IndexedDB のみ | 端末窃取+プロファイル抽出(非目標 5) |
+| T11 | ストレージ経由の情報漏洩 | localStorage 誤用・IndexedDB 残存・エクスポート先 | アプリ管理下の IndexedDB/localStorage にはメッセージ暗号文を永続化しない(セッションメモリー+利用者明示のエクスポートのみ)。localStorage はテーマのみ(自動テストで検査)、平文非保存テスト、鍵系 QR のみ IndexedDB。利用者明示の PNG/SVG/ZIP ダウンロードとクリップボードは OS・ブラウザー・同期先に残り得て wipe/purge の対象外。v2 migration purge も論理削除であり物理回収不能を保証しない | 端末窃取+プロファイル抽出(非目標 5)。明示エクスポート先の残存は wipe/purge 外 |
 | T12 | カメラの不正利用 | 常時カメラ | 読取モーダル表示中のみ getUserMedia、閉鎖時トラック停止、Permissions-Policy camera=(self) | カメラマルウェア(非目標 3) |
 
 T8/T11 横断対策として、OnlineGate はオンライン中の全機能を遮断し、offline→online 遷移時に TransientClear を発火して平文・復号結果・結果ペイロードを即時消去する。オフライン表示自体を安全性の証明とは扱わない。
