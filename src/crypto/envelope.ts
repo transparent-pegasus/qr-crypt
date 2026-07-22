@@ -13,18 +13,6 @@ export interface AesMessageEnvelopeV1 {
   aad: Uint8Array
 }
 
-export interface RsaHybridEnvelopeV1 {
-  v: 1
-  type: "message"
-  algorithm: "RSA-OAEP-3072+A256GCM"
-  recipientKeyId: string
-  createdAt: number
-  wrappedKey: Uint8Array
-  iv: Uint8Array
-  ciphertext: Uint8Array
-  aad: Uint8Array
-}
-
 export interface SymmetricKeyEnvelopeV1 {
   v: 1
   type: "symmetric-key"
@@ -43,7 +31,7 @@ export interface PublicKeyEnvelopeV1 {
   spki: Uint8Array
 }
 
-export type MessageEnvelope = AesMessageEnvelopeV1 | RsaHybridEnvelopeV1
+export type MessageEnvelope = AesMessageEnvelopeV1
 
 export type AnyEnvelopeV1 = MessageEnvelope | SymmetricKeyEnvelopeV1 | PublicKeyEnvelopeV1
 
@@ -51,7 +39,6 @@ export interface AadFields {
   v: number
   type: string
   algorithm: string
-  // RSA ハイブリッドでは recipientKeyId を渡す(docs/qr-protocol.md §4)
   keyId: string
   createdAt: number
 }

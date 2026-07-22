@@ -1,10 +1,10 @@
 // QR 生成(spec §13)。ペイロード文字列(ASCII)のみを受け取る —
 // 平文をこのモジュールへ渡してはならない(spec §13/plan C11)。
-import type { Preferences, QrArtifactKind, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
+import type { Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import * as QRCode from "qrcode"
 import { buildAad } from "@/crypto/envelope"
 import { AppError, toAppError } from "@/crypto/errors"
-import { MAX_PLAINTEXT_BYTES, WRAPPED_KEY_BYTES } from "@/lib/limits"
+import { MAX_PLAINTEXT_BYTES } from "@/lib/limits"
 import { encodeEnvelopeToPayload } from "@/qr/payload"
 
 export type { QrEcLevel } from "@/schemas/domain"
@@ -26,12 +26,16 @@ export function payloadFits(payload: string, ecLevel: QrEcLevel): boolean {
   return payload.length <= QR_BYTE_CAPACITY[ecLevel]
 }
 
-// EC レベル政策(plan §12-3): 暗号文のみ設定に従い、鍵系 QR は常に H
+// EC レベル政策(plan2.2.1 §E-10): v1 単枚メッセージだけ設定に従い、
+// 永続化する鍵 QR は H、OCF2 フレームは Q に固定する。
+export type QrPayloadEcKind = "message" | "stored-key" | "multipart-frame"
+
 export function ecLevelFor(
-  kind: QrArtifactKind,
+  kind: QrPayloadEcKind,
   prefs: Pick<Preferences, "qrErrorCorrection">,
 ): QrEcLevel {
-  return kind === "ciphertext" ? prefs.qrErrorCorrection : "H"
+  if (kind === "message") return prefs.qrErrorCorrection
+  return kind === "multipart-frame" ? "Q" : "H"
 }
 
 export interface QrRenderOptions {
@@ -85,7 +89,7 @@ export function estimatePayloadChars(
   plaintextBytes: number,
   algorithm: UiAlgorithm,
 ): number {
-  if (algorithm !== "A256GCM" && algorithm !== "RSA-HYBRID") {
+  if (algorithm !== "A256GCM") {
     throw new AppError("UNSUPPORTED_ALGORITHM")
   }
   if (
@@ -98,39 +102,19 @@ export function estimatePayloadChars(
   const keyId = "A".repeat(22)
   const createdAt = 1_700_000_000_000
   const ciphertext = new Uint8Array(plaintextBytes + 16)
-  if (algorithm === "A256GCM") {
-    const aad = buildAad({
-      v: 1,
-      type: "message",
-      algorithm: "A256GCM",
-      keyId,
-      createdAt,
-    })
-    return encodeEnvelopeToPayload({
-      v: 1,
-      type: "message",
-      algorithm: "A256GCM",
-      keyId,
-      createdAt,
-      iv: new Uint8Array(12),
-      ciphertext,
-      aad,
-    }).length
-  }
   const aad = buildAad({
     v: 1,
     type: "message",
-    algorithm: "RSA-OAEP-3072+A256GCM",
+    algorithm: "A256GCM",
     keyId,
     createdAt,
   })
   return encodeEnvelopeToPayload({
     v: 1,
     type: "message",
-    algorithm: "RSA-OAEP-3072+A256GCM",
-    recipientKeyId: keyId,
+    algorithm: "A256GCM",
+    keyId,
     createdAt,
-    wrappedKey: new Uint8Array(WRAPPED_KEY_BYTES),
     iv: new Uint8Array(12),
     ciphertext,
     aad,

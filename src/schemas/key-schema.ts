@@ -6,10 +6,10 @@ import type {
   PostQuantumIdentity,
   PqPublicBundleRecord,
   QrArtifactKind,
+  Sensitivity,
   StoredKeyRecord,
   StoredQrArtifact,
 } from "@/schemas/domain"
-import { sensitivityForKind } from "@/schemas/domain"
 import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
 import { decodePayload } from "@/qr/payload"
 
@@ -152,7 +152,19 @@ export function validateStoredKeyRecord(value: unknown): StoredKeyRecord {
 // v1 read/migration boundary. This deliberately retains ciphertext so the v2
 // versionchange transaction can classify and purge old rows before active reads.
 export type LegacyStoredKeyRecordV1 = StoredKeyRecord
-export type LegacyStoredQrArtifactV1 = StoredQrArtifact
+export interface LegacyStoredQrArtifactV1 {
+  id: string
+  name: string
+  kind: QrArtifactKind | "ciphertext"
+  sensitivity: Sensitivity
+  algorithm: string
+  payload: string
+  payloadSha256: string
+  byteLength: number
+  createdAt: number
+  keyId?: string
+  lastViewedAt?: number
+}
 
 export const legacyStoredQrArtifactV1Schema = z
   .object({
@@ -178,16 +190,20 @@ export function validateLegacyStoredQrArtifactV1(
   value: unknown,
 ): LegacyStoredQrArtifactV1 {
   const artifact = legacyStoredQrArtifactV1Schema.parse(value)
-  if (artifact.sensitivity !== sensitivityForKind(artifact.kind)) {
+  const expectedSensitivity =
+    artifact.kind === "public-key"
+      ? "public"
+      : artifact.kind === "ciphertext"
+        ? "confidential"
+        : "secret"
+  if (artifact.sensitivity !== expectedSensitivity) {
     throw new Error("invalid QR sensitivity")
   }
   return artifact as LegacyStoredQrArtifactV1
 }
 
-export type ActiveStoredQrArtifactKind = Exclude<QrArtifactKind, "ciphertext">
-export type ActiveStoredQrArtifact = Omit<StoredQrArtifact, "kind"> & {
-  kind: ActiveStoredQrArtifactKind
-}
+export type ActiveStoredQrArtifactKind = QrArtifactKind
+export type ActiveStoredQrArtifact = StoredQrArtifact
 
 const activeQrArtifactCommon = {
   id: keyIdSchema,

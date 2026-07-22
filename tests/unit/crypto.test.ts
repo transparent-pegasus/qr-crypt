@@ -2,16 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { decryptWithAesKey, encryptWithAesKey, generateAesKey } from "@/crypto/aes-gcm"
 import { buildAad, type AesMessageEnvelopeV1 } from "@/crypto/envelope"
 import { fingerprintAesKey, formatFingerprintDisplay } from "@/crypto/fingerprint"
-import {
-  exportPublicKeySpki,
-  importAesKeyRaw,
-  importPublicKeySpki,
-} from "@/crypto/key-import-export"
-import {
-  decryptRsaHybrid,
-  encryptRsaHybrid,
-  generateRsaKeyPair,
-} from "@/crypto/rsa-hybrid"
+import { importAesKeyRaw } from "@/crypto/key-import-export"
 import { toOwnedArrayBuffer, utf8ToBytes } from "@/lib/bytes"
 import { MAX_PLAINTEXT_BYTES } from "@/lib/limits"
 import { encodeEnvelopeToPayload } from "@/qr/payload"
@@ -196,91 +187,5 @@ describe("AES-256-GCM", () => {
       "OCM1:uQAIYXYBZHR5cGVnbWVzc2FnZWlhbGdvcml0aG1nQTI1NkdDTWVrZXlJZHZBQUFBQUFBQUFBQUFBQUFBQUFBQUFBaWNyZWF0ZWRBdPtCeLz-VoAAAGJpdkygoaKjpKWmp6ipqqtqY2lwaGVydGV4dFgmA4PGyOtR4Tz7hgV85PlIPfMHqY8GJ0BKNZpnr7nb1xEqf3mh2XFjYWFkWD1PQ0FBRDF8MXxtZXNzYWdlfEEyNTZHQ018QUFBQUFBQUFBQUFBQUFBQUFBQUFBQXwxNzAwMDAwMDAwMDAw",
     )
     expect(await decryptWithAesKey({ key, envelope })).toEqual(plaintext)
-  })
-})
-
-describe("RSA-OAEP-3072 hybrid encryption", () => {
-  it("uses the required key attributes and round-trips all boundary samples", async () => {
-    const pair = await generateRsaKeyPair()
-    const algorithm = pair.publicKey.algorithm as RsaHashedKeyAlgorithm
-    expect(algorithm.modulusLength).toBe(3072)
-    expect(Array.from(algorithm.publicExponent)).toEqual([1, 0, 1])
-    expect(algorithm.hash.name).toBe("SHA-256")
-    expect(pair.publicKey.extractable).toBe(true)
-    expect(pair.privateKey.extractable).toBe(false)
-    expect(pair.publicKey.usages).toEqual(["encrypt", "wrapKey"])
-    expect(pair.privateKey.usages).toEqual(["decrypt", "unwrapKey"])
-
-    for (const plaintext of [
-      utf8ToBytes("日".repeat(30)),
-      utf8ToBytes("RSA🔐emoji"),
-      new Uint8Array(),
-      new Uint8Array(MAX_PLAINTEXT_BYTES).fill(0x42),
-    ]) {
-      const envelope = await encryptRsaHybrid({
-        publicKey: pair.publicKey,
-        recipientKeyId: KEY_ID,
-        plaintext,
-        now: NOW,
-      })
-      expect(envelope.wrappedKey).toHaveLength(384)
-      expect(await decryptRsaHybrid({ privateKey: pair.privateKey, envelope })).toEqual(
-        plaintext,
-      )
-    }
-  })
-
-  it("rejects a wrong private key, wrapped/ciphertext tamper, and AAD tamper", async () => {
-    const pair = await generateRsaKeyPair()
-    const wrongPair = await generateRsaKeyPair()
-    const envelope = await encryptRsaHybrid({
-      publicKey: pair.publicKey,
-      recipientKeyId: KEY_ID,
-      plaintext: utf8ToBytes("hybrid"),
-      now: NOW,
-    })
-    for (const candidate of [
-      envelope,
-      { ...envelope, wrappedKey: changed(envelope.wrappedKey) },
-      { ...envelope, ciphertext: changed(envelope.ciphertext) },
-      { ...envelope, aad: changed(envelope.aad) },
-    ]) {
-      const privateKey = candidate === envelope ? wrongPair.privateKey : pair.privateKey
-      await expect(
-        decryptRsaHybrid({ privateKey, envelope: candidate }),
-      ).rejects.toMatchObject({
-        code: "DECRYPTION_FAILED",
-      })
-    }
-    for (const length of [11, 13]) {
-      await expect(
-        decryptRsaHybrid({
-          privateKey: pair.privateKey,
-          envelope: { ...envelope, iv: new Uint8Array(length) },
-        }),
-      ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
-    }
-  })
-
-  it("rejects RSA public keys with wrong size, exponent, or malformed SPKI", async () => {
-    const variants = [
-      { modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]) },
-      { modulusLength: 4096, publicExponent: new Uint8Array([1, 0, 1]) },
-      { modulusLength: 3072, publicExponent: new Uint8Array([3]) },
-    ]
-    for (const variant of variants) {
-      const pair = await crypto.subtle.generateKey(
-        { name: "RSA-OAEP", hash: "SHA-256", ...variant },
-        false,
-        ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
-      )
-      const spki = await exportPublicKeySpki(pair.publicKey)
-      await expect(importPublicKeySpki(spki)).rejects.toMatchObject({
-        code: "UNSUPPORTED_ALGORITHM",
-      })
-    }
-    await expect(importPublicKeySpki(new Uint8Array([1, 2, 3]))).rejects.toMatchObject({
-      code: "INVALID_QR_PAYLOAD",
-    })
   })
 })

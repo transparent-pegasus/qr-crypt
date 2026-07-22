@@ -10,7 +10,6 @@ import {
   KEY_ID_PATTERN,
   MAX_AAD_BYTES,
   MAX_CIPHERTEXT_BYTES,
-  WRAPPED_KEY_BYTES,
 } from "@/lib/limits"
 
 const keyIdSchema = z.string().regex(KEY_ID_PATTERN)
@@ -32,20 +31,6 @@ const aesMessageSchema = z
     algorithm: z.literal("A256GCM"),
     keyId: keyIdSchema,
     createdAt: createdAtSchema,
-    iv: exactBytes(IV_BYTES),
-    ciphertext: ciphertextSchema,
-    aad: aadSchema,
-  })
-  .strict()
-
-const rsaMessageSchema = z
-  .object({
-    v: z.literal(1),
-    type: z.literal("message"),
-    algorithm: z.literal("RSA-OAEP-3072+A256GCM"),
-    recipientKeyId: keyIdSchema,
-    createdAt: createdAtSchema,
-    wrappedKey: exactBytes(WRAPPED_KEY_BYTES),
     iv: exactBytes(IV_BYTES),
     ciphertext: ciphertextSchema,
     aad: aadSchema,
@@ -113,10 +98,10 @@ export function validateDecodedEnvelope(
 
   let schema: z.ZodType<AnyEnvelopeV1>
   if (expectedType === "message") {
-    if (value.algorithm !== "A256GCM" && value.algorithm !== "RSA-OAEP-3072+A256GCM") {
+    if (value.algorithm !== "A256GCM") {
       throw new AppError("UNSUPPORTED_ALGORITHM")
     }
-    schema = value.algorithm === "A256GCM" ? aesMessageSchema : rsaMessageSchema
+    schema = aesMessageSchema
   } else if (expectedType === "symmetric-key") {
     if (value.algorithm !== "A256GCM") {
       throw new AppError("UNSUPPORTED_ALGORITHM")

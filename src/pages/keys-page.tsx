@@ -1,39 +1,23 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   AlertCircle,
+  CheckCircle2,
   Clipboard,
   Download,
   FileCode2,
-  FileText,
   KeyRound,
   LoaderCircle,
-  MoreVertical,
-  Pencil,
   QrCode,
-  Save,
-  ScanLine,
+  RefreshCw,
   ShieldCheck,
   Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
-import {
-  buildPublicKeyEnvelope,
-  buildSymmetricKeyEnvelope,
-  createRsaKeyPairRecord,
-  createSymmetricKeyRecord,
-  importPublicKeyRecord,
-  importSymmetricKeyRecord,
-} from "@/crypto/key-generation"
-import { AppError, toAppError } from "@/crypto/errors"
-import { generateArtifactId } from "@/crypto/random"
 import { useFeatureSupport, useSensitiveSession } from "@/app/providers"
+import { AnimatedQrFrames } from "@/components/animated-qr-frames"
+import { MultipartScanPanel } from "@/components/multipart-scan-panel"
 import { QrDisplay } from "@/components/qr-display"
 import { QrScannerDialog } from "@/components/qr-scanner-dialog"
-import { SensitivityBadge } from "@/components/sensitivity-badge"
-import {
-  SensitiveDataWarning,
-  SECRET_QR_WARNING,
-} from "@/components/sensitive-data-warning"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
@@ -48,6 +32,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -56,18 +41,39 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { formatDateTime, formatFingerprint } from "@/features/presentation"
+import { Textarea } from "@/components/ui/textarea"
+import { AppError, toAppError } from "@/crypto/errors"
+import {
+  buildSymmetricKeyEnvelope,
+  createSymmetricKeyRecord,
+  importSymmetricKeyRecord,
+} from "@/crypto/key-generation"
+import {
+  decodeDsaPublicKeyEnvelopeV2,
+  decodeKemPublicKeyEnvelopeV2,
+  decodePublicIdentityBundleV2,
+  encodeDsaPublicKeyEnvelopeV2,
+  encodeKemPublicKeyEnvelopeV2,
+  encodePublicIdentityBundleV2,
+} from "@/crypto/pq/canonical-cbor"
+import { buildPublicBundle, createIdentity, rotateIdentity } from "@/crypto/pq/identity"
+import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
+import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
+import { generateArtifactId, generateKeyId } from "@/crypto/random"
+import { MultipartScanSession } from "@/features/multipart-scan-session"
+import {
+  formatDateTime,
+  formatFingerprint,
+  formatSuggestedDate,
+} from "@/features/presentation"
 import { useKeys } from "@/hooks/use-keys"
+import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
+import { usePqRecords } from "@/hooks/use-pq-records"
+import { usePreferences } from "@/hooks/use-preferences"
+import { ecLevelFor } from "@/qr/encode"
 import {
   buildExportFileName,
   copyTextToClipboard,
@@ -75,713 +81,798 @@ import {
   qrSvgBlob,
   triggerDownload,
 } from "@/qr/export-image"
+import { splitIntoFrames } from "@/qr/multipart/split"
 import { decodePayload, encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
-import type { QrArtifactKind, StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
-import { sensitivityForKind } from "@/schemas/domain"
+import type {
+  DsaPublicKeyEnvelopeV2,
+  KemPublicKeyEnvelopeV2,
+  PostQuantumIdentity,
+  PqPublicBundleRecord,
+  PublicIdentityBundleV2,
+  QrFrameV2,
+  StoredKeyRecord,
+  StoredQrArtifact,
+} from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { keyNameSchema, qrNameSchema } from "@/schemas/key-schema"
+import { deleteKeyRecord, saveKeyRecord } from "@/storage/key-repository"
 import {
-  deleteKeyRecord,
-  findKeyByFingerprint,
-  renameKeyRecord,
-  saveKeyRecord,
-} from "@/storage/key-repository"
+  confirmBundleFingerprint,
+  deleteBundle,
+  revokeBundle,
+  saveBundle,
+} from "@/storage/pq-bundle-repository"
+import {
+  revokeIdentity,
+  saveIdentity,
+  saveRotation,
+} from "@/storage/pq-identity-repository"
 import { saveQrArtifact } from "@/storage/qr-repository"
 
-type KeysTab = "symmetric" | "rsa" | "import"
-type ImportTarget = "symmetric-key" | "public-key"
+type KeysTab = "symmetric" | "identity" | "kem" | "signing" | "bundle" | "scan"
 
-interface KeyQrSession {
-  record: StoredKeyRecord
-  payload: string
-  kind: "symmetric-key" | "public-key"
-  name: string
+interface FramedQrSession {
+  title: string
+  outputName: string
+  frames: QrFrameV2[]
 }
 
+interface SymmetricQrSession {
+  record: StoredKeyRecord
+  payload: string
+  name: string
+  acknowledged: boolean
+}
+
+type SingleKeyRead = KemPublicKeyEnvelopeV2 | DsaPublicKeyEnvelopeV2
+
 export function KeysPage() {
-  const { keys, loading, error: keysError, refresh } = useKeys()
   const { camera } = useFeatureSupport()
   const { setSensitiveSession, resetSensitiveSession } = useSensitiveSession()
+  const { preferences } = usePreferences()
+  const { keys, loading: keysLoading, error: keysError, refresh: refreshKeys } = useKeys()
+  const {
+    identities,
+    bundles,
+    loading: pqLoading,
+    error: pqError,
+    refresh: refreshPq,
+  } = usePqRecords()
+  const getPqClient = usePqCryptoClient()
   const [tab, setTab] = useState<KeysTab>("symmetric")
-  const [symmetricName, setSymmetricName] = useState("")
-  const [rsaName, setRsaName] = useState("")
-  const [generating, setGenerating] = useState(false)
-  const [qrBuilding, setQrBuilding] = useState(false)
+  const [keyName, setKeyName] = useState("")
+  const [importPayload, setImportPayload] = useState("")
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [duplicateKeyName, setDuplicateKeyName] = useState<string | null>(null)
-  const [secretWarningRecord, setSecretWarningRecord] = useState<StoredKeyRecord | null>(
-    null,
-  )
-  const [qrSession, setQrSession] = useState<KeyQrSession | null>(null)
-  const [qrRiskApproved, setQrRiskApproved] = useState(false)
+  const [framedQr, setFramedQr] = useState<FramedQrSession | null>(null)
+  const [symmetricQr, setSymmetricQr] = useState<SymmetricQrSession | null>(null)
   const [duplicateArtifact, setDuplicateArtifact] = useState<StoredQrArtifact | null>(
     null,
   )
-  const [renameTarget, setRenameTarget] = useState<StoredKeyRecord | null>(null)
-  const [renameValue, setRenameValue] = useState("")
-  const [deleteTarget, setDeleteTarget] = useState<StoredKeyRecord | null>(null)
-  const [deleteApproved, setDeleteApproved] = useState(false)
-  const [importTarget, setImportTarget] = useState<ImportTarget>("symmetric-key")
+  const [pendingBundle, setPendingBundle] = useState<PqPublicBundleRecord | null>(null)
+  const [fingerprintChecked, setFingerprintChecked] = useState(false)
+  const [singleKeyRead, setSingleKeyRead] = useState<SingleKeyRead | null>(null)
+  const [singleKeyFingerprint, setSingleKeyFingerprint] = useState("")
   const [scannerOpen, setScannerOpen] = useState(false)
-  const [importCandidate, setImportCandidate] = useState<StoredKeyRecord | null>(null)
-  const [importName, setImportName] = useState("")
-  const [importTrusted, setImportTrusted] = useState(false)
-  const [importDuplicateName, setImportDuplicateName] = useState<string | null>(null)
+  const [pendingSymmetricImport, setPendingSymmetricImport] =
+    useState<StoredKeyRecord | null>(null)
+  const [symmetricImportName, setSymmetricImportName] = useState("")
+  const [symmetricImportAcknowledged, setSymmetricImportAcknowledged] = useState(false)
 
   const symmetricKeys = useMemo(
     () => keys.filter((key) => key.kind === "symmetric"),
     [keys],
   )
-  const rsaKeys = useMemo(() => keys.filter((key) => key.kind !== "symmetric"), [keys])
-  const secretVisible = qrSession?.kind === "symmetric-key"
+  const legacyKeys = useMemo(
+    () => keys.filter((key) => key.kind === "rsa-key-pair" || key.kind === "public-key"),
+    [keys],
+  )
+  const scanSession = useMemo(
+    () => new MultipartScanSession(preferences.transferTimeoutMinutes),
+    [preferences.transferTimeoutMinutes],
+  )
 
   useEffect(() => {
     setSensitiveSession({
       hasPlaintext: false,
       hasDecrypted: false,
-      cryptoBusy: generating || qrBuilding,
-      secretVisible,
+      cryptoBusy: busy,
+      secretVisible: symmetricQr !== null || pendingSymmetricImport !== null,
     })
-  }, [generating, qrBuilding, secretVisible, setSensitiveSession])
+  }, [busy, pendingSymmetricImport, setSensitiveSession, symmetricQr])
   useEffect(() => () => resetSensitiveSession(), [resetSensitiveSession])
 
-  const reportDuplicate = async (fingerprint: string) => {
-    const existing = await findKeyByFingerprint(fingerprint)
-    setDuplicateKeyName(existing?.name ?? "既存の鍵")
-  }
-
-  const generateSymmetric = async () => {
-    const parsed = keyNameSchema.safeParse(symmetricName)
+  const createSymmetric = async () => {
+    const parsed = keyNameSchema.safeParse(keyName)
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "鍵名を確認してください。")
       return
     }
-    setGenerating(true)
+    setBusy(true)
     setError(null)
-    setDuplicateKeyName(null)
     try {
-      const record = await createSymmetricKeyRecord(parsed.data, Date.now())
-      try {
-        await saveKeyRecord(record)
-      } catch (caught: unknown) {
-        if (caught instanceof AppError && caught.code === "DUPLICATE_KEY") {
-          await reportDuplicate(record.fingerprint)
-          return
-        }
-        throw caught
-      }
-      setSymmetricName("")
-      await refresh()
-      toast.success("共通鍵を生成しました")
-    } catch (caught: unknown) {
+      await saveKeyRecord(await createSymmetricKeyRecord(parsed.data, Date.now()))
+      setKeyName("")
+      await refreshKeys()
+      toast.success("共通鍵を作成しました")
+    } catch (caught) {
       setError(toAppError(caught, "STORAGE_FAILED").userMessage)
     } finally {
-      setGenerating(false)
+      setBusy(false)
     }
   }
 
-  const generateRsa = async () => {
-    const parsed = keyNameSchema.safeParse(rsaName)
+  const createPqIdentity = async () => {
+    const parsed = keyNameSchema.safeParse(keyName)
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "鍵ペア名を確認してください。")
+      setError(parsed.error.issues[0]?.message ?? "ID名を確認してください。")
       return
     }
-    setGenerating(true)
-    setError(null)
-    setDuplicateKeyName(null)
-    try {
-      const record = await createRsaKeyPairRecord(parsed.data, Date.now())
-      try {
-        await saveKeyRecord(record)
-      } catch (caught: unknown) {
-        if (caught instanceof AppError && caught.code === "DUPLICATE_KEY") {
-          await reportDuplicate(record.fingerprint)
-          return
-        }
-        throw caught
-      }
-      setRsaName("")
-      await refresh()
-      toast.success("公開鍵ペアを生成しました")
-    } catch (caught: unknown) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  const openKeyQr = async (
-    record: StoredKeyRecord,
-    kind: "symmetric-key" | "public-key",
-  ) => {
-    setQrBuilding(true)
+    setBusy(true)
     setError(null)
     try {
-      const envelope =
-        kind === "symmetric-key"
-          ? await buildSymmetricKeyEnvelope(record)
-          : await buildPublicKeyEnvelope(record)
-      const payload = encodeEnvelopeToPayload(envelope)
-      setQrRiskApproved(false)
-      setQrSession({
-        record,
-        payload,
-        kind,
-        name: `${kind === "symmetric-key" ? "共通鍵" : "公開鍵"}-${record.name}`,
+      const identity = await createIdentity({
+        client: getPqClient(),
+        vaultKey: await getOrCreateVaultKey(),
+        name: parsed.data,
+        profile: "balanced",
+        now: Date.now(),
       })
-    } catch (caught: unknown) {
-      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+      await saveIdentity(identity)
+      setKeyName("")
+      await refreshPq()
+      toast.success("ポスト量子IDを作成しました")
+    } catch (caught) {
+      setError(toAppError(caught, "ENCRYPTION_FAILED").userMessage)
     } finally {
-      setQrBuilding(false)
-      setSecretWarningRecord(null)
+      setBusy(false)
     }
   }
 
-  const buildArtifact = async (): Promise<StoredQrArtifact | null> => {
-    if (!qrSession) return null
-    const parsed = qrNameSchema.safeParse(qrSession.name)
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "QR名を確認してください。")
+  const showSymmetricQr = async (record: StoredKeyRecord) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const envelope = await buildSymmetricKeyEnvelope(record)
+      setSymmetricQr({
+        record,
+        payload: encodeEnvelopeToPayload(envelope),
+        name: `${record.name} QR`,
+        acknowledged: false,
+      })
+    } catch (caught) {
+      setError(toAppError(caught, "KEY_TYPE_MISMATCH").userMessage)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const buildSymmetricArtifact = async (): Promise<StoredQrArtifact | null> => {
+    if (!symmetricQr) return null
+    const parsedName = qrNameSchema.safeParse(symmetricQr.name)
+    if (!parsedName.success) {
+      setError(parsedName.error.issues[0]?.message ?? "QR名を確認してください。")
       return null
     }
-    const kind: QrArtifactKind = qrSession.kind
     return {
       id: generateArtifactId(),
-      name: parsed.data,
-      kind,
-      sensitivity: sensitivityForKind(kind),
-      algorithm: qrSession.record.algorithm,
-      payload: qrSession.payload,
-      payloadSha256: await payloadSha256Hex(qrSession.payload),
-      byteLength: new TextEncoder().encode(qrSession.payload).byteLength,
+      name: parsedName.data,
+      kind: "symmetric-key",
+      sensitivity: "secret",
+      algorithm: "A256GCM",
+      payload: symmetricQr.payload,
+      payloadSha256: await payloadSha256Hex(symmetricQr.payload),
+      byteLength: new TextEncoder().encode(symmetricQr.payload).byteLength,
       createdAt: Date.now(),
-      keyId: qrSession.record.id,
+      keyId: symmetricQr.record.id,
     }
   }
 
-  const saveCurrentQr = async () => {
+  const saveSymmetricQr = async () => {
+    if (!symmetricQr?.acknowledged) return
+    setBusy(true)
+    setError(null)
     try {
-      const artifact = await buildArtifact()
+      const artifact = await buildSymmetricArtifact()
       if (!artifact) return
       await saveQrArtifact(artifact)
-      toast.success("鍵QRを保存しました")
-    } catch (caught: unknown) {
+      toast.success("共通鍵QRを保存しました")
+    } catch (caught) {
       if (caught instanceof AppError && caught.code === "DUPLICATE_QR") {
-        const artifact = await buildArtifact()
+        const artifact = await buildSymmetricArtifact()
         if (artifact) setDuplicateArtifact(artifact)
         return
       }
       setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+    } finally {
+      setBusy(false)
     }
   }
 
   const saveDuplicateQr = async () => {
     if (!duplicateArtifact) return
+    setBusy(true)
+    setError(null)
     try {
       await saveQrArtifact(duplicateArtifact, { allowDuplicate: true })
       setDuplicateArtifact(null)
-      toast.success("鍵QRを重複保存しました")
-    } catch (caught: unknown) {
+      toast.success("共通鍵QRを重複保存しました")
+    } catch (caught) {
       setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+    } finally {
+      setBusy(false)
     }
   }
 
-  const exportCurrentQr = async (format: "png" | "svg") => {
-    if (!qrSession) return
-    const parsed = qrNameSchema.safeParse(qrSession.name)
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "QR名を確認してください。")
+  const exportSymmetricQr = async (format: "png" | "svg") => {
+    if (!symmetricQr?.acknowledged) return
+    const parsedName = qrNameSchema.safeParse(symmetricQr.name)
+    if (!parsedName.success) {
+      setError(parsedName.error.issues[0]?.message ?? "QR名を確認してください。")
       return
     }
+    setBusy(true)
+    setError(null)
     try {
-      const options = { ecLevel: "H" as const, size: env.qrRenderSize }
+      const ecLevel = ecLevelFor("stored-key", preferences)
       const blob =
         format === "png"
-          ? await qrPngBlob(qrSession.payload, options)
-          : await qrSvgBlob(qrSession.payload, options)
-      triggerDownload(blob, buildExportFileName(parsed.data, qrSession.record.id, format))
-    } catch (caught: unknown) {
+          ? await qrPngBlob(symmetricQr.payload, {
+              ecLevel,
+              size: env.qrRenderSize,
+            })
+          : await qrSvgBlob(symmetricQr.payload, { ecLevel })
+      triggerDownload(
+        blob,
+        buildExportFileName(parsedName.data, symmetricQr.record.id, format),
+      )
+    } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+    } finally {
+      setBusy(false)
     }
   }
 
-  const copyCurrentQr = async () => {
-    if (!qrSession) return
+  const copySymmetricQr = async () => {
+    if (!symmetricQr?.acknowledged) return
     try {
-      await copyTextToClipboard(qrSession.payload)
-      toast.success(
-        qrSession.kind === "symmetric-key"
-          ? "コピーしました。クリップボード同期に注意してください"
-          : "公開鍵ペイロードをコピーしました",
-      )
+      await copyTextToClipboard(symmetricQr.payload)
+      toast.success("コピーしました。クリップボード同期に注意してください")
     } catch {
       setError("コピーできませんでした。ブラウザーの権限を確認してください。")
     }
   }
 
-  const exportPublicKeyText = async (record: StoredKeyRecord) => {
-    setQrBuilding(true)
+  const showIdentityQr = async (
+    identity: PostQuantumIdentity,
+    kind: "bundle" | "kem" | "signing",
+  ) => {
+    setBusy(true)
     setError(null)
     try {
-      const payload = encodeEnvelopeToPayload(await buildPublicKeyEnvelope(record))
-      const blob = new Blob([payload], { type: "text/plain;charset=utf-8" })
-      triggerDownload(blob, buildExportFileName(record.name, record.id, "txt"))
-    } catch (caught: unknown) {
+      let artifactType: "pq-public-identity" | "pq-kem-public-key" | "pq-dsa-public-key"
+      let artifactBytes: Uint8Array
+      let title: string
+      if (kind === "bundle") {
+        artifactType = "pq-public-identity"
+        artifactBytes = encodePublicIdentityBundleV2(buildPublicBundle(identity))
+        title = `${identity.name} 公開鍵セット`
+      } else if (kind === "kem") {
+        artifactType = "pq-kem-public-key"
+        artifactBytes = encodeKemPublicKeyEnvelopeV2({
+          version: 2,
+          type: "pq-kem-public-key",
+          identityId: identity.id,
+          name: identity.name,
+          algorithm: identity.kem.algorithm,
+          keyId: identity.kem.keyId,
+          publicKey: identity.kem.publicKey,
+          createdAt: identity.createdAt,
+        })
+        title = `${identity.name} 暗号化用公開鍵`
+      } else {
+        artifactType = "pq-dsa-public-key"
+        artifactBytes = encodeDsaPublicKeyEnvelopeV2({
+          version: 2,
+          type: "pq-dsa-public-key",
+          identityId: identity.id,
+          name: identity.name,
+          algorithm: identity.signing.algorithm,
+          keyId: identity.signing.keyId,
+          publicKey: identity.signing.publicKey,
+          createdAt: identity.createdAt,
+        })
+        title = `${identity.name} 署名検証用公開鍵`
+      }
+      setFramedQr({
+        title,
+        outputName: `${title}-${formatSuggestedDate(Date.now())}`,
+        frames: await splitIntoFrames({
+          artifactType,
+          artifactBytes,
+          frameBytes: preferences.frameBytes,
+        }),
+      })
+    } catch (caught) {
+      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const rotate = async (identity: PostQuantumIdentity) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const rotated = await rotateIdentity({
+        client: getPqClient(),
+        vaultKey: await getOrCreateVaultKey(),
+        current: identity,
+        now: Date.now(),
+      })
+      await saveRotation(rotated)
+      await refreshPq()
+      toast.success("IDをローテーションしました")
+    } catch (caught) {
+      setError(toAppError(caught, "ENCRYPTION_FAILED").userMessage)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const revoke = async (identity: PostQuantumIdentity) => {
+    setBusy(true)
+    try {
+      await revokeIdentity(identity.id, Date.now())
+      await refreshPq()
+      toast.success("この端末でIDを失効しました")
+    } catch (caught) {
       setError(toAppError(caught, "STORAGE_FAILED").userMessage)
     } finally {
-      setQrBuilding(false)
+      setBusy(false)
     }
   }
 
-  const performRename = async () => {
-    if (!renameTarget) return
-    const parsed = keyNameSchema.safeParse(renameValue)
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "鍵名を確認してください。")
-      return
-    }
-    try {
-      await renameKeyRecord(renameTarget.id, parsed.data)
-      setRenameTarget(null)
-      await refresh()
-      toast.success("鍵名を変更しました")
-    } catch (caught: unknown) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
-    }
-  }
-
-  const performDelete = async () => {
-    if (!deleteTarget) return
-    try {
-      await deleteKeyRecord(deleteTarget.id)
-      setDeleteTarget(null)
-      setDeleteApproved(false)
-      await refresh()
-      toast.success("鍵を削除しました")
-    } catch (caught: unknown) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
-    }
-  }
-
-  const prepareImport = async (payload: string) => {
+  const removeLegacyKeys = async () => {
+    setBusy(true)
     setError(null)
-    setImportCandidate(null)
-    setImportDuplicateName(null)
-    setImportTrusted(false)
     try {
-      const decoded = decodePayload(payload)
-      const now = Date.now()
-      const proposal = decoded.kind === "symmetric-key" ? "共通鍵-取込" : "公開鍵-取込"
-      const candidate =
-        decoded.kind === "symmetric-key"
-          ? await importSymmetricKeyRecord(proposal, decoded.envelope, now)
-          : decoded.kind === "public-key"
-            ? await importPublicKeyRecord(proposal, decoded.envelope, now)
-            : null
-      if (!candidate) {
-        setError("これは暗号文のQRです。読取対象を切り替えてください。")
-        return
-      }
-      const duplicate = await findKeyByFingerprint(candidate.fingerprint)
-      setImportCandidate(candidate)
-      setImportName(proposal)
-      setImportDuplicateName(duplicate?.name ?? null)
-    } catch (caught: unknown) {
-      setError(toAppError(caught, "INVALID_QR_PAYLOAD").userMessage)
+      await Promise.all(legacyKeys.map((key) => deleteKeyRecord(key.id)))
+      await refreshKeys()
+      toast.success("旧形式(RSA)の鍵を削除しました")
+    } catch (caught) {
+      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+    } finally {
+      setBusy(false)
     }
   }
 
-  const saveImportedKey = async () => {
-    if (!importCandidate) return
-    const parsed = keyNameSchema.safeParse(importName)
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "鍵名を確認してください。")
+  const prepareBundleImport = async (bundle: PublicIdentityBundleV2) => {
+    const importedAt = Date.now()
+    const [kemFingerprint, signingFingerprint, identityFingerprint] = await Promise.all([
+      pqKeyFingerprint("kem", bundle.kem.algorithm, bundle.kem.publicKey),
+      pqKeyFingerprint("signing", bundle.signing.algorithm, bundle.signing.publicKey),
+      pqIdentityFingerprint(bundle),
+    ])
+    setFingerprintChecked(false)
+    setPendingBundle({
+      recordId: generateKeyId(),
+      identityId: bundle.identityId,
+      ...(bundle.name === undefined ? {} : { name: bundle.name }),
+      kem: { ...bundle.kem, fingerprint: kemFingerprint },
+      signing: { ...bundle.signing, fingerprint: signingFingerprint },
+      identityFingerprint,
+      trust: "unverified",
+      bundleCreatedAt: bundle.createdAt,
+      importedAt,
+    })
+  }
+
+  const handleSingleKey = async (envelope: SingleKeyRead) => {
+    const fingerprint =
+      envelope.type === "pq-kem-public-key"
+        ? await pqKeyFingerprint("kem", envelope.algorithm, envelope.publicKey)
+        : await pqKeyFingerprint("signing", envelope.algorithm, envelope.publicKey)
+    setSingleKeyRead(envelope)
+    setSingleKeyFingerprint(fingerprint)
+  }
+
+  const importDecoded = async (decoded: ReturnType<typeof decodePayload>) => {
+    switch (decoded.kind) {
+      case "symmetric-key": {
+        const record = await importSymmetricKeyRecord(
+          `取込共通鍵-${formatSuggestedDate(Date.now())}`,
+          decoded.envelope,
+          Date.now(),
+        )
+        setPendingSymmetricImport(record)
+        setSymmetricImportName(record.name)
+        setSymmetricImportAcknowledged(false)
+        return
+      }
+      case "pq-public-identity":
+        await prepareBundleImport(decoded.envelope)
+        return
+      case "pq-kem-public-key":
+      case "pq-dsa-public-key":
+        await handleSingleKey(decoded.envelope)
+        return
+      default:
+        throw new AppError("INVALID_QR_PAYLOAD")
+    }
+  }
+
+  const importPastedPayload = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await importDecoded(decodePayload(importPayload.trim()))
+      setImportPayload("")
+    } catch (caught) {
+      setError(toAppError(caught, "INVALID_QR_PAYLOAD").userMessage)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const importScannedPayload = async (payload: string) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await importDecoded(decodePayload(payload))
+    } catch (caught) {
+      setError(toAppError(caught, "INVALID_QR_PAYLOAD").userMessage)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const savePendingSymmetricImport = async () => {
+    if (!pendingSymmetricImport || !symmetricImportAcknowledged) return
+    const parsedName = keyNameSchema.safeParse(symmetricImportName)
+    if (!parsedName.success) {
+      setError(parsedName.error.issues[0]?.message ?? "鍵名を確認してください。")
       return
     }
+    setBusy(true)
+    setError(null)
     try {
-      await saveKeyRecord({ ...importCandidate, name: parsed.data })
-      setImportCandidate(null)
-      setImportName("")
-      setImportTrusted(false)
-      await refresh()
-      toast.success("鍵を取り込みました")
-    } catch (caught: unknown) {
-      if (caught instanceof AppError && caught.code === "DUPLICATE_KEY") {
-        await reportDuplicate(importCandidate.fingerprint)
-        return
-      }
+      await saveKeyRecord({ ...pendingSymmetricImport, name: parsedName.data })
+      setPendingSymmetricImport(null)
+      setSymmetricImportName("")
+      setSymmetricImportAcknowledged(false)
+      await refreshKeys()
+      toast.success("共通鍵を取り込みました")
+    } catch (caught) {
       setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+    } finally {
+      setBusy(false)
     }
   }
 
-  const copyFingerprint = async (fingerprint: string) => {
+  const savePendingBundle = async (confirmed: boolean) => {
+    if (!pendingBundle || (confirmed && !fingerprintChecked)) return
+    setBusy(true)
+    setError(null)
     try {
-      await copyTextToClipboard(fingerprint)
-      toast.success("完全指紋をコピーしました")
-    } catch {
-      setError("完全指紋をコピーできませんでした。")
+      await saveBundle(pendingBundle)
+      if (confirmed) {
+        await confirmBundleFingerprint(pendingBundle.recordId, Date.now())
+      }
+      setPendingBundle(null)
+      setFingerprintChecked(false)
+      await refreshPq()
+      toast.success(confirmed ? "指紋確認済みで保存しました" : "未確認のまま保存しました")
+    } catch (caught) {
+      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+    } finally {
+      setBusy(false)
     }
   }
 
-  const deleteNeedsStrongConfirmation = Boolean(
-    deleteTarget?.kind === "rsa-key-pair" && deleteTarget.privateKey,
-  )
+  const handleCompletedArtifact = async (args: {
+    artifactType: string
+    artifactBytes: Uint8Array
+  }) => {
+    if (args.artifactType === "pq-public-identity") {
+      await prepareBundleImport(decodePublicIdentityBundleV2(args.artifactBytes))
+      return
+    }
+    if (args.artifactType === "pq-kem-public-key") {
+      await handleSingleKey(decodeKemPublicKeyEnvelopeV2(args.artifactBytes))
+      return
+    }
+    if (args.artifactType === "pq-dsa-public-key") {
+      await handleSingleKey(decodeDsaPublicKeyEnvelopeV2(args.artifactBytes))
+      return
+    }
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
 
   return (
-    <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6">
-      <h2 className="text-[1.375rem] font-bold tracking-tight">鍵管理</h2>
-      <Tabs value={tab} onValueChange={(value) => setTab(value as KeysTab)}>
-        <TabsList className="grid h-auto min-h-11 w-full grid-cols-3">
-          <TabsTrigger value="symmetric" className="min-h-11 cursor-pointer px-2">
-            共通鍵
-          </TabsTrigger>
-          <TabsTrigger value="rsa" className="min-h-11 cursor-pointer px-2">
-            公開鍵ペア
-          </TabsTrigger>
-          <TabsTrigger value="import" className="min-h-11 cursor-pointer px-2">
-            鍵を読み取る
-          </TabsTrigger>
-        </TabsList>
+    <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={busy}>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-[1.375rem] font-bold tracking-tight">鍵</h2>
+        {(keysLoading || pqLoading || busy) && (
+          <LoaderCircle aria-label="処理中" className="size-5 animate-spin" />
+        )}
+      </div>
 
-        <TabsContent value="symmetric" className="space-y-5 pt-3">
-          <Card>
-            <CardHeader className="p-4 pb-3">
-              <CardTitle className="text-base">共通鍵を生成</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 p-4 pt-0">
-              <Label htmlFor="symmetric-key-name">鍵名</Label>
-              <Input
-                id="symmetric-key-name"
-                value={symmetricName}
-                onChange={(event) => setSymmetricName(event.target.value)}
-                className="h-11 text-base focus-visible:ring-2"
-                maxLength={80}
-                placeholder="例: 端末A"
-              />
-              <Button
-                type="button"
-                className="h-11 w-full cursor-pointer focus-visible:ring-2"
-                disabled={generating || !symmetricName.trim()}
-                onClick={() => void generateSymmetric()}
-              >
-                {generating ? (
-                  <LoaderCircle aria-hidden="true" className="animate-spin" />
-                ) : (
-                  <KeyRound aria-hidden="true" />
-                )}
-                {generating ? "生成中…" : "共通鍵を生成"}
-              </Button>
-            </CardContent>
-          </Card>
-          <KeyList
-            keys={symmetricKeys}
-            loading={loading}
-            onShowQr={(record) => setSecretWarningRecord(record)}
-            onExportText={undefined}
-            onRename={(record) => {
-              setRenameTarget(record)
-              setRenameValue(record.name)
-            }}
-            onDelete={(record) => setDeleteTarget(record)}
-            onCopyFingerprint={copyFingerprint}
-          />
-        </TabsContent>
-
-        <TabsContent value="rsa" className="space-y-5 pt-3">
-          {!env.enableRsa ? (
-            <Alert>
-              <AlertCircle aria-hidden="true" className="size-4" />
-              <AlertDescription>このビルドではRSA公開鍵機能が無効です。</AlertDescription>
-            </Alert>
-          ) : (
-            <>
-              <Card>
-                <CardHeader className="p-4 pb-3">
-                  <CardTitle className="text-base">鍵ペアを生成</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 p-4 pt-0">
-                  <Label htmlFor="rsa-key-name">鍵ペア名</Label>
-                  <Input
-                    id="rsa-key-name"
-                    value={rsaName}
-                    onChange={(event) => setRsaName(event.target.value)}
-                    className="h-11 text-base focus-visible:ring-2"
-                    maxLength={80}
-                    placeholder="例: 受信端末"
-                  />
-                  <Button
-                    type="button"
-                    className="h-11 w-full cursor-pointer focus-visible:ring-2"
-                    disabled={generating || !rsaName.trim()}
-                    onClick={() => void generateRsa()}
-                  >
-                    {generating && (
-                      <LoaderCircle aria-hidden="true" className="animate-spin" />
-                    )}
-                    {generating ? "生成中…(数秒かかります)" : "鍵ペアを生成"}
-                  </Button>
-                </CardContent>
-              </Card>
-              <KeyList
-                keys={rsaKeys}
-                loading={loading}
-                onShowQr={(record) => void openKeyQr(record, "public-key")}
-                onExportText={(record) => void exportPublicKeyText(record)}
-                onRename={(record) => {
-                  setRenameTarget(record)
-                  setRenameValue(record.name)
-                }}
-                onDelete={(record) => setDeleteTarget(record)}
-                onCopyFingerprint={copyFingerprint}
-              />
-            </>
-          )}
-        </TabsContent>
-
-        <TabsContent value="import" className="space-y-5 pt-3">
-          <Card>
-            <CardHeader className="p-4 pb-3">
-              <CardTitle className="text-base">読取対象を選択</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 p-4 pt-0">
-              <RadioGroup
-                value={importTarget}
-                onValueChange={(value) => {
-                  setImportTarget(value as ImportTarget)
-                  setImportCandidate(null)
-                  setImportDuplicateName(null)
-                }}
-              >
-                <div className="flex min-h-11 items-center gap-3">
-                  <RadioGroupItem value="symmetric-key" id="scan-symmetric" />
-                  <Label htmlFor="scan-symmetric" className="cursor-pointer">
-                    共通鍵を読み取る
-                  </Label>
-                </div>
-                <div className="flex min-h-11 items-center gap-3">
-                  <RadioGroupItem value="public-key" id="scan-public" />
-                  <Label htmlFor="scan-public" className="cursor-pointer">
-                    公開鍵を読み取る
-                  </Label>
-                </div>
-              </RadioGroup>
-              <Button
-                type="button"
-                className="h-11 w-full cursor-pointer focus-visible:ring-2"
-                disabled={!camera}
-                onClick={() => setScannerOpen(true)}
-              >
-                <ScanLine aria-hidden="true" />
-                カメラを起動
-              </Button>
-              {!camera && (
-                <p className="flex gap-2 text-sm text-muted-foreground">
-                  <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-                  この端末ではカメラを利用できません。
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {importCandidate && (
-            <Card>
-              <CardHeader className="p-4 pb-3">
-                <CardTitle className="text-base">取込内容の確認</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 p-4 pt-0">
-                <div className="grid gap-2 text-sm">
-                  <KeyDetail
-                    label="種別"
-                    value={importCandidate.kind === "symmetric" ? "共通鍵" : "公開鍵"}
-                  />
-                  <KeyDetail label="方式" value={importCandidate.algorithm} mono />
-                  <KeyDetail
-                    label="短縮指紋"
-                    value={formatFingerprint(importCandidate.fingerprint)}
-                    mono
-                  />
-                  <KeyDetail
-                    label="完全 SHA-256 hex"
-                    value={importCandidate.fingerprint}
-                    mono
-                  />
-                  <KeyDetail
-                    label="作成日時"
-                    value={formatDateTime(importCandidate.createdAt)}
-                  />
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  相手の画面の指紋と一致することを確認してください。短縮表示は簡易照合です。厳密な照合には完全指紋を使用してください。
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 cursor-pointer focus-visible:ring-2"
-                  onClick={() => void copyFingerprint(importCandidate.fingerprint)}
-                >
-                  <Clipboard aria-hidden="true" />
-                  完全指紋をコピー
-                </Button>
-                <div className="space-y-2">
-                  <Label htmlFor="import-key-name">鍵名</Label>
-                  <Input
-                    id="import-key-name"
-                    value={importName}
-                    onChange={(event) => setImportName(event.target.value)}
-                    className="h-11 text-base focus-visible:ring-2"
-                    maxLength={80}
-                  />
-                </div>
-                {importCandidate.kind === "symmetric" && (
-                  <SensitiveDataWarning
-                    strong
-                    checked={importTrusted}
-                    onCheckedChange={setImportTrusted}
-                    confirmationLabel="この鍵の共有経路を信頼しています"
-                  />
-                )}
-                {importDuplicateName && (
-                  <Alert variant="destructive" role="alert">
-                    <AlertCircle aria-hidden="true" className="size-4" />
-                    <AlertTitle>DUPLICATE_KEY</AlertTitle>
-                    <AlertDescription>
-                      同じ内容の鍵「{importDuplicateName}」が保存済みです。
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <Button
-                  type="button"
-                  className="h-11 w-full cursor-pointer focus-visible:ring-2"
-                  disabled={
-                    Boolean(importDuplicateName) ||
-                    (importCandidate.kind === "symmetric" && !importTrusted)
-                  }
-                  onClick={() => void saveImportedKey()}
-                >
-                  <Save aria-hidden="true" />
-                  鍵を保存
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      {(keysError || error) && (
+      {legacyKeys.length > 0 && (
         <Alert variant="destructive" role="alert">
           <AlertCircle aria-hidden="true" className="size-4" />
-          <AlertTitle>操作を完了できません</AlertTitle>
-          <AlertDescription>{error ?? keysError}</AlertDescription>
-        </Alert>
-      )}
-      {duplicateKeyName && (
-        <Alert variant="destructive" role="alert">
-          <AlertCircle aria-hidden="true" className="size-4" />
-          <AlertTitle>DUPLICATE_KEY</AlertTitle>
-          <AlertDescription>
-            同じ内容の鍵「{duplicateKeyName}」がすでに保存されています。
+          <AlertTitle>
+            旧形式(RSA)の鍵 {legacyKeys.length} 件は v2 で使用不可(復元不能)
+          </AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>旧暗号文は復号できません。鍵は通常の一覧や選択肢には表示しません。</p>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void removeLegacyKeys()}
+            >
+              <Trash2 aria-hidden="true" />
+              旧形式の鍵を削除
+            </Button>
           </AlertDescription>
         </Alert>
       )}
 
-      <QrScannerDialog
-        open={scannerOpen}
-        onOpenChange={setScannerOpen}
-        target={importTarget}
-        cameraAvailable={camera}
-        onScan={(payload) => void prepareImport(payload)}
-      />
+      {(error || keysError || pqError) && (
+        <Alert variant="destructive" role="alert">
+          <AlertTitle>操作を完了できません</AlertTitle>
+          <AlertDescription>{error ?? keysError ?? pqError}</AlertDescription>
+        </Alert>
+      )}
 
-      <AlertDialog
-        open={secretWarningRecord !== null}
-        onOpenChange={(open) => {
-          if (!open) setSecretWarningRecord(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>共通鍵QRを表示します</AlertDialogTitle>
-            <AlertDialogDescription>{SECRET_QR_WARNING}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (secretWarningRecord) {
-                  void openKeyQr(secretWarningRecord, "symmetric-key")
-                }
-              }}
+      <Tabs value={tab} onValueChange={(value) => setTab(value as KeysTab)}>
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
+          <TabsTrigger value="symmetric">共通鍵</TabsTrigger>
+          <TabsTrigger value="identity">ポスト量子ID</TabsTrigger>
+          <TabsTrigger value="kem">受信公開鍵</TabsTrigger>
+          <TabsTrigger value="signing">署名公開鍵</TabsTrigger>
+          <TabsTrigger value="bundle">公開鍵セット</TabsTrigger>
+          <TabsTrigger value="scan">鍵を読み取る</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="symmetric" className="space-y-4">
+          <CreateField
+            label="共通鍵名"
+            value={keyName}
+            onChange={setKeyName}
+            buttonLabel="共通鍵を作成"
+            busy={busy}
+            onCreate={() => void createSymmetric()}
+          />
+          {symmetricKeys.map((record) => (
+            <Card key={record.id}>
+              <CardContent className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{record.name}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{record.id}</p>
+                  </div>
+                  <Badge>AES-256-GCM</Badge>
+                </div>
+                <Fingerprint label="鍵指紋" value={record.fingerprint} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 w-full"
+                  disabled={busy}
+                  onClick={() => void showSymmetricQr(record)}
+                >
+                  <QrCode aria-hidden="true" />
+                  秘密鍵QRを表示
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+          {!keysLoading && symmetricKeys.length === 0 && (
+            <Empty text="共通鍵がありません。" />
+          )}
+        </TabsContent>
+
+        <TabsContent value="identity" className="space-y-4">
+          <Alert>
+            <ShieldCheck aria-hidden="true" className="size-4" />
+            <AlertTitle>experimental・未独立監査</AlertTitle>
+            <AlertDescription>
+              初期リリースは balanced (ML-KEM-768 / ML-DSA-65) のみです。
+            </AlertDescription>
+          </Alert>
+          <CreateField
+            label="ポスト量子ID名"
+            value={keyName}
+            onChange={setKeyName}
+            buttonLabel="balanced IDを作成"
+            busy={busy}
+            onCreate={() => void createPqIdentity()}
+          />
+          {identities.map((identity) => (
+            <IdentityCard
+              key={identity.id}
+              identity={identity}
+              busy={busy}
+              onShow={showIdentityQr}
+              onRotate={rotate}
+              onRevoke={revoke}
+            />
+          ))}
+          {!pqLoading && identities.length === 0 && (
+            <Empty text="ポスト量子IDがありません。" />
+          )}
+        </TabsContent>
+
+        <TabsContent value="kem" className="space-y-4">
+          <BundleList
+            bundles={bundles}
+            view="kem"
+            busy={busy}
+            refresh={refreshPq}
+            setError={setError}
+          />
+        </TabsContent>
+        <TabsContent value="signing" className="space-y-4">
+          <BundleList
+            bundles={bundles}
+            view="signing"
+            busy={busy}
+            refresh={refreshPq}
+            setError={setError}
+          />
+        </TabsContent>
+        <TabsContent value="bundle" className="space-y-4">
+          <BundleList
+            bundles={bundles}
+            view="bundle"
+            busy={busy}
+            refresh={refreshPq}
+            setError={setError}
+          />
+        </TabsContent>
+
+        <TabsContent value="scan" className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="key-payload">鍵ペイロード</Label>
+            <Textarea
+              id="key-payload"
+              value={importPayload}
+              onChange={(event) => setImportPayload(event.target.value)}
+              placeholder="OCK1: / OCP2: / OCS2: / OCI2: を貼り付け"
+              className="min-h-28 break-all font-mono"
+            />
+            <Button
+              type="button"
+              className="h-11 w-full"
+              disabled={busy || !importPayload.trim()}
+              onClick={() => void importPastedPayload()}
             >
-              表示する
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              <KeyRound aria-hidden="true" />
+              鍵を読み取る
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full"
+              disabled={busy || !camera}
+              onClick={() => setScannerOpen(true)}
+            >
+              <QrCode aria-hidden="true" />
+              単枚共通鍵QRを読み取る
+            </Button>
+          </div>
+          <MultipartScanPanel
+            session={scanSession}
+            cameraAvailable={camera && !scannerOpen}
+            title="鍵の複数QRを連続読み取り"
+            onComplete={(completion) => handleCompletedArtifact(completion)}
+          />
+          {singleKeyRead && (
+            <Alert>
+              <CheckCircle2 aria-hidden="true" className="size-4" />
+              <AlertTitle>単鍵を読み取りました</AlertTitle>
+              <AlertDescription className="space-y-2">
+                <p>
+                  {singleKeyRead.type === "pq-kem-public-key"
+                    ? "暗号化用公開鍵"
+                    : "署名検証用公開鍵"}{" "}
+                  / {singleKeyRead.algorithm}
+                </p>
+                <Fingerprint label="単鍵指紋" value={singleKeyFingerprint} />
+                <p>
+                  人物との対応を確認して永続利用するには、OCI2公開鍵セットを取り込んでください。
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+        </TabsContent>
+      </Tabs>
 
       <Dialog
-        open={qrSession !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setQrSession(null)
-            setQrRiskApproved(false)
-          }
-        }}
+        open={framedQr !== null}
+        onOpenChange={(open) => !open && setFramedQr(null)}
       >
         <DialogContent className="max-h-[95dvh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex flex-wrap items-center gap-2">
-              {qrSession?.kind === "symmetric-key" ? "共通鍵QR" : "公開鍵QR"}
-              {qrSession && (
-                <SensitivityBadge sensitivity={sensitivityForKind(qrSession.kind)} />
-              )}
-            </DialogTitle>
+            <DialogTitle>{framedQr?.title}</DialogTitle>
             <DialogDescription>
-              QRコードは白背景で表示します。鍵素材を共有する相手を確認してください。
+              すべてOCF2フレーム・誤り訂正Qで表示します。
             </DialogDescription>
           </DialogHeader>
-          {qrSession && (
+          {framedQr && (
+            <AnimatedQrFrames
+              frames={framedQr.frames}
+              frameIntervalMs={preferences.frameIntervalMs}
+              outputName={framedQr.outputName}
+              title={framedQr.title}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={symmetricQr !== null}
+        onOpenChange={(open) => !open && setSymmetricQr(null)}
+      >
+        <DialogContent className="max-h-[95dvh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>共通鍵QR</DialogTitle>
+            <DialogDescription>
+              このQRには暗号化と復号に使える秘密鍵が含まれます。
+            </DialogDescription>
+          </DialogHeader>
+          {symmetricQr && (
             <div className="space-y-4">
-              {qrSession.kind === "symmetric-key" && (
-                <SensitiveDataWarning
-                  strong
-                  checked={qrRiskApproved}
-                  onCheckedChange={setQrRiskApproved}
-                />
-              )}
+              <Alert variant="destructive">
+                <AlertTitle>最高機密</AlertTitle>
+                <AlertDescription>
+                  第三者に見せると、過去と将来の暗号文を復号されるおそれがあります。
+                </AlertDescription>
+              </Alert>
               <QrDisplay
-                payload={qrSession.payload}
-                ecLevel="H"
+                payload={symmetricQr.payload}
+                ecLevel={ecLevelFor("stored-key", preferences)}
                 size={env.qrRenderSize}
-                title={qrSession.kind === "symmetric-key" ? "共通鍵QR" : "公開鍵QR"}
+                title="共通鍵QR"
               />
               <div className="space-y-2">
-                <Label htmlFor="key-qr-name">QR名</Label>
+                <Label htmlFor="symmetric-qr-name">QR名</Label>
                 <Input
-                  id="key-qr-name"
-                  value={qrSession.name}
-                  onChange={(event) =>
-                    setQrSession({ ...qrSession, name: event.target.value })
-                  }
-                  className="h-11 text-base focus-visible:ring-2"
+                  id="symmetric-qr-name"
+                  value={symmetricQr.name}
                   maxLength={80}
+                  onChange={(event) =>
+                    setSymmetricQr({ ...symmetricQr, name: event.target.value })
+                  }
                 />
+              </div>
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="secret-ack"
+                  checked={symmetricQr.acknowledged}
+                  onCheckedChange={(checked) =>
+                    setSymmetricQr({ ...symmetricQr, acknowledged: checked === true })
+                  }
+                />
+                <Label htmlFor="secret-ack">リスクを理解しました</Label>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
-                  className="h-11 cursor-pointer focus-visible:ring-2"
-                  disabled={qrSession.kind === "symmetric-key" && !qrRiskApproved}
-                  onClick={() => void saveCurrentQr()}
+                  className="h-11"
+                  disabled={!symmetricQr.acknowledged || busy}
+                  onClick={() => void saveSymmetricQr()}
                 >
-                  <Save aria-hidden="true" />
-                  保存
+                  保存済み鍵QRへ保存
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 cursor-pointer focus-visible:ring-2"
-                  disabled={qrSession.kind === "symmetric-key" && !qrRiskApproved}
-                  onClick={() => void exportCurrentQr("png")}
+                  className="h-11"
+                  disabled={!symmetricQr.acknowledged || busy}
+                  onClick={() => void exportSymmetricQr("png")}
                 >
                   <Download aria-hidden="true" />
                   PNG
@@ -789,9 +880,9 @@ export function KeysPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 cursor-pointer focus-visible:ring-2"
-                  disabled={qrSession.kind === "symmetric-key" && !qrRiskApproved}
-                  onClick={() => void exportCurrentQr("svg")}
+                  className="h-11"
+                  disabled={!symmetricQr.acknowledged || busy}
+                  onClick={() => void exportSymmetricQr("svg")}
                 >
                   <FileCode2 aria-hidden="true" />
                   SVG
@@ -799,9 +890,9 @@ export function KeysPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 cursor-pointer focus-visible:ring-2"
-                  disabled={qrSession.kind === "symmetric-key" && !qrRiskApproved}
-                  onClick={() => void copyCurrentQr()}
+                  className="h-11"
+                  disabled={!symmetricQr.acknowledged || busy}
+                  onClick={() => void copySymmetricQr()}
                 >
                   <Clipboard aria-hidden="true" />
                   コピー
@@ -812,82 +903,116 @@ export function KeysPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={renameTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setRenameTarget(null)
-        }}
-      >
-        <DialogContent>
+      <Dialog open={pendingBundle !== null} onOpenChange={() => undefined}>
+        <DialogContent
+          className="max-h-[95dvh] max-w-lg overflow-y-auto [&>button.absolute]:hidden"
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader>
-            <DialogTitle>鍵名を変更</DialogTitle>
-            <DialogDescription>鍵の内容と指紋は変わりません。</DialogDescription>
+            <DialogTitle>別経路で指紋を比較してください</DialogTitle>
+            <DialogDescription>
+              取込を完了する前に、相手と通話・対面など別経路で full hex
+              を照合します。自己署名だけでは人物を証明しません。
+            </DialogDescription>
           </DialogHeader>
-          <Label htmlFor="rename-key">新しい鍵名</Label>
-          <Input
-            id="rename-key"
-            value={renameValue}
-            onChange={(event) => setRenameValue(event.target.value)}
-            className="h-11 text-base focus-visible:ring-2"
-            maxLength={80}
-          />
-          <DialogFooter>
+          {pendingBundle && (
+            <div className="space-y-4">
+              <Fingerprint
+                label="Identity fingerprint"
+                value={pendingBundle.identityFingerprint}
+              />
+              <Fingerprint
+                label="ML-KEM fingerprint"
+                value={pendingBundle.kem.fingerprint}
+              />
+              <Fingerprint
+                label="ML-DSA fingerprint"
+                value={pendingBundle.signing.fingerprint}
+              />
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="fingerprint-confirmed"
+                  checked={fingerprintChecked}
+                  onCheckedChange={(checked) => setFingerprintChecked(checked === true)}
+                />
+                <Label htmlFor="fingerprint-confirmed">別経路で一致を確認した</Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2 sm:justify-between">
             <Button
               type="button"
               variant="outline"
-              className="h-11 cursor-pointer"
-              onClick={() => setRenameTarget(null)}
+              disabled={busy}
+              onClick={() => void savePendingBundle(false)}
             >
-              キャンセル
+              未確認のまま保存
             </Button>
             <Button
               type="button"
-              className="h-11 cursor-pointer"
-              onClick={() => void performRename()}
+              disabled={busy || !fingerprintChecked}
+              onClick={() => void savePendingBundle(true)}
             >
-              変更する
+              確認して保存
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={deleteTarget !== null}
+      <Dialog
+        open={pendingSymmetricImport !== null}
         onOpenChange={(open) => {
           if (!open) {
-            setDeleteTarget(null)
-            setDeleteApproved(false)
+            setPendingSymmetricImport(null)
+            setSymmetricImportName("")
+            setSymmetricImportAcknowledged(false)
           }
         }}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>鍵を削除しますか</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteNeedsStrongConfirmation
-                ? "この鍵ペア宛の暗号文は二度と復号できなくなります。"
-                : "この鍵で復号できなくなります。"}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {deleteNeedsStrongConfirmation && (
-            <SensitiveDataWarning
-              strong
-              checked={deleteApproved}
-              onCheckedChange={setDeleteApproved}
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>共通鍵を取り込みます</DialogTitle>
+            <DialogDescription>
+              このペイロードには暗号化と復号に使える秘密鍵が含まれます。
+            </DialogDescription>
+          </DialogHeader>
+          <Alert variant="destructive">
+            <AlertTitle>共有経路を確認してください</AlertTitle>
+            <AlertDescription>
+              第三者が同じ鍵を持つと、暗号文を復号されるおそれがあります。
+            </AlertDescription>
+          </Alert>
+          <div className="space-y-2">
+            <Label htmlFor="symmetric-import-name">鍵名</Label>
+            <Input
+              id="symmetric-import-name"
+              value={symmetricImportName}
+              maxLength={80}
+              onChange={(event) => setSymmetricImportName(event.target.value)}
             />
-          )}
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deleteNeedsStrongConfirmation && !deleteApproved}
-              onClick={() => void performDelete()}
+          </div>
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="symmetric-import-ack"
+              checked={symmetricImportAcknowledged}
+              onCheckedChange={(checked) =>
+                setSymmetricImportAcknowledged(checked === true)
+              }
+            />
+            <Label htmlFor="symmetric-import-ack">この鍵の共有経路を信頼しています</Label>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              disabled={busy || !symmetricImportAcknowledged}
+              onClick={() => void savePendingSymmetricImport()}
             >
-              削除する
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              共通鍵を保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={duplicateArtifact !== null}
@@ -897,165 +1022,285 @@ export function KeysPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>同じ内容のQRが保存済みです</AlertDialogTitle>
+            <AlertDialogTitle>同じ内容の鍵QRが保存済みです</AlertDialogTitle>
             <AlertDialogDescription>
               確認後、別のIDで重複保存できます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void saveDuplicateQr()}>
+            <AlertDialogAction disabled={busy} onClick={() => void saveDuplicateQr()}>
               重複して保存
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <QrScannerDialog
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        target="symmetric-key"
+        cameraAvailable={camera}
+        onScan={(payload) => void importScannedPayload(payload)}
+      />
     </section>
   )
 }
 
-function KeyList({
-  keys,
-  loading,
-  onShowQr,
-  onExportText,
-  onRename,
-  onDelete,
-  onCopyFingerprint,
+function CreateField({
+  label,
+  value,
+  onChange,
+  buttonLabel,
+  busy,
+  onCreate,
 }: {
-  keys: StoredKeyRecord[]
-  loading: boolean
-  onShowQr: (record: StoredKeyRecord) => void
-  onExportText: ((record: StoredKeyRecord) => void) | undefined
-  onRename: (record: StoredKeyRecord) => void
-  onDelete: (record: StoredKeyRecord) => void
-  onCopyFingerprint: (fingerprint: string) => Promise<void>
+  label: string
+  value: string
+  onChange: (value: string) => void
+  buttonLabel: string
+  busy: boolean
+  onCreate: () => void
 }) {
-  if (loading)
-    return <p className="text-sm text-muted-foreground">鍵を読み込んでいます…</p>
-  if (keys.length === 0) {
-    return (
-      <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-        保存されている鍵はありません。
-      </p>
-    )
-  }
   return (
-    <div className="space-y-3">
-      {keys.map((key) => {
-        const secret = key.kind === "symmetric"
-        const hasPrivate = key.kind === "rsa-key-pair" && Boolean(key.privateKey)
-        return (
-          <Card key={key.id}>
-            <CardContent className="space-y-3 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{key.name}</p>
-                  <p className="mt-1 font-mono text-xs text-muted-foreground">
-                    {formatFingerprint(key.fingerprint)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {secret ? (
-                    <SensitivityBadge sensitivity="secret" />
-                  ) : hasPrivate ? (
-                    <Badge className="gap-1 bg-success text-success-foreground">
-                      <ShieldCheck aria-hidden="true" className="size-3.5" />
-                      秘密鍵あり
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary">公開鍵のみ</Badge>
-                  )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-11 cursor-pointer focus-visible:ring-2"
-                        aria-label={`${key.name}の操作`}
-                      >
-                        <MoreVertical aria-hidden="true" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onSelect={() => onShowQr(key)}>
-                        <QrCode aria-hidden="true" />
-                        {secret ? "QRを表示" : "公開鍵QRを表示"}
-                      </DropdownMenuItem>
-                      {onExportText && (
-                        <DropdownMenuItem onSelect={() => onExportText(key)}>
-                          <FileText aria-hidden="true" />
-                          公開鍵をファイル出力
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onSelect={() => onRename(key)}>
-                        <Pencil aria-hidden="true" />
-                        名前を変更
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onSelect={() => onDelete(key)}
-                      >
-                        <Trash2 aria-hidden="true" />
-                        削除
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-              {!secret && !hasPrivate && (
-                <p className="text-xs text-muted-foreground">
-                  この端末では復号できません
-                </p>
-              )}
-              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                <span>作成: {formatDateTime(key.createdAt)}</span>
-                <span>使用回数: {key.useCount}</span>
-                <span className="col-span-2">
-                  最終使用: {formatDateTime(key.lastUsedAt)}
-                </span>
-              </div>
-              <div className="rounded-md border bg-background p-3">
-                <p className="text-xs text-muted-foreground">完全 SHA-256 hex</p>
-                <p className="mt-1 break-all font-mono text-xs select-text">
-                  {key.fingerprint}
-                </p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="mt-2 h-11 cursor-pointer px-3 focus-visible:ring-2"
-                  onClick={() => void onCopyFingerprint(key.fingerprint)}
-                >
-                  <Clipboard aria-hidden="true" />
-                  完全指紋をコピー
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )
-      })}
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <Label htmlFor={`create-${buttonLabel}`}>{label}</Label>
+        <Input
+          id={`create-${buttonLabel}`}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          maxLength={80}
+        />
+        <Button
+          type="button"
+          className="h-11 w-full"
+          disabled={busy || !value.trim()}
+          onClick={onCreate}
+        >
+          {busy ? (
+            <LoaderCircle aria-hidden="true" className="animate-spin" />
+          ) : (
+            <KeyRound aria-hidden="true" />
+          )}
+          {buttonLabel}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+function Fingerprint({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="break-all font-mono text-xs">{value}</p>
+      <p className="font-mono text-sm">比較表示: {formatFingerprint(value)}</p>
     </div>
   )
 }
 
-function KeyDetail({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string
-  value: string
-  mono?: boolean
-}) {
+function Empty({ text }: { text: string }) {
   return (
-    <div className="grid grid-cols-[7rem_1fr] gap-2 border-b py-1.5 last:border-0">
-      <span className="text-muted-foreground">{label}</span>
-      <span
-        className={`min-w-0 break-all select-text ${mono ? "font-mono text-xs" : ""}`}
-      >
-        {value}
-      </span>
+    <div className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">
+      {text}
     </div>
+  )
+}
+
+function IdentityCard({
+  identity,
+  busy,
+  onShow,
+  onRotate,
+  onRevoke,
+}: {
+  identity: PostQuantumIdentity
+  busy: boolean
+  onShow: (
+    identity: PostQuantumIdentity,
+    kind: "bundle" | "kem" | "signing",
+  ) => Promise<void>
+  onRotate: (identity: PostQuantumIdentity) => Promise<void>
+  onRevoke: (identity: PostQuantumIdentity) => Promise<void>
+}) {
+  const old = identity.status !== "active"
+  return (
+    <Card>
+      <CardHeader className="p-4 pb-3">
+        <CardTitle className="flex items-start justify-between gap-3 text-base">
+          <span>{identity.name}</span>
+          <Badge variant={old ? "secondary" : "default"}>{identity.status}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 p-4 pt-0">
+        <p className="text-xs text-muted-foreground">
+          {old ? "旧世代: 復号/検証専用" : "暗号化・署名に使用可能"}
+        </p>
+        <Fingerprint label="ID fingerprint" value={identity.identityFingerprint} />
+        <Fingerprint
+          label={`KEM (${identity.kem.algorithm})`}
+          value={identity.kem.fingerprint}
+        />
+        <Fingerprint
+          label={`Signing (${identity.signing.algorithm})`}
+          value={identity.signing.fingerprint}
+        />
+        <p className="text-xs text-muted-foreground">
+          作成: {formatDateTime(identity.createdAt)}
+        </p>
+        <div className="grid grid-cols-1 gap-2">
+          {!old && (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void onShow(identity, "bundle")}
+              >
+                <QrCode aria-hidden="true" />
+                公開鍵セットQR
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void onShow(identity, "kem")}
+              >
+                <QrCode aria-hidden="true" />
+                暗号化用単鍵QR
+              </Button>
+            </>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void onShow(identity, "signing")}
+          >
+            <QrCode aria-hidden="true" />
+            署名検証用単鍵QR
+          </Button>
+          {identity.status === "active" && (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => void onRotate(identity)}
+              >
+                <RefreshCw aria-hidden="true" />
+                ローテーション
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={busy}
+                onClick={() => void onRevoke(identity)}
+              >
+                <Trash2 aria-hidden="true" />
+                この端末で失効
+              </Button>
+            </>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          失効はこの端末での利用停止であり、外部の相手には伝播しません。
+        </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function BundleList({
+  bundles,
+  view,
+  busy,
+  refresh,
+  setError,
+}: {
+  bundles: PqPublicBundleRecord[]
+  view: "kem" | "signing" | "bundle"
+  busy: boolean
+  refresh: () => Promise<void>
+  setError: (value: string | null) => void
+}) {
+  if (bundles.length === 0) return <Empty text="取り込んだ公開鍵セットがありません。" />
+  return (
+    <>
+      {bundles.map((record) => (
+        <Card key={`${view}-${record.recordId}`}>
+          <CardContent className="space-y-3 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-medium">
+                  {record.trust === "fingerprint-confirmed"
+                    ? (record.name ?? "確認済み公開鍵")
+                    : "未確認の公開鍵"}
+                </p>
+                <p className="font-mono text-xs text-muted-foreground">
+                  {record.identityId}
+                </p>
+              </div>
+              <Badge
+                variant={
+                  record.trust === "fingerprint-confirmed" ? "default" : "secondary"
+                }
+              >
+                {record.trust === "fingerprint-confirmed" ? "人物確認済み" : "unverified"}
+              </Badge>
+            </div>
+            {view !== "signing" && (
+              <Fingerprint
+                label={`受信公開鍵 ${record.kem.algorithm}`}
+                value={record.kem.fingerprint}
+              />
+            )}
+            {view !== "kem" && (
+              <Fingerprint
+                label={`署名公開鍵 ${record.signing.algorithm}`}
+                value={record.signing.fingerprint}
+              />
+            )}
+            {view === "bundle" && (
+              <Fingerprint
+                label="Identity fingerprint"
+                value={record.identityFingerprint}
+              />
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() =>
+                  void revokeBundle(record.recordId, Date.now())
+                    .then(refresh)
+                    .catch((caught) =>
+                      setError(toAppError(caught, "STORAGE_FAILED").userMessage),
+                    )
+                }
+              >
+                利用停止
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={busy}
+                onClick={() =>
+                  void deleteBundle(record.recordId)
+                    .then(refresh)
+                    .catch((caught) =>
+                      setError(toAppError(caught, "STORAGE_FAILED").userMessage),
+                    )
+                }
+              >
+                削除
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </>
   )
 }

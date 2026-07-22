@@ -3,16 +3,14 @@ import { openDB } from "idb"
 import type { IDBPDatabase } from "idb"
 import { encryptWithAesKey } from "@/crypto/aes-gcm"
 import {
-  buildPublicKeyEnvelope,
   buildSymmetricKeyEnvelope,
-  createRsaKeyPairRecord,
   createSymmetricKeyRecord,
 } from "@/crypto/key-generation"
 import { generateArtifactId } from "@/crypto/random"
-import { encryptRsaHybrid } from "@/crypto/rsa-hybrid"
-import { utf8ByteLength, utf8ToBytes } from "@/lib/bytes"
+import { sha256Hex, utf8ByteLength, utf8ToBytes } from "@/lib/bytes"
 import { encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
-import type { StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
+import type { StoredKeyRecord } from "@/schemas/domain"
+import type { LegacyStoredQrArtifactV1 } from "@/schemas/key-schema"
 import {
   closeDb,
   DB_NAME,
@@ -56,7 +54,7 @@ function createV1Stores(database: IDBPDatabase<OfflineCipherDb>): void {
 async function artifact(
   name: string,
   envelope: Parameters<typeof encodeEnvelopeToPayload>[0],
-): Promise<StoredQrArtifact> {
+): Promise<LegacyStoredQrArtifactV1> {
   const payload = encodeEnvelopeToPayload(envelope)
   const kind =
     envelope.type === "message"
@@ -64,10 +62,7 @@ async function artifact(
       : envelope.type === "symmetric-key"
         ? "symmetric-key"
         : "public-key"
-  const keyId =
-    envelope.type === "message" && envelope.algorithm === "RSA-OAEP-3072+A256GCM"
-      ? envelope.recipientKeyId
-      : envelope.keyId
+  const keyId = envelope.keyId
   return {
     id: generateArtifactId(),
     name,
@@ -87,15 +82,39 @@ async function artifact(
   }
 }
 
+async function legacyRsaKeyRecord(): Promise<StoredKeyRecord> {
+  const pair = (await crypto.subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      modulusLength: 3072,
+      publicExponent: Uint8Array.of(1, 0, 1),
+      hash: "SHA-256",
+    },
+    false,
+    ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
+  )) as CryptoKeyPair
+  const spki = new Uint8Array(await crypto.subtle.exportKey("spki", pair.publicKey))
+  return {
+    id: generateArtifactId(),
+    name: "v1 RSA legacy row",
+    kind: "rsa-key-pair",
+    algorithm: "RSA-OAEP-3072",
+    fingerprint: await sha256Hex(spki),
+    createdAt: NOW + 1,
+    useCount: 0,
+    publicKey: pair.publicKey,
+    privateKey: pair.privateKey,
+  }
+}
+
 async function seedV1Database(): Promise<SeededV1> {
   const aes = await createSymmetricKeyRecord("v1 AES", NOW)
-  const rsa = await createRsaKeyPairRecord("v1 RSA", NOW + 1)
+  const rsa = await legacyRsaKeyRecord()
   const plaintext = utf8ToBytes("migration ciphertext")
-  const rows = [
+  const activeRows = [
     await artifact("AES 鍵QR", await buildSymmetricKeyEnvelope(aes)),
-    await artifact("RSA 公開鍵QR", await buildPublicKeyEnvelope(rsa)),
     await artifact(
-      "AES 暗号文",
+      "AES 暗号文 1",
       await encryptWithAesKey({
         key: aes.symmetricKey!,
         keyId: aes.id,
@@ -104,15 +123,29 @@ async function seedV1Database(): Promise<SeededV1> {
       }),
     ),
     await artifact(
-      "RSA 暗号文",
-      await encryptRsaHybrid({
-        publicKey: rsa.publicKey!,
-        recipientKeyId: rsa.id,
+      "AES 暗号文 2",
+      await encryptWithAesKey({
+        key: aes.symmetricKey!,
+        keyId: aes.id,
         plaintext,
         now: NOW + 3,
       }),
     ),
   ]
+  const legacyPublicPayload = "OCP1:legacy-rsa-public-key"
+  const legacyPublicQr: LegacyStoredQrArtifactV1 = {
+    id: generateArtifactId(),
+    name: "RSA 公開鍵QR legacy row",
+    kind: "public-key",
+    sensitivity: "public",
+    algorithm: "RSA-OAEP-3072",
+    payload: legacyPublicPayload,
+    payloadSha256: await payloadSha256Hex(legacyPublicPayload),
+    byteLength: utf8ByteLength(legacyPublicPayload),
+    createdAt: NOW,
+    keyId: rsa.id,
+  }
+  const rows: LegacyStoredQrArtifactV1[] = [...activeRows, legacyPublicQr]
   const unknownId = generateArtifactId()
   const preferenceRow = {
     key: "preferences",
@@ -127,7 +160,7 @@ async function seedV1Database(): Promise<SeededV1> {
     for (const key of [aes, rsa] as StoredKeyRecord[]) {
       await database.add(STORE_KEYS, key)
     }
-    for (const row of rows) await database.add(STORE_QR_ARTIFACTS, row)
+    for (const row of rows) await database.add(STORE_QR_ARTIFACTS, row as never)
     await database.add(STORE_QR_ARTIFACTS, {
       id: unknownId,
       kind: "unclassifiable-v1-row",
@@ -216,7 +249,9 @@ describe("storage v2 migration", () => {
     expect(deletedCount).toBe(3)
     const rawQrRows = await database.getAll(STORE_QR_ARTIFACTS)
     expect(rawQrRows.map((row) => row.id).sort()).toEqual(seeded.retainedQrIds)
-    expect(rawQrRows.filter((row) => row.kind === "ciphertext")).toEqual([])
+    expect(
+      rawQrRows.filter((row) => (row as { kind: string }).kind === "ciphertext"),
+    ).toEqual([])
     expect(await database.count(STORE_QR_ARTIFACTS)).toBe(seeded.retainedQrIds.length)
     for (const hash of seeded.purgedHashes) {
       expect(

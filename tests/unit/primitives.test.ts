@@ -67,15 +67,16 @@ describe("random ids, feature detection, and env parsing", () => {
     expect(typeof support.serviceWorker).toBe("boolean")
   })
 
-  it("strictly parses booleans, integers, bounds, and RSA correlation", () => {
+  it("strictly parses booleans and integers while ignoring retired RSA enablement", () => {
     const parsed = parseAppEnv({
-      VITE_ENABLE_RSA: "false",
-      VITE_DEFAULT_ALGORITHM: "RSA-HYBRID",
+      VITE_ENABLE_RSA: "true",
+      VITE_DEFAULT_ALGORITHM: "MLKEM768_A256GCM",
       VITE_ENABLE_ECDH: "true",
       VITE_QR_RENDER_SIZE: "640",
       VITE_AUTO_CLEAR_SECONDS: "0",
     })
-    expect(parsed.defaultAlgorithm).toBe("A256GCM")
+    expect(parsed.defaultAlgorithm).toBe("MLKEM768_A256GCM")
+    expect(parsed.enableRsa).toBe(false)
     expect(parsed.enableEcdh).toBe(true)
     expect(parsed.qrRenderSize).toBe(640)
     expect(parsed.autoClearSeconds).toBe(0)

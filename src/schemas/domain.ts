@@ -5,24 +5,18 @@
 // v2 の suite 導出(resolveSuite/suiteComponents)は crypto/pq/suites.ts。
 
 // ---------------------------------------------------------------------------
-// 方式 ID(v1 + v2)
+// 方式 ID(v1 A256GCM + v2 PQ)
 // ---------------------------------------------------------------------------
 
-// "RSA-HYBRID" は v1 レガシー。WP-14(RSA 削除)で UiAlgorithm から除去する。
-export type UiAlgorithm =
-  | "A256GCM"
-  | "RSA-HYBRID"
-  | "MLKEM768_A256GCM"
-  | "MLKEM768_MLDSA65_A256GCM"
+export type UiAlgorithm = "A256GCM" | "MLKEM768_A256GCM" | "MLKEM768_MLDSA65_A256GCM"
 
-export type WireAlgorithm = "A256GCM" | "RSA-OAEP-3072+A256GCM"
+export type WireAlgorithm = "A256GCM"
 
 export type QrEcLevel = "L" | "M" | "Q" | "H"
 
 export type KeyKind = "symmetric" | "rsa-key-pair" | "public-key"
 
-export type QrArtifactKind =
-  "ciphertext" | "symmetric-key" | "public-key" | "encrypted-private-key"
+export type QrArtifactKind = "symmetric-key" | "public-key" | "encrypted-private-key"
 
 export type Sensitivity = "public" | "confidential" | "secret"
 
@@ -55,28 +49,15 @@ export interface StoredQrArtifact {
   lastViewedAt?: number
 }
 
-// v1 ワイヤー専用 mapper。PQ 方式のワイヤー解決は crypto/pq/suites.ts の
+// v1 A256GCM ワイヤー専用 mapper。PQ 方式のワイヤー解決は crypto/pq/suites.ts の
 // resolveSuite を使う(本モジュールは依存ゼロのため AppError を投げられない)。
 export function toWireAlgorithm(algorithm: UiAlgorithm): WireAlgorithm {
   if (algorithm === "A256GCM") return "A256GCM"
-  if (algorithm === "RSA-HYBRID") return "RSA-OAEP-3072+A256GCM"
   throw new TypeError("v2 algorithm requires resolveSuite (crypto/pq/suites)")
 }
 
 export function toUiAlgorithm(algorithm: WireAlgorithm): UiAlgorithm {
-  return algorithm === "A256GCM" ? "A256GCM" : "RSA-HYBRID"
-}
-
-export function sensitivityForKind(kind: QrArtifactKind): Sensitivity {
-  switch (kind) {
-    case "public-key":
-      return "public"
-    case "ciphertext":
-      return "confidential"
-    case "symmetric-key":
-    case "encrypted-private-key":
-      return "secret"
-  }
+  return algorithm
 }
 
 // ---------------------------------------------------------------------------

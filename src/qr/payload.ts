@@ -72,19 +72,6 @@ function orderedEnvelope(envelope: AnyEnvelopeV1): Record<string, unknown> {
       aad: envelope.aad,
     }
   }
-  if (envelope.type === "message" && envelope.algorithm === "RSA-OAEP-3072+A256GCM") {
-    return {
-      v: envelope.v,
-      type: envelope.type,
-      algorithm: envelope.algorithm,
-      recipientKeyId: envelope.recipientKeyId,
-      createdAt: envelope.createdAt,
-      wrappedKey: envelope.wrappedKey,
-      iv: envelope.iv,
-      ciphertext: envelope.ciphertext,
-      aad: envelope.aad,
-    }
-  }
   if (envelope.type === "symmetric-key") {
     return {
       v: envelope.v,
@@ -174,11 +161,6 @@ function decodeV1Payload(text: string): DecodedPayload {
 
   const envelope = validateDecodedEnvelope(decoded, prefixKind)
   if (prefixKind === "message") {
-    // RSA source remains available until WP-14, but historical OCM1-RSA input is
-    // deliberately no longer accepted at the shared decode boundary.
-    if (envelope.algorithm === "RSA-OAEP-3072+A256GCM") {
-      throw new AppError("UNSUPPORTED_ALGORITHM")
-    }
     return { kind: "message", envelope: envelope as MessageEnvelope }
   }
   if (prefixKind === "symmetric-key") {

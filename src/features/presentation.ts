@@ -2,8 +2,6 @@ import type { UiAlgorithm } from "@/schemas/domain"
 
 export const ALGORITHM_LABELS: Record<UiAlgorithm, string> = {
   A256GCM: "共通鍵 — AES-256-GCM",
-  "RSA-HYBRID": "公開鍵 — RSA-OAEP-3072 + AES-256-GCM",
-  // v2(WP-14 で UI へ露出。ラベルは plan2.1 §A の experimental 表示方針に従う)
   MLKEM768_A256GCM: "ポスト量子 — ML-KEM-768 + AES-256-GCM",
   MLKEM768_MLDSA65_A256GCM: "署名付きポスト量子 — ML-KEM-768 + ML-DSA-65 + AES-256-GCM",
 }
@@ -50,5 +48,5 @@ export function shortTechnicalId(value: string | undefined): string {
 }
 
 export function isQryptPayload(payload: string): boolean {
-  return /^OC(?:M1|K1|P1|B1):/.test(payload)
+  return /^OC(?:M1|K1|P1|B1|M2|P2|S2|I2|B2|F2):/.test(payload)
 }
