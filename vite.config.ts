@@ -45,6 +45,14 @@ export default defineConfig(({ mode }) => {
           globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
           navigateFallback: "/index.html",
           cleanupOutdatedCaches: true,
+          // 破壊操作(wipe-on-online)の到達性 sentinel は SW を必ず素通しする
+          // (plan2.1 §B1: precache 対象外 + NetworkOnly。オフラインでは必ず失敗)
+          runtimeCaching: [
+            {
+              urlPattern: /\/reachability-sentinel\.txt/,
+              handler: "NetworkOnly",
+            },
+          ],
         },
       }),
     ],

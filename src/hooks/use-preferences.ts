@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useState } from "react"
 import { env } from "@/schemas/env-schema"
 import type { Preferences } from "@/schemas/domain"
+import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
 import {
   getPreferences,
   updatePreferences as savePreferences,
 } from "@/storage/preferences-repository"
 
 const DEFAULT_PREFERENCES: Preferences = {
+  ...PQ_PREFERENCE_DEFAULTS,
   defaultAlgorithm: env.defaultAlgorithm,
+  defaultPqProfile: env.defaultPqProfile,
+  requireSignature: env.requireSignature,
   qrErrorCorrection: env.qrErrorCorrection,
   autoClearPlaintextAfterEncrypt: true,
   backgroundClearEnabled: true,
+  frameBytes: env.qrFrameBytes,
+  frameIntervalMs: env.qrFrameIntervalMs,
 }
 
 export interface UsePreferencesResult {

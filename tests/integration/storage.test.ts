@@ -286,7 +286,7 @@ describe("preferences and plaintext non-persistence", () => {
         autoClearPlaintextAfterEncrypt: false,
         backgroundClearEnabled: false,
       }),
-    ).toEqual({
+    ).toMatchObject({
       defaultAlgorithm: "RSA-HYBRID",
       qrErrorCorrection: "M",
       autoClearPlaintextAfterEncrypt: false,

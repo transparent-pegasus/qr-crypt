@@ -78,3 +78,19 @@ T8/T11 横断対策として、OnlineGate はオンライン中の全機能を�
 - AAD・改竄・誤鍵の復号失敗: 単体テスト(§30.1)
 - IV 一意性・長さ: 単体テスト(§30.1)
 - 強確認・警告 UI: UI テスト(§30.4)
+
+## 7. v2(ポスト量子)追補 — 2026-07-22
+
+契約: `.tmp/plan2.1.md` / `docs/qr-protocol-v2.md` / `docs/boot-and-reset-v2.md` / `docs/security-review.md`。
+
+| ID | 資産/脅威 | 対策 | 残余リスク(明示) |
+|---|---|---|---|
+| T13 | PQ シード(KEM 64B / DSA 32B)の窃取 | シードのみ保存(展開鍵非永続)、非抽出 Vault 鍵で AES-GCM 暗号化、AAD で identityId/role/algorithm/keyId/publicKeySha256 を拘束、復号後は公開鍵再生成一致まで使用しない | 同一オリジンで先に実行される悪意あるコードは Vault 鍵を利用可能(Web Crypto の既知境界) |
+| T14 | 収穫型攻撃(harvest-now-decrypt-later) | ML-KEM-768+HKDF+AES-256-GCM(既定)、RSA/ECDH 全削除 | noble 未独立監査・JS サイドチャネル非保証(security-review.md) |
+| T15 | 送信者なりすまし | Sign-then-Encrypt(ML-DSA-65、コンテキスト固定)、署名検証成功まで本文非表示、署名鍵 ID は暗号化内側 | 署名は「保存済み公開鍵に対して有効」のみ。人物対応は別経路の指紋比較(trust 状態で区別)が必須 |
+| T16 | 複数 QR 転送の混入・改竄 | transferId 分離・FRAME_MISMATCH・完成時 SHA-256/長さ/型の全照合・完成まで暗号処理を開始しない | SHA-256 は転送整合性であり送信者認証ではない |
+| T17 | オンライン露出時の残存データ | wipe-on-online(既定 ON・network-confirmed のみ発火・boot 状態機械が Router より先行) | 「接続後に現在のコードが実行できた場合の残存データ低減」に限る。同一オリジン悪性コード・物理回収・更新前実行コードは防げない。物理消去は保証不能(論理削除+Vault 鍵シュレッディングのみ) |
+| T18 | 到達性誤検知による誤消去 | 表示用(navigator.onLine+manifest probe)と破壊用(sentinel 本文一致)の分離、nonce+no-store、世代番号+AbortSignal、同一遷移一度だけ、install 経路(機微データ皆無)非発火、maintenance token | キャプティブポータルが sentinel 本文を透過した場合は「実際に到達可能」と等価とみなす |
+
+- **RSA 削除の破壊性**: v2 への更新後、既存 OCM1-RSA 暗号文は復元不能(非抽出 RSA 秘密鍵は救済できない)。更新 UI と README に legacy 件数・削除導線と併せて明示する(復号専用互換は残さない)。
+- v2 でも維持: 平文非保存・外部送信ゼロ・localStorage は `oc-theme` のみ(wipe では `oc-*` 一括削除)。

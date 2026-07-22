@@ -12,6 +12,10 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:pq": "vitest run tests/pq",
+    "test:pq-vectors": "vitest run tests/pq-vectors",
+    "test:qr-multipart": "vitest run tests/qr-multipart",
+    "bench:pq": "vitest bench tests/bench/pq",
     "test:e2e": "playwright test"
   },
   "dependencies": {

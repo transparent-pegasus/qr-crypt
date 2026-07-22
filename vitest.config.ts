@@ -18,8 +18,14 @@ export default defineConfig({
           include: [
             "tests/unit/**/*.test.ts",
             "tests/integration/**/*.test.ts",
+            "tests/pq/**/*.test.ts",
+            "tests/pq-vectors/**/*.test.ts",
+            "tests/qr-multipart/**/*.test.ts",
           ],
           setupFiles: ["tests/setup/node.ts"],
+          benchmark: {
+            include: ["tests/bench/**/*.bench.ts"],
+          },
         },
       },
       {

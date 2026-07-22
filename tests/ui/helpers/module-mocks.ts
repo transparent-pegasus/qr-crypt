@@ -17,11 +17,8 @@ vi.mock("@/lib/bytes", () => ({
   sha256Hex: fakes.sha256Hex,
 }))
 
-vi.mock("@/crypto/errors", () => ({
-  AppError: fakes.FakeAppError,
-  toAppError: fakes.fakeToAppError,
-  userMessageFor: fakes.fakeUserMessageFor,
-}))
+// @/crypto/errors は純粋(依存ゼロ)のためモックしない。
+// モックすると factory → fakes → errors(モック中)の循環初期化になる。
 vi.mock("@/crypto/random", () => ({
   generateArtifactId: fakes.generateArtifactId,
   generateKeyId: fakes.generateKeyId,

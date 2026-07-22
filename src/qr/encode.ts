@@ -1,6 +1,6 @@
 // QR 生成(spec §13)。ペイロード文字列(ASCII)のみを受け取る —
 // 平文をこのモジュールへ渡してはならない(spec §13/plan C11)。
-import type { Preferences, QrArtifactKind, QrEcLevel } from "@/schemas/domain"
+import type { Preferences, QrArtifactKind, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import * as QRCode from "qrcode"
 import { buildAad } from "@/crypto/envelope"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -78,11 +78,16 @@ export async function renderQrSvgString(
   }
 }
 
-// 同寸ダミーエンベロープを実際に CBOR+base64url 化して長さを返す(plan §12-9)
+// 同寸ダミーエンベロープを実際に CBOR+base64url 化して長さを返す(plan §12-9)。
+// v1 経路専用 — PQ 方式のサイズ内訳は WP-14 の framed 見積り(plan2.1 §D/U24:
+// 実エンベロープ → OCF2 分割 → frameCount)で置き換える。
 export function estimatePayloadChars(
   plaintextBytes: number,
-  algorithm: "A256GCM" | "RSA-HYBRID",
+  algorithm: UiAlgorithm,
 ): number {
+  if (algorithm !== "A256GCM" && algorithm !== "RSA-HYBRID") {
+    throw new AppError("UNSUPPORTED_ALGORITHM")
+  }
   if (
     !Number.isSafeInteger(plaintextBytes) ||
     plaintextBytes < 0 ||

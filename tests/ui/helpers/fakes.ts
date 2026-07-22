@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { vi } from "vitest"
 import type { RegisterSWOptions } from "virtual:pwa-register/react"
-import { type ErrorCode, userMessageFor } from "@/crypto/errors"
+import { AppError, type ErrorCode, userMessageFor } from "@/crypto/errors"
 import type {
   AesMessageEnvelopeV1,
   PublicKeyEnvelopeV1,
@@ -10,6 +10,7 @@ import type {
 } from "@/crypto/envelope"
 import type { FeatureSupport } from "@/lib/feature-detect"
 import type { Preferences, StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
+import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -67,6 +68,7 @@ function defaultKeys(): StoredKeyRecord[] {
 export const fakeKeys: StoredKeyRecord[] = defaultKeys()
 export const fakeArtifacts: StoredQrArtifact[] = []
 export const fakePreferences: Preferences = {
+  ...PQ_PREFERENCE_DEFAULTS,
   defaultAlgorithm: "A256GCM",
   qrErrorCorrection: "Q",
   autoClearPlaintextAfterEncrypt: true,
@@ -86,24 +88,14 @@ let artifactCounter = 0
 let keyCounter = 0
 let lastMessageEnvelope: AesMessageEnvelopeV1 | RsaHybridEnvelopeV1 | null = null
 
-export class FakeAppError extends Error {
-  readonly code: ErrorCode
-  readonly userMessage: string
+// errors.ts は純粋(依存ゼロ)のためモックせず実物を使う。
+// FakeAppError の別クラス化は vi.mock factory ↔ fakes の循環初期化を起こすため
+// 廃止し、実 AppError の別名として維持する(WP-A2 で修正)。
+export const FakeAppError = AppError
+export type FakeAppError = AppError
 
-  constructor(code: ErrorCode) {
-    super(code)
-    this.code = code
-    this.userMessage = fakeUserMessageFor(code)
-  }
-}
-
-// 実装(純粋な errors.ts)へ委譲し、コード追加時のドリフトを防ぐ。
 export function fakeUserMessageFor(code: ErrorCode): string {
   return userMessageFor(code)
-}
-
-export function fakeToAppError(error: unknown, fallback: ErrorCode) {
-  return error instanceof FakeAppError ? error : new FakeAppError(fallback)
 }
 
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
@@ -488,6 +480,7 @@ export function resetFakes(): void {
   fakeKeys.splice(0, fakeKeys.length, ...defaultKeys())
   fakeArtifacts.splice(0)
   Object.assign(fakePreferences, {
+    ...PQ_PREFERENCE_DEFAULTS,
     defaultAlgorithm: "A256GCM",
     qrErrorCorrection: "Q",
     autoClearPlaintextAfterEncrypt: true,
