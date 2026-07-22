@@ -5,6 +5,12 @@
 // ブラウザーでは Worker(pq-crypto.worker.ts)内でのみ保持し、
 // Node テストのみ直接 import を許可する(plan2.1 §F)。
 import type { MlDsaAlgorithm, MlKemAlgorithm } from "@/schemas/domain"
+import {
+  createNobleDsa65,
+  createNobleDsa87,
+  createNobleKem768,
+  createNobleKem1024,
+} from "@/crypto/pq/provider-noble"
 
 export interface MlKemProvider {
   readonly algorithm: MlKemAlgorithm
@@ -49,6 +55,11 @@ export interface PqProviders {
 
 // env.pqProvider("noble" のみ。未知値は env-schema が起動時に拒否)から解決する。
 export function resolveProviders(providerId: "noble"): PqProviders {
-  void providerId
-  throw new Error("NOT_IMPLEMENTED: WP-11 resolveProviders")
+  if (providerId !== "noble") throw new TypeError("unsupported PQ provider")
+  return Object.freeze({
+    kem768: createNobleKem768(),
+    kem1024: createNobleKem1024(),
+    dsa65: createNobleDsa65(),
+    dsa87: createNobleDsa87(),
+  })
 }

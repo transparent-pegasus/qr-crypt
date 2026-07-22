@@ -4,6 +4,9 @@
 // (plan2.1 §F — ブラウザー main thread から import してはならない)。
 import type { MlDsaProvider } from "@/crypto/pq/provider"
 import type { MlDsaAlgorithm, SignedMessageBodyV2 } from "@/schemas/domain"
+import { signingTargetBytes } from "@/crypto/pq/canonical-cbor"
+import { mlDsaContextV2 } from "@/crypto/pq/wire-bytes"
+import { zeroize } from "@/crypto/pq/zeroize"
 
 export interface SignBodyArgs {
   provider: MlDsaProvider
@@ -17,8 +20,15 @@ export interface SignedBodyResult {
 }
 
 export function signBody(args: SignBodyArgs): SignedBodyResult {
-  void args
-  throw new Error("NOT_IMPLEMENTED: WP-11 signBody")
+  const target = signingTargetBytes(args.body)
+  try {
+    return {
+      algorithm: args.provider.algorithm,
+      value: args.provider.sign(target, args.secretKey, mlDsaContextV2()),
+    }
+  } finally {
+    zeroize(target)
+  }
 }
 
 export interface VerifySignedBodyArgs {
@@ -31,6 +41,18 @@ export interface VerifySignedBodyArgs {
 // 検証結果のみを返す。false のとき呼出側は plaintext を表示してはならない
 // (SIGNATURE_INVALID。spec2 §20)。
 export function verifySignedBody(args: VerifySignedBodyArgs): boolean {
-  void args
-  throw new Error("NOT_IMPLEMENTED: WP-11 verifySignedBody")
+  if (args.signature.algorithm !== args.provider.algorithm) return false
+  const target = signingTargetBytes(args.body)
+  try {
+    return args.provider.verify(
+      args.signature.value,
+      target,
+      args.senderPublicKey,
+      mlDsaContextV2(),
+    )
+  } catch {
+    return false
+  } finally {
+    zeroize(target)
+  }
 }
