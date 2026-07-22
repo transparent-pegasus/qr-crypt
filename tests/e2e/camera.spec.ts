@@ -24,6 +24,7 @@ test("fake camera の映像を再生しダイアログ終了時に全 track を�
       (event) => {
         const video = event.target
         if (!(video instanceof HTMLVideoElement)) return
+        if (video.getAttribute("aria-label") !== "QRコード読取用カメラ映像") return
         const stream = video.srcObject
         if (!(stream instanceof MediaStream)) return
         probeWindow.__cameraProbe = {
@@ -32,11 +33,11 @@ test("fake camera の映像を再生しダイアログ終了時に全 track を�
           stream,
         }
       },
-      { capture: true, once: true },
+      { capture: true },
     )
   })
   await page.getByRole("tab", { name: "鍵を読み取る", exact: true }).click()
-  await page.getByRole("button", { name: "カメラを起動", exact: true }).click()
+  await page.getByRole("button", { name: "単枚共通鍵QRを読み取る", exact: true }).click()
 
   const scanner = page.getByRole("dialog", { name: "共通鍵QRを読み取る" })
   const video = scanner.getByLabel("QRコード読取用カメラ映像")

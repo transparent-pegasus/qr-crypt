@@ -1,32 +1,44 @@
 import { expect, test } from "@playwright/test"
 import {
-  createRsaKeyPair,
-  encryptWithStoredKey,
+  createPqIdentity,
+  encryptSignedPq,
+  installWorkerProbe,
   openOfflineApp,
-  RSA_ALGORITHM_LABEL,
+  rawStoreCount,
+  seedSelfPublicBundle,
+  workerObservations,
 } from "./helpers"
 
-test("IndexedDB の RSA 秘密鍵を reload 後も使って復号できる", async ({
+test("暗号化済み PQ シードを reload 後も Worker で展開して署名付き復号できる", async ({
   context,
   page,
 }) => {
-  const keyName = "再読込RSA鍵ペア"
-  const plaintext = "再読み込み後に秘密鍵で復号する日本語平文"
+  test.setTimeout(120_000)
+  await installWorkerProbe(page)
+  const identityName = "再読込PQ-ID"
+  const plaintext = "再読み込み後にML-KEM秘密シードで復号する日本語平文"
   await openOfflineApp(page, context, "/keys")
-  await createRsaKeyPair(page, keyName)
-  const { payload } = await encryptWithStoredKey(page, {
-    keyName,
-    plaintext,
-    algorithmLabel: RSA_ALGORITHM_LABEL,
-  })
+  await createPqIdentity(page, identityName)
+  await seedSelfPublicBundle(page, identityName)
+  const { payload } = await encryptSignedPq(page, { identityName, plaintext })
 
   await page.reload({ waitUntil: "domcontentloaded" })
+  expect(await rawStoreCount(page, "pqIdentities")).toBe(1)
+  expect(await rawStoreCount(page, "pqPublicBundles")).toBe(1)
   await page.getByRole("tab", { name: "復号", exact: true }).click()
   await page.getByLabel("暗号文ペイロード").fill(payload)
-  const decryptButton = page.getByRole("button", { name: "復号する", exact: true })
-  await expect(decryptButton).toBeEnabled()
-  await decryptButton.click()
+  const decrypt = page.getByRole("button", { name: "復号する", exact: true })
+  await expect(decrypt).toBeEnabled()
+  await decrypt.click()
+  await expect(page.getByText("署名はこの鍵に対して有効です")).toBeVisible({
+    timeout: 45_000,
+  })
+  await expect(page.getByText(plaintext, { exact: true })).toBeVisible()
 
-  const result = page.getByText("復号結果", { exact: true }).locator("../..")
-  await expect(result).toContainText(plaintext)
+  const operations = (await workerObservations(page))
+    .filter((entry) => entry.kind === "operation")
+    .map((entry) => entry.operation)
+  expect(operations).toEqual(
+    expect.arrayContaining(["openPqEnvelope", "verifySignedMessage"]),
+  )
 })

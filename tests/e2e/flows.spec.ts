@@ -2,91 +2,78 @@ import { expect, test } from "@playwright/test"
 import {
   createSymmetricKey,
   encryptWithStoredKey,
-  mainNavigation,
+  goToOfflinePage,
   openOfflineApp,
+  rawQrArtifacts,
 } from "./helpers"
 
-test("共通鍵生成から暗号文 QR の保存、改名、削除、鍵全消去まで", async ({
+test("鍵 QR は保存・重複検知・表示・改名・削除でき、暗号文は永続化しない", async ({
   context,
   page,
 }) => {
   const keyName = "フロー共通鍵"
-  const qrName = "フロー保存QR"
-  const renamedQr = "改名済みフローQR"
+  const qrName = "フロー保存鍵QR"
+  const renamedQr = "改名済みフロー鍵QR"
 
   await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, keyName)
+  await page.getByRole("button", { name: "秘密鍵QRを表示", exact: true }).click()
 
-  await page.getByRole("button", { name: `${keyName}の操作` }).click()
-  await page.getByRole("menuitem", { name: "QRを表示", exact: true }).click()
-  const initialWarning = page.getByRole("alertdialog", {
-    name: "共通鍵QRを表示します",
+  const keyQrDialog = page.getByRole("dialog", { name: "共通鍵QR" })
+  await expect(keyQrDialog.getByText("機密情報", { exact: true })).toBeVisible()
+  await keyQrDialog.getByLabel("QR名", { exact: true }).fill(qrName)
+  const save = keyQrDialog.getByRole("button", {
+    name: "保存済み鍵QRへ保存",
   })
-  await expect(initialWarning).toContainText(
-    "このQRコードには暗号化と復号に使用できる秘密鍵が含まれています",
-  )
-  await initialWarning.getByRole("button", { name: "表示する" }).click()
-
-  const keyQrDialog = page.getByRole("dialog", { name: /共通鍵QR/ })
-  await expect(keyQrDialog.getByText("機密情報です")).toBeVisible()
-  const keyQrSave = keyQrDialog.getByRole("button", { name: "保存", exact: true })
-  await expect(keyQrSave).toBeDisabled()
+  await expect(save).toBeDisabled()
   await keyQrDialog.getByRole("checkbox", { name: "リスクを理解しました" }).check()
-  await expect(keyQrSave).toBeEnabled()
+  await save.click()
+  await expect(page.getByText("共通鍵QRを保存しました", { exact: true })).toBeVisible()
+
+  await save.click()
+  const duplicate = page.getByRole("alertdialog", {
+    name: "同じ内容の鍵QRが保存済みです",
+  })
+  await expect(duplicate).toContainText("重複保存")
+  await expect(duplicate.getByRole("button", { name: "重複して保存" })).toBeVisible()
+  await duplicate.getByRole("button", { name: "キャンセル" }).click()
+  expect(await rawQrArtifacts(page)).toHaveLength(1)
+
   await keyQrDialog.getByRole("button", { name: "Close" }).click()
-  await expect(keyQrDialog).toBeHidden()
+  const beforeEncryption = await rawQrArtifacts(page)
+  expect(beforeEncryption).toHaveLength(1)
+  expect(beforeEncryption[0]?.kind).toBe("symmetric-key")
 
   await encryptWithStoredKey(page, {
     keyName,
-    plaintext: "保存フローを確認する日本語平文",
+    plaintext: "暗号文をアプリ管理領域へ保存しない日本語平文",
   })
   const result = page.getByRole("region", { name: "暗号結果" })
-  await result.getByLabel("QR名", { exact: true }).fill(qrName)
-  await result.getByRole("button", { name: "保存", exact: true }).click()
-  await expect(result.getByRole("status")).toContainText("保存しました")
+  await expect(result.getByLabel("出力名", { exact: true })).toBeVisible()
+  await expect(result.getByLabel("QR名", { exact: true })).toHaveCount(0)
+  await expect(result.getByRole("button", { name: "保存", exact: true })).toHaveCount(0)
+  await expect(result.getByText(/保存済みを開く|重複して保存/)).toHaveCount(0)
+  expect(await rawQrArtifacts(page)).toEqual(beforeEncryption)
 
-  await mainNavigation(page).getByRole("link", { name: /^保存済み/ }).click()
-  await expect(page.getByText(qrName, { exact: true })).toBeVisible()
+  await page.reload({ waitUntil: "domcontentloaded" })
+  expect(await rawQrArtifacts(page)).toEqual(beforeEncryption)
 
-  await page.getByRole("button", { name: `${qrName}の操作` }).click()
-  await page.getByRole("menuitem", { name: "表示", exact: true }).click()
-  const savedQrDialog = page.getByRole("dialog", { name: new RegExp(qrName) })
-  await expect(
-    savedQrDialog.getByRole("img", { name: `${qrName}の画像` }),
-  ).toBeVisible()
-  await savedQrDialog.getByRole("button", { name: "Close" }).click()
-  await expect(savedQrDialog).toBeHidden()
-
-  await page.getByRole("button", { name: `${qrName}の操作` }).click()
-  await page.getByRole("menuitem", { name: "名前を変更", exact: true }).click()
-  const renameDialog = page.getByRole("dialog", { name: "QR名を変更" })
-  await renameDialog.getByLabel("新しいQR名").fill(renamedQr)
-  await renameDialog.getByRole("button", { name: "変更する" }).click()
-  await expect(page.getByText(renamedQr, { exact: true })).toBeVisible()
-
-  await page.getByRole("button", { name: `${renamedQr}の操作` }).click()
-  await page.getByRole("menuitem", { name: "削除", exact: true }).click()
-  const deleteDialog = page.getByRole("alertdialog", {
-    name: "保存済みQRを削除しますか",
-  })
-  await expect(deleteDialog).toContainText("この操作は元に戻せません")
-  await deleteDialog.getByRole("button", { name: "削除する" }).click()
-  await expect(page.getByText("保存済みのQRはありません")).toBeVisible()
-
-  await mainNavigation(page).getByRole("link", { name: /^設定/ }).click()
-  await page.getByRole("button", { name: "すべての鍵を消去" }).click()
-  const clearKeysDialog = page.getByRole("alertdialog", {
-    name: "すべての鍵を消去",
-  })
-  const clearKeysButton = clearKeysDialog.getByRole("button", {
-    name: "完全に消去する",
-  })
-  await expect(clearKeysButton).toBeDisabled()
-  await clearKeysDialog.getByLabel("確認文字列").fill("全削除")
-  await expect(clearKeysButton).toBeEnabled()
-  await clearKeysButton.click()
-  await expect(page.getByText("すべての鍵を消去しました")).toBeVisible()
-  await expect(page.getByText("保存鍵", { exact: true }).locator("..")).toContainText(
-    "0 件",
-  )
+  await goToOfflinePage(page, "/saved")
+  await expect(page.getByText("メッセージ暗号文はアプリ内へ保存しません。")).toBeVisible()
+  await page.getByText(qrName, { exact: true }).click()
+  const saved = page.getByRole("dialog", { name: qrName })
+  await saved
+    .getByRole("checkbox", { name: "第三者に見せないことを理解しました" })
+    .check()
+  await saved.getByRole("button", { name: "QRを表示" }).click()
+  await expect(saved.getByRole("img", { name: `${qrName}の画像` })).toBeVisible()
+  await saved.getByLabel("名前", { exact: true }).fill(renamedQr)
+  await saved.getByRole("button", { name: "名前を変更" }).click()
+  await expect(page.getByRole("dialog", { name: renamedQr })).toBeVisible()
+  await page
+    .getByRole("dialog", { name: renamedQr })
+    .getByRole("button", { name: "削除" })
+    .click()
+  await expect(page.getByText("保存済み鍵QRはありません。")).toBeVisible()
+  expect(await rawQrArtifacts(page)).toHaveLength(0)
 })

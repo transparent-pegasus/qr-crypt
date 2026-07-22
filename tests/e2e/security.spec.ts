@@ -1,7 +1,13 @@
 import { expect, test } from "@playwright/test"
-import { createSymmetricKey, encryptWithStoredKey, openOfflineApp } from "./helpers"
+import {
+  createSymmetricKey,
+  encryptWithStoredKey,
+  loadOnlineGate,
+  rawQrArtifacts,
+  switchToOfflineApp,
+} from "./helpers"
 
-test("暗号フローは同一オリジンに限定され秘密をログや localStorage に残さない", async ({
+test("暗号フローは外部送信せず、秘密・message artifact を残さず CSP を維持する", async ({
   context,
   page,
 }) => {
@@ -10,23 +16,36 @@ test("暗号フローは同一オリジンに限定され秘密をログや loca
   page.on("request", (request) => requestUrls.push(request.url()))
   page.on("console", (message) => consoleMessages.push(message.text()))
 
+  await loadOnlineGate(page, "/keys")
+  const deployedHeaders = await page.evaluate(async () => {
+    const response = await fetch("/_headers", { cache: "no-store" })
+    if (!response.ok) throw new Error(`_headers: ${response.status}`)
+    return response.text()
+  })
+  expect(deployedHeaders).toContain("default-src 'self'")
+  expect(deployedHeaders).toContain("script-src 'self'")
+  expect(deployedHeaders).toContain("connect-src 'self'")
+  expect(deployedHeaders).toContain("worker-src 'self' blob:")
+  expect(deployedHeaders).toContain("object-src 'none'")
+  expect(deployedHeaders).not.toContain("unsafe-eval")
+  expect(deployedHeaders).not.toContain("wasm-unsafe-eval")
+  await switchToOfflineApp(page, context)
+
   const keyName = "セキュリティ確認鍵"
   const plaintext = "絶対にログへ出してはいけない日本語平文-SECURITY-E2E"
-  await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, keyName)
-
   const keyMaterial = await page.evaluate(async () => {
     const records = await new Promise<Array<{ symmetricKey?: CryptoKey }>>(
       (resolve, reject) => {
-        const openRequest = indexedDB.open("qrypt")
-        openRequest.onerror = () => reject(openRequest.error)
-        openRequest.onsuccess = () => {
-          const database = openRequest.result
-          const getRequest = database.transaction("keys").objectStore("keys").getAll()
-          getRequest.onerror = () => reject(getRequest.error)
-          getRequest.onsuccess = () => {
+        const open = indexedDB.open("qrypt")
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+          const database = open.result
+          const get = database.transaction("keys").objectStore("keys").getAll()
+          get.onerror = () => reject(get.error)
+          get.onsuccess = () => {
             database.close()
-            resolve(getRequest.result as Array<{ symmetricKey?: CryptoKey }>)
+            resolve(get.result as Array<{ symmetricKey?: CryptoKey }>)
           }
         }
       },
@@ -41,18 +60,29 @@ test("暗号フローは同一オリジンに限定され秘密をログや loca
   })
 
   const { payload } = await encryptWithStoredKey(page, { keyName, plaintext })
+  const artifacts = await rawQrArtifacts(page)
+  expect(artifacts).toHaveLength(0)
+  expect(
+    artifacts.filter(
+      (artifact) =>
+        artifact.kind === "ciphertext" ||
+        artifact.payload?.startsWith("OCM1:") ||
+        artifact.payload?.startsWith("OCM2:") ||
+        artifact.payload?.startsWith("OCF2:"),
+    ),
+  ).toHaveLength(0)
 
-  expect(requestUrls.length).toBeGreaterThan(0)
   const appOrigin = new URL(page.url()).origin
-  for (const url of requestUrls) {
-    expect(new URL(url).origin, `external request: ${url}`).toBe(appOrigin)
-  }
+  const externalRequests = requestUrls.filter((url) => {
+    const parsed = new URL(url)
+    return parsed.protocol.startsWith("http") && parsed.origin !== appOrigin
+  })
+  expect(externalRequests).toEqual([])
 
   const output = consoleMessages.join("\n")
   for (const secret of [plaintext, payload, keyMaterial.hex, keyMaterial.base64]) {
     expect(output).not.toContain(secret)
   }
-
   const localStorageKeys = await page.evaluate(() =>
     Object.keys(window.localStorage).sort(),
   )

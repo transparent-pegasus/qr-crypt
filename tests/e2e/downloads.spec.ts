@@ -1,67 +1,56 @@
 import { readFile } from "node:fs/promises"
-import { expect, test } from "@playwright/test"
-import { PNG } from "pngjs"
+import { expect, test, type Download } from "@playwright/test"
 import {
-  BinaryBitmap,
-  DecodeHintType,
-  HybridBinarizer,
-  QRCodeReader,
-  RGBLuminanceSource,
-} from "@zxing/library"
-import { createSymmetricKey, encryptWithStoredKey, openOfflineApp } from "./helpers"
+  collectAnimatedFramePayloads,
+  createPqIdentity,
+  createSymmetricKey,
+  decodePng,
+  detailValue,
+  encryptSignedPq,
+  encryptWithStoredKey,
+  openOfflineApp,
+  seedSelfPublicBundle,
+} from "./helpers"
 
-function decodePng(buffer: Buffer): string {
-  const png = PNG.sync.read(buffer)
-  const isDark = (x: number, y: number) => png.data[(y * png.width + x) * 4]! < 128
-  let finderX = -1
-  let finderY = -1
-  for (let y = 0; y < png.height && finderY < 0; y += 1) {
-    for (let x = 0; x < png.width; x += 1) {
-      if (!isDark(x, y)) continue
-      finderX = x
-      finderY = y
-      break
-    }
-  }
-  if (finderX < 0 || finderY < 0) throw new Error("Downloaded PNG has no QR modules")
+interface ZipEntry {
+  name: string
+  data: Buffer
+}
 
-  // The first dark run is the seven-module top edge of the top-left finder.
-  // Derive the QR version, then sample module centers to remove fractional
-  // 512px canvas scaling before passing the downloaded image to ZXing.
-  let finderWidth = 0
-  while (finderX + finderWidth < png.width && isDark(finderX + finderWidth, finderY)) {
-    finderWidth += 1
+function parseStoreOnlyZip(buffer: Buffer): {
+  entries: ZipEntry[]
+  centralCount: number
+} {
+  const entries: ZipEntry[] = []
+  let offset = 0
+  while (offset + 30 <= buffer.length && buffer.readUInt32LE(offset) === 0x04034b50) {
+    expect(buffer.readUInt16LE(offset + 8)).toBe(0)
+    const compressedSize = buffer.readUInt32LE(offset + 18)
+    const uncompressedSize = buffer.readUInt32LE(offset + 22)
+    expect(compressedSize).toBe(uncompressedSize)
+    const nameLength = buffer.readUInt16LE(offset + 26)
+    const extraLength = buffer.readUInt16LE(offset + 28)
+    const nameStart = offset + 30
+    const dataStart = nameStart + nameLength + extraLength
+    const dataEnd = dataStart + compressedSize
+    expect(dataEnd).toBeLessThanOrEqual(buffer.length)
+    entries.push({
+      name: buffer.subarray(nameStart, nameStart + nameLength).toString("utf8"),
+      data: buffer.subarray(dataStart, dataEnd),
+    })
+    offset = dataEnd
   }
-  const estimatedModules = png.width / (finderWidth / 7) - 8
-  const version = Math.round((estimatedModules - 21) / 4) + 1
-  if (version < 1 || version > 40) throw new Error("Downloaded PNG has invalid QR size")
-  const moduleCount = 17 + version * 4
-  const quietModules = 4
-  const outputScale = 4
-  const outputWidth = (moduleCount + quietModules * 2) * outputScale
-  const luminance = new Uint8ClampedArray(outputWidth * outputWidth).fill(255)
-  const sourcePitch = png.width / (moduleCount + quietModules * 2)
-  for (let row = 0; row < moduleCount; row += 1) {
-    for (let column = 0; column < moduleCount; column += 1) {
-      const sourceX = Math.floor((quietModules + column + 0.5) * sourcePitch)
-      const sourceY = Math.floor((quietModules + row + 0.5) * sourcePitch)
-      if (!isDark(sourceX, sourceY)) continue
-      const outputX = (quietModules + column) * outputScale
-      const outputY = (quietModules + row) * outputScale
-      for (let y = 0; y < outputScale; y += 1) {
-        luminance.fill(
-          0,
-          (outputY + y) * outputWidth + outputX,
-          (outputY + y) * outputWidth + outputX + outputScale,
-        )
-      }
-    }
-  }
-  const source = new RGBLuminanceSource(luminance, outputWidth, outputWidth)
-  const hints = new Map([[DecodeHintType.PURE_BARCODE, true]])
-  return new QRCodeReader()
-    .decode(new BinaryBitmap(new HybridBinarizer(source)), hints)
-    .getText()
+  expect(buffer.readUInt32LE(offset)).toBe(0x02014b50)
+  const eocdOffset = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]))
+  expect(eocdOffset).toBeGreaterThan(offset)
+  return { entries, centralCount: buffer.readUInt16LE(eocdOffset + 10) }
+}
+
+async function downloadBuffer(download: Download): Promise<Buffer> {
+  const path = await download.path()
+  expect(path).not.toBeNull()
+  if (path === null) throw new Error("Download path was unavailable")
+  return readFile(path)
 }
 
 test("PNG と SVG のダウンロード内容が画面のペイロードと一致する", async ({
@@ -77,34 +66,23 @@ test("PNG と SVG のダウンロード内容が画面のペイロードと一�
   })
 
   const result = page.getByRole("region", { name: "暗号結果" })
-  await result.getByLabel("QR名", { exact: true }).fill("ダウンロード確認")
+  await result.getByLabel("出力名", { exact: true }).fill("ダウンロード確認")
 
   const pngDownloadPromise = page.waitForEvent("download")
   await result.getByRole("button", { name: "PNG", exact: true }).click()
   const pngDownload = await pngDownloadPromise
-  expect(pngDownload.suggestedFilename()).toMatch(
-    /^[^/\\]+-[A-Za-z0-9_-]{8}\.png$/,
-  )
-  const pngPath = await pngDownload.path()
-  expect(pngPath).not.toBeNull()
-  if (pngPath === null) throw new Error("PNG download path was unavailable")
-  expect(decodePng(await readFile(pngPath))).toBe(payload)
+  expect(pngDownload.suggestedFilename()).toMatch(/^[^/\\]+-[A-Za-z0-9_-]{8}\.png$/)
+  expect(decodePng(await downloadBuffer(pngDownload))).toBe(payload)
 
   const svgDownloadPromise = page.waitForEvent("download")
   await result.getByRole("button", { name: "SVG", exact: true }).click()
   const svgDownload = await svgDownloadPromise
-  expect(svgDownload.suggestedFilename()).toMatch(
-    /^[^/\\]+-[A-Za-z0-9_-]{8}\.svg$/,
-  )
-  const svgPath = await svgDownload.path()
-  expect(svgPath).not.toBeNull()
-  if (svgPath === null) throw new Error("SVG download path was unavailable")
-  const svg = await readFile(svgPath, "utf8")
+  expect(svgDownload.suggestedFilename()).toMatch(/^[^/\\]+-[A-Za-z0-9_-]{8}\.svg$/)
+  const svg = (await downloadBuffer(svgDownload)).toString("utf8")
 
   const svgAnalysis = await page.evaluate((source) => {
     const document = new DOMParser().parseFromString(source, "image/svg+xml")
     const root = document.documentElement
-    const parseError = document.querySelector("parsererror") !== null
     const viewBox = root.getAttribute("viewBox")?.trim().split(/\s+/) ?? []
     const [x, y, width, height] = viewBox
     const isWhite = (element: Element) => {
@@ -112,7 +90,12 @@ test("PNG と SVG のダウンロード内容が画面のペイロードと一�
       return fill === "#fff" || fill === "#ffffff" || fill === "white"
     }
     const coversViewBox = (element: Element) => {
-      if (x === undefined || y === undefined || width === undefined || height === undefined) {
+      if (
+        x === undefined ||
+        y === undefined ||
+        width === undefined ||
+        height === undefined
+      ) {
         return false
       }
       if (element.localName === "rect") {
@@ -123,20 +106,89 @@ test("PNG と SVG のダウンロード内容が画面のペイロードと一�
           element.getAttribute("height") === height
         )
       }
-      // qrcode は全 viewBox を覆う背景長方形を path で表す版がある。
       const compactPath = element.getAttribute("d")?.replaceAll(/\s+/g, "")
       return compactPath === `M${x}${y}h${width}v${height}H${x}z`
     }
-    const whiteBackgroundRectangle = Array.from(root.children).some(
-      (element) => isWhite(element) && coversViewBox(element),
-    )
     return {
       rootIsSvg: root.localName === "svg",
-      parseError,
-      whiteBackgroundRectangle,
+      parseError: document.querySelector("parsererror") !== null,
+      whiteBackgroundRectangle: Array.from(root.children).some(
+        (element) => isWhite(element) && coversViewBox(element),
+      ),
     }
   }, svg)
-  expect(svgAnalysis.rootIsSvg).toBe(true)
-  expect(svgAnalysis.parseError).toBe(false)
-  expect(svgAnalysis.whiteBackgroundRectangle).toBe(true)
+  expect(svgAnalysis).toEqual({
+    rootIsSvg: true,
+    parseError: false,
+    whiteBackgroundRectangle: true,
+  })
+})
+
+test("署名付き複数フレームを操作し ZIP と全 PNG を実ファイルとして出力する", async ({
+  context,
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const identityName = "複数出力PQ-ID"
+  const plaintext = "署名付き複数フレームを一時停止し前後移動して出力確認する本文"
+  await openOfflineApp(page, context, "/keys")
+  await createPqIdentity(page, identityName)
+  await seedSelfPublicBundle(page, identityName)
+  const { result } = await encryptSignedPq(page, { identityName, plaintext })
+  const frameCount = Number.parseInt(await detailValue(result, "QRフレーム数"), 10)
+  expect(frameCount).toBeGreaterThan(1)
+
+  const frames = result.getByRole("region", { name: "暗号文フレーム表示" })
+  const counter = frames.getByText(/^\d+ \/ \d+$/).last()
+  await frames.getByRole("button", { name: "一時停止" }).click()
+  const initialCounter = await counter.innerText()
+  await frames.getByRole("button", { name: "次のフレーム" }).click()
+  await expect(counter).not.toHaveText(initialCounter)
+  await frames.getByRole("button", { name: "前のフレーム" }).click()
+  await expect(counter).toHaveText(initialCounter)
+  await frames.getByLabel("表示速度").fill("150")
+  await expect(frames.getByText("150 ms", { exact: true })).toBeVisible()
+
+  await frames.getByRole("button", { name: "全画面表示" }).click()
+  const fullscreen = page.getByRole("dialog", { name: /暗号文 \d+ \/ \d+を全画面表示/ })
+  await expect(fullscreen.getByRole("img", { name: /全画面画像/ })).toBeVisible()
+  await fullscreen.getByRole("button", { name: "閉じる" }).click()
+
+  const framePayloads = await collectAnimatedFramePayloads(frames)
+  expect(framePayloads).toHaveLength(frameCount)
+  expect(framePayloads.every((payload) => payload.startsWith("OCF2:"))).toBe(true)
+  await result.getByLabel("出力名", { exact: true }).fill("署名付き複数フレーム")
+
+  const pngDownloads: Download[] = []
+  const capturePng = (download: Download) => pngDownloads.push(download)
+  page.on("download", capturePng)
+  await frames.getByRole("button", { name: "PNGを一括出力" }).click()
+  await expect.poll(() => pngDownloads.length, { timeout: 60_000 }).toBe(frameCount)
+  page.off("download", capturePng)
+
+  const downloadedPayloads: string[] = []
+  for (const download of pngDownloads) {
+    expect(download.suggestedFilename()).toMatch(/-frame-\d{2}\.png$/)
+    const bytes = await downloadBuffer(download)
+    expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a")
+    downloadedPayloads.push(decodePng(bytes))
+  }
+  expect(new Set(downloadedPayloads)).toEqual(new Set(framePayloads))
+
+  const zipPromise = page.waitForEvent("download")
+  await frames.getByRole("button", { name: "ZIPで出力" }).click()
+  const zipDownload = await zipPromise
+  expect(zipDownload.suggestedFilename()).toMatch(/-frames\.zip$/)
+  const zip = parseStoreOnlyZip(await downloadBuffer(zipDownload))
+  expect(zip.centralCount).toBe(frameCount)
+  expect(zip.entries).toHaveLength(frameCount)
+  expect(zip.entries.map((entry) => entry.name)).toEqual(
+    Array.from(
+      { length: frameCount },
+      (_, index) => `frame-${String(index + 1).padStart(2, "0")}.png`,
+    ),
+  )
+  expect(new Set(zip.entries.map((entry) => decodePng(entry.data)))).toEqual(
+    new Set(framePayloads),
+  )
 })
