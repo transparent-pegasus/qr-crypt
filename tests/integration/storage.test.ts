@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
+import { env } from "@/schemas/env-schema"
 import {
   buildSymmetricKeyEnvelope,
   createSymmetricKeyRecord,
@@ -253,8 +254,10 @@ describe("QR repository", () => {
 
 describe("preferences and plaintext non-persistence", () => {
   it("uses env defaults and validates persisted updates", async () => {
+    // 既定は env 由来(.env.local の有無で変わる)— クリーンチェックアウトでも
+    // 成立するよう env-schema の解決値を単一の真実として参照する
     expect(await getPreferences()).toMatchObject({
-      defaultAlgorithm: "MLKEM768_A256GCM",
+      defaultAlgorithm: env.defaultAlgorithm,
       qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
@@ -285,7 +288,7 @@ describe("preferences and plaintext non-persistence", () => {
     })
     const migrated = await getPreferences()
     expect(migrated).toMatchObject({
-      defaultAlgorithm: "MLKEM768_A256GCM",
+      defaultAlgorithm: env.defaultAlgorithm,
       qrErrorCorrection: "H",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
