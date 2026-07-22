@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react"
 import type { FeatureSupport } from "@/lib/feature-detect"
+import { DisplayGateProvider } from "@/app/display-gate"
 import { PwaOfflineReady, type UseRegisterSwHook } from "@/components/pwa-offline-ready"
 import { Toaster } from "@/components/ui/sonner"
 
@@ -85,6 +86,13 @@ export function useTransientClear(): TransientClearContextValue {
     throw new Error("useTransientClear must be used inside TransientClearProvider")
   }
   return value
+}
+
+function DisplayGateLayer({ children }: { children: ReactNode }) {
+  const { clearTransient } = useTransientClear()
+  return (
+    <DisplayGateProvider clearTransient={clearTransient}>{children}</DisplayGateProvider>
+  )
 }
 
 export interface SensitiveSessionState {
@@ -179,8 +187,10 @@ export function AppProviders({
       <FeatureSupportProvider features={features}>
         <TransientClearProvider>
           <SensitiveSessionProvider>
-            <PwaOfflineReady registerHook={pwaHook}>{children}</PwaOfflineReady>
-            <Toaster position="top-center" richColors />
+            <DisplayGateLayer>
+              <PwaOfflineReady registerHook={pwaHook}>{children}</PwaOfflineReady>
+              <Toaster position="top-center" richColors />
+            </DisplayGateLayer>
           </SensitiveSessionProvider>
         </TransientClearProvider>
       </FeatureSupportProvider>

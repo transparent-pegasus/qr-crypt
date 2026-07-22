@@ -3,18 +3,15 @@ import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react"
 import { RouterProvider } from "react-router-dom"
 import type { BootController } from "@/app/boot/boot-controller"
 import { useBootState } from "@/app/boot/use-boot-state"
+import { useDisplayGate } from "@/app/display-gate"
 import {
   detectFeatures as detectBrowserFeatures,
   type FeatureSupport,
 } from "@/lib/feature-detect"
 import { createAppRouter } from "@/app/router"
-import {
-  AppProviders,
-  ThemeProvider,
-  useSensitiveSession,
-  useTransientClear,
-} from "@/app/providers"
+import { AppProviders, ThemeProvider, useSensitiveSession } from "@/app/providers"
 import { OnlineGate, OnlineInstallScreen } from "@/components/online-gate"
+import { OfflineAckShell } from "@/components/offline-ack-shell"
 import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
 import { userMessageFor } from "@/crypto/errors"
 
@@ -22,6 +19,8 @@ export interface AppProps {
   bootController?: BootController
   detectFeatures?: () => FeatureSupport
   pwaHook?: UseRegisterSwHook
+  reloadPage?: () => void
+  routerFactory?: typeof createAppRouter
 }
 
 function UnsupportedBrowser({ features }: { features: FeatureSupport }) {
@@ -83,8 +82,12 @@ function BootStatusScreen({ children }: { children: ReactNode }) {
   )
 }
 
-function OfflineApplication() {
-  const router = useMemo(() => createAppRouter(), [])
+function OfflineApplication({
+  routerFactory,
+}: {
+  routerFactory: typeof createAppRouter
+}) {
+  const router = useMemo(() => routerFactory(), [routerFactory])
   return (
     <OnlineGate>
       <RouterProvider router={router} />
@@ -92,17 +95,37 @@ function OfflineApplication() {
   )
 }
 
-function BootGate({ controller }: { controller: BootController | undefined }) {
-  const { clearTransient } = useTransientClear()
+function BootGate({
+  controller,
+  reloadPage,
+  routerFactory,
+}: {
+  controller: BootController | undefined
+  reloadPage: () => void
+  routerFactory: typeof createAppRouter
+}) {
+  const display = useDisplayGate()
+  const { clearTransientForOnlineEpisode } = display
   const { resetSensitiveSession } = useSensitiveSession()
   const resetTransient = useCallback(() => {
-    clearTransient()
+    clearTransientForOnlineEpisode()
     resetSensitiveSession()
-  }, [clearTransient, resetSensitiveSession])
+  }, [clearTransientForOnlineEpisode, resetSensitiveSession])
   const state = useBootState({
     ...(controller ? { controller } : {}),
     resetTransient,
   })
+  const routerEligible =
+    state.kind === "offline-confirmed" &&
+    !display.online &&
+    (display.coldOffline || display.acceptedGeneration === display.offlineGeneration)
+
+  const acceptOfflineRisk = (generation: number) => display.acceptOfflineRisk(generation)
+  const reloadAfterWipe = (generation: number) => {
+    if (!display.acceptOfflineRisk(generation)) return false
+    reloadPage()
+    return true
+  }
 
   switch (state.kind) {
     case "unknown":
@@ -115,7 +138,17 @@ function BootGate({ controller }: { controller: BootController | undefined }) {
         </BootStatusScreen>
       )
     case "offline-confirmed":
-      return <OfflineApplication />
+      if (display.online) return <OnlineInstallScreen />
+      if (routerEligible) {
+        return <OfflineApplication routerFactory={routerFactory} />
+      }
+      return (
+        <OfflineAckShell
+          key={display.offlineGeneration}
+          generation={display.offlineGeneration}
+          onContinue={acceptOfflineRisk}
+        />
+      )
     case "network-confirmed":
       return <OnlineInstallScreen />
     case "wiping":
@@ -128,6 +161,16 @@ function BootGate({ controller }: { controller: BootController | undefined }) {
         </BootStatusScreen>
       )
     case "wiped":
+      if (!display.online && display.ackPending) {
+        return (
+          <OfflineAckShell
+            key={display.offlineGeneration}
+            generation={display.offlineGeneration}
+            onContinue={reloadAfterWipe}
+            variant="wiped"
+          />
+        )
+      }
       return (
         <BootStatusScreen>
           <h1 className="text-xl font-bold">
@@ -146,12 +189,25 @@ function BootGate({ controller }: { controller: BootController | undefined }) {
           <p className="text-sm text-muted-foreground">
             論理削除を試行しました(物理消去は未保証)
           </p>
+          <p className="text-sm text-muted-foreground">
+            このタブを閉じてください。再び利用するには、端末を完全フォーマットしてからアプリを導入し直してください。
+          </p>
         </BootStatusScreen>
       )
   }
 }
 
-export function App({ bootController, detectFeatures, pwaHook }: AppProps) {
+function reloadCurrentPage(): void {
+  window.location.reload()
+}
+
+export function App({
+  bootController,
+  detectFeatures,
+  pwaHook,
+  reloadPage = reloadCurrentPage,
+  routerFactory = createAppRouter,
+}: AppProps) {
   const detector = detectFeatures ?? detectBrowserFeatures
   const features = useMemo(() => detector(), [detector])
 
@@ -165,7 +221,11 @@ export function App({ bootController, detectFeatures, pwaHook }: AppProps) {
 
   return (
     <AppProviders features={features} pwaHook={pwaHook}>
-      <BootGate controller={bootController} />
+      <BootGate
+        controller={bootController}
+        reloadPage={reloadPage}
+        routerFactory={routerFactory}
+      />
     </AppProviders>
   )
 }

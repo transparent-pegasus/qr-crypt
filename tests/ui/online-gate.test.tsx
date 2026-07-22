@@ -24,8 +24,13 @@ describe("OnlineGate", () => {
     )
     expect(screen.getByText("オフライン利用準備状態")).toBeInTheDocument()
     expect(
-      screen.getByText("オフライン（機内モード）に切り替えると全機能が利用できます。"),
+      screen.getByText(
+        "オフライン（機内モード）に切り替えるとオフライン機能を利用できます(切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません)",
+      ),
     ).toBeInTheDocument()
+    expect(
+      screen.queryByText("オフライン（機内モード）に切り替えると全機能が利用できます。"),
+    ).not.toBeInTheDocument()
     expect(screen.getByText("オンライン", { exact: true })).toBeInTheDocument()
     expect(screen.queryByLabelText("平文")).not.toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()

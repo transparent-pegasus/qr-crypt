@@ -72,3 +72,22 @@ unknown → probing → offline-confirmed
 であり、次を防がない: 同一オリジンの悪意あるコード・物理回収(ディスクイメージ)・
 更新で先に実行される侵害コード。theme(`oc-theme`)は非機密だが `oc-*` 一括削除に
 含まれる。
+
+## 7. 表示専用のオフライン承認 phase
+
+BootState と §4 の one-way barrier は変更せず、その外側(AppProviders 配下)に
+メモリー内の display-only ack phase を一つだけ置く。初期 `navigator.onLine` は
+hint に留め、表示用 probe が online を commit した後の online→offline edge ごとに
+generation を進める。承認までは Router と子を mount せず、適格条件は
+`offline-confirmed && !display.online && (coldOffline || acceptedGeneration === offlineGeneration)`。
+この表示 edge は破壊用 sentinel や wipe の回数を増やさず、承認表示・チェック自体も
+端末の安全性を検証・回復しない。
+
+| boot / wipe 結果 | offline edge 後の動作 |
+|---|---|
+| wipe なし | generation ごとの承認後に初めて Router を mount |
+| `wiped` | 結果と承認を同じ全画面 shell に表示し、「再読み込みして続行」から full reload。現 JS lifetime では Router を mount しない |
+| `partial-failure` | `RESET_FAILED` とタブを閉じる／端末を完全フォーマットする案内だけを表示し、再開経路を設けない |
+
+コールド offline は承認不要である。未承認中に online へ戻った場合は pending・チェック・
+古い action を無効化し、次の offline edge を新しい generation として扱う。

@@ -74,14 +74,24 @@ describe("active reachability detection", () => {
     expect(signal?.aborted).toBe(true)
   })
 
-  it("corrects a true navigator hint when the immediate probe fails", async () => {
+  it("does not commit a true navigator hint when the immediate probe fails", async () => {
     setTestOnlineStatus(true, { reachable: false })
 
     const { result } = renderHook(() => useOnlineStatus())
-    expect(result.current).toBe(true)
+    expect(result.current).toBe(false)
 
     await flushProbe()
     expect(result.current).toBe(false)
+  })
+
+  it("commits an initial online hint only after the probe succeeds", async () => {
+    setTestOnlineStatus(true)
+
+    const { result } = renderHook(() => useOnlineStatus())
+    expect(result.current).toBe(false)
+
+    await flushProbe()
+    expect(result.current).toBe(true)
   })
 
   it("handles the offline event immediately without starting another probe", async () => {
