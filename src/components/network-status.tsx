@@ -1,9 +1,9 @@
 import { Wifi, WifiOff } from "lucide-react"
+import { useDisplayGate } from "@/app/display-gate"
 import { Badge } from "@/components/ui/badge"
-import { useOnlineStatus } from "@/hooks/use-online-status"
 
 export function NetworkStatusBadge() {
-  const online = useOnlineStatus()
+  const { online } = useDisplayGate()
   const Icon = online ? Wifi : WifiOff
   return (
     <Badge

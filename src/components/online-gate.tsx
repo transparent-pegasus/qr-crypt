@@ -1,16 +1,9 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { CheckCircle2, Download, Plane, Share2 } from "lucide-react"
-import { useTransientClear } from "@/app/providers"
+import { useDisplayGate } from "@/app/display-gate"
 import { NetworkStatusBadge } from "@/components/network-status"
 import { usePwaOfflineReady } from "@/components/pwa-offline-ready"
 import { Button } from "@/components/ui/button"
-import { useOnlineStatus } from "@/hooks/use-online-status"
 import { env } from "@/schemas/env-schema"
 
 interface BeforeInstallPromptEvent extends Event {
@@ -26,18 +19,13 @@ function isStandalone(): boolean {
 }
 
 function isIosSafari(): boolean {
-  return /iP(?:hone|ad|od)/i.test(navigator.userAgent) && /Safari/i.test(navigator.userAgent)
+  return (
+    /iP(?:hone|ad|od)/i.test(navigator.userAgent) && /Safari/i.test(navigator.userAgent)
+  )
 }
 
 export function OnlineGate({ children }: { children: ReactNode }) {
-  const online = useOnlineStatus()
-  const { clearTransient } = useTransientClear()
-  const previousOnline = useRef(online)
-
-  useLayoutEffect(() => {
-    if (!previousOnline.current && online) clearTransient()
-    previousOnline.current = online
-  }, [clearTransient, online])
+  const { online } = useDisplayGate()
 
   return online ? <OnlineInstallScreen /> : children
 }
@@ -78,7 +66,9 @@ export function OnlineInstallScreen() {
       setInstallPrompt(null)
       if (choice.outcome === "accepted") setInstalled(true)
     } catch {
-      setInstallError("インストールを開始できませんでした。ブラウザーのメニューから操作してください。")
+      setInstallError(
+        "インストールを開始できませんでした。ブラウザーのメニューから操作してください。",
+      )
     } finally {
       setInstalling(false)
     }
@@ -168,7 +158,7 @@ export function OnlineInstallScreen() {
           <div className="space-y-1">
             <h2 className="font-semibold">機内モードへ切り替えてください</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              オフライン（機内モード）に切り替えると全機能が利用できます。
+              オフライン（機内モード）に切り替えるとオフライン機能を利用できます(切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません)
             </p>
           </div>
         </div>

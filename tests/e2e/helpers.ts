@@ -8,17 +8,49 @@ function escapeRegex(value: string): string {
 }
 
 export async function expectOnlineGate(page: Page): Promise<void> {
-  await expect(
-    page.getByText("オンラインではPWAの導入のみ利用できます"),
-  ).toBeVisible()
+  await expect(page.getByText("オンラインではPWAの導入のみ利用できます")).toBeVisible()
   await expect(page.getByRole("img", { name: /アプリアイコン/ })).toBeVisible()
   await expect(page.getByText("PWAインストール状態")).toBeVisible()
   await expect(page.getByText("オフライン利用準備状態")).toBeVisible()
   await expect(
-    page.getByText("オフライン（機内モード）に切り替えると全機能が利用できます。"),
+    page.getByText(
+      "オフライン（機内モード）に切り替えるとオフライン機能を利用できます(切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません)",
+    ),
   ).toBeVisible()
   await expect(page.getByText("オンライン", { exact: true })).toBeVisible()
   await expect(page.getByRole("navigation")).toBeHidden()
+}
+
+export async function expectOfflineAcknowledgement(page: Page): Promise<void> {
+  await expect(
+    page.getByRole("heading", {
+      name: "オフラインへ切り替わりました — 続行前の確認",
+    }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("checkbox", {
+      name: "上記を理解した上で、リスクを受け入れてこの端末で続行します",
+    }),
+  ).not.toBeChecked()
+  await expect(
+    page.getByRole("button", {
+      name: "リスクを理解してオフライン機能を表示",
+    }),
+  ).toBeDisabled()
+  await expect(mainNavigation(page)).toBeHidden()
+}
+
+export async function acknowledgeOfflineRisk(page: Page): Promise<void> {
+  await page
+    .getByRole("checkbox", {
+      name: "上記を理解した上で、リスクを受け入れてこの端末で続行します",
+    })
+    .check()
+  await page
+    .getByRole("button", {
+      name: "リスクを理解してオフライン機能を表示",
+    })
+    .click()
 }
 
 export async function loadOnlineGate(page: Page, path = "/encrypt"): Promise<void> {
@@ -48,9 +80,22 @@ export async function switchToOfflineApp(
   await waitForServiceWorkerControl(page)
   await context.setOffline(true)
   await page.reload({ waitUntil: "domcontentloaded" })
+  await expect(page.getByText("オンラインではPWAの導入のみ利用できます")).toBeHidden()
   await expect(
-    page.getByText("オンラインではPWAの導入のみ利用できます"),
+    page.getByRole("heading", {
+      name: "オフラインへ切り替わりました — 続行前の確認",
+    }),
   ).toBeHidden()
+  await expect(mainNavigation(page)).toBeVisible()
+}
+
+export async function switchToOfflineAppInSession(
+  page: Page,
+  context: BrowserContext,
+): Promise<void> {
+  await context.setOffline(true)
+  await expectOfflineAcknowledgement(page)
+  await acknowledgeOfflineRisk(page)
   await expect(mainNavigation(page)).toBeVisible()
 }
 
@@ -101,11 +146,7 @@ export async function encryptWithStoredKey(
   if (args.algorithmLabel !== undefined) {
     await chooseOption(page, "暗号化方式", args.algorithmLabel)
   }
-  await chooseOption(
-    page,
-    "使用鍵",
-    new RegExp(`^${escapeRegex(args.keyName)}\\s+—`),
-  )
+  await chooseOption(page, "使用鍵", new RegExp(`^${escapeRegex(args.keyName)}\\s+—`))
   await page.getByLabel("平文", { exact: true }).fill(args.plaintext)
   await page.getByRole("button", { name: "暗号化する", exact: true }).click()
 

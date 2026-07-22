@@ -28,7 +28,7 @@ describe("App boot gate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
-  it("does not mount Router or usePreferences before offline-confirmed", async () => {
+  it("[acceptance 1] cold offline mounts Router without acknowledgement", async () => {
     let resolveFetch: ((value: Response) => void) | undefined
     const controller = createBootController({
       fetchImpl: vi.fn(
@@ -48,6 +48,11 @@ describe("App boot gate", () => {
     expect(
       await screen.findByRole("navigation", { name: "メインナビゲーション" }),
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("heading", {
+        name: "オフラインへ切り替わりました — 続行前の確認",
+      }),
+    ).not.toBeInTheDocument()
     await waitFor(() => expect(getPreferences).toHaveBeenCalled())
     controller.stop()
   })

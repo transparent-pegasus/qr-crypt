@@ -9,11 +9,14 @@ interface AbortableProbe extends Promise<boolean> {
 }
 
 export function useOnlineStatus(): boolean {
-  const [online, setOnline] = useState(() => navigator.onLine)
+  // navigator.onLine is only a startup hint. Expose `true` after the
+  // reachability probe commits it so consumers cannot mistake the hint for a
+  // confirmed online episode.
+  const [online, setOnline] = useState(false)
 
   useEffect(() => {
     let active = true
-    let currentOnline = navigator.onLine
+    let currentOnline = false
     let intervalId: ReturnType<typeof setInterval> | undefined
     let activeProbe: AbortableProbe | null = null
 
