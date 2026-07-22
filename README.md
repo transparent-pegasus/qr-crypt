@@ -2,7 +2,7 @@
 
 オフライン暗号化 QR PWA。端末上で平文を暗号化し、暗号文・鍵素材を QR として表示・読取する Progressive Web App です。アプリ管理下の IndexedDB/localStorage にはメッセージ暗号文を永続化しません。利用者が明示した PNG/SVG/ZIP ダウンロードとクリップボードは OS・ブラウザー・同期先に残り得て、wipe/purge の対象外です。
 
-**すること**: オフライン時の AES-256-GCM / RSA-OAEP＋AES-256-GCM、および v2 のポスト量子スイートによる暗号化、鍵生成・管理、QR 表示・読取・鍵系 QR のアプリ内保存、PWA としてのオフライン起動。
+**すること**: オフライン時の AES-256-GCM および v2 ポスト量子スイート（ML-KEM / ML-DSA）による暗号化、鍵生成・管理、QR 表示・読取・鍵系 QR のアプリ内保存、PWA としてのオフライン起動。
 
 **しないこと**: 平文や秘密鍵の外部送信、クラウド上の鍵保管、独自暗号アルゴリズム、CDN 依存のランタイム、オフライン表示を安全性の証明として扱うこと、メッセージ暗号文のアプリ内永続化（オーナー要件。セッション表示と利用者明示のエクスポートのみ）。
 
@@ -52,7 +52,7 @@ v2 は **experimental** です。リポジトリ内の実装・テスト・文�
 | スイート | 内容 | 備考 |
 | --- | --- | --- |
 | AES-256-GCM | 対称暗号のみ | 既存経路 |
-| ML-KEM-768 + HKDF-SHA256 + AES-256-GCM | ポスト量子 KEM ハイブリッド | **既定**（`MLKEM768_A256GCM`。WP-14 で UI 既定へ反映予定） |
+| ML-KEM-768 + HKDF-SHA256 + AES-256-GCM | ポスト量子 KEM ハイブリッド | **既定**（`MLKEM768_A256GCM`） |
 | 上記 + ML-DSA-65 署名 | sign-then-encrypt | 署名付きメッセージ |
 
 初期リリースのプロファイルは **balanced**（768/65）のみです。maximum（1024/87）は型・suite コード予約のみで初期リリースでは無効です。
@@ -243,7 +243,7 @@ GitHub の Cloudflare Git Integration とは二重運用しません。GitHub Ac
 | maximum プロファイル（1024/87）は初期リリース無効 | `VITE_ENABLE_MAXIMUM_PQ` は形式のみ・無視される。UI・identity 作成へ露出しない |
 | `QrFrameV2.artifactType` に `pq-kem-public-key` / `pq-dsa-public-key` を追加 | spec2 §12 の 3 値からの拡張（単鍵公開鍵フレーム用） |
 | エラーコード `RESET_FAILED`・`SIGNATURE_INVALID`・`SIGNING_KEY_NOT_FOUND`・`FRAME_MISMATCH`・`WORKER_UNAVAILABLE` の追加 | `RESET_FAILED` は plan 暫定名 `WIPE_FAILED` から、論理削除の正直な命名方針で確定。他は署名検証失敗・署名鍵欠落・フレーム不整合・Worker 利用不可 |
-| `VITE_ENABLE_RSA` 既定 true と `VITE_DEFAULT_ALGORITHM=A256GCM` | WP-14（RSA 削除・UI 統合）で false / `MLKEM768_A256GCM` へ反転予定 |
+| RSA-OAEP ハイブリッド削除・`VITE_ENABLE_RSA=false`・`VITE_DEFAULT_ALGORITHM=MLKEM768_A256GCM` | WP-14 完了。初期仕様の RSA 経路からの逸脱（反転済み） |
 | 暗号文の保存機能なし | オーナー要件 2026-07-22。spec §14 の保存一覧・§22 維持項目からの逸脱。鍵系 QR の保存は維持。暗号文は表示・PNG/SVG/ZIP エクスポートのみ |
 
 Action ピン（`actions/checkout@v6` / `jdx/mise-action@v3` / `cloudflare/wrangler-action@v3`）はいずれも該当リポジトリにメジャータグが存在することを確認済みです。変更不要のため、ここでの追加逸脱はありません（改訂 20）。
