@@ -52,10 +52,30 @@ v2 は **experimental** です。リポジトリ内の実装・テスト・文�
 | スイート | 内容 | 備考 |
 | --- | --- | --- |
 | AES-256-GCM | 対称暗号のみ | 既存経路 |
-| ML-KEM-768 + HKDF-SHA256 + AES-256-GCM | ポスト量子 KEM ハイブリッド | **既定**（`MLKEM768_A256GCM`） |
-| 上記 + ML-DSA-65 署名 | sign-then-encrypt | 署名付きメッセージ |
+| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | ポスト量子 KEM ハイブリッド | **既定**（`MLKEM1024_A256GCM`） |
+| 上記 + ML-DSA-87 署名 | sign-then-encrypt | 署名付きメッセージ |
 
-初期リリースのプロファイルは **balanced**（768/65）のみです。maximum（1024/87）は型・suite コード予約のみで初期リリースでは無効です。
+現在の active policy は **maximum**（1024/87）のみです。wire 契約では 4 suite
+（768/65 と 1024/87、各々の署名なし・署名付き）を維持しますが、balanced
+（768/65）は型・suite コードの予約に降格しており、運用境界では
+`UNSUPPORTED_ALGORITHM` として拒否します。
+
+### PQ ベンチ参考値
+
+2026-07-23 に `aube bench:pq`（Vitest 4.1.10、Linux x86_64、
+Intel Core i7-10870H）を 1 回実行した値です。`hz` は 1 秒あたりの処理回数、
+mean は 1 処理あたりの平均ミリ秒です。
+
+| 処理 | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| ML-KEM-1024 keygen | 1,176.31 | 0.8501 | 1,114.96 | 0.8969 |
+| ML-KEM-1024 encapsulate | 1,034.01 | 0.9671 | 1,006.43 | 0.9936 |
+| ML-KEM-1024 decapsulate | 800.77 | 1.2488 | 775.31 | 1.2898 |
+| ML-DSA-87 sign | 87.8166 | 11.3874 | 81.5052 | 12.2692 |
+| ML-DSA-87 verify | 301.58 | 3.3158 | 277.19 | 3.6076 |
+
+これは開発機上の参考値であり、実ブラウザー・低性能端末での実測や
+`release-approved` 判定の代替ではありません。
 
 ### 複数 QR（OCF2）
 
@@ -239,11 +259,11 @@ GitHub の Cloudflare Git Integration とは二重運用しません。GitHub Ac
 | §17 更新通知の撤回 | オーナー決定によりアプリ内の更新機能を設けず、導入後はオフラインで恒久運用する。新バージョンは端末の完全フォーマット後に新規導入する |
 | §7.2 暗号化後の平文保持既定の撤回 | オーナー決定により「暗号化後に平文を自動消去」を既定 ON に変更。バックグラウンド自動消去も既定 ON とし、遅延は env の固定値（300秒）を使用する |
 | 通常オンライン利用の撤回 | オーナー決定によりオンライン状態を PWA 新規導入専用とし、全アプリ機能を OnlineGate でブロックする。offline→online 遷移時はメモリー内の一時データを即時消去する |
-| ML-KEM-512 / ML-DSA-44 未実装 | 相互運用テスト用も含め非対応。初期対象は balanced（768/65）と型予約の maximum（1024/87）のみ |
-| maximum プロファイル（1024/87）は初期リリース無効 | `VITE_ENABLE_MAXIMUM_PQ` は形式のみ・無視される。UI・identity 作成へ露出しない |
+| ML-KEM-512 / ML-DSA-44 未実装 | 相互運用テスト用も含め非対応。active policy の対象は maximum（1024/87）のみで、balanced（768/65）は型・suite コード予約のみ |
+| balanced 降格・maximum 本筋化 | balanced 降格・maximum 本筋化は spec2/plan2.1 §A 推奨初期範囲からのオーナー承認済み意図的逸脱(2026-07-23)。maximum（1024/87）のみを運用し、認識済みの balanced（768/65）は `UNSUPPORTED_ALGORITHM` で拒否する |
 | `QrFrameV2.artifactType` に `pq-kem-public-key` / `pq-dsa-public-key` を追加 | spec2 §12 の 3 値からの拡張（単鍵公開鍵フレーム用） |
 | エラーコード `RESET_FAILED`・`SIGNATURE_INVALID`・`SIGNING_KEY_NOT_FOUND`・`FRAME_MISMATCH`・`WORKER_UNAVAILABLE` の追加 | `RESET_FAILED` は plan 暫定名 `WIPE_FAILED` から、論理削除の正直な命名方針で確定。他は署名検証失敗・署名鍵欠落・フレーム不整合・Worker 利用不可 |
-| RSA-OAEP ハイブリッド削除・`VITE_ENABLE_RSA=false`・`VITE_DEFAULT_ALGORITHM=MLKEM768_A256GCM` | WP-14 完了。初期仕様の RSA 経路からの逸脱（反転済み） |
+| RSA-OAEP ハイブリッド削除・`VITE_ENABLE_RSA=false`・`VITE_DEFAULT_ALGORITHM=MLKEM1024_A256GCM` | WP-14 完了。初期仕様の RSA 経路からの逸脱（反転済み） |
 | 暗号文の保存機能なし | オーナー要件 2026-07-22。spec §14 の保存一覧・§22 維持項目からの逸脱。鍵系 QR の保存は維持。暗号文は表示・PNG/SVG/ZIP エクスポートのみ |
 
 Action ピン（`actions/checkout@v6` / `jdx/mise-action@v3` / `cloudflare/wrangler-action@v3`）はいずれも該当リポジトリにメジャータグが存在することを確認済みです。変更不要のため、ここでの追加逸脱はありません（改訂 20）。

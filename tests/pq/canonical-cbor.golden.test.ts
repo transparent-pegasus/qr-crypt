@@ -18,7 +18,7 @@ import {
   encodeQrFrameV2,
   signingTargetBytes,
 } from "@/crypto/pq/canonical-cbor"
-import { resolveSuite, suiteComponents } from "@/crypto/pq/suites"
+import { assertActiveSuite, resolveSuite, suiteComponents } from "@/crypto/pq/suites"
 import { bytesToHex, sha256Hex } from "@/lib/bytes"
 import { MAX_FRAME_PAYLOAD_CHARS } from "@/lib/limits"
 import { qrByteCapacity } from "@/qr/encode"
@@ -303,6 +303,12 @@ describe("suite contract", () => {
       const components = suiteComponents(suite)
       expect(resolveSuite(components.kem, components.signature)).toBe(suite)
     }
+  })
+
+  it("768 wire は codec として認識し、active policy では拒否する", () => {
+    const envelope = fixtureEnvelope()
+    expect(decodeMlKemEnvelopeV2(encodeMlKemEnvelopeV2(envelope))).toEqual(envelope)
+    expectCode(() => assertActiveSuite(envelope.suite), "UNSUPPORTED_ALGORITHM")
   })
 
   it("プロファイル混在の組は拒否する(plan2.1 §C1)", () => {

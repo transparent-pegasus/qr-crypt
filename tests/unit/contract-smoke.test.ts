@@ -26,7 +26,7 @@ describe("contract smoke", () => {
   it("keeps only the active A256GCM v1 mapper", () => {
     expect(toWireAlgorithm("A256GCM")).toBe("A256GCM")
     expect(toUiAlgorithm("A256GCM")).toBe("A256GCM")
-    expect(() => toWireAlgorithm("MLKEM768_A256GCM")).toThrow(TypeError)
+    expect(() => toWireAlgorithm("MLKEM1024_A256GCM")).toThrow(TypeError)
   })
 
   it("env parsing applies defaults and cross-field normalization", () => {
@@ -38,6 +38,14 @@ describe("contract smoke", () => {
     expect(normalized.buildSha).toBe("development")
     expect(() => parseAppEnv({ VITE_ENABLE_RSA: "yes" })).toThrow("環境変数が不正です")
     expect(() => parseAppEnv({ VITE_QR_RENDER_SIZE: "abc" })).toThrow(
+      "環境変数が不正です",
+    )
+    for (const legacyAlgorithm of ["MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"]) {
+      expect(() => parseAppEnv({ VITE_DEFAULT_ALGORITHM: legacyAlgorithm })).toThrow(
+        "環境変数が不正です",
+      )
+    }
+    expect(() => parseAppEnv({ VITE_DEFAULT_PQ_PROFILE: "balanced" })).toThrow(
       "環境変数が不正です",
     )
   })

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest"
+import { readBootDecision } from "@/app/boot/boot-controller"
 import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
 import { env } from "@/schemas/env-schema"
 import {
@@ -11,7 +12,12 @@ import { toBase64Url } from "@/lib/base64url"
 import { bytesToHex, utf8ByteLength, utf8ToBytes } from "@/lib/bytes"
 import { encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
 import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
-import type { StoredKeyRecord, StoredQrArtifact } from "@/schemas/domain"
+import type {
+  PqProfileId,
+  StoredKeyRecord,
+  StoredQrArtifact,
+  UiAlgorithm,
+} from "@/schemas/domain"
 import {
   closeDb,
   DB_VERSION,
@@ -264,13 +270,13 @@ describe("preferences and plaintext non-persistence", () => {
     })
     expect(
       await updatePreferences({
-        defaultAlgorithm: "MLKEM768_MLDSA65_A256GCM",
+        defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM",
         qrErrorCorrection: "M",
         autoClearPlaintextAfterEncrypt: false,
         backgroundClearEnabled: false,
       }),
     ).toMatchObject({
-      defaultAlgorithm: "MLKEM768_MLDSA65_A256GCM",
+      defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM",
       qrErrorCorrection: "M",
       autoClearPlaintextAfterEncrypt: false,
       backgroundClearEnabled: false,
@@ -294,6 +300,53 @@ describe("preferences and plaintext non-persistence", () => {
       backgroundClearEnabled: true,
     })
     expect(migrated).not.toHaveProperty("backgroundClearSeconds")
+  })
+
+  it("normalizes legacy PQ/RSA preferences while boot preserves wipeOnOnline=false", async () => {
+    const database = await getDb()
+    await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
+    const cases = [
+      ["MLKEM768_A256GCM", "MLKEM1024_A256GCM"],
+      ["MLKEM768_MLDSA65_A256GCM", "MLKEM1024_MLDSA87_A256GCM"],
+      ["RSA-HYBRID", "A256GCM"],
+    ] as const
+
+    for (const [legacyAlgorithm, expectedAlgorithm] of cases) {
+      await database.put(STORE_PREFERENCES, {
+        key: "preferences",
+        value: {
+          defaultAlgorithm: legacyAlgorithm,
+          defaultPqProfile: "balanced",
+          wipeOnOnline: false,
+        },
+      })
+
+      await expect(getPreferences()).resolves.toMatchObject({
+        defaultAlgorithm: expectedAlgorithm,
+        defaultPqProfile: "maximum",
+        wipeOnOnline: false,
+      })
+      await expect(readBootDecision()).resolves.toMatchObject({
+        preferencesReadFailed: false,
+        sensitiveDataExists: true,
+        wipeOnOnline: false,
+      })
+    }
+  })
+
+  it("rejects legacy algorithm and balanced profile injection through updates", async () => {
+    for (const defaultAlgorithm of ["MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"]) {
+      await expect(
+        updatePreferences({
+          defaultAlgorithm: defaultAlgorithm as unknown as UiAlgorithm,
+        }),
+      ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+    }
+    await expect(
+      updatePreferences({
+        defaultPqProfile: "balanced" as unknown as PqProfileId,
+      }),
+    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
   })
 
   it("rejects disguised message artifacts before writing and leaves no plaintext in any store", async () => {

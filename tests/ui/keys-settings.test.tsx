@@ -2,13 +2,21 @@ import "./helpers/module-mocks"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import type { PostQuantumIdentity } from "@/schemas/domain"
+import type {
+  DsaPublicKeyEnvelopeV2,
+  KemPublicKeyEnvelopeV2,
+  PostQuantumIdentity,
+  PublicIdentityBundleV2,
+} from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
   armMaintenanceToken,
   confirmBundleFingerprint,
   deleteKeyRecord,
   emitScannedPayload,
+  encodeDsaPublicKeyEnvelopeV2,
+  encodeKemPublicKeyEnvelopeV2,
+  encodePublicIdentityBundleV2,
   fakeArtifacts,
   fakeBundles,
   fakeIdentities,
@@ -89,14 +97,83 @@ describe("key management v2", () => {
     expect(fakeBundles[0]?.trust).toBe("fingerprint-confirmed")
   })
 
-  it("exposes balanced identity fingerprints, lifecycle actions, and all OCF2 outputs", async () => {
+  it("rejects a balanced OCI2 bundle before the fingerprint/import flow", async () => {
+    const legacyBundle: PublicIdentityBundleV2 = {
+      version: 2,
+      type: "pq-public-identity",
+      identityId: "B".repeat(22),
+      kem: {
+        algorithm: "ML-KEM-768",
+        keyId: "K".repeat(22),
+        publicKey: new Uint8Array(1184),
+      },
+      signing: {
+        algorithm: "ML-DSA-65",
+        keyId: "S".repeat(22),
+        publicKey: new Uint8Array(1952),
+      },
+      createdAt: 1_700_000_000_000,
+    }
+    encodePublicIdentityBundleV2(legacyBundle)
+    const user = userEvent.setup()
+    await renderApp("/keys")
+    await user.click(await screen.findByRole("tab", { name: "鍵を読み取る" }))
+    await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:legacy-balanced")
+    await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
+
+    expect(await screen.findByText("対応していない暗号方式です。")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "別経路で指紋を比較してください" }),
+    ).not.toBeInTheDocument()
+    expect(saveBundle).not.toHaveBeenCalled()
+  })
+
+  it("rejects balanced OCP2 and OCS2 single keys before exposing fingerprints", async () => {
+    const legacyKem: KemPublicKeyEnvelopeV2 = {
+      version: 2,
+      type: "pq-kem-public-key",
+      identityId: "B".repeat(22),
+      algorithm: "ML-KEM-768",
+      keyId: "K".repeat(22),
+      publicKey: new Uint8Array(1184),
+      createdAt: 1_700_000_000_000,
+    }
+    const legacyDsa: DsaPublicKeyEnvelopeV2 = {
+      version: 2,
+      type: "pq-dsa-public-key",
+      identityId: "B".repeat(22),
+      algorithm: "ML-DSA-65",
+      keyId: "S".repeat(22),
+      publicKey: new Uint8Array(1952),
+      createdAt: 1_700_000_000_000,
+    }
+    const user = userEvent.setup()
+    await renderApp("/keys")
+    await user.click(await screen.findByRole("tab", { name: "鍵を読み取る" }))
+    const input = screen.getByLabelText("鍵ペイロード")
+
+    encodeKemPublicKeyEnvelopeV2(legacyKem)
+    await user.type(input, "OCP2:legacy-balanced")
+    await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
+    expect(await screen.findByText("対応していない暗号方式です。")).toBeInTheDocument()
+    expect(screen.queryByText("単鍵を読み取りました")).not.toBeInTheDocument()
+
+    await user.clear(input)
+    encodeDsaPublicKeyEnvelopeV2(legacyDsa)
+    await user.type(input, "OCS2:legacy-balanced")
+    await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
+    expect(await screen.findByText("対応していない暗号方式です。")).toBeInTheDocument()
+    expect(screen.queryByText("単鍵を読み取りました")).not.toBeInTheDocument()
+  })
+
+  it("exposes maximum identity fingerprints, lifecycle actions, and all OCF2 outputs", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
     await user.click(await screen.findByRole("tab", { name: "ポスト量子ID" }))
     expect(
-      screen.getByText(/balanced のみです。ML-KEM-768 \/ ML-DSA-65 を使用します/),
+      screen.getByText(/maximum（ML-KEM-1024 \/ ML-DSA-87）のみです/),
     ).toBeInTheDocument()
-    expect(screen.queryByText(/maximum/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/balanced/i)).not.toBeInTheDocument()
     expect(screen.getByText("3".repeat(64))).toBeInTheDocument()
     expect(screen.getByText("1".repeat(64))).toBeInTheDocument()
     expect(screen.getByText("2".repeat(64))).toBeInTheDocument()

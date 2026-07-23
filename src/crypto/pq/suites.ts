@@ -1,15 +1,32 @@
 // v2 suite 導出(plan2.1 §C1 — WP-A2 が実装・凍結)。
 // suite は preference ではなく「選択済み鍵の実 algorithm の組」から一意導出する。
 // UI profile は候補の filter/default にだけ使う。
-import type { MlDsaAlgorithm, MlKemAlgorithm, WireSuite } from "@/schemas/domain"
+import type {
+  MlDsaAlgorithm,
+  MlKemAlgorithm,
+  PqProfileId,
+  WireSuite,
+} from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
+
+export const ACTIVE_PROFILE: PqProfileId = "maximum"
+
+export function assertActiveProfile(profile: PqProfileId): void {
+  if (profile !== ACTIVE_PROFILE) throw new AppError("UNSUPPORTED_ALGORITHM")
+}
+
+export function assertActiveSuite(suite: WireSuite): void {
+  if (
+    suite !== "ML-KEM-1024+HKDF-SHA256+A256GCM" &&
+    suite !== "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
+  ) {
+    throw new AppError("UNSUPPORTED_ALGORITHM")
+  }
+}
 
 // 許可される署名付き組は (768,65) / (1024,87) のみ。
 // 768+87 等の混在は型混同/downgrade として拒否する。
-export function resolveSuite(
-  kem: MlKemAlgorithm,
-  signature?: MlDsaAlgorithm,
-): WireSuite {
+export function resolveSuite(kem: MlKemAlgorithm, signature?: MlDsaAlgorithm): WireSuite {
   if (kem === "ML-KEM-768") {
     if (signature === undefined) return "ML-KEM-768+HKDF-SHA256+A256GCM"
     if (signature === "ML-DSA-65") {

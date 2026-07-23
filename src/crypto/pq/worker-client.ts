@@ -17,10 +17,17 @@ import type {
   PqProfileId,
   WireSuite,
 } from "@/schemas/domain"
+import { WIRE_SUITES } from "@/schemas/domain"
 import { AppError, ERROR_CODES, type ErrorCode } from "@/crypto/errors"
 import { guardMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import { DSA_SIZES, KEM_SIZES, PQ_PROFILES } from "@/crypto/pq/profiles"
-import { suiteComponents } from "@/crypto/pq/suites"
+import {
+  ACTIVE_PROFILE,
+  assertActiveProfile,
+  assertActiveSuite,
+  resolveSuite,
+  suiteComponents,
+} from "@/crypto/pq/suites"
 import { keyIdRawBytes } from "@/crypto/pq/wire-bytes"
 import { env } from "@/schemas/env-schema"
 import {
@@ -265,6 +272,12 @@ function assertProfilePair(
   if (!valid) throw new AppError("DECRYPTION_FAILED")
 }
 
+function assertActiveDsaAlgorithm(algorithm: MlDsaAlgorithm): void {
+  if (algorithm !== PQ_PROFILES[ACTIVE_PROFILE].signature.algorithm) {
+    throw new AppError("UNSUPPORTED_ALGORITHM")
+  }
+}
+
 // Browser 側では postMessage より前、Worker 側では処理開始前に同じ検査を行う。
 export function validatePqWorkerRequest(
   operation: PqWorkerOperation,
@@ -284,6 +297,7 @@ export function validatePqWorkerRequest(
         ) {
           throw requestError(operation)
         }
+        assertActiveProfile(profile)
         return
       }
       case "publicKeysFromSeeds": {
@@ -306,6 +320,7 @@ export function validatePqWorkerRequest(
           throw requestError(operation)
         }
         assertProfilePair(kemAlgorithm, dsaAlgorithm)
+        assertActiveSuite(resolveSuite(kemAlgorithm, dsaAlgorithm))
         if (
           !isKeyId(kem["keyId"]) ||
           !isEncryptedSecret(kem["encryptedSeed"], KEM_SEED_BYTES) ||
@@ -323,6 +338,7 @@ export function validatePqWorkerRequest(
         if (algorithm !== "ML-DSA-65" && algorithm !== "ML-DSA-87") {
           throw requestError(operation)
         }
+        assertActiveDsaAlgorithm(algorithm)
         if (
           !isVaultKey(payload["vaultKey"]) ||
           !isKeyId(payload["identityId"]) ||
@@ -340,6 +356,7 @@ export function validatePqWorkerRequest(
         if (algorithm !== "ML-DSA-65" && algorithm !== "ML-DSA-87") {
           throw requestError(operation)
         }
+        assertActiveDsaAlgorithm(algorithm)
         if (
           !isBytes(payload["publicKey"], DSA_SIZES[algorithm].publicKeyBytes) ||
           !isBytes(payload["message"]) ||
@@ -350,8 +367,16 @@ export function validatePqWorkerRequest(
         return
       }
       case "encryptPqMessage": {
-        const suite = payload["suite"] as WireSuite
+        const rawSuite = payload["suite"]
+        if (
+          typeof rawSuite !== "string" ||
+          !(WIRE_SUITES as readonly string[]).includes(rawSuite)
+        ) {
+          throw requestError(operation)
+        }
+        const suite = rawSuite as WireSuite
         const components = suiteComponents(suite)
+        assertActiveSuite(suite)
         const sign = payload["sign"]
         if (
           !isKeyId(payload["recipientKemKeyId"]) ||
@@ -391,6 +416,7 @@ export function validatePqWorkerRequest(
       }
       case "openPqEnvelope": {
         const envelope = guardMlKemEnvelopeV2(payload["envelope"])
+        assertActiveSuite(envelope.suite)
         const recipient = payload["recipient"]
         if (!isRecord(recipient)) throw requestError(operation)
         const components = suiteComponents(envelope.suite)
@@ -422,6 +448,7 @@ export function validatePqWorkerRequest(
         if (algorithm !== "ML-DSA-65" && algorithm !== "ML-DSA-87") {
           throw requestError(operation)
         }
+        assertActiveDsaAlgorithm(algorithm)
         const signedMessageBytes = payload["signedMessageBytes"]
         if (
           !isBytes(signedMessageBytes) ||
@@ -436,7 +463,11 @@ export function validatePqWorkerRequest(
       }
     }
   } catch (error) {
-    if (error instanceof AppError && error.code === requestError(operation).code) {
+    if (
+      error instanceof AppError &&
+      (error.code === requestError(operation).code ||
+        error.code === "UNSUPPORTED_ALGORITHM")
+    ) {
       throw error
     }
     throw requestError(operation)

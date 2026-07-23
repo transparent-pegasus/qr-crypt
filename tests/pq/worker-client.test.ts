@@ -43,10 +43,10 @@ function browserGlobals(worker: typeof FakeWorker | undefined): void {
 
 function verifyRequest() {
   return {
-    algorithm: "ML-DSA-65" as const,
-    publicKey: new Uint8Array(1952),
+    algorithm: "ML-DSA-87" as const,
+    publicKey: new Uint8Array(2592),
     message: new Uint8Array([1, 2, 3]),
-    signature: new Uint8Array(3309),
+    signature: new Uint8Array(4627),
   }
 }
 
@@ -88,7 +88,7 @@ describe("browser PQ Worker RPC client", () => {
     const secondRpc = worker.messages[1] as { id: string }
     expect(firstRpc.id).not.toBe(secondRpc.id)
     expect(worker.transferArguments).toEqual([undefined, undefined])
-    expect(firstRequest.signature.byteLength).toBe(3309)
+    expect(firstRequest.signature.byteLength).toBe(4627)
 
     worker.emit("message", { id: secondRpc.id, ok: true, value: false })
     worker.emit("message", { id: firstRpc.id, ok: true, value: true })

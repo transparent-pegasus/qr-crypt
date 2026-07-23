@@ -58,6 +58,14 @@ export const RESET_CHURN_MB_MAX = 512
 
 // プロトコル上の絶対上限(受信側 resource 検査。plan2.1 §D4)。
 // 送信側の生成上限は env.qrMaxFrames(≤64)で別途絞る。
+// 2026-07-23 maximum 正準 CBOR 実測(maxPlaintext=4,096B、name="テスト"):
+// artifact                         bytes   OCF2 frames (400 / 600 / 900B)
+// unsigned empty / max          1,887 / 5,986       5/4/3 / 15/10/7
+// signed empty / max            6,613 / 10,711     17/12/8 / 27/18/12
+// OCI2 bundle                    4,402              12/8/5
+// OCP2 KEM / OCS2 DSA           1,733 / 2,755       5/3/2 / 7/5/4
+// OCB2 reserved sizing fixture   4,637              12/8/6
+// 各 OCF2 文字列の EC-Q 実生成も maximum-artifact-size.golden.test.ts で固定する。
 export const PROTOCOL_MAX_FRAMES = 64
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX
 export const MAX_ARTIFACT_BYTES_ABSOLUTE = PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES

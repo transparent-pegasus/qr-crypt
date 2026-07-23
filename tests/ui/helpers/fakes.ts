@@ -89,18 +89,18 @@ function defaultIdentity(): PostQuantumIdentity {
   return {
     id: IDENTITY_ID,
     name: "自分のPQ ID",
-    profile: "balanced",
+    profile: "maximum",
     kem: {
-      algorithm: "ML-KEM-768",
+      algorithm: "ML-KEM-1024",
       keyId: KEM_KEY_ID,
-      publicKey: new Uint8Array(1184).fill(1),
+      publicKey: new Uint8Array(1568).fill(1),
       encryptedSeed: { iv: new Uint8Array(12), ciphertext: new Uint8Array(80) },
       fingerprint: "1".repeat(64),
     },
     signing: {
-      algorithm: "ML-DSA-65",
+      algorithm: "ML-DSA-87",
       keyId: SIGNING_KEY_ID,
-      publicKey: new Uint8Array(1952).fill(2),
+      publicKey: new Uint8Array(2592).fill(2),
       encryptedSeed: { iv: new Uint8Array(12), ciphertext: new Uint8Array(48) },
       fingerprint: "2".repeat(64),
     },
@@ -162,9 +162,9 @@ let lastMessageEnvelope: AesMessageEnvelopeV1 | null = null
 let lastPqEnvelope: MlKemMessageEnvelopeV2 = {
   version: 2,
   type: "pq-message",
-  suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+  suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
   recipientKemKeyId: KEM_KEY_ID,
-  kemCiphertext: new Uint8Array(1088),
+  kemCiphertext: new Uint8Array(1568),
   hkdfSalt: new Uint8Array(32),
   iv: new Uint8Array(12),
   ciphertext: new Uint8Array(128),
@@ -366,9 +366,9 @@ export const decodePayload = vi.fn((payload: string) => {
           version: 2,
           type: "pq-kem-public-key",
           identityId: IDENTITY_ID,
-          algorithm: "ML-KEM-768",
+          algorithm: "ML-KEM-1024",
           keyId: KEM_KEY_ID,
-          publicKey: new Uint8Array(1184),
+          publicKey: new Uint8Array(1568),
           createdAt: 1_723_000_000_000,
         } satisfies KemPublicKeyEnvelopeV2),
     }
@@ -382,9 +382,9 @@ export const decodePayload = vi.fn((payload: string) => {
           version: 2,
           type: "pq-dsa-public-key",
           identityId: IDENTITY_ID,
-          algorithm: "ML-DSA-65",
+          algorithm: "ML-DSA-87",
           keyId: SIGNING_KEY_ID,
-          publicKey: new Uint8Array(1952),
+          publicKey: new Uint8Array(2592),
           createdAt: 1_723_000_000_000,
         } satisfies DsaPublicKeyEnvelopeV2),
     }
@@ -684,10 +684,10 @@ export const encryptPq = vi.fn(
       type: "pq-message",
       suite:
         sign === undefined
-          ? "ML-KEM-768+HKDF-SHA256+A256GCM"
-          : "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+          ? "ML-KEM-1024+HKDF-SHA256+A256GCM"
+          : "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: recipient.kem.keyId,
-      kemCiphertext: new Uint8Array(1088),
+      kemCiphertext: new Uint8Array(1568),
       hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(plaintext.byteLength + (sign ? 3_500 : 128)),
@@ -889,9 +889,9 @@ export function resetFakes(): void {
   lastPqEnvelope = {
     version: 2,
     type: "pq-message",
-    suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+    suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: identity.kem.keyId,
-    kemCiphertext: new Uint8Array(1088),
+    kemCiphertext: new Uint8Array(1568),
     hkdfSalt: new Uint8Array(32),
     iv: new Uint8Array(12),
     ciphertext: new Uint8Array(32),

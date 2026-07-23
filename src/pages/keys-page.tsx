@@ -66,6 +66,13 @@ import {
   encodePublicIdentityBundleV2,
 } from "@/crypto/pq/canonical-cbor"
 import { buildPublicBundle, createIdentity, rotateIdentity } from "@/crypto/pq/identity"
+import { PQ_PROFILES } from "@/crypto/pq/profiles"
+import {
+  ACTIVE_PROFILE,
+  assertActiveProfile,
+  assertActiveSuite,
+  resolveSuite,
+} from "@/crypto/pq/suites"
 import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { generateArtifactId, generateKeyId } from "@/crypto/random"
@@ -109,6 +116,7 @@ import {
   saveBundle,
 } from "@/storage/pq-bundle-repository"
 import {
+  deleteIdentity,
   revokeIdentity,
   saveIdentity,
   saveRotation,
@@ -131,6 +139,41 @@ interface SymmetricQrSession {
 }
 
 type SingleKeyRead = KemPublicKeyEnvelopeV2 | DsaPublicKeyEnvelopeV2
+
+function assertUsableIdentity(identity: PostQuantumIdentity): void {
+  assertActiveProfile(identity.profile)
+  assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
+}
+
+function isUsableIdentity(identity: PostQuantumIdentity): boolean {
+  try {
+    assertUsableIdentity(identity)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function assertUsableBundle(bundle: PublicIdentityBundleV2 | PqPublicBundleRecord): void {
+  assertActiveSuite(resolveSuite(bundle.kem.algorithm, bundle.signing.algorithm))
+}
+
+function isUsableBundle(bundle: PqPublicBundleRecord): boolean {
+  try {
+    assertUsableBundle(bundle)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function assertUsableSingleKey(envelope: SingleKeyRead): void {
+  const suite =
+    envelope.type === "pq-kem-public-key"
+      ? resolveSuite(envelope.algorithm)
+      : resolveSuite(PQ_PROFILES[ACTIVE_PROFILE].kem.algorithm, envelope.algorithm)
+  assertActiveSuite(suite)
+}
 
 export function KeysPage() {
   const { camera } = useFeatureSupport()
@@ -244,7 +287,7 @@ export function KeysPage() {
         client: getPqClient(),
         vaultKey: await getOrCreateVaultKey(),
         name: parsed.data,
-        profile: "balanced",
+        profile: ACTIVE_PROFILE,
         now: Date.now(),
       })
       await saveIdentity(identity)
@@ -379,6 +422,7 @@ export function KeysPage() {
     setBusy(true)
     setError(null)
     try {
+      assertUsableIdentity(identity)
       let artifactType: "pq-public-identity" | "pq-kem-public-key" | "pq-dsa-public-key"
       let artifactBytes: Uint8Array
       let title: string
@@ -462,6 +506,20 @@ export function KeysPage() {
     }
   }
 
+  const removeIdentity = async (identity: PostQuantumIdentity) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteIdentity(identity.id)
+      await refreshPq()
+      toast.success("旧プロファイルIDを削除しました")
+    } catch (caught) {
+      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const removeLegacyKeys = async () => {
     setBusy(true)
     setError(null)
@@ -477,6 +535,7 @@ export function KeysPage() {
   }
 
   const prepareBundleImport = async (bundle: PublicIdentityBundleV2) => {
+    assertUsableBundle(bundle)
     const importedAt = Date.now()
     const [kemFingerprint, signingFingerprint, identityFingerprint] = await Promise.all([
       pqKeyFingerprint("kem", bundle.kem.algorithm, bundle.kem.publicKey),
@@ -498,6 +557,7 @@ export function KeysPage() {
   }
 
   const handleSingleKey = async (envelope: SingleKeyRead) => {
+    assertUsableSingleKey(envelope)
     const fingerprint =
       envelope.type === "pq-kem-public-key"
         ? await pqKeyFingerprint("kem", envelope.algorithm, envelope.publicKey)
@@ -706,14 +766,14 @@ export function KeysPage() {
             <ShieldCheck aria-hidden="true" className="size-4" />
             <AlertTitle>experimental・未独立監査</AlertTitle>
             <AlertDescription>
-              初期リリースは balanced のみです。ML-KEM-768 / ML-DSA-65 を使用します。
+              本リリースは maximum（ML-KEM-1024 / ML-DSA-87）のみです。
             </AlertDescription>
           </Alert>
           <CreateField
             label="ポスト量子ID名"
             value={keyName}
             onChange={setKeyName}
-            buttonLabel="balanced IDを作成"
+            buttonLabel="maximum IDを作成"
             busy={busy}
             onCreate={() => void createPqIdentity()}
           />
@@ -726,6 +786,7 @@ export function KeysPage() {
               onShow={showIdentityQr}
               onRotate={rotate}
               onRevoke={revoke}
+              onDelete={removeIdentity}
             />
           ))}
           {!pqLoading && identities.length === 0 && (
@@ -1124,6 +1185,7 @@ function IdentityCard({
   onShow,
   onRotate,
   onRevoke,
+  onDelete,
 }: {
   identity: PostQuantumIdentity
   previous: PostQuantumIdentity[]
@@ -1134,19 +1196,27 @@ function IdentityCard({
   ) => Promise<void>
   onRotate: (identity: PostQuantumIdentity) => Promise<void>
   onRevoke: (identity: PostQuantumIdentity) => Promise<void>
+  onDelete: (identity: PostQuantumIdentity) => Promise<void>
 }) {
+  const supported = isUsableIdentity(identity)
   const old = identity.status !== "active"
   return (
     <Card>
       <CardHeader className="p-4 pb-3">
         <CardTitle className="flex items-start justify-between gap-3 text-base">
           <span>{identity.name}</span>
-          <Badge variant={old ? "secondary" : "default"}>{identity.status}</Badge>
+          <Badge variant={old || !supported ? "secondary" : "default"}>
+            {supported ? identity.status : "非対応（旧プロファイル）"}
+          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 p-4 pt-0">
         <p className="text-xs text-muted-foreground">
-          {old ? "旧世代: 復号/検証専用" : "暗号化・署名に使用可能"}
+          {!supported
+            ? "非対応（旧プロファイル）: 暗号処理とQR再出力はできません。"
+            : old
+              ? "旧世代: 復号/検証専用"
+              : "暗号化・署名に使用可能"}
         </p>
         <Fingerprint label="ID fingerprint" value={identity.identityFingerprint} />
         <Fingerprint
@@ -1161,7 +1231,7 @@ function IdentityCard({
           作成: {formatDateTime(identity.createdAt)}
         </p>
         <div className="grid grid-cols-1 gap-2">
-          {!old && (
+          {supported && !old && (
             <>
               <Button
                 type="button"
@@ -1183,16 +1253,18 @@ function IdentityCard({
               </Button>
             </>
           )}
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={() => void onShow(identity, "signing")}
-          >
-            <QrCode aria-hidden="true" />
-            署名検証用単鍵QR
-          </Button>
-          {identity.status === "active" && (
+          {supported && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => void onShow(identity, "signing")}
+            >
+              <QrCode aria-hidden="true" />
+              署名検証用単鍵QR
+            </Button>
+          )}
+          {supported && identity.status === "active" && (
             <>
               <Button
                 type="button"
@@ -1214,6 +1286,17 @@ function IdentityCard({
               </Button>
             </>
           )}
+          {!supported && (
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void onDelete(identity)}
+            >
+              <Trash2 aria-hidden="true" />
+              旧プロファイルIDを削除
+            </Button>
+          )}
         </div>
         <p className="text-xs text-muted-foreground">
           失効はこの端末での利用停止であり、外部の相手には伝播しません。
@@ -1234,29 +1317,49 @@ function IdentityCard({
               </Button>
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-2 pt-2">
-              {previous.map((generation) => (
-                <div key={generation.id} className="space-y-2 rounded-md border p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">
-                      作成: {formatDateTime(generation.createdAt)}
+              {previous.map((generation) => {
+                const generationSupported = isUsableIdentity(generation)
+                return (
+                  <div key={generation.id} className="space-y-2 rounded-md border p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-muted-foreground">
+                        作成: {formatDateTime(generation.createdAt)}
+                      </p>
+                      <Badge variant="secondary">
+                        {generationSupported
+                          ? generation.status
+                          : "非対応（旧プロファイル）"}
+                      </Badge>
+                    </div>
+                    <p className="font-mono text-sm">
+                      比較表示: {formatFingerprint(generation.identityFingerprint)}
                     </p>
-                    <Badge variant="secondary">{generation.status}</Badge>
+                    {generationSupported ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void onShow(generation, "signing")}
+                      >
+                        <QrCode aria-hidden="true" />
+                        署名検証用単鍵QR
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void onDelete(generation)}
+                      >
+                        <Trash2 aria-hidden="true" />
+                        削除
+                      </Button>
+                    )}
                   </div>
-                  <p className="font-mono text-sm">
-                    比較表示: {formatFingerprint(generation.identityFingerprint)}
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void onShow(generation, "signing")}
-                  >
-                    <QrCode aria-hidden="true" />
-                    署名検証用単鍵QR
-                  </Button>
-                </div>
-              ))}
+                )
+              })}
             </CollapsibleContent>
           </Collapsible>
         )}
@@ -1279,73 +1382,89 @@ function BundleList({
   if (bundles.length === 0) return <Empty text="取り込んだ公開鍵セットがありません。" />
   return (
     <>
-      {bundles.map((record) => (
-        <Card key={record.recordId}>
-          <CardContent className="space-y-3 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-medium">
-                  {record.trust === "fingerprint-confirmed"
-                    ? (record.name ?? "確認済み公開鍵")
-                    : "未確認の公開鍵"}
-                </p>
-                <p className="font-mono text-xs text-muted-foreground">
-                  {record.identityId}
-                </p>
+      {bundles.map((record) => {
+        const supported = isUsableBundle(record)
+        return (
+          <Card key={record.recordId}>
+            <CardContent className="space-y-3 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium">
+                    {record.trust === "fingerprint-confirmed"
+                      ? (record.name ?? "確認済み公開鍵")
+                      : "未確認の公開鍵"}
+                  </p>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {record.identityId}
+                  </p>
+                </div>
+                <Badge
+                  variant={
+                    supported && record.trust === "fingerprint-confirmed"
+                      ? "default"
+                      : "secondary"
+                  }
+                >
+                  {supported
+                    ? record.trust === "fingerprint-confirmed"
+                      ? "人物確認済み"
+                      : "unverified"
+                    : "非対応（旧プロファイル）"}
+                </Badge>
               </div>
-              <Badge
-                variant={
-                  record.trust === "fingerprint-confirmed" ? "default" : "secondary"
-                }
-              >
-                {record.trust === "fingerprint-confirmed" ? "人物確認済み" : "unverified"}
-              </Badge>
-            </div>
-            <Fingerprint
-              label={`受信公開鍵 ${record.kem.algorithm}`}
-              value={record.kem.fingerprint}
-            />
-            <Fingerprint
-              label={`署名公開鍵 ${record.signing.algorithm}`}
-              value={record.signing.fingerprint}
-            />
-            <Fingerprint
-              label="Identity fingerprint"
-              value={record.identityFingerprint}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onClick={() =>
-                  void revokeBundle(record.recordId, Date.now())
-                    .then(refresh)
-                    .catch((caught) =>
-                      setError(toAppError(caught, "STORAGE_FAILED").userMessage),
-                    )
-                }
-              >
-                利用停止
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={busy}
-                onClick={() =>
-                  void deleteBundle(record.recordId)
-                    .then(refresh)
-                    .catch((caught) =>
-                      setError(toAppError(caught, "STORAGE_FAILED").userMessage),
-                    )
-                }
-              >
-                削除
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+              <Fingerprint
+                label={`受信公開鍵 ${record.kem.algorithm}`}
+                value={record.kem.fingerprint}
+              />
+              <Fingerprint
+                label={`署名公開鍵 ${record.signing.algorithm}`}
+                value={record.signing.fingerprint}
+              />
+              <Fingerprint
+                label="Identity fingerprint"
+                value={record.identityFingerprint}
+              />
+              {!supported && (
+                <p className="text-sm text-destructive">
+                  非対応（旧プロファイル）のため、削除以外の操作はできません。
+                </p>
+              )}
+              <div className={`grid gap-2 ${supported ? "grid-cols-2" : "grid-cols-1"}`}>
+                {supported && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      void revokeBundle(record.recordId, Date.now())
+                        .then(refresh)
+                        .catch((caught) =>
+                          setError(toAppError(caught, "STORAGE_FAILED").userMessage),
+                        )
+                    }
+                  >
+                    利用停止
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={busy}
+                  onClick={() =>
+                    void deleteBundle(record.recordId)
+                      .then(refresh)
+                      .catch((caught) =>
+                        setError(toAppError(caught, "STORAGE_FAILED").userMessage),
+                      )
+                  }
+                >
+                  削除
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })}
     </>
   )
 }

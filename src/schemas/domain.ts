@@ -8,7 +8,7 @@
 // 方式 ID(v1 A256GCM + v2 PQ)
 // ---------------------------------------------------------------------------
 
-export type UiAlgorithm = "A256GCM" | "MLKEM768_A256GCM" | "MLKEM768_MLDSA65_A256GCM"
+export type UiAlgorithm = "A256GCM" | "MLKEM1024_A256GCM" | "MLKEM1024_MLDSA87_A256GCM"
 
 export type WireAlgorithm = "A256GCM"
 
@@ -332,7 +332,7 @@ export interface Preferences {
 // v2 追加フィールドの既定値。Preferences リテラルはこれを spread して構築する
 // (単一導出元。数値範囲の検証は preferences-repository / limits.ts)。
 export const PQ_PREFERENCE_DEFAULTS = {
-  defaultPqProfile: "balanced",
+  defaultPqProfile: "maximum",
   requireSignature: false,
   frameBytes: 600,
   frameIntervalMs: 450,

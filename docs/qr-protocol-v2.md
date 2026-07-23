@@ -77,10 +77,17 @@ ML-KEM-1024+HKDF-SHA256+A256GCM
 ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM
 ```
 
+- 上記 4 suite は **wire/codec 契約として維持**する。`WireSuite`、
+  `resolveSuite`、`suiteComponents` は 768/65 と 1024/87 の双方を認識し、
+  正当な同一プロファイル対を往復できる。
 - suite は **選択済み鍵の実 algorithm の組から一意導出**(`resolveSuite`)。
   署名付きは (768,65) / (1024,87) の同一プロファイル対のみ。混在は
   `UNSUPPORTED_ALGORITHM`。
-- 初期リリースは balanced(768/65)のみ UI 露出。1024/87 は型・定数の予約。
+- **active policy（2026-07-23）**は maximum（1024/87）の 2 suite
+  （署名なし・署名付き）のみを運用対象とする。balanced profile および 768 系
+  2 suite は「認識済みだが非対応」であり、構造不正にはせず、取込・鍵生成・
+  ローテーション・暗号化・復号・Worker RPC・QR 再出力などの運用境界で暗号処理前に
+  `UNSUPPORTED_ALGORITHM` として拒否する。
 
 HKDF-SHA-256(`hkdfInfoV2`、plan2.1 §C5 で凍結):
 
@@ -168,6 +175,8 @@ QrFrameV2 = {
 `tests/pq/canonical-cbor.golden.test.ts` / `tests/pq/wire-bytes.golden.test.ts`
 と一致すること。共通フィクスチャ: `KEY_ID = "AAECAwQFBgcICQoLDA0ODw"`
 (生バイト `000102030405060708090a0b0c0d0e0f`)。
+以下の 768 系 fixture は wire/codec 契約の互換性を固定するものであり、
+active policy で利用可能であることを意味しない。
 
 - HKDF info(unsigned 768):
   `51525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02`
@@ -194,7 +203,7 @@ QrFrameV2 = {
 | 送信者署名鍵が未取込(取込導線を提示) | `SIGNING_KEY_NOT_FOUND` |
 | 別 transferId 混入・フレーム不整合 | `FRAME_MISMATCH` |
 | frameCount>64 等の容量超過 | `QR_TOO_LARGE` |
-| OCB2(予約)・旧 RSA 形式(OCM1-RSA) | `UNSUPPORTED_ALGORITHM`(廃止文言) |
+| OCB2(予約)・balanced/768 系の運用・旧 RSA 形式(OCM1-RSA) | `UNSUPPORTED_ALGORITHM`(廃止文言) |
 | Worker 不可(main thread へのフォールバック禁止) | `WORKER_UNAVAILABLE` |
 | ローカル初期化の部分失敗 | `RESET_FAILED` |
 

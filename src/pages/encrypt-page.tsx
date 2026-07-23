@@ -18,7 +18,12 @@ import type { AesMessageEnvelopeV1 } from "@/crypto/envelope"
 import { decodeMlKemEnvelopeV2, encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
-import { resolveSuite } from "@/crypto/pq/suites"
+import {
+  ACTIVE_PROFILE,
+  assertActiveProfile,
+  assertActiveSuite,
+  resolveSuite,
+} from "@/crypto/pq/suites"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { generateArtifactId } from "@/crypto/random"
 import {
@@ -119,15 +124,43 @@ type DecryptionResult =
 
 function algorithmOptions(requireSignature: boolean): UiAlgorithm[] {
   const options: UiAlgorithm[] = ["A256GCM"]
-  if (env.enableMlKem && !requireSignature) options.push("MLKEM768_A256GCM")
+  if (env.enableMlKem && !requireSignature) options.push("MLKEM1024_A256GCM")
   if (env.enableMlKem && env.enableMlDsa) {
-    options.push("MLKEM768_MLDSA65_A256GCM")
+    options.push("MLKEM1024_MLDSA87_A256GCM")
   }
   return options
 }
 
 function isSignedAlgorithm(algorithm: UiAlgorithm): boolean {
-  return algorithm === "MLKEM768_MLDSA65_A256GCM"
+  return algorithm === "MLKEM1024_MLDSA87_A256GCM"
+}
+
+function isActiveBundle(record: PqPublicBundleRecord): boolean {
+  try {
+    assertActiveSuite(resolveSuite(record.kem.algorithm, record.signing.algorithm))
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isActiveIdentity(identity: PostQuantumIdentity): boolean {
+  try {
+    assertActiveProfile(identity.profile)
+    assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isActiveWireSuite(suite: WireSuite): boolean {
+  try {
+    assertActiveSuite(suite)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function EncryptPage() {
@@ -176,7 +209,10 @@ export function EncryptPage() {
   )
   const selectedKey = symmetricKeys.find((key) => key.id === selectedKeyId)
   const recipients = useMemo(
-    () => bundles.filter((record) => record.revokedAt === undefined),
+    () =>
+      bundles.filter(
+        (record) => record.revokedAt === undefined && isActiveBundle(record),
+      ),
     [bundles],
   )
   const selectedRecipient = recipients.find(
@@ -186,9 +222,12 @@ export function EncryptPage() {
     () =>
       identities.filter((identity) => {
         if (identity.status !== "active") return false
-        if (!selectedRecipient) return identity.profile === "balanced"
+        if (!isActiveIdentity(identity)) return false
+        if (!selectedRecipient) return identity.profile === ACTIVE_PROFILE
         try {
-          resolveSuite(selectedRecipient.kem.algorithm, identity.signing.algorithm)
+          assertActiveSuite(
+            resolveSuite(selectedRecipient.kem.algorithm, identity.signing.algorithm),
+          )
           return true
         } catch {
           return false
@@ -225,6 +264,9 @@ export function EncryptPage() {
     }
   }, [decryptInput])
   const decryptInputInvalid = decryptInput.trim().length > 0 && parsedDecrypt === null
+  const parsedPqUnsupported =
+    parsedDecrypt?.kind === "pq-message" &&
+    !isActiveWireSuite(parsedDecrypt.envelope.suite)
   const decryptAesKey =
     parsedDecrypt?.kind === "message"
       ? symmetricKeys.find((key) => key.id === parsedDecrypt.envelope.keyId)
@@ -232,12 +274,15 @@ export function EncryptPage() {
   const decryptIdentity =
     parsedDecrypt?.kind === "pq-message"
       ? identities.find(
-          (identity) => identity.kem.keyId === parsedDecrypt.envelope.recipientKemKeyId,
+          (identity) =>
+            identity.kem.keyId === parsedDecrypt.envelope.recipientKemKeyId &&
+            isActiveIdentity(identity),
         )
       : undefined
   const canDecrypt =
     !busy &&
     parsedDecrypt !== null &&
+    !parsedPqUnsupported &&
     (parsedDecrypt.kind === "message"
       ? decryptAesKey !== undefined
       : decryptIdentity !== undefined)
@@ -363,7 +408,9 @@ export function EncryptPage() {
           recipient: decryptIdentity,
           vaultKey: await getOrCreateVaultKey(),
           resolveSigningKey: async (keyId) => {
-            const record = bundles.find((bundle) => bundle.signing.keyId === keyId)
+            const record = bundles.find(
+              (bundle) => bundle.signing.keyId === keyId && isActiveBundle(bundle),
+            )
             return record === undefined
               ? undefined
               : {
@@ -383,7 +430,9 @@ export function EncryptPage() {
             text: bytesToUtf8(pqResult.plaintext),
             senderSigningKeyId: pqResult.senderSigningKeyId,
             sender: bundles.find(
-              (bundle) => bundle.signing.keyId === pqResult.senderSigningKeyId,
+              (bundle) =>
+                bundle.signing.keyId === pqResult.senderSigningKeyId &&
+                isActiveBundle(bundle),
             ),
           })
         }
@@ -630,7 +679,15 @@ export function EncryptPage() {
               </CardContent>
             </Card>
           )}
-          {parsedDecrypt && !canDecrypt && (
+          {parsedPqUnsupported && (
+            <Alert variant="destructive" role="alert">
+              <AlertTitle>非対応（旧プロファイル）</AlertTitle>
+              <AlertDescription>
+                この暗号文は現在利用できない旧ポスト量子プロファイルです。
+              </AlertDescription>
+            </Alert>
+          )}
+          {parsedDecrypt && !parsedPqUnsupported && !canDecrypt && (
             <Alert variant="destructive" role="alert">
               <AlertTitle>KEY_NOT_FOUND</AlertTitle>
               <AlertDescription>{userMessageFor("KEY_NOT_FOUND")}</AlertDescription>
@@ -848,7 +905,7 @@ export function EncryptPage() {
               />
               <DetailRow
                 label="ポスト量子プロファイル"
-                value={result.kind === "pq" ? "balanced" : "対象外"}
+                value={result.kind === "pq" ? ACTIVE_PROFILE : "対象外"}
               />
               <DetailRow label="全体SHA-256" value={result.sha256} mono />
             </CardContent>

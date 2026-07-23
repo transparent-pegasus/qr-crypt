@@ -8,6 +8,7 @@ import {
   detailValue,
   encryptSignedPq,
   encryptWithStoredKey,
+  goToOfflinePage,
   openOfflineApp,
   seedSelfPublicBundle,
 } from "./helpers"
@@ -134,6 +135,12 @@ test("署名付き複数フレームを操作し ZIP と全 PNG を実ファイ�
   await openOfflineApp(page, context, "/keys")
   await createPqIdentity(page, identityName)
   await seedSelfPublicBundle(page, identityName)
+  // Chromium は単一操作からの多数の個別 download を 10 件で抑止する。
+  // maximum の署名付き fixture も全 PNG 検証が可能なフレーム数に保つ。
+  await goToOfflinePage(page, "/settings")
+  const frameBytes = page.getByLabel(/1フレームの生データ/)
+  await frameBytes.fill("900")
+  await expect(frameBytes).toHaveValue("900")
   const { result } = await encryptSignedPq(page, { identityName, plaintext })
   const frameCount = Number.parseInt(await detailValue(result, "QRフレーム数"), 10)
   expect(frameCount).toBeGreaterThan(1)

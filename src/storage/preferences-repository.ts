@@ -23,11 +23,11 @@ const PREFERENCES_KEY = "preferences"
 
 const UI_ALGORITHMS: readonly UiAlgorithm[] = [
   "A256GCM",
-  "MLKEM768_A256GCM",
-  "MLKEM768_MLDSA65_A256GCM",
+  "MLKEM1024_A256GCM",
+  "MLKEM1024_MLDSA87_A256GCM",
 ]
 
-const PQ_PROFILES_ALLOWED: readonly PqProfileId[] = ["balanced", "maximum"]
+const PQ_PROFILES_ALLOWED: readonly PqProfileId[] = ["maximum"]
 
 const EC_LEVELS: readonly QrEcLevel[] = ["L", "M", "Q", "H"]
 
@@ -54,24 +54,64 @@ function isIntInRange(value: unknown, min: number, max: number): value is number
   )
 }
 
+function normalizeLegacyStoredPreferences(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalized = { ...value }
+  switch (normalized.defaultAlgorithm) {
+    case "RSA-HYBRID":
+      normalized.defaultAlgorithm = "A256GCM"
+      break
+    case "MLKEM768_A256GCM":
+      normalized.defaultAlgorithm = "MLKEM1024_A256GCM"
+      break
+    case "MLKEM768_MLDSA65_A256GCM":
+      normalized.defaultAlgorithm = "MLKEM1024_MLDSA87_A256GCM"
+      break
+  }
+  if (normalized.defaultPqProfile === "balanced") {
+    normalized.defaultPqProfile = "maximum"
+  }
+  if (
+    (normalized.requireSignature === true || env.requireSignature) &&
+    normalized.defaultAlgorithm === "MLKEM1024_A256GCM"
+  ) {
+    normalized.defaultAlgorithm = env.enableMlDsa
+      ? "MLKEM1024_MLDSA87_A256GCM"
+      : "A256GCM"
+  }
+  return normalized
+}
+
+function validatePreferencesPatch(patch: unknown): asserts patch is Partial<Preferences> {
+  if (typeof patch !== "object" || patch === null) {
+    throw new AppError("STORAGE_FAILED")
+  }
+  const candidate = patch as Record<string, unknown>
+  if (
+    ("defaultAlgorithm" in candidate &&
+      !UI_ALGORITHMS.includes(candidate.defaultAlgorithm as UiAlgorithm)) ||
+    ("defaultPqProfile" in candidate &&
+      !PQ_PROFILES_ALLOWED.includes(candidate.defaultPqProfile as PqProfileId))
+  ) {
+    throw new AppError("STORAGE_FAILED")
+  }
+}
+
 function validatePreferences(value: unknown): Preferences {
   if (typeof value !== "object" || value === null) {
     throw new AppError("STORAGE_FAILED")
   }
   const candidate = value as Partial<Preferences>
-  const rawDefaultAlgorithm = (value as Record<string, unknown>).defaultAlgorithm
   const signatureRequired = candidate.requireSignature === true || env.requireSignature
-  // v1 の RSA preference は運用経路を復活させず、安全側の A256GCM へ移す。
-  const normalizedDefaultAlgorithm =
-    rawDefaultAlgorithm === "RSA-HYBRID"
-      ? "A256GCM"
-      : signatureRequired && rawDefaultAlgorithm === "MLKEM768_A256GCM"
-        ? env.enableMlDsa
-          ? "MLKEM768_MLDSA65_A256GCM"
-          : "A256GCM"
-        : rawDefaultAlgorithm
+  const defaultAlgorithm =
+    signatureRequired && candidate.defaultAlgorithm === "MLKEM1024_A256GCM"
+      ? env.enableMlDsa
+        ? "MLKEM1024_MLDSA87_A256GCM"
+        : "A256GCM"
+      : candidate.defaultAlgorithm
   if (
-    !UI_ALGORITHMS.includes(normalizedDefaultAlgorithm as UiAlgorithm) ||
+    !UI_ALGORITHMS.includes(defaultAlgorithm as UiAlgorithm) ||
     !PQ_PROFILES_ALLOWED.includes(candidate.defaultPqProfile as PqProfileId) ||
     typeof candidate.requireSignature !== "boolean" ||
     !EC_LEVELS.includes(candidate.qrErrorCorrection as QrEcLevel) ||
@@ -94,7 +134,7 @@ function validatePreferences(value: unknown): Preferences {
     throw new AppError("STORAGE_FAILED")
   }
   return {
-    defaultAlgorithm: normalizedDefaultAlgorithm as UiAlgorithm,
+    defaultAlgorithm: defaultAlgorithm as UiAlgorithm,
     defaultPqProfile: candidate.defaultPqProfile as PqProfileId,
     // env の署名必須は floor(plan2.1 §I)
     requireSignature: signatureRequired,
@@ -116,7 +156,10 @@ export async function getPreferences(): Promise<Preferences> {
     if (typeof row.value !== "object" || row.value === null) {
       throw new AppError("STORAGE_FAILED")
     }
-    return validatePreferences({ ...defaults(), ...row.value })
+    return validatePreferences({
+      ...defaults(),
+      ...normalizeLegacyStoredPreferences(row.value as Record<string, unknown>),
+    })
   } catch (error) {
     throw toAppError(error, "STORAGE_FAILED")
   }
@@ -126,13 +169,17 @@ export async function updatePreferences(
   patch: Partial<Preferences>,
 ): Promise<Preferences> {
   try {
+    validatePreferencesPatch(patch)
     const database = await getDb()
     const tx = database.transaction(STORE_PREFERENCES, "readwrite")
     const row = await tx.store.get(PREFERENCES_KEY)
     let current: Preferences
     if (row === undefined) current = defaults()
     else if (typeof row.value === "object" && row.value !== null) {
-      current = validatePreferences({ ...defaults(), ...row.value })
+      current = validatePreferences({
+        ...defaults(),
+        ...normalizeLegacyStoredPreferences(row.value as Record<string, unknown>),
+      })
     } else {
       throw new AppError("STORAGE_FAILED")
     }

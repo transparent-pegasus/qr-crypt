@@ -91,7 +91,7 @@ describe("PQ envelope and storage integration", () => {
         client,
         vaultKey,
         name: "受信者",
-        profile: "balanced",
+        profile: "maximum",
         now: NOW,
       })
     } finally {
@@ -103,7 +103,7 @@ describe("PQ envelope and storage integration", () => {
       client,
       vaultKey,
       name: "送信者",
-      profile: "balanced",
+      profile: "maximum",
       now: NOW + 1,
     })
     expect(

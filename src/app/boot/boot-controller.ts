@@ -230,6 +230,8 @@ function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
     "RSA-HYBRID",
     "MLKEM768_A256GCM",
     "MLKEM768_MLDSA65_A256GCM",
+    "MLKEM1024_A256GCM",
+    "MLKEM1024_MLDSA87_A256GCM",
   ]
   const profiles = ["balanced", "maximum"]
   const correctionLevels = ["L", "M", "Q", "H"]

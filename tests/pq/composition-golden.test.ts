@@ -10,7 +10,7 @@ import {
   type CanonicalCborValue,
 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
-import { createNobleDsa65, createNobleKem768 } from "@/crypto/pq/provider-noble"
+import { createNobleDsa87, createNobleKem1024 } from "@/crypto/pq/provider-noble"
 import { createPqCryptoClient } from "@/crypto/pq/worker-client"
 import { hkdfInfoV2, buildVaultAadV2 } from "@/crypto/pq/wire-bytes"
 import { zeroize, withZeroize } from "@/crypto/pq/zeroize"
@@ -78,8 +78,8 @@ interface Fixture {
 }
 
 async function compositionFixture(): Promise<Fixture> {
-  const kem = createNobleKem768()
-  const dsa = createNobleDsa65()
+  const kem = createNobleKem1024()
+  const dsa = createNobleDsa87()
   const kemKeys = kem.keygen(KEM_SEED)
   const dsaKeys = dsa.keygen(DSA_SEED)
   const vaultKey = await fixedVaultKey()
@@ -91,7 +91,7 @@ async function compositionFixture(): Promise<Fixture> {
       aad: {
         identityId: IDENTITY_ID,
         role: "ml-kem-seed",
-        algorithm: "ML-KEM-768",
+        algorithm: "ML-KEM-1024",
         keyId: KEM_KEY_ID,
         publicKeySha256: await sha256(kemKeys.publicKey),
       },
@@ -103,7 +103,7 @@ async function compositionFixture(): Promise<Fixture> {
       aad: {
         identityId: IDENTITY_ID,
         role: "ml-dsa-seed",
-        algorithm: "ML-DSA-65",
+        algorithm: "ML-DSA-87",
         keyId: SIGNING_KEY_ID,
         publicKeySha256: await sha256(dsaKeys.publicKey),
       },
@@ -112,16 +112,16 @@ async function compositionFixture(): Promise<Fixture> {
   const identity: PostQuantumIdentity = {
     id: IDENTITY_ID,
     name: "composition fixture",
-    profile: "balanced",
+    profile: "maximum",
     kem: {
-      algorithm: "ML-KEM-768",
+      algorithm: "ML-KEM-1024",
       keyId: KEM_KEY_ID,
       publicKey: kemKeys.publicKey,
       encryptedSeed: encryptedKemSeed,
       fingerprint: "fixture-kem",
     },
     signing: {
-      algorithm: "ML-DSA-65",
+      algorithm: "ML-DSA-87",
       keyId: SIGNING_KEY_ID,
       publicKey: dsaKeys.publicKey,
       encryptedSeed: encryptedDsaSeed,
@@ -152,7 +152,7 @@ async function compositionFixture(): Promise<Fixture> {
   const client = createPqCryptoClient()
   const plaintext = new TextEncoder().encode("fixed composition plaintext")
   const envelope = await client.encryptPqMessage({
-    suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+    suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: KEM_KEY_ID,
     recipientKemPublicKey: identity.kem.publicKey,
     plaintext,
@@ -160,7 +160,7 @@ async function compositionFixture(): Promise<Fixture> {
     createdAt: CREATED_AT,
     sign: {
       senderSigningKeyId: SIGNING_KEY_ID,
-      algorithm: "ML-DSA-65",
+      algorithm: "ML-DSA-87",
       vaultKey,
       identityId: IDENTITY_ID,
       encryptedSeed: encryptedDsaSeed,
@@ -200,7 +200,7 @@ async function innerCrypto(fixture: Fixture): Promise<{
   key: CryptoKey
   aad: Uint8Array
 }> {
-  const kem = createNobleKem768()
+  const kem = createNobleKem1024()
   const keys = kem.keygen(KEM_SEED)
   const sharedSecret = kem.decapsulate(fixture.envelope.kemCiphertext, keys.secretKey)
   const info = hkdfInfoV2(fixture.envelope.suite, fixture.envelope.recipientKemKeyId)
@@ -281,10 +281,10 @@ describe("signed composition golden", () => {
       expect(bytesToHex(fixture.envelope.hkdfSalt)).toBe("a3".repeat(32))
       expect(bytesToHex(fixture.envelope.iv)).toBe("a4".repeat(12))
       expect(await sha256Hex(fixture.envelope.kemCiphertext)).toBe(
-        "c0e44ef6dba681357ba3510236de964a456517e5c10b2cd3ee68a9b5d811cb03",
+        "7e7cc499f2d0f3bb0bb7aa61a3705c83bfc5cf2446b6bc81a1aa4badd2ea25ae",
       )
       expect(await sha256Hex(encodeMlKemEnvelopeV2(fixture.envelope))).toBe(
-        "b1c5e75ebdfd1f89f0be02299267dbc1448a21df271e4f2f781734ac0783363e",
+        "5986a6b363df30bc95dfa668b03359315df88d3b7f67593dbe62bf61cc4b2f18",
       )
       const inner = await fixture.client.openPqEnvelope(recipient(fixture))
       if (inner.kind !== "signed") throw new Error("expected signed inner")
@@ -293,7 +293,7 @@ describe("signed composition golden", () => {
       expect(signed.body.createdAt).toBe(CREATED_AT)
       expect(signed.body.plaintext).toEqual(fixture.plaintext)
       expect(await sha256Hex(signed.signature.value)).toBe(
-        "01cbc4a31b919de0ac90d161268043b0dc15a1fcddf4382ff2d04efcdf46b942",
+        "e14ce55d6babde5635701fcf79566b8b064fc353ccbbdc7b8de50ade1385fcb2",
       )
     } finally {
       fixture.client.dispose()
@@ -318,7 +318,7 @@ describe("signed composition golden", () => {
           envelope.ciphertext[last] = envelope.ciphertext[last]! ^ 1
         },
         (envelope) => {
-          envelope.suite = "ML-KEM-768+HKDF-SHA256+A256GCM"
+          envelope.suite = "ML-KEM-1024+HKDF-SHA256+A256GCM"
         },
         (envelope) => {
           envelope.recipientKemKeyId = OTHER_KEY_ID
@@ -339,7 +339,7 @@ describe("signed composition golden", () => {
   it("shows implicit rejection returns a value but GCM still fails", async () => {
     const fixture = await compositionFixture()
     try {
-      const kem = createNobleKem768()
+      const kem = createNobleKem1024()
       const keys = kem.keygen(KEM_SEED)
       const valid = kem.decapsulate(fixture.envelope.kemCiphertext, keys.secretKey)
       const tamperedCiphertext = Uint8Array.from(fixture.envelope.kemCiphertext)
@@ -392,7 +392,7 @@ describe("signed composition golden", () => {
           recipient: fixture.identity,
           vaultKey: fixture.vaultKey,
           resolveSigningKey: async () => ({
-            algorithm: "ML-DSA-65",
+            algorithm: "ML-DSA-87",
             publicKey: fixture.identity.signing.publicKey,
             revoked: false,
           }),

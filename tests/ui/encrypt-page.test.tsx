@@ -39,7 +39,7 @@ describe("encrypt page v2", () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole("option", {
-        name: /^ポスト量子 ML-KEM-768 \+ AES-256-GCM$/,
+        name: /^ポスト量子 ML-KEM-1024 \+ AES-256-GCM$/,
       }),
     ).toBeInTheDocument()
     expect(screen.getByRole("option", { name: /署名付きポスト量子/ })).toBeInTheDocument()
@@ -71,9 +71,9 @@ describe("encrypt page v2", () => {
       resolveEncryption?.({
         version: 2,
         type: "pq-message",
-        suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+        suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
         recipientKemKeyId: fakeBundles[0]!.kem.keyId,
-        kemCiphertext: new Uint8Array(1088),
+        kemCiphertext: new Uint8Array(1568),
         hkdfSalt: new Uint8Array(32),
         iv: new Uint8Array(12),
         ciphertext: new Uint8Array(3_600),
@@ -96,6 +96,7 @@ describe("encrypt page v2", () => {
     ]) {
       expect(within(result).getByText(label)).toBeInTheDocument()
     }
+    expect(within(result).getByText("maximum")).toBeInTheDocument()
     expect(within(result).getByRole("button", { name: "一時停止" })).toBeInTheDocument()
     expect(
       within(result).getByRole("button", { name: "次のフレーム" }),
@@ -190,7 +191,7 @@ describe("encrypt page v2", () => {
     const user = userEvent.setup()
     encryptPq.mockRejectedValueOnce(new AppError("WORKER_UNAVAILABLE"))
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "暗号化方式", /ポスト量子 ML-KEM-768 \+ AES/)
+    await chooseSelectOption(user, "暗号化方式", /ポスト量子 ML-KEM-1024 \+ AES/)
     await chooseSelectOption(user, "受信者のML-KEM公開鍵", /確認済みの相手/)
     await user.type(screen.getByLabelText("平文"), "worker failure")
     await user.click(screen.getByRole("button", { name: "暗号化する" }))

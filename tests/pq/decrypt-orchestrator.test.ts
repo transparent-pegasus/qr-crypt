@@ -9,9 +9,9 @@ const SENDER_ID = "EAESExQVFhcYGRobHB0eHw"
 const envelope: MlKemMessageEnvelopeV2 = {
   version: 2,
   type: "pq-message",
-  suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+  suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
   recipientKemKeyId: KEY_ID,
-  kemCiphertext: new Uint8Array(1088),
+  kemCiphertext: new Uint8Array(1568),
   hkdfSalt: new Uint8Array(32),
   iv: new Uint8Array(12),
   ciphertext: new Uint8Array(16),
@@ -20,18 +20,18 @@ const envelope: MlKemMessageEnvelopeV2 = {
 const recipient: PostQuantumIdentity = {
   id: KEY_ID,
   name: "recipient",
-  profile: "balanced",
+  profile: "maximum",
   kem: {
-    algorithm: "ML-KEM-768",
+    algorithm: "ML-KEM-1024",
     keyId: KEY_ID,
-    publicKey: new Uint8Array(1184),
+    publicKey: new Uint8Array(1568),
     encryptedSeed: { iv: new Uint8Array(12), ciphertext: new Uint8Array(80) },
     fingerprint: "kem",
   },
   signing: {
-    algorithm: "ML-DSA-65",
+    algorithm: "ML-DSA-87",
     keyId: SENDER_ID,
-    publicKey: new Uint8Array(1952),
+    publicKey: new Uint8Array(2592),
     encryptedSeed: { iv: new Uint8Array(12), ciphertext: new Uint8Array(48) },
     fingerprint: "dsa",
   },
@@ -66,7 +66,7 @@ describe("decryptPqMessage", () => {
         kind: "signed",
         signedMessageBytes,
         senderSigningKeyId: SENDER_ID,
-        signatureAlgorithm: "ML-DSA-65",
+        signatureAlgorithm: "ML-DSA-87",
       }),
       verifySignedMessage,
     })
@@ -92,7 +92,7 @@ describe("decryptPqMessage", () => {
         kind: "signed",
         signedMessageBytes: new Uint8Array([1]),
         senderSigningKeyId: SENDER_ID,
-        signatureAlgorithm: "ML-DSA-65",
+        signatureAlgorithm: "ML-DSA-87",
       }),
     })
     const result = await decryptPqMessage({
@@ -101,8 +101,8 @@ describe("decryptPqMessage", () => {
       recipient,
       vaultKey: {} as CryptoKey,
       resolveSigningKey: vi.fn().mockResolvedValue({
-        algorithm: "ML-DSA-65",
-        publicKey: new Uint8Array(1952),
+        algorithm: "ML-DSA-87",
+        publicKey: new Uint8Array(2592),
         revoked: true,
       }),
     })
@@ -116,7 +116,7 @@ describe("decryptPqMessage", () => {
         kind: "signed",
         signedMessageBytes: new Uint8Array([1]),
         senderSigningKeyId: SENDER_ID,
-        signatureAlgorithm: "ML-DSA-65",
+        signatureAlgorithm: "ML-DSA-87",
       }),
       verifySignedMessage: vi.fn().mockResolvedValue({ valid: false }),
     })
@@ -127,8 +127,8 @@ describe("decryptPqMessage", () => {
         recipient,
         vaultKey: {} as CryptoKey,
         resolveSigningKey: vi.fn().mockResolvedValue({
-          algorithm: "ML-DSA-65",
-          publicKey: new Uint8Array(1952),
+          algorithm: "ML-DSA-87",
+          publicKey: new Uint8Array(2592),
           revoked: false,
         }),
       }),
@@ -142,7 +142,7 @@ describe("decryptPqMessage", () => {
         kind: "signed",
         signedMessageBytes: new Uint8Array([1]),
         senderSigningKeyId: SENDER_ID,
-        signatureAlgorithm: "ML-DSA-65",
+        signatureAlgorithm: "ML-DSA-87",
       }),
       verifySignedMessage: vi.fn().mockResolvedValue({ valid: true, plaintext }),
     })
@@ -153,8 +153,8 @@ describe("decryptPqMessage", () => {
         recipient,
         vaultKey: {} as CryptoKey,
         resolveSigningKey: vi.fn().mockResolvedValue({
-          algorithm: "ML-DSA-65",
-          publicKey: new Uint8Array(1952),
+          algorithm: "ML-DSA-87",
+          publicKey: new Uint8Array(2592),
           revoked: false,
         }),
       }),

@@ -17,9 +17,6 @@ export interface AppEnv {
   enableEcdh: boolean
   enableMlKem: boolean
   enableMlDsa: boolean
-  // 初期リリースは false 固定(plan2.1 §A)。VITE_ENABLE_MAXIMUM_PQ の値は
-  // 形式検証のみ行い、balanced 完了後の独立 WP まで無視する。
-  enableMaximumPq: false
   requireSignature: boolean
   enablePrivateKeyExport: boolean
   enableEncryptedSeedBackup: boolean
@@ -45,13 +42,35 @@ const intFromString = (defaultValue: number, min: number, max: number) =>
     .transform((value) => Number(value))
     .pipe(z.number().int().min(min).max(max))
 
+// maximum 署名付き OCM2 の正準 CBOR 実測 fixture を式へ分解した固定部。
+// SignedMessageBody の plaintext byte string だけが可変で、ML-DSA-87 署名は
+// 4,627B、ML-KEM-1024 ciphertext は 1,568B、AES-GCM tag は 16B 固定。
+// tests/pq/maximum-artifact-size.golden.test.ts が生成物との境界一致を固定する。
+const MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES = 6_612
+
+function canonicalByteStringHeaderBytes(byteLength: number): number {
+  if (byteLength <= 23) return 1
+  if (byteLength <= 0xff) return 2
+  if (byteLength <= 0xffff) return 3
+  if (byteLength <= 0xffff_ffff) return 5
+  return 9
+}
+
+function maximumSignedArtifactBytes(plaintextBytes: number): number {
+  return (
+    MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES +
+    canonicalByteStringHeaderBytes(plaintextBytes) +
+    plaintextBytes
+  )
+}
+
 const rawSchema = z.object({
   VITE_APP_NAME: z.string().min(1).default("Qrypt"),
   VITE_APP_SHORT_NAME: z.string().min(1).default("Qrypt"),
   VITE_DEFAULT_ALGORITHM: z
-    .enum(["A256GCM", "MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"])
+    .enum(["A256GCM", "MLKEM1024_A256GCM", "MLKEM1024_MLDSA87_A256GCM"])
     .default("A256GCM"),
-  VITE_DEFAULT_PQ_PROFILE: z.enum(["balanced", "maximum"]).default("balanced"),
+  VITE_DEFAULT_PQ_PROFILE: z.enum(["maximum"]).default("maximum"),
   VITE_QR_ERROR_CORRECTION: z.enum(["L", "M", "Q", "H"]).default("Q"),
   VITE_QR_RENDER_SIZE: intFromString(512, 128, 1024),
   VITE_MAX_PLAINTEXT_BYTES: intFromString(4096, 1, 16384),
@@ -60,7 +79,6 @@ const rawSchema = z.object({
   VITE_ENABLE_ECDH: boolFromString("false"),
   VITE_ENABLE_ML_KEM: boolFromString("true"),
   VITE_ENABLE_ML_DSA: boolFromString("true"),
-  VITE_ENABLE_MAXIMUM_PQ: boolFromString("false"),
   VITE_REQUIRE_SIGNATURE: boolFromString("false"),
   VITE_ENABLE_PRIVATE_KEY_EXPORT: boolFromString("false"),
   VITE_ENABLE_ENCRYPTED_SEED_BACKUP: boolFromString("false"),
@@ -88,22 +106,31 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
       "環境変数が不正です: VITE_REQUIRE_SIGNATURE=true と VITE_ENABLE_ML_DSA=false は両立しません",
     )
   }
+  // 2) maximum 署名付き最大平文の artifact 生バイトが、設定された OCF2
+  //    chunk 総容量へ収まらない組合せは起動前に拒否する。
+  const maximumSignedBytes = maximumSignedArtifactBytes(v.VITE_MAX_PLAINTEXT_BYTES)
+  const configuredFrameCapacity = v.VITE_QR_MAX_FRAMES * v.VITE_QR_FRAME_BYTES
+  if (maximumSignedBytes > configuredFrameCapacity) {
+    throw new Error(
+      "環境変数が不正です: VITE_MAX_PLAINTEXT_BYTES の maximum 署名付き正準 CBOR が VITE_QR_MAX_FRAMES × VITE_QR_FRAME_BYTES に収まりません",
+    )
+  }
   let defaultAlgorithm: UiAlgorithm = v.VITE_DEFAULT_ALGORITHM
-  // 2) ML-KEM 無効時に既定方式が PQ を指していたら A256GCM へ正規化
+  // 3) ML-KEM 無効時に既定方式が PQ を指していたら A256GCM へ正規化
   if (
     !v.VITE_ENABLE_ML_KEM &&
-    (defaultAlgorithm === "MLKEM768_A256GCM" ||
-      defaultAlgorithm === "MLKEM768_MLDSA65_A256GCM")
+    (defaultAlgorithm === "MLKEM1024_A256GCM" ||
+      defaultAlgorithm === "MLKEM1024_MLDSA87_A256GCM")
   ) {
     defaultAlgorithm = "A256GCM"
   }
-  // 3) ML-DSA 無効時に既定方式が署名付き PQ なら非署名 PQ へ正規化
-  if (!v.VITE_ENABLE_ML_DSA && defaultAlgorithm === "MLKEM768_MLDSA65_A256GCM") {
-    defaultAlgorithm = "MLKEM768_A256GCM"
+  // 4) ML-DSA 無効時に既定方式が署名付き PQ なら非署名 PQ へ正規化
+  if (!v.VITE_ENABLE_ML_DSA && defaultAlgorithm === "MLKEM1024_MLDSA87_A256GCM") {
+    defaultAlgorithm = "MLKEM1024_A256GCM"
   }
-  // 4) 署名必須なら既定 PQ 方式を署名付きへ正規化(plan2.1 §I。A256GCM は対象外)
-  if (v.VITE_REQUIRE_SIGNATURE && defaultAlgorithm === "MLKEM768_A256GCM") {
-    defaultAlgorithm = "MLKEM768_MLDSA65_A256GCM"
+  // 5) 署名必須なら既定 PQ 方式を署名付きへ正規化(plan2.1 §I。A256GCM は対象外)
+  if (v.VITE_REQUIRE_SIGNATURE && defaultAlgorithm === "MLKEM1024_A256GCM") {
+    defaultAlgorithm = "MLKEM1024_MLDSA87_A256GCM"
   }
   return {
     appName: v.VITE_APP_NAME,
@@ -118,7 +145,6 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     enableEcdh: v.VITE_ENABLE_ECDH,
     enableMlKem: v.VITE_ENABLE_ML_KEM,
     enableMlDsa: v.VITE_ENABLE_ML_DSA,
-    enableMaximumPq: false,
     requireSignature: v.VITE_REQUIRE_SIGNATURE,
     enablePrivateKeyExport: v.VITE_ENABLE_PRIVATE_KEY_EXPORT,
     enableEncryptedSeedBackup: v.VITE_ENABLE_ENCRYPTED_SEED_BACKUP,

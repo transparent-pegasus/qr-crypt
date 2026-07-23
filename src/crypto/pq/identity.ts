@@ -9,6 +9,12 @@ import type {
 } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { PQ_PROFILES } from "@/crypto/pq/profiles"
+import {
+  ACTIVE_PROFILE,
+  assertActiveProfile,
+  assertActiveSuite,
+  resolveSuite,
+} from "@/crypto/pq/suites"
 import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
 import { generateKeyId } from "@/crypto/random"
 import { keyNameSchema } from "@/schemas/key-schema"
@@ -17,7 +23,7 @@ export interface CreateIdentityArgs {
   client: PqCryptoClient
   vaultKey: CryptoKey
   name: string
-  profile: PqProfileId // 初期リリースは balanced のみ UI 露出(plan2.1 §A)
+  profile: PqProfileId
   now: number
 }
 
@@ -39,18 +45,23 @@ function generateDistinctIdentityIds(): [string, string, string] {
   return [values[0]!, values[1]!, values[2]!]
 }
 
+function assertActiveIdentity(identity: PostQuantumIdentity): void {
+  assertActiveProfile(identity.profile)
+  assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
+}
+
 export async function createIdentity(
   args: CreateIdentityArgs,
 ): Promise<PostQuantumIdentity> {
   try {
     assertTimestamp(args.now)
     const name = keyNameSchema.parse(args.name)
-    const profile = PQ_PROFILES[args.profile]
-    if (profile === undefined) throw new AppError("UNSUPPORTED_ALGORITHM")
+    assertActiveProfile(args.profile)
+    const profile = PQ_PROFILES[ACTIVE_PROFILE]
 
     const [identityId, kemKeyId, signingKeyId] = generateDistinctIdentityIds()
     const generated = await args.client.generateIdentityKeys({
-      profile: args.profile,
+      profile: ACTIVE_PROFILE,
       vaultKey: args.vaultKey,
       identityId,
       kemKeyId,
@@ -82,7 +93,7 @@ export async function createIdentity(
     return {
       id: identityId,
       name,
-      profile: args.profile,
+      profile: ACTIVE_PROFILE,
       kem: {
         ...bundle.kem,
         encryptedSeed: generated.kem.encryptedSeed,
@@ -118,6 +129,7 @@ export interface RotatedIdentity {
 export async function rotateIdentity(args: RotateIdentityArgs): Promise<RotatedIdentity> {
   try {
     assertTimestamp(args.now)
+    assertActiveIdentity(args.current)
     if (args.current.status !== "active" || args.now < args.current.createdAt) {
       throw new AppError("ENCRYPTION_FAILED")
     }
@@ -125,7 +137,7 @@ export async function rotateIdentity(args: RotateIdentityArgs): Promise<RotatedI
       client: args.client,
       vaultKey: args.vaultKey,
       name: args.current.name,
-      profile: args.current.profile,
+      profile: ACTIVE_PROFILE,
       now: args.now,
     })
     return {
@@ -142,6 +154,7 @@ export async function rotateIdentity(args: RotateIdentityArgs): Promise<RotatedI
 }
 
 export function buildPublicBundle(identity: PostQuantumIdentity): PublicIdentityBundleV2 {
+  assertActiveIdentity(identity)
   return {
     version: 2,
     type: "pq-public-identity",

@@ -82,11 +82,3 @@ export const PQ_PROFILES: Record<PqProfileId, PqProfileSpec> = {
     kdf: "HKDF-SHA-256",
   },
 }
-
-export function profileForKemAlgorithm(algorithm: MlKemAlgorithm): PqProfileSpec {
-  return algorithm === "ML-KEM-768" ? PQ_PROFILES.balanced : PQ_PROFILES.maximum
-}
-
-export function profileForDsaAlgorithm(algorithm: MlDsaAlgorithm): PqProfileSpec {
-  return algorithm === "ML-DSA-65" ? PQ_PROFILES.balanced : PQ_PROFILES.maximum
-}

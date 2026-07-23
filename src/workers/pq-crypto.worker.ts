@@ -482,9 +482,12 @@ function fallbackCode(operation: PqWorkerOperation): ErrorCode {
   }
 }
 
-function sanitizedCode(_error: unknown, operation: PqWorkerOperation): ErrorCode {
+function sanitizedCode(error: unknown, operation: PqWorkerOperation): ErrorCode {
   // RPC 操作ごとの公開エラーへ畳み込み、CBOR/WebCrypto/noble の内部段階を
   // 呼出側へ漏らさない。署名の不一致だけは verify 系の公開コードになる。
+  if (error instanceof AppError && error.code === "UNSUPPORTED_ALGORITHM") {
+    return error.code
+  }
   return fallbackCode(operation)
 }
 

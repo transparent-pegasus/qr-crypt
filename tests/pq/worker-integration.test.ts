@@ -22,7 +22,7 @@ function client(): PqCryptoClient {
 async function identity(
   pq: PqCryptoClient,
   fill: number,
-  profile: "balanced" | "maximum" = "balanced",
+  profile: "balanced" | "maximum" = "maximum",
 ): Promise<{ identity: PostQuantumIdentity; vaultKey: CryptoKey }> {
   const vaultKey = await getOrCreateVaultKey()
   const identityId = keyId(fill)
@@ -82,35 +82,45 @@ afterEach(async () => {
 })
 
 describe("in-process PQ Worker handler", () => {
-  it.each(["balanced", "maximum"] as const)(
-    "generates and regenerates %s public keys without returning seeds",
-    async (profile) => {
-      const pq = client()
-      const generated = await identity(pq, profile === "balanced" ? 1 : 11, profile)
-      const restored = await pq.publicKeysFromSeeds({
-        vaultKey: generated.vaultKey,
-        identityId: generated.identity.id,
-        kem: {
-          algorithm: generated.identity.kem.algorithm,
-          keyId: generated.identity.kem.keyId,
-          encryptedSeed: generated.identity.kem.encryptedSeed,
-          storedPublicKey: generated.identity.kem.publicKey,
-        },
-        signing: {
-          algorithm: generated.identity.signing.algorithm,
-          keyId: generated.identity.signing.keyId,
-          encryptedSeed: generated.identity.signing.encryptedSeed,
-          storedPublicKey: generated.identity.signing.publicKey,
-        },
-      })
-      expect(restored.kemPublicKey).toEqual(generated.identity.kem.publicKey)
-      expect(restored.dsaPublicKey).toEqual(generated.identity.signing.publicKey)
-      expect("seed" in restored).toBe(false)
-      expect("secretKey" in restored).toBe(false)
-      expect(generated.identity.kem.encryptedSeed.ciphertext).toHaveLength(80)
-      expect(generated.identity.signing.encryptedSeed.ciphertext).toHaveLength(48)
-    },
-  )
+  it("rejects balanced identity generation before cryptography", async () => {
+    const pq = client()
+    await expect(
+      pq.generateIdentityKeys({
+        profile: "balanced",
+        vaultKey: await getOrCreateVaultKey(),
+        identityId: keyId(1),
+        kemKeyId: keyId(2),
+        signingKeyId: keyId(3),
+      }),
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_ALGORITHM" })
+  })
+
+  it("generates and regenerates maximum public keys without returning seeds", async () => {
+    const pq = client()
+    const generated = await identity(pq, 11)
+    const restored = await pq.publicKeysFromSeeds({
+      vaultKey: generated.vaultKey,
+      identityId: generated.identity.id,
+      kem: {
+        algorithm: generated.identity.kem.algorithm,
+        keyId: generated.identity.kem.keyId,
+        encryptedSeed: generated.identity.kem.encryptedSeed,
+        storedPublicKey: generated.identity.kem.publicKey,
+      },
+      signing: {
+        algorithm: generated.identity.signing.algorithm,
+        keyId: generated.identity.signing.keyId,
+        encryptedSeed: generated.identity.signing.encryptedSeed,
+        storedPublicKey: generated.identity.signing.publicKey,
+      },
+    })
+    expect(restored.kemPublicKey).toEqual(generated.identity.kem.publicKey)
+    expect(restored.dsaPublicKey).toEqual(generated.identity.signing.publicKey)
+    expect("seed" in restored).toBe(false)
+    expect("secretKey" in restored).toBe(false)
+    expect(generated.identity.kem.encryptedSeed.ciphertext).toHaveLength(80)
+    expect(generated.identity.signing.encryptedSeed.ciphertext).toHaveLength(48)
+  })
 
   it("signs with an encrypted seed and verifies only public artifacts", async () => {
     const pq = client()
@@ -149,7 +159,7 @@ describe("in-process PQ Worker handler", () => {
     const generated = await identity(pq, 31)
     const plaintext = new TextEncoder().encode("unsigned worker round trip")
     const envelope = await pq.encryptPqMessage({
-      suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
       recipientKemKeyId: generated.identity.kem.keyId,
       recipientKemPublicKey: generated.identity.kem.publicKey,
       plaintext,
@@ -175,7 +185,7 @@ describe("in-process PQ Worker handler", () => {
     const generated = await identity(pq, 41)
     const plaintext = new TextEncoder().encode("signed worker round trip")
     const envelope = await pq.encryptPqMessage({
-      suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: generated.identity.kem.keyId,
       recipientKemPublicKey: generated.identity.kem.publicKey,
       plaintext,
@@ -236,7 +246,7 @@ describe("in-process PQ Worker handler", () => {
     const pq = client()
     const generated = await identity(pq, 51)
     const envelope = await pq.encryptPqMessage({
-      suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
       recipientKemKeyId: generated.identity.kem.keyId,
       recipientKemPublicKey: generated.identity.kem.publicKey,
       plaintext: new TextEncoder().encode("tamper matrix"),
@@ -258,7 +268,7 @@ describe("in-process PQ Worker handler", () => {
         value.ciphertext[last] = value.ciphertext[last]! ^ 1
       },
       (value) => {
-        value.suite = "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM"
+        value.suite = "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
       },
       (value) => {
         value.recipientKemKeyId = keyId(99)
@@ -312,7 +322,7 @@ describe("in-process PQ Worker handler", () => {
     const pq = client()
     const generated = await identity(pq, 71)
     const envelope = await pq.encryptPqMessage({
-      suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: generated.identity.kem.keyId,
       recipientKemPublicKey: generated.identity.kem.publicKey,
       plaintext: new TextEncoder().encode("never expose on invalid signature"),

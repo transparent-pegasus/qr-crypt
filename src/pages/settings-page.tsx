@@ -242,13 +242,13 @@ export function SettingsPage() {
             <SelectContent>
               <SelectItem value="A256GCM">{ALGORITHM_LABELS.A256GCM}</SelectItem>
               {env.enableMlKem && !preferences.requireSignature && (
-                <SelectItem value="MLKEM768_A256GCM">
-                  {ALGORITHM_LABELS.MLKEM768_A256GCM}
+                <SelectItem value="MLKEM1024_A256GCM">
+                  {ALGORITHM_LABELS.MLKEM1024_A256GCM}
                 </SelectItem>
               )}
               {env.enableMlKem && env.enableMlDsa && (
-                <SelectItem value="MLKEM768_MLDSA65_A256GCM">
-                  {ALGORITHM_LABELS.MLKEM768_MLDSA65_A256GCM}
+                <SelectItem value="MLKEM1024_MLDSA87_A256GCM">
+                  {ALGORITHM_LABELS.MLKEM1024_MLDSA87_A256GCM}
                 </SelectItem>
               )}
             </SelectContent>
@@ -297,8 +297,8 @@ export function SettingsPage() {
             onCheckedChange={(checked) =>
               void savePreference({
                 requireSignature: checked,
-                ...(checked && preferences.defaultAlgorithm === "MLKEM768_A256GCM"
-                  ? { defaultAlgorithm: "MLKEM768_MLDSA65_A256GCM" }
+                ...(checked && preferences.defaultAlgorithm === "MLKEM1024_A256GCM"
+                  ? { defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM" }
                   : {}),
               })
             }

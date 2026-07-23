@@ -2,14 +2,40 @@
 
 本書は spec2 §3/§21 の完了条件のうち「採用ライブラリの独立セキュリティレビュー」
 に関する**事実の記録**である。plan2.1 §A に従い、完了は次の 2 区分で判定する。
+現在の運用レビュー対象は maximum 本筋、すなわち ML-KEM-1024 と ML-DSA-87
+（署名なし・署名付き）である。4 種の `WireSuite` は wire/codec 契約として維持するが、
+balanced（768/65）は active policy の対象外であり、運用境界で
+`UNSUPPORTED_ALGORITHM` として拒否する。
 
 - **implementation-complete**: リポジトリ内の実装・テスト・文書が完了した状態。
-  本書に「独立第三者監査 未実施」と記録したまま到達できる。
+  次のリポジトリ内条件をすべて満たし、本書に「独立第三者監査 未実施」と
+  記録したまま到達できる。
+  - maximum の identity・Worker・暗号化・復号・保存・OCP2/OCS2/OCF2 経路が
+    composition/integration/UI テストで成功する。
+  - `tests/pq/maximum-policy-boundaries.test.ts`、Worker integration、取込の negative
+    test が balanced/768 系を暗号処理前に `UNSUPPORTED_ALGORITHM` で拒否する。
+  - 設定の negative/migration test が旧 algorithm・balanced の更新注入を拒否し、
+    旧 preferences は maximum へ読み取り正規化して `wipeOnOnline=false` を維持する。
+  - `tests/pq/maximum-artifact-size.golden.test.ts` が次表の正準 CBOR 生バイト数、
+    chunk 400/600/900B の OCF2 フレーム数、各フレームの実 EC-Q 生成、および
+    env 容量ガードとの境界一致を固定する。
+  - ML-KEM-1024 / ML-DSA-87 の KAT と `aube test` / `aube typecheck` が通り、
+    `aube bench:pq` の maximum 参考値および README・プロトコル文書が更新される。
 - **release-approved**: 独立第三者による選定バージョンとアプリ全体のレビューが
   記録されるまで到達しない(**external blocker**)。それまで UI・README・CI は
   experimental・未独立監査の表示を一貫して維持する。
 
 自己調査・自己文書(本書を含む)は独立レビューの代替にならず、blocker を閉じない。
+
+maximum の実測 fixture（`maxPlaintext=4,096B`、`name="テスト"`）:
+
+| artifact | 正準 CBOR (bytes) | OCF2 frames (400 / 600 / 900B) |
+|---|---:|---:|
+| unsigned empty / max | 1,887 / 5,986 | 5/4/3 / 15/10/7 |
+| signed empty / max | 6,613 / 10,711 | 17/12/8 / 27/18/12 |
+| OCI2 bundle | 4,402 | 12/8/5 |
+| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 5/3/2 / 7/5/4 |
+| OCB2 reserved sizing fixture | 4,637 | 12/8/6 |
 
 ## 1. 採用ライブラリの事実(2026-07-22 時点)
 
@@ -21,10 +47,11 @@
 - **独立監査: 未了**。0.6.1 時点の監査状態は self-audit(scope: everything)のみ
 - **サイドチャネル: JS 実装として constant-time を保証しない**。特に ML-KEM
   decaps の implicit-rejection 経路について JS/JIT の定時間性を明記のうえ非保証
-- API(0.6.1 実ソースで確認):
-  `ml_kem768/1024.keygen(seed64?)` / `.encapsulate(pk)` / `.decapsulate(ct, sk)`、
-  `ml_dsa65/87.keygen(seed32?)` / `.sign(msg, sk, {context})` /
-  `.verify(sig, msg, pk, {context})`
+- active policy で採用する API(0.6.1 実ソースで確認):
+  `ml_kem1024.keygen(seed64?)` / `.encapsulate(pk)` / `.decapsulate(ct, sk)`、
+  `ml_dsa87.keygen(seed32?)` / `.sign(msg, sk, {context})` /
+  `.verify(sig, msg, pk, {context})`。同ライブラリには 768/65 実装も含まれるが、
+  active policy の暗号処理には使用しない
 
 ### 供給網
 
@@ -56,7 +83,8 @@ noble 未独立監査・JS サイドチャネル非保証・JS メモリー消�
 
 - レビュー主体(独立性の根拠)/ 実施期間
 - 対象 commit hash・build hash・`@noble/post-quantum` バージョンと transitive lock
-- 対象範囲(ライブラリ・プロトコル設計 docs/qr-protocol-v2.md・アプリ実装)
+- 対象範囲(maximum 本筋のライブラリ・プロトコル設計
+  docs/qr-protocol-v2.md・アプリ実装、および維持する 4-suite wire/codec 契約)
 - findings 一覧・修正 commit・再検証結果
 - FIPS エラッタ確認結果
 
