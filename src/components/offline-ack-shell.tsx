@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { AlertTriangle, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -14,15 +14,10 @@ export function OfflineAckShell({
   onContinue,
   variant = "standard",
 }: OfflineAckShellProps) {
-  const headingRef = useRef<HTMLHeadingElement>(null)
   const [checked, setChecked] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const checkboxId = `offline-risk-ack-${generation}`
   const wiped = variant === "wiped"
-
-  useEffect(() => {
-    headingRef.current?.focus()
-  }, [])
 
   const continueOffline = () => {
     if (!checked || submitting) return
@@ -64,14 +59,12 @@ export function OfflineAckShell({
             className="mt-0.5 size-6 shrink-0 text-warning"
           />
           <div className="min-w-0 flex-1 space-y-1">
-            <p className="text-xs font-medium text-muted-foreground">
+            <p role="status" className="text-xs font-medium text-muted-foreground">
               オフラインへ切り替わりました
             </p>
             <h1
               id="offline-ack-title"
-              ref={headingRef}
-              tabIndex={-1}
-              className="text-xl font-bold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-2xl"
+              className="text-xl font-bold tracking-tight sm:text-2xl"
             >
               続行前の確認
             </h1>
@@ -80,7 +73,7 @@ export function OfflineAckShell({
 
         <div className="space-y-4 text-sm leading-relaxed text-muted-foreground sm:text-base">
           <p>
-            このアプリは「オンラインに接続した端末は常に侵害されうる」という前提で設計されています。オンライン状態から機内モードやネットワーク切断を選んでも、それによって端末が信頼できる状態に戻るわけではありません。オンライン中に侵害されたコード・鍵・データは、オフライン化後もそのまま残り得ます。
+            このアプリは「ネットワークに接続した端末は常に侵害されうる」という前提で設計されています。オンライン状態から機内モードやネットワーク切断を選んでも、それによって端末が信頼できる状態に戻るわけではありません。オンライン中に侵害されたコード・鍵・データは、オフライン化後もそのまま残り得ます。
           </p>
           <p>
             {"リスクを抑えるには、ネットワークから物理的に遮断し、"}
