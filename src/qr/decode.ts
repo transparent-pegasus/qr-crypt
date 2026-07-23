@@ -20,23 +20,18 @@ export type CameraDiagnosticPhase = "acquiring" | "acquired" | "playing" | "trac
 export interface CameraDiagnostic {
   phase: CameraDiagnosticPhase
   name: string | null
+  detail: string
 }
 
 export type CameraScanState = "idle" | "acquiring" | "playing" | "failed" | "track-ended"
 
 export const CAMERA_START_TIMEOUT_MS = 8_000
-
-const CAMERA_ERROR_NAMES = new Set([
-  "NotAllowedError",
-  "NotFoundError",
-  "NotReadableError",
-  "OverconstrainedError",
-  "AbortError",
-  "SecurityError",
-])
+export const CAMERA_FRAME_READY_TIMEOUT_MS = 6_000
 
 const maxAcquireRetries = 3
 const acquireRetryDelayMs = 300
+const frameRetryDelayMs = 250
+const CAMERA_DIAGNOSTIC_NAME = /^[A-Za-z]{1,40}$/
 
 interface ScannerControls {
   stop(): void
@@ -60,6 +55,17 @@ interface CameraAttempt {
     track: MediaStreamTrack
     listener: EventListener
   }>
+  frameListeners: Array<{
+    target: EventTarget
+    type: string
+    listener: EventListener
+  }>
+  frameReadyTimeoutId: ReturnType<typeof setTimeout> | undefined
+  decoderRestartTimeoutId: ReturnType<typeof setTimeout> | undefined
+  decoderRestartInFlight: boolean
+  frameRecoveryActive: boolean
+  lastFrameErrorName: string | undefined
+  retryDecoder: (() => void) | undefined
 }
 
 class AttemptCancelled extends Error {}
@@ -74,17 +80,60 @@ export function shouldRestartQrScanOnVisibility(
   state: CameraScanState,
   visibilityState: DocumentVisibilityState,
 ): boolean {
-  return (
-    visibilityState === "visible" && (state === "failed" || state === "track-ended")
-  )
+  return visibilityState === "visible" && (state === "failed" || state === "track-ended")
 }
 
 function diagnosticName(error: unknown): string {
-  const name =
-    typeof error === "object" && error !== null && "name" in error
-      ? String(error.name)
-      : ""
-  return CAMERA_ERROR_NAMES.has(name) ? name : "unknown"
+  if (typeof error !== "object" || error === null || !("name" in error)) {
+    return "unknown"
+  }
+  try {
+    const name = (error as { name?: unknown }).name
+    return typeof name === "string" && CAMERA_DIAGNOSTIC_NAME.test(name)
+      ? name
+      : "unknown"
+  } catch {
+    return "unknown"
+  }
+}
+
+function cameraTrack(attempt: CameraAttempt): MediaStreamTrack | undefined {
+  const tracks = attempt.stream?.getTracks() ?? []
+  return tracks.find((track) => track.kind === "video") ?? tracks[0]
+}
+
+function videoDimension(value: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0
+}
+
+function hasVideoFrame(attempt: CameraAttempt): boolean {
+  return (
+    videoDimension(attempt.video.videoWidth) > 0 &&
+    videoDimension(attempt.video.videoHeight) > 0
+  )
+}
+
+function diagnosticDetail(attempt: CameraAttempt): string {
+  const track = cameraTrack(attempt)
+  const trackDetail =
+    track === undefined
+      ? "none"
+      : `${track.readyState}/${track.muted ? "muted" : "unmuted"}`
+  return `${videoDimension(attempt.video.videoWidth)}x${videoDimension(
+    attempt.video.videoHeight,
+  )} rs=${videoDimension(attempt.video.readyState)} track=${trackDetail}`
+}
+
+function cameraDiagnostic(
+  attempt: CameraAttempt,
+  name: string | null,
+  phase: CameraDiagnosticPhase = attempt.phase,
+): CameraDiagnostic {
+  return {
+    phase,
+    name,
+    detail: diagnosticDetail(attempt),
+  }
 }
 
 function cameraError(error: unknown): ConcreteAppError {
@@ -101,14 +150,19 @@ function isTransientCameraAcquireError(error: unknown): boolean {
 }
 
 function isTransientDecodeError(error: unknown): boolean {
-  const name =
-    typeof error === "object" && error !== null && "name" in error
-      ? String(error.name)
-      : ""
+  const name = diagnosticName(error)
   return (
     name === "NotFoundException" ||
     name === "ChecksumException" ||
     name === "FormatException"
+  )
+}
+
+function isFrameNotReadyDecodeError(attempt: CameraAttempt, error: unknown): boolean {
+  if (cameraTrack(attempt)?.readyState !== "live") return false
+  const name = diagnosticName(error)
+  return (
+    name === "IndexSizeError" || (name === "InvalidStateError" && !hasVideoFrame(attempt))
   )
 }
 
@@ -136,10 +190,25 @@ function stopAttempt(attempt: CameraAttempt): void {
   attempt.stopped = true
   attempt.resolveStopped()
 
+  if (attempt.frameReadyTimeoutId !== undefined) {
+    clearTimeout(attempt.frameReadyTimeoutId)
+    attempt.frameReadyTimeoutId = undefined
+  }
+  if (attempt.decoderRestartTimeoutId !== undefined) {
+    clearTimeout(attempt.decoderRestartTimeoutId)
+    attempt.decoderRestartTimeoutId = undefined
+  }
+  attempt.retryDecoder = undefined
+
   for (const { track, listener } of attempt.endedListeners) {
     track.removeEventListener("ended", listener)
   }
   attempt.endedListeners = []
+
+  for (const { target, type, listener } of attempt.frameListeners) {
+    target.removeEventListener(type, listener)
+  }
+  attempt.frameListeners = []
 
   if (attempt.controls !== undefined) stopControlsOnce(attempt, attempt.controls)
   attempt.controls = undefined
@@ -189,7 +258,7 @@ function watchTrackEnds(attempt: CameraAttempt, stream: MediaStream): void {
     if (!isActiveAttempt(attempt)) return
     attempt.phase = "track-ended"
     const error = new ConcreteAppError("CAMERA_NOT_AVAILABLE")
-    reportAttemptError(attempt, error, { phase: "track-ended", name: null })
+    reportAttemptError(attempt, error, cameraDiagnostic(attempt, null, "track-ended"))
     stopAttempt(attempt)
   }
 
@@ -198,7 +267,33 @@ function watchTrackEnds(attempt: CameraAttempt, stream: MediaStream): void {
     attempt.endedListeners.push({ track, listener: onEnded })
   }
 
-  if (stream.getTracks().some((track) => track.readyState === "ended")) onEnded(new Event("ended"))
+  if (stream.getTracks().some((track) => track.readyState === "ended"))
+    onEnded(new Event("ended"))
+}
+
+function watchFrameReadiness(attempt: CameraAttempt, stream: MediaStream): void {
+  const onPotentialFrame: EventListener = () => {
+    if (!isActiveAttempt(attempt) || !attempt.frameRecoveryActive) return
+    retryVideoPlayback(attempt)
+    attempt.retryDecoder?.()
+  }
+  const addListener = (target: EventTarget, type: string) => {
+    target.addEventListener(type, onPotentialFrame)
+    attempt.frameListeners.push({ target, type, listener: onPotentialFrame })
+  }
+
+  addListener(attempt.video, "resize")
+  addListener(attempt.video, "loadedmetadata")
+  for (const track of stream.getTracks()) addListener(track, "unmute")
+}
+
+function retryVideoPlayback(attempt: CameraAttempt): void {
+  if (!isActiveAttempt(attempt) || typeof attempt.video.play !== "function") return
+  try {
+    void attempt.video.play().catch(() => undefined)
+  } catch {
+    // standalone PWA では同期例外になる実装もあるため、次のイベント/再試行を待つ。
+  }
 }
 
 async function acquireWithRetries(attempt: CameraAttempt): Promise<MediaStream> {
@@ -243,36 +338,163 @@ async function startAttempt(
   watchTrackEnds(attempt, stream)
   if (!isActiveAttempt(attempt)) throw new AttemptCancelled()
   attempt.video.srcObject = stream
+  watchFrameReadiness(attempt, stream)
 
-  const controls = await reader.decodeFromVideoElement(
-    attempt.video,
-    (result, error, callbackControls) => {
-      if (!isActiveAttempt(attempt)) {
-        stopControlsOnce(attempt, callbackControls)
+  function clearFrameReadyTimeout(): void {
+    if (attempt.frameReadyTimeoutId === undefined) return
+    clearTimeout(attempt.frameReadyTimeoutId)
+    attempt.frameReadyTimeoutId = undefined
+  }
+
+  function clearDecoderRestartTimeout(): void {
+    if (attempt.decoderRestartTimeoutId === undefined) return
+    clearTimeout(attempt.decoderRestartTimeoutId)
+    attempt.decoderRestartTimeoutId = undefined
+  }
+
+  function clearFrameRecovery(): void {
+    attempt.frameRecoveryActive = false
+    attempt.lastFrameErrorName = undefined
+    clearFrameReadyTimeout()
+    clearDecoderRestartTimeout()
+  }
+
+  function failDecode(error: unknown): void {
+    if (!isActiveAttempt(attempt)) return
+    const mapped = cameraError(error)
+    reportAttemptError(
+      attempt,
+      mapped,
+      cameraDiagnostic(attempt, diagnosticName(error), "playing"),
+    )
+    stopAttempt(attempt)
+  }
+
+  function ensureFrameReadyTimeout(): void {
+    if (attempt.frameReadyTimeoutId !== undefined) return
+    attempt.frameReadyTimeoutId = setTimeout(() => {
+      attempt.frameReadyTimeoutId = undefined
+      if (!isActiveAttempt(attempt) || !attempt.frameRecoveryActive) return
+      if (hasVideoFrame(attempt)) {
+        attempt.retryDecoder?.()
         return
       }
-      attempt.controls = callbackControls
-      attempt.phase = "playing"
+      if (cameraTrack(attempt)?.readyState !== "live") return
 
-      if (result !== undefined) {
-        if (once && attempt.emitted) return
-        attempt.emitted = true
-        const text = result.getText()
-        if (once) handle.stop()
-        onText(text)
+      const mapped = new ConcreteAppError("CAMERA_NOT_AVAILABLE")
+      reportAttemptError(
+        attempt,
+        mapped,
+        cameraDiagnostic(attempt, attempt.lastFrameErrorName ?? "unknown", "playing"),
+      )
+      stopAttempt(attempt)
+    }, CAMERA_FRAME_READY_TIMEOUT_MS)
+  }
+
+  function scheduleDecoderRestart(delayMs = frameRetryDelayMs): void {
+    if (
+      !isActiveAttempt(attempt) ||
+      !attempt.frameRecoveryActive ||
+      attempt.decoderRestartInFlight
+    ) {
+      return
+    }
+    if (hasVideoFrame(attempt)) clearFrameReadyTimeout()
+    if (attempt.decoderRestartTimeoutId !== undefined) {
+      if (delayMs !== 0) return
+      clearDecoderRestartTimeout()
+    }
+
+    attempt.decoderRestartTimeoutId = setTimeout(() => {
+      attempt.decoderRestartTimeoutId = undefined
+      if (!isActiveAttempt(attempt) || !attempt.frameRecoveryActive) return
+      const track = cameraTrack(attempt)
+      if (track?.readyState !== "live") return
+      if (!hasVideoFrame(attempt) || track.muted) {
+        scheduleDecoderRestart()
         return
       }
 
-      if (error !== undefined && !isTransientDecodeError(error)) {
-        const mapped = cameraError(error)
-        reportAttemptError(attempt, mapped, {
-          phase: "playing",
-          name: diagnosticName(error),
+      clearFrameReadyTimeout()
+      retryVideoPlayback(attempt)
+      attempt.decoderRestartInFlight = true
+      void runDecoder()
+        .catch((error: unknown) => {
+          if (!isActiveAttempt(attempt)) return
+          if (isFrameNotReadyDecodeError(attempt, error)) {
+            beginFrameRecovery(error)
+            return
+          }
+          failDecode(error)
         })
-        stopAttempt(attempt)
-      }
-    },
-  )
+        .finally(() => {
+          attempt.decoderRestartInFlight = false
+          if (isActiveAttempt(attempt) && attempt.frameRecoveryActive) {
+            scheduleDecoderRestart()
+          }
+        })
+    }, delayMs)
+  }
+
+  function beginFrameRecovery(error: unknown, callbackControls?: ScannerControls): void {
+    if (!isActiveAttempt(attempt)) return
+    if (callbackControls !== undefined) {
+      stopControlsOnce(attempt, callbackControls)
+    }
+    attempt.frameRecoveryActive = true
+    attempt.lastFrameErrorName = diagnosticName(error)
+    if (!hasVideoFrame(attempt)) ensureFrameReadyTimeout()
+    retryVideoPlayback(attempt)
+    scheduleDecoderRestart()
+  }
+
+  function handleDecode(
+    result: { getText(): string } | undefined,
+    error: unknown,
+    callbackControls: ScannerControls,
+  ): void {
+    if (!isActiveAttempt(attempt)) {
+      stopControlsOnce(attempt, callbackControls)
+      return
+    }
+    attempt.controls = callbackControls
+    attempt.phase = "playing"
+
+    if (result !== undefined) {
+      clearFrameRecovery()
+      if (once && attempt.emitted) return
+      attempt.emitted = true
+      const text = result.getText()
+      if (once) handle.stop()
+      onText(text)
+      return
+    }
+
+    if (error === undefined) return
+    if (isTransientDecodeError(error)) {
+      clearFrameRecovery()
+      return
+    }
+    if (isFrameNotReadyDecodeError(attempt, error)) {
+      beginFrameRecovery(error, callbackControls)
+      return
+    }
+    failDecode(error)
+  }
+
+  async function runDecoder(): Promise<ScannerControls> {
+    const controls = await reader.decodeFromVideoElement(attempt.video, handleDecode)
+    if (!isActiveAttempt(attempt)) {
+      stopControlsOnce(attempt, controls)
+      throw new AttemptCancelled()
+    }
+    attempt.controls = controls
+    attempt.phase = "playing"
+    return controls
+  }
+
+  attempt.retryDecoder = () => scheduleDecoderRestart(0)
+  const controls = await runDecoder()
 
   if (!isActiveAttempt(attempt)) {
     stopControlsOnce(attempt, controls)
@@ -319,6 +541,13 @@ async function startQrScanImplementation(
     failure: undefined,
     stoppedControls: new Set(),
     endedListeners: [],
+    frameListeners: [],
+    frameReadyTimeoutId: undefined,
+    decoderRestartTimeoutId: undefined,
+    decoderRestartInFlight: false,
+    frameRecoveryActive: false,
+    lastFrameErrorName: undefined,
+    retryDecoder: undefined,
   }
   activeAttempt = attempt
 
@@ -364,10 +593,7 @@ async function startQrScanImplementation(
 
     if (outcome.kind === "timeout") {
       const mapped = new ConcreteAppError("CAMERA_NOT_AVAILABLE")
-      reportAttemptError(attempt, mapped, {
-        phase: attempt.phase,
-        name: "unknown",
-      })
+      reportAttemptError(attempt, mapped, cameraDiagnostic(attempt, "unknown"))
       stopAttempt(attempt)
       throw mapped
     }
@@ -381,10 +607,11 @@ async function startQrScanImplementation(
     }
 
     const mapped = cameraError(outcome.error)
-    reportAttemptError(attempt, mapped, {
-      phase: attempt.phase,
-      name: diagnosticName(outcome.error),
-    })
+    reportAttemptError(
+      attempt,
+      mapped,
+      cameraDiagnostic(attempt, diagnosticName(outcome.error)),
+    )
     stopAttempt(attempt)
     throw mapped
   } finally {

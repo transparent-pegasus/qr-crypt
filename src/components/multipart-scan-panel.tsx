@@ -65,11 +65,7 @@ export function MultipartScanPanel({
   }, [session])
 
   useEffect(() => {
-    if (
-      !cameraAvailable ||
-      state.kind === "complete" ||
-      state.kind === "error"
-    ) {
+    if (!cameraAvailable || state.kind === "complete" || state.kind === "error") {
       return
     }
     const onVisibilityChange = () => {
@@ -270,11 +266,8 @@ export function MultipartScanPanel({
           </Alert>
         )}
         {diagnostic && (
-          <p
-            aria-label="カメラ診断"
-            className="font-mono text-xs text-muted-foreground"
-          >
-            診断: {diagnostic.name ?? "unknown"} @{diagnostic.phase}
+          <p aria-label="カメラ診断" className="font-mono text-xs text-muted-foreground">
+            {`診断: ${diagnostic.name ?? "unknown"} @${diagnostic.phase} [${diagnostic.detail}]`}
           </p>
         )}
 

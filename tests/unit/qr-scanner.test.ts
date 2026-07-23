@@ -41,6 +41,7 @@ vi.mock("@zxing/browser", () => ({
 }))
 
 import {
+  CAMERA_FRAME_READY_TIMEOUT_MS,
   CAMERA_START_TIMEOUT_MS,
   shouldRestartQrScanOnVisibility,
   startQrScan,
@@ -63,25 +64,27 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve, reject }
 }
 
-class FakeTrack {
+class FakeTrack extends EventTarget {
   readyState: MediaStreamTrackState = "live"
+  muted = false
+
+  constructor(options?: { muted?: boolean }) {
+    super()
+    this.muted = options?.muted ?? false
+  }
+
   readonly stop = vi.fn(() => {
     this.readyState = "ended"
   })
-  readonly #endedListeners = new Set<EventListener>()
-
-  addEventListener(type: string, listener: EventListener): void {
-    if (type === "ended") this.#endedListeners.add(listener)
-  }
-
-  removeEventListener(type: string, listener: EventListener): void {
-    if (type === "ended") this.#endedListeners.delete(listener)
-  }
 
   end(): void {
     this.readyState = "ended"
-    const event = new Event("ended")
-    for (const listener of this.#endedListeners) listener(event)
+    this.dispatchEvent(new Event("ended"))
+  }
+
+  unmute(): void {
+    this.muted = false
+    this.dispatchEvent(new Event("unmute"))
   }
 }
 
@@ -93,16 +96,35 @@ class FakeMediaStream {
   }
 }
 
-const getUserMedia = vi.fn<
-  (constraints: MediaStreamConstraints) => Promise<MediaStream>
->()
+const getUserMedia =
+  vi.fn<(constraints: MediaStreamConstraints) => Promise<MediaStream>>()
 
 function mediaStream(...tracks: FakeTrack[]): MediaStream {
   return new FakeMediaStream(tracks) as unknown as MediaStream
 }
 
-function videoElement(): HTMLVideoElement {
-  return { srcObject: null } as unknown as HTMLVideoElement
+class FakeVideo extends EventTarget {
+  srcObject: MediaStream | null = null
+  videoWidth: number
+  videoHeight: number
+  readyState: number
+  readonly play = vi.fn(async () => undefined)
+
+  constructor(width = 640, height = 480, readyState = 2) {
+    super()
+    this.videoWidth = width
+    this.videoHeight = height
+    this.readyState = readyState
+  }
+
+  setDimensions(width: number, height: number): void {
+    this.videoWidth = width
+    this.videoHeight = height
+  }
+}
+
+function videoElement(width = 640, height = 480, readyState = 2): HTMLVideoElement {
+  return new FakeVideo(width, height, readyState) as unknown as HTMLVideoElement
 }
 
 async function flushMicrotasks(): Promise<void> {
@@ -176,6 +198,116 @@ describe("camera scanner lifecycle", () => {
     handle.stop()
   })
 
+  it("preserves a safe unfamiliar error name without exposing it as the user message", async () => {
+    const track = new FakeTrack()
+    const video = videoElement()
+    const controls = { stop: vi.fn() }
+    scanner.decodePlans.push(() => Promise.resolve(controls))
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    const onError = vi.fn()
+    const handle = await startQrScan(video, vi.fn(), onError)
+
+    scanner.callbacks[0]?.(undefined, { name: "CanvasFrameError" }, controls)
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "CAMERA_NOT_AVAILABLE",
+        userMessage: "カメラを利用できません。",
+      }),
+      {
+        phase: "playing",
+        name: "CanvasFrameError",
+        detail: "640x480 rs=2 track=live/unmuted",
+      },
+    )
+    expect(track.stop).toHaveBeenCalledTimes(1)
+    handle.stop()
+  })
+
+  it.each(["IndexSizeError", "InvalidStateError"])(
+    "keeps a live zero-size %s transient and resumes after dimensions recover",
+    async (errorName) => {
+      vi.useFakeTimers()
+      const track = new FakeTrack({ muted: true })
+      const fakeVideo = new FakeVideo(0, 0, 2)
+      const video = fakeVideo as unknown as HTMLVideoElement
+      const stalledControls = { stop: vi.fn() }
+      const recoveredControls = { stop: vi.fn() }
+      scanner.decodePlans.push(
+        () => Promise.resolve(stalledControls),
+        () => Promise.resolve(recoveredControls),
+      )
+      getUserMedia.mockResolvedValue(mediaStream(track))
+      const onText = vi.fn()
+      const onError = vi.fn()
+      const handle = await startQrScan(video, onText, onError)
+
+      scanner.callbacks[0]?.(undefined, { name: errorName }, stalledControls)
+
+      expect(onError).not.toHaveBeenCalled()
+      expect(track.stop).not.toHaveBeenCalled()
+      expect(stalledControls.stop).toHaveBeenCalledTimes(1)
+
+      fakeVideo.setDimensions(1280, 720)
+      track.unmute()
+      fakeVideo.dispatchEvent(new Event("resize"))
+      fakeVideo.dispatchEvent(new Event("loadedmetadata"))
+      await vi.advanceTimersByTimeAsync(0)
+      await flushMicrotasks()
+
+      expect(scanner.decode).toHaveBeenCalledTimes(2)
+      scanner.callbacks[1]?.(
+        { getText: () => "OCK1:recovered" },
+        undefined,
+        recoveredControls,
+      )
+
+      expect(onText).toHaveBeenCalledWith("OCK1:recovered")
+      expect(onError).not.toHaveBeenCalled()
+      expect(fakeVideo.play).toHaveBeenCalled()
+      expect(recoveredControls.stop).toHaveBeenCalledTimes(1)
+      expect(track.stop).toHaveBeenCalledTimes(1)
+      handle.stop()
+    },
+  )
+
+  it("fails a live stream only after zero-size frames persist with detailed diagnostics", async () => {
+    vi.useFakeTimers()
+    const track = new FakeTrack({ muted: true })
+    const fakeVideo = new FakeVideo(0, 0, 2)
+    const controls = { stop: vi.fn() }
+    scanner.decodePlans.push(() => Promise.resolve(controls))
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    const onError = vi.fn()
+    const handle = await startQrScan(
+      fakeVideo as unknown as HTMLVideoElement,
+      vi.fn(),
+      onError,
+    )
+
+    scanner.callbacks[0]?.(undefined, { name: "IndexSizeError" }, controls)
+    await vi.advanceTimersByTimeAsync(CAMERA_FRAME_READY_TIMEOUT_MS - 1)
+    expect(onError).not.toHaveBeenCalled()
+    expect(track.stop).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "CAMERA_NOT_AVAILABLE",
+        userMessage: "カメラを利用できません。",
+      }),
+      {
+        phase: "playing",
+        name: "IndexSizeError",
+        detail: "0x0 rs=2 track=live/muted",
+      },
+    )
+    expect(controls.stop).toHaveBeenCalledTimes(1)
+    expect(track.stop).toHaveBeenCalledTimes(1)
+    handle.stop()
+  })
+
   it("maps an acquisition NotAllowedError and reports its diagnostic", async () => {
     const video = videoElement()
     getUserMedia.mockRejectedValue(new DOMException("camera", "NotAllowedError"))
@@ -188,7 +320,11 @@ describe("camera scanner lifecycle", () => {
     expect(getUserMedia).toHaveBeenCalledTimes(1)
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_PERMISSION_DENIED" }),
-      { phase: "acquiring", name: "NotAllowedError" },
+      {
+        phase: "acquiring",
+        name: "NotAllowedError",
+        detail: "640x480 rs=2 track=none",
+      },
     )
   })
 
@@ -225,7 +361,11 @@ describe("camera scanner lifecycle", () => {
     expect(getUserMedia).toHaveBeenCalledTimes(4)
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      { phase: "acquiring", name: "NotReadableError" },
+      {
+        phase: "acquiring",
+        name: "NotReadableError",
+        detail: "640x480 rs=2 track=none",
+      },
     )
   })
 
@@ -327,15 +467,16 @@ describe("camera scanner lifecycle", () => {
     const newDecode = deferred<MockControls>()
     const oldControlsStop = vi.fn()
     const newControlsStop = vi.fn()
-    scanner.decodePlans.push(() => oldDecode.promise, () => newDecode.promise)
+    scanner.decodePlans.push(
+      () => oldDecode.promise,
+      () => newDecode.promise,
+    )
 
     const oldTrack = new FakeTrack()
     const newTrack = new FakeTrack()
     const oldStream = mediaStream(oldTrack)
     const newStream = mediaStream(newTrack)
-    getUserMedia
-      .mockResolvedValueOnce(oldStream)
-      .mockResolvedValueOnce(newStream)
+    getUserMedia.mockResolvedValueOnce(oldStream).mockResolvedValueOnce(newStream)
     const video = videoElement()
 
     const oldPromise = startQrScan(video, vi.fn(), vi.fn())
@@ -401,7 +542,11 @@ describe("camera scanner lifecycle", () => {
 
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      { phase: "acquiring", name: "unknown" },
+      {
+        phase: "acquiring",
+        name: "unknown",
+        detail: "640x480 rs=2 track=none",
+      },
     )
 
     acquisition.resolve(mediaStream(lateTrack))
@@ -421,7 +566,11 @@ describe("camera scanner lifecycle", () => {
 
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      { phase: "acquired", name: "unknown" },
+      {
+        phase: "acquired",
+        name: "unknown",
+        detail: "640x480 rs=2 track=live/unmuted",
+      },
     )
     expect(track.stop).toHaveBeenCalledTimes(1)
   })
@@ -445,7 +594,11 @@ describe("camera scanner lifecycle", () => {
 
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      { phase: "acquired", name: "unknown" },
+      {
+        phase: "acquired",
+        name: "unknown",
+        detail: "640x480 rs=2 track=live/unmuted",
+      },
     )
     expect(track.stop).toHaveBeenCalledTimes(1)
 
@@ -466,7 +619,11 @@ describe("camera scanner lifecycle", () => {
 
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      { phase: "track-ended", name: null },
+      {
+        phase: "track-ended",
+        name: null,
+        detail: "640x480 rs=2 track=ended/unmuted",
+      },
     )
     expect(scanner.controlsStop).toHaveBeenCalledTimes(1)
     expect(track.stop).toHaveBeenCalledTimes(1)

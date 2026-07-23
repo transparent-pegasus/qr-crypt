@@ -239,11 +239,8 @@ export function QrScannerDialog({
           </Alert>
         )}
         {diagnostic && (
-          <p
-            aria-label="カメラ診断"
-            className="font-mono text-xs text-muted-foreground"
-          >
-            診断: {diagnostic.name ?? "unknown"} @{diagnostic.phase}
+          <p aria-label="カメラ診断" className="font-mono text-xs text-muted-foreground">
+            {`診断: ${diagnostic.name ?? "unknown"} @${diagnostic.phase} [${diagnostic.detail}]`}
           </p>
         )}
         <DialogFooter>

@@ -146,14 +146,20 @@ describe("multipart continuous scan UI", () => {
         error: AppError,
         diagnostic: CameraDiagnostic,
       ) => void
-      reportError(cameraError, { phase: "track-ended", name: null })
+      reportError(cameraError, {
+        phase: "track-ended",
+        name: null,
+        detail: "0x0 rs=2 track=ended/unmuted",
+      })
       throw cameraError
     })
     const session = new MultipartScanSession(5)
     render(<MultipartScanPanel session={session} onComplete={vi.fn()} />)
 
     expect(await screen.findByText(cameraError.userMessage)).toBeInTheDocument()
-    expect(screen.getByText("診断: unknown @track-ended")).toBeInTheDocument()
+    expect(
+      screen.getByText("診断: unknown @track-ended [0x0 rs=2 track=ended/unmuted]"),
+    ).toBeInTheDocument()
 
     act(() => {
       document.dispatchEvent(new Event("visibilitychange"))

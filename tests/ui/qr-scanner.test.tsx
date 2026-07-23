@@ -60,18 +60,17 @@ describe("QrScannerDialog", () => {
         error: AppError,
         diagnostic: CameraDiagnostic,
       ) => void
-      reportError(cameraError, { phase: "acquiring", name: "NotReadableError" })
+      reportError(cameraError, {
+        phase: "acquiring",
+        name: "NotReadableError",
+        detail: "0x0 rs=0 track=none",
+      })
       throw cameraError
     })
     const { QrScannerDialog } = await import("@/components/qr-scanner-dialog")
 
     render(
-      <QrScannerDialog
-        open
-        onOpenChange={vi.fn()}
-        target="message"
-        onScan={vi.fn()}
-      />,
+      <QrScannerDialog open onOpenChange={vi.fn()} target="message" onScan={vi.fn()} />,
     )
 
     expect(await screen.findByText(cameraError.userMessage)).toBeInTheDocument()
@@ -81,7 +80,7 @@ describe("QrScannerDialog", () => {
       ),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByText("診断: NotReadableError @acquiring"),
+      screen.getByText("診断: NotReadableError @acquiring [0x0 rs=0 track=none]"),
     ).toBeInTheDocument()
     expect(screen.getByLabelText("カメラ診断").closest('[role="alert"]')).toBeNull()
   })
