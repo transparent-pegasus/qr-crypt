@@ -1,0 +1,373 @@
+# Freshness registry — every tracked file in this repo whose content decays
+# with time (package versions, advisories, threat knowledge, dated claims).
+# Consumed by SKILL.md in this directory. One unit = one coherent update
+# operation; a file may appear in several units.
+#
+# Field semantics:
+#   cadence_days   review interval; a unit is DUE when today - last_checked
+#                  >= cadence_days, or when last_checked is null.
+#   last_checked   YYYY-MM-DD stamped by a sweep AFTER verify passes,
+#                  even when no content change was needed. null = never swept.
+#   method         how to refresh (commands are aube — npm is forbidden here).
+#   verify         must pass before stamping last_checked.
+#   sync           unit ids whose docs must absorb findings from this unit.
+#   constraint     hard rule that bounds HOW the unit may be updated.
+#
+# Registry maintenance: any task that adds a new time-decaying file must add
+# it here (enforced by the one-line rule in /AGENTS.md).
+
+version: 1
+updated: 2026-07-23 # last revision of this registry itself
+
+units:
+  - id: deps
+    category: dependencies
+    cadence_days: 14
+    last_checked: null
+    files:
+      - package.json
+      - aube-lock.yaml
+      - vite.config.ts # PWA/workbox options reviewed on plugin bumps
+    why: >
+      Dependency ranges, exact security pins, aube.overrides, and the frozen
+      lock graph fall behind registry releases and advisories.
+    method: |
+      aube outdated && aube audit
+      Routine in-range bumps: aube update <pkg>; cross-range or exact-pin
+      moves (only when approved): aube update --latest [--exact] <pkg>;
+      commit the resulting aube-lock.yaml.
+      Exact pins stay exact until re-vetted:
+        - "@noble/post-quantum" — handled ONLY via unit crypto-noble.
+        - react-hook-form 7.82.0, eslint-config-prettier 10.1.8 — supply-chain
+          incident history in docs/threat-model.md §5.1; re-check advisories
+          before moving.
+      aube.overrides (rollup OMT) stays until upstream trust is restored.
+      After bumping vite-plugin-pwa / workbox, re-review the VitePWA options in
+      vite.config.ts (globPatterns, cleanupOutdatedCaches, sentinel NetworkOnly).
+    verify: aube ci && aube typecheck && aube lint && aube test && aube build:prod
+    sync: [threat-model, security-review]
+
+  - id: crypto-noble
+    category: crypto
+    cadence_days: 90 # also triggered by any @noble/post-quantum advisory/release
+    last_checked: null
+    files:
+      - package.json # "@noble/post-quantum" exact pin
+      - aube-lock.yaml # frozen graph must move with the pin
+      - src/crypto/pq/provider-noble.ts # API-surface header comments
+      - src/crypto/pq/profiles.ts # FIPS 203/204 size tables
+      - docs/security-review.md # §1 as-of version / audit status
+    why: >
+      The PQ provider pin (0.6.1) is the security-critical dependency. New noble
+      releases, independent-audit status changes, and NIST FIPS 203/204 errata
+      all stale the pin and the size-table/API comments that mirror it.
+    method: |
+      Check @noble/post-quantum releases + advisories and NIST FIPS 203/204
+      errata. If bumping: update the exact pin, re-read the changelog/API,
+      review the resulting aube-lock.yaml diff (noble transitive graph,
+      provenance), refresh provider-noble.ts header comments, diff
+      KEM_SIZES/DSA_SIZES/PQ_PROFILES in profiles.ts against the new source,
+      update docs/security-review.md §1 (version, as-of date, audit status).
+    verify: aube audit && aube test:pq && aube test:pq-vectors && aube bench:pq
+    constraint: >
+      Never bump the pin without KAT (test:pq-vectors) and golden passes.
+      Size tables are append-only: retired profiles keep their rows.
+    sync: [security-review, threat-model, ui-security-copy, readme]
+
+  - id: toolchain
+    category: dependencies
+    cadence_days: 30
+    last_checked: null
+    files:
+      - mise.toml # node / aube pins
+      - README.md # duplicates the pinned versions in prose
+    why: >
+      Toolchain pins (node 26.1.0, aube 1.24.0) fall behind releases; README
+      repeats them and drifts silently.
+    method: |
+      Check current node LTS / aube releases; edit mise.toml; mise install;
+      sync the versions named in README.md.
+    verify: mise install && node -v && aube -V && aube ci && aube test
+
+  - id: ci-actions
+    category: dependencies
+    cadence_days: 60
+    last_checked: null
+    files:
+      - .github/workflows/cloudflare-pages.yml
+    why: >
+      Floating major tags (actions/checkout@v6, jdx/mise-action@v3,
+      cloudflare/wrangler-action@v3) accumulate drift; majors move.
+    method: |
+      Check each action repo for newer majors; bump the uses: lines.
+      Keep mise-action reading mise.toml. VITE_BUILD_SHA stays ${{ github.sha }}.
+    verify: |
+      Local only — a freshness sweep must not push:
+      rg -n 'uses:' .github/workflows/cloudflare-pages.yml, then
+      git ls-remote --exit-code <action repo> <tag> for each pinned tag.
+      If a recent user-authorized CI run exists, confirm it is green.
+      Otherwise report the unit as blocked and leave last_checked unchanged.
+
+  - id: threat-model
+    category: security-knowledge
+    cadence_days: 90
+    last_checked: null
+    files:
+      - docs/threat-model.md
+    why: >
+      Living threat model. §5.1 supply-chain advisories are dated (2026-07-21);
+      §7 v2 addendum cites algorithm defaults that can diverge from the active
+      maximum policy; attacker capabilities and mitigations age.
+    method: |
+      Re-run aube audit; refresh §5.1 advisory status for the pinned deps.
+      Reconcile threat/mitigation entries (T14/T15 algorithm names) with the
+      active policy in src/crypto/pq/suites.ts and boot behavior in
+      src/app/boot/. Convert any new relative dates to absolute.
+    verify: >
+      Diff claims against README security section and the settings page
+      「セキュリティについて」copy; spot-check advisory IDs still resolve.
+    sync: [ui-security-copy, readme]
+
+  - id: security-review
+    category: security-knowledge
+    cadence_days: 30 # and before every release candidate
+    last_checked: null
+    files:
+      - docs/security-review.md
+    why: >
+      Point-in-time snapshot: noble 0.6.1 facts as of 2026-07-22, independent
+      audit 未了, release-approved blocker, FIPS errata checklist, artifact
+      size table. All of it is dated by construction.
+    method: |
+      Follow the §3 checklist. Update §1 as-of date, noble version/audit
+      status, advisory results, and the artifact size table from
+      tests/pq/maximum-artifact-size.golden.test.ts output.
+    verify: aube audit && aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
+    sync: [threat-model, ui-security-copy]
+
+  - id: browser-support
+    category: platform
+    cadence_days: 60
+    last_checked: null
+    files:
+      - docs/browser-matrix.md # release-gate device measurements
+      - src/app/App.tsx # UNSUPPORTED_BROWSER gate copy
+      - src/lib/feature-detect.ts # WebCrypto/IDB/camera/SW probes
+      - docs/qr-protocol.md # WebCrypto AES-GCM / QR capacity claims
+    why: >
+      Browser/OS releases invalidate measured rows (未計測 cells), support
+      claims, and feature-detection assumptions.
+    method: |
+      Re-measure on at least Android Chrome + iOS Safari with current browser
+      versions and VITE_BUILD_SHA; fill matrix rows. Re-check
+      detectFeatures() assumptions against MDN/caniuse for target browsers;
+      update gate copy if reality moved. Align profile names in the matrix
+      with the active profile.
+    verify: aube test:e2e && aube test -- tests/ui/app-shell.test.tsx
+
+  - id: protocol-docs
+    category: docs
+    cadence_days: 90 # also on any protocol/boot change
+    last_checked: null
+    files:
+      - docs/qr-protocol-v2.md
+      - docs/boot-and-reset-v2.md
+      - src/crypto/pq/wire-bytes.ts # mirrors documented wire layout
+      - src/crypto/pq/canonical-cbor.ts # mirrors documented canonical encoding
+      - tests/pq/wire-bytes.golden.test.ts # frozen hex must match the docs
+      - tests/pq/canonical-cbor.golden.test.ts
+      - tests/pq/composition-golden.test.ts
+    why: >
+      Protocol and boot/wipe contract docs mirror code (sizes, suite
+      allowlist, sentinel semantics, fail-safe wipe rules); the frozen
+      wire/CBOR goldens are the executable half of those docs. Both stale on
+      any drift and carry dated active-policy statements.
+    method: |
+      Diff qr-protocol-v2.md against src/crypto/pq/{profiles,suites,wire-bytes}.ts
+      and the golden tests (goldens change only for deliberate, documented
+      protocol revisions — never "refreshed" to make tests pass). Diff
+      boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
+      and wipe coordinator behavior. Update dated statements to current state.
+    verify: aube test:pq && aube test -- tests/ui/boot-controller.test.tsx
+
+  - id: size-goldens
+    category: crypto
+    cadence_days: 90 # also on schema / plaintext-limit / encoding change
+    last_checked: null
+    files:
+      - src/lib/limits.ts # dated measured CBOR/OCF2 size comments
+      - tests/pq/maximum-artifact-size.golden.test.ts
+      - src/schemas/env-schema.ts # MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES mirrors the golden
+      - .env.prod # runtime crypto/framing policy defaults
+    why: >
+      Measured byte/frame tables (dated 2026-07-23) are cited by
+      security-review and limits comments; env-schema.ts carries the
+      golden-derived fixed-bytes constant and .env.prod the production policy
+      defaults. All stale when wire encoding, schema, or plaintext limits change.
+    method: |
+      Re-run the golden test; if intentional drift, update fixtures, the
+      comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
+      env-schema.ts, and the .env.prod/.env.example defaults together, then
+      sync the copy of the table in docs/security-review.md.
+    verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
+    sync: [security-review]
+
+  - id: acvp-vectors
+    category: crypto
+    cadence_days: 90
+    last_checked: null
+    files:
+      - tests/pq-vectors/acvp-fixtures.ts # pinned upstream commit
+      - tests/pq-vectors/acvp-kat.test.ts
+    why: >
+      Vendored ACVP KAT projections are pinned to a paulmillr/acvp-vectors
+      commit; upstream refreshes and NIST republications stale the pin.
+    method: |
+      git ls-remote https://github.com/paulmillr/acvp-vectors HEAD; if moved,
+      diff the vector sets, re-project fixtures, keep provenance comments.
+      NEVER regenerate expected values from our own implementation.
+    verify: |
+      Independent provenance first: re-download the pinned upstream files at
+      the recorded commit and compare their SHA-256 against the "// SHA-256:"
+      values in acvp-fixtures.ts (this catches fixtures regenerated from the
+      SUT, which aube test:pq-vectors alone cannot). Then: aube test:pq-vectors
+    constraint: Expected values come only from upstream ACVP data, never from the SUT.
+
+  - id: ui-security-copy
+    category: security-knowledge
+    cadence_days: 90
+    last_checked: null
+    files:
+      - src/pages/settings-page.tsx # 「セキュリティについて」 disclosures
+      - src/pages/keys-page.tsx # experimental / 未独立監査 banners
+    why: >
+      In-app disclosures (noble unaudited, JS side-channel caveat, wipe
+      honesty, feature rows) mirror docs; they stale when audit status,
+      active policy, or threat model change.
+    method: |
+      Diff the disclosure copy against docs/security-review.md and
+      docs/threat-model.md; update banners when audit/release status moves.
+    verify: aube test -- tests/ui/keys-settings.test.tsx
+
+  - id: readme
+    category: docs
+    cadence_days: 30
+    last_checked: null
+    files:
+      - README.md
+    why: >
+      Dated PQ bench table (2026-07-23), experimental/audit status claims,
+      release checklist, supply-chain history, managed-deviation dates, and
+      duplicated toolchain versions all drift.
+    method: |
+      Re-run aube bench:pq and replace the bench table. Re-check
+      §リリース前確認 against docs/security-review.md. Reconcile suite/profile
+      wording with the active profile. Sync toolchain versions from mise.toml.
+    verify: aube bench:pq
+
+  - id: external-links
+    category: links
+    cadence_days: 180
+    last_checked: null
+    files:
+      - components.json # https://ui.shadcn.com/schema.json
+      - design-system/offline-cipher/MASTER.md # Google Fonts URLs (archival)
+      - design-system/PROVENANCE.md # plugin path/version provenance
+      - src/lib/best-effort-zip.ts # fflate provenance/version claim in header
+      - tests/pq-vectors/acvp-fixtures.ts # upstream repo URLs
+    why: >
+      External URLs rot; provenance paths/versions drift from reality.
+      (README.md and docs/threat-model.md carry bare advisory IDs, not URLs —
+      advisory-ID resolution belongs to the deps/threat-model units.)
+    method: |
+      HEAD-check the listed URLs (curl -I). design-system files are archival:
+      fix only if regenerating, and keep external font URLs out of app CSS.
+      Confirm provenance claims (fflate version, plugin path) still match reality.
+    verify: All checked URLs respond, or the entry is annotated as dead/archival.
+
+invariants:
+  # Check-only guards. A sweep VERIFIES these; it must never "update" them
+  # in the name of freshness. Violations are release blockers.
+  - id: boot-allowlist-append-only
+    files:
+      - src/app/boot/boot-controller.ts
+    rule: >
+      The boot read-allowlist (algorithms incl. legacy RSA-HYBRID/MLKEM768_*,
+      profiles ["balanced","maximum"]) is APPEND-ONLY. Dropping an old id makes
+      stored preferences unreadable → preferencesReadFailed → wipeOnOnline
+      forced true → a later network-confirmed contact can wipe user data.
+    verify: >
+      aube test -- tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx
+  - id: vocabulary-append-only
+    files:
+      - src/schemas/domain.ts
+    rule: >
+      PQ_PROFILE_IDS, algorithm ids, and WIRE_SUITES hold the full historical
+      vocabulary. Append new ids; never remove old ones while stored rows or
+      wire payloads can still carry them.
+    verify: aube typecheck && aube test:pq
+  - id: wire-suite-mappings-retained
+    files:
+      - src/crypto/pq/suites.ts
+    rule: >
+      resolveSuite/suiteComponents stay exhaustive over all WIRE_SUITES
+      (768/65 and 1024/87). Policy changes touch ACTIVE_PROFILE /
+      assertActiveSuite only.
+    verify: aube test:pq -- tests/pq/maximum-policy-boundaries.test.ts
+  - id: legacy-read-normalization
+    files:
+      - src/storage/preferences-repository.ts
+    rule: >
+      normalizeLegacyStoredPreferences keeps recognizing historical stored
+      values (balanced, legacy algorithm strings); the write allowlist
+      (PQ_PROFILES_ALLOWED) stays stricter than the boot read allowlist.
+    verify: aube test -- tests/integration/storage.test.ts
+  - id: retired-profile-negative-tests
+    files:
+      - tests/pq/maximum-policy-boundaries.test.ts
+    rule: >
+      Negative coverage for balanced/768 rejection stays as long as the ids
+      exist in domain.ts; extend when new profiles retire, never delete.
+    verify: aube test:pq -- tests/pq/maximum-policy-boundaries.test.ts
+  - id: reachability-sentinel-lockstep
+    files:
+      - public/reachability-sentinel.txt
+      - src/app/boot/boot-contract.ts
+      - vite.config.ts # SW must NEVER precache/cache the sentinel
+      - public/_headers # sentinel route stays no-store
+    rule: >
+      Sentinel body ("QRYPT-REACHABLE") and REACHABILITY_SENTINEL_BODY/_PATH
+      change only together, with a coordinated deploy — the sentinel gates the
+      wipe path. The service worker must never serve it from cache: the
+      vite.config.ts runtimeCaching route for it stays NetworkOnly, the
+      sentinel is excluded from precache globPatterns, and public/_headers
+      keeps Cache-Control: no-store on the sentinel route. A cached sentinel
+      can fake "network-confirmed" while offline and trigger a wipe.
+    verify: |
+      test "$(cat public/reachability-sentinel.txt)" = "$(rg -o 'REACHABILITY_SENTINEL_BODY = "([^"]+)"' -r '$1' src/app/boot/boot-contract.ts)"
+      && rg -q 'NetworkOnly' vite.config.ts
+      && ! rg -q 'reachability-sentinel' <(rg -o 'globPatterns:[^]]*]' vite.config.ts)
+      && rg -A2 'reachability-sentinel' public/_headers | rg -q 'no-store'
+      && aube test -- tests/ui/boot-controller.test.tsx
+  - id: build-sha-placeholder
+    files:
+      - .env.example
+    rule: >
+      VITE_BUILD_SHA stays "development" in .env.example; real build identity
+      is injected by CI (${{ github.sha }}). Never hardcode a real SHA.
+    verify: rg -n 'VITE_BUILD_SHA=development' .env.example
+
+excluded:
+  # Listed so "missing" entries are known-intentional, not oversights.
+  - path: dist/**
+    reason: Build output (sw.js, workbox-*.js, manifest.webmanifest) — regenerated by every aube build:prod; never hand-edited, gitignored.
+  - path: .tmp/**
+    reason: Gitignored scratch/plans; historical by design.
+  - path: node_modules/**
+    reason: Vendored; refreshed via the deps unit.
+  - path: test-results/**
+    reason: Generated by test runs.
+  - path: design-system/pages/**
+    reason: Archival design exports (describe the retired RSA-era UI by design); superseded by the live app, never refreshed.
+  - path: .claude/skills/**
+    reason: Agent tooling docs (herdr/orchestration/freshness itself); not product surface. This registry's own revision is tracked by its updated field.
