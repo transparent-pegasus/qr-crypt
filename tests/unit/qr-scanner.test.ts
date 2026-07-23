@@ -1,3 +1,9 @@
+import {
+  ChecksumException,
+  FormatException,
+  IllegalStateException,
+  NotFoundException,
+} from "@zxing/library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 interface MockResult {
@@ -6,6 +12,7 @@ interface MockResult {
 
 interface MockNamedError {
   name: string
+  getKind?(): unknown
 }
 
 interface MockControls {
@@ -194,6 +201,116 @@ describe("camera scanner lifecycle", () => {
 
     expect(onError).not.toHaveBeenCalled()
     expect(track.stop).not.toHaveBeenCalled()
+    handle.stop()
+  })
+
+  it("keeps scanning after a minified NotFoundException and emits a later result once", async () => {
+    const track = new FakeTrack()
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    const onText = vi.fn()
+    const onError = vi.fn()
+    await startQrScan(videoElement(), onText, onError)
+    const controls = { stop: scanner.controlsStop }
+    const error = new NotFoundException()
+    Object.defineProperty(error, "name", { value: "t" })
+
+    scanner.callbacks[0]?.(undefined, error, controls)
+    scanner.callbacks[0]?.({ getText: () => "OCK1:value" }, undefined, controls)
+    scanner.callbacks[0]?.({ getText: () => "OCK1:second" }, undefined, controls)
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(onText).toHaveBeenCalledOnce()
+    expect(onText).toHaveBeenCalledWith("OCK1:value")
+  })
+
+  it.each([
+    ["ChecksumException", () => new ChecksumException()],
+    ["FormatException", () => new FormatException()],
+  ])("keeps scanning after a minified %s", async (_kind, makeError) => {
+    const track = new FakeTrack()
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    const onText = vi.fn()
+    const onError = vi.fn()
+    await startQrScan(videoElement(), onText, onError)
+    const controls = { stop: scanner.controlsStop }
+    const error = makeError()
+    Object.defineProperty(error, "name", { value: "t" })
+
+    scanner.callbacks[0]?.(undefined, error, controls)
+    scanner.callbacks[0]?.({ getText: () => "OCK1:value" }, undefined, controls)
+    scanner.callbacks[0]?.({ getText: () => "OCK1:second" }, undefined, controls)
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(onText).toHaveBeenCalledOnce()
+    expect(onText).toHaveBeenCalledWith("OCK1:value")
+  })
+
+  it("keeps scanning when getKind identifies a retryable minified error", async () => {
+    const track = new FakeTrack()
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    const onText = vi.fn()
+    const onError = vi.fn()
+    await startQrScan(videoElement(), onText, onError)
+    const controls = { stop: scanner.controlsStop }
+
+    scanner.callbacks[0]?.(
+      undefined,
+      { name: "t", getKind: () => "NotFoundException" },
+      controls,
+    )
+    scanner.callbacks[0]?.({ getText: () => "OCK1:value" }, undefined, controls)
+    scanner.callbacks[0]?.({ getText: () => "OCK1:second" }, undefined, controls)
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(onText).toHaveBeenCalledOnce()
+    expect(onText).toHaveBeenCalledWith("OCK1:value")
+  })
+
+  it.each([
+    [
+      "a minified IllegalStateException instance",
+      () => {
+        const error = new IllegalStateException()
+        Object.defineProperty(error, "name", { value: "t" })
+        return error
+      },
+    ],
+    [
+      "a non-retryable getKind value",
+      () => ({ name: "t", getKind: () => "IllegalStateException" }),
+    ],
+    [
+      "a throwing getKind",
+      () => ({
+        name: "t",
+        getKind: () => {
+          throw new Error("x")
+        },
+      }),
+    ],
+  ])("treats %s as a fatal decode error", async (_case, makeError) => {
+    const track = new FakeTrack()
+    const video = videoElement()
+    const controls = { stop: vi.fn() }
+    scanner.decodePlans.push(() => Promise.resolve(controls))
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    const onError = vi.fn()
+    const handle = await startQrScan(video, vi.fn(), onError)
+
+    scanner.callbacks[0]?.(undefined, makeError(), controls)
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "CAMERA_NOT_AVAILABLE",
+        userMessage: "カメラを利用できません。",
+      }),
+      {
+        phase: "playing",
+        name: "t",
+        detail: "640x480 rs=2 track=live/unmuted",
+      },
+    )
+    expect(track.stop).toHaveBeenCalledTimes(1)
     handle.stop()
   })
 

@@ -1,7 +1,12 @@
 // カメラ QR 読取(spec §16 / plan §12-10, §13 C10)。
-// @zxing/browser の import は本モジュールに限定する(テストは @zxing/library)。
+// @zxing/browser・@zxing/library の import は本モジュールに限定する。
 import type { AppError } from "@/crypto/errors"
 import { BrowserQRCodeReader } from "@zxing/browser"
+import {
+  ChecksumException,
+  FormatException,
+  NotFoundException,
+} from "@zxing/library"
 import { AppError as ConcreteAppError } from "@/crypto/errors"
 
 export interface QrScanHandle {
@@ -32,6 +37,11 @@ const maxAcquireRetries = 3
 const acquireRetryDelayMs = 300
 const frameRetryDelayMs = 250
 const CAMERA_DIAGNOSTIC_NAME = /^[A-Za-z]{1,40}$/
+const RETRYABLE_DECODE_KINDS = new Set([
+  "NotFoundException",
+  "ChecksumException",
+  "FormatException",
+])
 
 interface ScannerControls {
   stop(): void
@@ -150,13 +160,33 @@ function isTransientCameraAcquireError(error: unknown): boolean {
   return name === "NotReadableError" || name === "AbortError"
 }
 
+// zxing Exception の getKind() はクラス毎のリテラル文字列を返し、minify 後も保持される。
+function zxingKind(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null
+  const getKind = (error as { getKind?: unknown }).getKind
+  if (typeof getKind !== "function") return null
+  try {
+    const kind = (getKind as (this: unknown) => unknown).call(error)
+    return typeof kind === "string" ? kind : null
+  } catch {
+    return null
+  }
+}
+
 function isTransientDecodeError(error: unknown): boolean {
-  const name = diagnosticName(error)
-  return (
-    name === "NotFoundException" ||
-    name === "ChecksumException" ||
-    name === "FormatException"
-  )
+  // minify でクラス名が短縮されるため name 判定は本番で不成立。
+  // instanceof(単一実体)→ getKind() 戻り値照合(二重バンドル保険)→ name(テスト・未バンドル環境)。
+  // zxing の scan ループは上記3種のみ再試行するため、3種以外は fatal のまま維持する。
+  if (
+    error instanceof NotFoundException ||
+    error instanceof ChecksumException ||
+    error instanceof FormatException
+  ) {
+    return true
+  }
+  const kind = zxingKind(error)
+  if (kind !== null) return RETRYABLE_DECODE_KINDS.has(kind)
+  return RETRYABLE_DECODE_KINDS.has(diagnosticName(error))
 }
 
 function isFrameNotReadyDecodeError(attempt: CameraAttempt, error: unknown): boolean {
