@@ -560,7 +560,7 @@ export function EncryptPage() {
                 loading={pqLoading}
                 items={recipients.map((record) => ({
                   value: record.recordId,
-                  label: `${record.trust === "fingerprint-confirmed" ? "確認済み" : "未確認"} — ${record.trust === "fingerprint-confirmed" ? (record.name ?? record.kem.keyId) : record.kem.keyId}`,
+                  label: `${record.trust === "fingerprint-confirmed" ? "確認済み" : "未確認"}: ${record.trust === "fingerprint-confirmed" ? (record.name ?? record.kem.keyId) : record.kem.keyId}`,
                 }))}
               />
               {signed && (
@@ -642,7 +642,7 @@ export function EncryptPage() {
                 label="エンベロープ計"
                 value={
                   algorithm === "A256GCM"
-                    ? `${aesEstimate ?? 0} bytes (QR文字列)`
+                    ? `QR文字列 ${aesEstimate ?? 0} bytes`
                     : sizePending
                       ? "計算中…"
                       : `${sizeBreakdown?.envelopeBytes ?? 0} bytes`
@@ -789,10 +789,10 @@ export function EncryptPage() {
               </CardHeader>
               <CardContent className="space-y-3 p-4 pt-0">
                 {decrypted.kind === "unsigned" && (
-                  <p className="text-sm font-medium">署名なし (unsigned)</p>
+                  <p className="text-sm font-medium">署名なし</p>
                 )}
                 {decrypted.kind === "aes" && (
-                  <p className="text-sm font-medium">共通鍵メッセージ (署名なし)</p>
+                  <p className="text-sm font-medium">共通鍵メッセージ、署名なし</p>
                 )}
                 {decrypted.kind === "signed-valid" && (
                   <div className="space-y-1 text-sm">
@@ -806,7 +806,7 @@ export function EncryptPage() {
                       人物確認:{" "}
                       {decrypted.sender?.trust === "fingerprint-confirmed"
                         ? "人物確認済み"
-                        : "未確認 (鍵の有効性と人物確認は別です)"}
+                        : "未確認。鍵の有効性と人物確認は別です"}
                     </p>
                   </div>
                 )}
@@ -924,7 +924,7 @@ export function EncryptPage() {
               <CardTitle className="text-base">結果詳細</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 p-4 pt-0 text-sm">
-              <DetailRow label="使用暗号スイート" value={resultSuite ?? "—"} />
+              <DetailRow label="使用暗号スイート" value={resultSuite ?? "なし"} />
               <DetailRow
                 label="受信者鍵ID"
                 value={

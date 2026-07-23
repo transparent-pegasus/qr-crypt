@@ -13,7 +13,7 @@ export function NetworkStatusBadge() {
     >
       <Icon aria-hidden="true" className="size-3.5" />
       <span>{online ? "オンライン" : "オフライン"}</span>
-      <span className="sr-only">（通信状態）</span>
+      <span className="sr-only">通信状態</span>
     </Badge>
   )
 }

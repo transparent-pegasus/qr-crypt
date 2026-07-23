@@ -163,7 +163,7 @@ export function SettingsPage() {
         clearTransient()
         await refreshKeys()
         await loadQrCount()
-        toast.success("論理削除を試行しました(物理消去は未保証)")
+        toast.success("論理削除を試行しました。物理消去は保証されません")
       }
       setTypedAction(null)
       setDeleteConfirmation("")
@@ -305,7 +305,7 @@ export function SettingsPage() {
           />
         </div>
         <SettingField
-          label={`1フレームの生データ (${FRAME_BYTES_MIN}–${FRAME_BYTES_MAX} bytes)`}
+          label={`1フレームの生データ ${FRAME_BYTES_MIN}〜${FRAME_BYTES_MAX} bytes`}
           htmlFor="frame-bytes"
         >
           <Input
@@ -325,7 +325,7 @@ export function SettingsPage() {
           />
         </SettingField>
         <SettingField
-          label={`フレーム切替間隔 (${FRAME_INTERVAL_MS_MIN}–${FRAME_INTERVAL_MS_MAX} ms)`}
+          label={`フレーム切替間隔 ${FRAME_INTERVAL_MS_MIN}〜${FRAME_INTERVAL_MS_MAX} ms`}
           htmlFor="frame-interval"
         >
           <Input
@@ -345,7 +345,7 @@ export function SettingsPage() {
           />
         </SettingField>
         <SettingField
-          label={`読取状態の期限 (${TRANSFER_TIMEOUT_MINUTES_MIN}–${TRANSFER_TIMEOUT_MINUTES_MAX} 分)`}
+          label={`読取状態の期限 ${TRANSFER_TIMEOUT_MINUTES_MIN}〜${TRANSFER_TIMEOUT_MINUTES_MAX} 分`}
           htmlFor="transfer-timeout"
         >
           <Input
@@ -528,7 +528,7 @@ export function SettingsPage() {
         </SettingField>
       </SettingsCard>
 
-      <SettingsCard title="アプリ情報 (PWA)">
+      <SettingsCard title="PWAアプリ情報">
         <InfoRow
           label="PWAインストール状態"
           value={standalone ? "インストール済み" : "ブラウザー表示中"}
@@ -658,7 +658,7 @@ export function SettingsPage() {
                   JavaScriptとGCのため、メモリー上の秘密値を完全消去できる保証はありません。
                 </li>
                 <li>
-                  resetはローカルデータの論理削除を試行します。物理消去は保証しません(LevelDB・SSDウェアレベリングを含む)。
+                  resetはローカルデータの論理削除を試行します。LevelDB・SSDウェアレベリングを含め、物理消去は保証しません。
                 </li>
               </ul>
               <p>

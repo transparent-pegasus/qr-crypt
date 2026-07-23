@@ -2,6 +2,7 @@ import "./helpers/module-mocks"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import type { PostQuantumIdentity } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
   armMaintenanceToken,
@@ -27,21 +28,16 @@ describe("key management v2", () => {
     resetUi()
   })
 
-  it("shows six tabs, hides legacy RSA keys, and provides their deletion route", async () => {
+  it("shows four tabs, hides legacy RSA keys, and provides their deletion route", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    for (const name of [
-      "共通鍵",
-      "ポスト量子ID",
-      "受信公開鍵",
-      "署名公開鍵",
-      "公開鍵セット",
-      "鍵を読み取る",
-    ]) {
+    for (const name of ["共通鍵", "ポスト量子ID", "相手の公開鍵", "鍵を読み取る"]) {
       expect(await screen.findByRole("tab", { name })).toBeInTheDocument()
     }
+    expect(screen.queryByRole("tab", { name: "受信公開鍵" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "署名公開鍵" })).not.toBeInTheDocument()
     expect(
-      screen.getByText(/旧形式\(RSA\)の鍵 2 件は v2 で使用不可\(復元不能\)/),
+      screen.getByText(/旧形式のRSA鍵 2 件は v2 で使用不可、復元できません/),
     ).toBeInTheDocument()
     expect(screen.queryByText("受信鍵B")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "旧形式の鍵を削除" }))
@@ -98,7 +94,7 @@ describe("key management v2", () => {
     await renderApp("/keys")
     await user.click(await screen.findByRole("tab", { name: "ポスト量子ID" }))
     expect(
-      screen.getByText(/balanced \(ML-KEM-768 \/ ML-DSA-65\) のみ/),
+      screen.getByText(/balanced のみです。ML-KEM-768 \/ ML-DSA-65 を使用します/),
     ).toBeInTheDocument()
     expect(screen.queryByText(/maximum/i)).not.toBeInTheDocument()
     expect(screen.getByText("3".repeat(64))).toBeInTheDocument()
@@ -115,6 +111,37 @@ describe("key management v2", () => {
       within(qrDialog).getByRole("button", { name: /ZIPで出力/ }),
     ).toBeInTheDocument()
     expect(fakeIdentities).toHaveLength(1)
+  })
+
+  it("collapses rotated generations under the active identity card", async () => {
+    const user = userEvent.setup()
+    const head = fakeIdentities[0]!
+    const rotated: PostQuantumIdentity = {
+      ...head,
+      id: "O".repeat(22),
+      kem: { ...head.kem, keyId: "L".repeat(22), fingerprint: "4".repeat(64) },
+      signing: { ...head.signing, keyId: "M".repeat(22), fingerprint: "5".repeat(64) },
+      identityFingerprint: "6".repeat(64),
+      status: "rotated",
+      createdAt: head.createdAt - 1_000,
+      rotatedAt: head.createdAt,
+    }
+    fakeIdentities.splice(
+      0,
+      fakeIdentities.length,
+      { ...head, rotatedFromId: rotated.id },
+      rotated,
+    )
+
+    await renderApp("/keys")
+    await user.click(await screen.findByRole("tab", { name: "ポスト量子ID" }))
+    expect(await screen.findByText("3".repeat(64))).toBeInTheDocument()
+    expect(screen.getAllByText("active")).toHaveLength(1)
+    expect(screen.queryByText("rotated")).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /旧世代 1 件、復号専用/ }))
+    expect(screen.getByText("rotated")).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "署名検証用単鍵QR" })).toHaveLength(2)
   })
 
   it("retains duplicate handling for saved key QR without introducing message persistence", async () => {
@@ -226,7 +253,7 @@ describe("settings v2", () => {
     ).toBeInTheDocument()
     await userEvent.setup().click(screen.getByLabelText("デフォルト暗号方式"))
     expect(
-      screen.queryByRole("option", { name: /^ポスト量子 —/ }),
+      screen.queryByRole("option", { name: /^ポスト量子 ML-KEM/ }),
     ).not.toBeInTheDocument()
   })
 

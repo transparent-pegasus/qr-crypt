@@ -50,7 +50,7 @@ describe("App boot gate", () => {
     ).toBeInTheDocument()
     expect(
       screen.queryByRole("heading", {
-        name: "オフラインへ切り替わりました — 続行前の確認",
+        name: "オフラインへ切り替わりました。続行前の確認",
       }),
     ).not.toBeInTheDocument()
     await waitFor(() => expect(getPreferences).toHaveBeenCalled())
@@ -87,7 +87,7 @@ describe("App boot gate", () => {
       await screen.findByText("オンラインを検出したため、ローカルデータを初期化しました"),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("論理削除を試行しました(物理消去は未保証)"),
+      screen.getByText("論理削除を試行しました。物理消去は保証されません"),
     ).toBeInTheDocument()
     controller.stop()
   })
@@ -108,7 +108,7 @@ describe("App boot gate", () => {
       screen.getByText("ローカルデータの初期化中に一部の操作が完了しませんでした。"),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("論理削除を試行しました(物理消去は未保証)"),
+      screen.getByText("論理削除を試行しました。物理消去は保証されません"),
     ).toBeInTheDocument()
     controller.stop()
   })

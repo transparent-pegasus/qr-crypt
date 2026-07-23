@@ -1,9 +1,9 @@
 import type { UiAlgorithm } from "@/schemas/domain"
 
 export const ALGORITHM_LABELS: Record<UiAlgorithm, string> = {
-  A256GCM: "共通鍵 — AES-256-GCM",
-  MLKEM768_A256GCM: "ポスト量子 — ML-KEM-768 + AES-256-GCM",
-  MLKEM768_MLDSA65_A256GCM: "署名付きポスト量子 — ML-KEM-768 + ML-DSA-65 + AES-256-GCM",
+  A256GCM: "共通鍵 AES-256-GCM",
+  MLKEM768_A256GCM: "ポスト量子 ML-KEM-768 + AES-256-GCM",
+  MLKEM768_MLDSA65_A256GCM: "署名付きポスト量子 ML-KEM-768 + ML-DSA-65 + AES-256-GCM",
 }
 
 export function formatDateTime(timestamp: number | undefined): string {

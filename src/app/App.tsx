@@ -218,7 +218,7 @@ function BootGate({
             オンラインを検出したため、ローカルデータを初期化しました
           </h1>
           <p className="text-sm text-muted-foreground">
-            論理削除を試行しました(物理消去は未保証)
+            論理削除を試行しました。物理消去は保証されません
           </p>
         </BootStatusScreen>
       )
@@ -228,7 +228,7 @@ function BootGate({
           <p className="font-mono text-xs text-destructive">RESET_FAILED</p>
           <h1 className="text-xl font-bold">{userMessageFor("RESET_FAILED")}</h1>
           <p className="text-sm text-muted-foreground">
-            論理削除を試行しました(物理消去は未保証)
+            論理削除を試行しました。物理消去は保証されません
           </p>
           <p className="text-sm text-muted-foreground">
             このタブを閉じてください。再び利用するには、端末を完全フォーマットしてからアプリを導入し直してください。

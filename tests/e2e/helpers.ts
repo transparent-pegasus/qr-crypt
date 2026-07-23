@@ -8,8 +8,8 @@ import {
   RGBLuminanceSource,
 } from "@zxing/library"
 
-export const AES_ALGORITHM_LABEL = "共通鍵 — AES-256-GCM"
-export const PQ_ALGORITHM_LABEL = /^ポスト量子 — ML-KEM-768 \+ AES-256-GCM$/
+export const AES_ALGORITHM_LABEL = "共通鍵 AES-256-GCM"
+export const PQ_ALGORITHM_LABEL = /^ポスト量子 ML-KEM-768 \+ AES-256-GCM$/
 export const SIGNED_PQ_ALGORITHM_LABEL = /署名付きポスト量子/
 
 function escapeRegex(value: string): string {
@@ -23,7 +23,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
   await expect(page.getByText("オフライン利用準備状態")).toBeVisible()
   await expect(
     page.getByText(
-      "オフライン（機内モード）に切り替えるとオフライン機能を利用できます(切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません)",
+      "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません",
     ),
   ).toBeVisible()
   await expect(page.getByText("オンライン", { exact: true })).toBeVisible()
@@ -32,7 +32,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
 
 export async function expectOfflineAcknowledgement(page: Page): Promise<void> {
   const shell = page.getByRole("main", {
-    name: "オフラインへ切り替わりました — 続行前の確認",
+    name: "オフラインへ切り替わりました。続行前の確認",
   })
   await expect(shell).toBeVisible()
   await expect(
@@ -131,7 +131,7 @@ export async function switchToColdOfflineApp(
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
     page.getByRole("heading", {
-      name: "オフラインへ切り替わりました — 続行前の確認",
+      name: "オフラインへ切り替わりました。続行前の確認",
     }),
   ).toBeHidden()
   await expect(mainNavigation(page)).toBeVisible()
@@ -190,8 +190,8 @@ export async function createPqIdentity(page: Page, name: string): Promise<void> 
   await expect(page.getByText(name, { exact: true }).first()).toBeVisible({
     timeout: 45_000,
   })
-  await expect(page.getByText("KEM (ML-KEM-768)", { exact: true })).toBeVisible()
-  await expect(page.getByText("Signing (ML-DSA-65)", { exact: true })).toBeVisible()
+  await expect(page.getByText("KEM ML-KEM-768", { exact: true })).toBeVisible()
+  await expect(page.getByText("Signing ML-DSA-65", { exact: true })).toBeVisible()
 }
 
 export async function seedSelfPublicBundle(
@@ -311,7 +311,7 @@ export async function encryptSignedPq(
 ): Promise<{ payload: string; result: Locator }> {
   await goToOfflinePage(page, "/encrypt")
   await chooseOption(page, "暗号化方式", SIGNED_PQ_ALGORITHM_LABEL)
-  await chooseOption(page, "受信者のML-KEM公開鍵", /^(確認済み|未確認) —/)
+  await chooseOption(page, "受信者のML-KEM公開鍵", /^(確認済み|未確認): /)
   await chooseOption(page, "自分のML-DSA署名ID", args.identityName)
   await page.getByLabel("平文", { exact: true }).fill(args.plaintext)
   await page.getByRole("button", { name: "暗号化する", exact: true }).click()

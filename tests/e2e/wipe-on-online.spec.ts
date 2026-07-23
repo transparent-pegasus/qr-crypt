@@ -94,7 +94,7 @@ test("鍵作成後に sentinel 到達可能な online へ戻ると wipe し、�
   sentinel.reachable = false
   await context.setOffline(true)
   const shell = page.getByRole("main", {
-    name: "オフラインへ切り替わりました — 続行前の確認",
+    name: "オフラインへ切り替わりました。続行前の確認",
   })
   await expect(shell).toBeVisible()
   await expect(
@@ -164,7 +164,7 @@ test("2タブ wipe broadcast と peer の online marker 書込が競合しても
     await switchToOfflineApp(page, context)
     await expect(
       peer.getByRole("heading", {
-        name: "オフラインへ切り替わりました — 続行前の確認",
+        name: "オフラインへ切り替わりました。続行前の確認",
       }),
     ).toBeVisible()
     await createSymmetricKey(page, "broadcast競合確認鍵")

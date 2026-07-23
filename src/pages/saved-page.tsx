@@ -41,7 +41,7 @@ import {
 
 const KIND_LABEL: Record<StoredQrArtifact["kind"], string> = {
   "symmetric-key": "共通鍵QR",
-  "public-key": "公開鍵QR (旧形式)",
+  "public-key": "旧形式の公開鍵QR",
   "encrypted-private-key": "暗号化済み秘密鍵QR",
 }
 

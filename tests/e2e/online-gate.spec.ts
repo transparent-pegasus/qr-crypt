@@ -40,7 +40,7 @@ test("マーカー不在の真のコールドオフライン起動では承認�
   await switchToColdOfflineApp(page, context)
   await expect(
     page.getByRole("heading", {
-      name: "オフラインへ切り替わりました — 続行前の確認",
+      name: "オフラインへ切り替わりました。続行前の確認",
     }),
   ).toBeHidden()
   await expect(mainNavigation(page)).toBeVisible()
@@ -73,7 +73,7 @@ test("2タブの片側承認は他方の進行中 shell を解除せず origin �
     await expect(mainNavigation(peer)).toBeVisible()
     await expect(
       peer.getByRole("heading", {
-        name: "オフラインへ切り替わりました — 続行前の確認",
+        name: "オフラインへ切り替わりました。続行前の確認",
       }),
     ).toBeHidden()
   } finally {

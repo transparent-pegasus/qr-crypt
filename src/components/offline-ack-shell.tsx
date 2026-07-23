@@ -51,7 +51,7 @@ export function OfflineAckShell({
                   オンラインを検出したため、ローカルデータを初期化しました
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  論理削除を試行しました(物理消去は未保証)
+                  論理削除を試行しました。物理消去は保証されません
                 </p>
               </div>
             </div>
@@ -69,13 +69,13 @@ export function OfflineAckShell({
             tabIndex={-1}
             className="text-xl font-bold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-2xl"
           >
-            オフラインへ切り替わりました — 続行前の確認
+            オフラインへ切り替わりました。続行前の確認
           </h1>
         </header>
 
         <div className="space-y-4 text-sm leading-relaxed text-muted-foreground sm:text-base">
           <p>
-            このアプリは「オンラインに接続した端末は常に侵害されうる」という前提で設計されています。オンライン状態から機内モードやネットワーク切断を選んでも、それによって端末が信頼できる状態に戻るわけではありません(オンライン中に侵害されたコード・鍵・データは、オフライン化後もそのまま残り得ます)。
+            このアプリは「オンラインに接続した端末は常に侵害されうる」という前提で設計されています。オンライン状態から機内モードやネットワーク切断を選んでも、それによって端末が信頼できる状態に戻るわけではありません。オンライン中に侵害されたコード・鍵・データは、オフライン化後もそのまま残り得ます。
           </p>
           <p>
             {"リスクを抑えるには、ネットワークから物理的に遮断し、"}
@@ -107,7 +107,7 @@ export function OfflineAckShell({
             </label>
           </div>
           <p className="pl-8 text-xs leading-relaxed text-muted-foreground">
-            (このチェックは端末の安全性を検証・回復するものではありません)
+            このチェックは端末の安全性を検証・回復するものではありません
           </p>
         </div>
 

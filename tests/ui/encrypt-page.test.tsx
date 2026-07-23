@@ -39,7 +39,7 @@ describe("encrypt page v2", () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole("option", {
-        name: /^ポスト量子 — ML-KEM-768 \+ AES-256-GCM$/,
+        name: /^ポスト量子 ML-KEM-768 \+ AES-256-GCM$/,
       }),
     ).toBeInTheDocument()
     expect(screen.getByRole("option", { name: /署名付きポスト量子/ })).toBeInTheDocument()
@@ -49,7 +49,7 @@ describe("encrypt page v2", () => {
   it("recalculates the serialized frame count immediately when signing changes", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "暗号化方式", /ポスト量子 — ML-KEM-768 \+ AES/)
+    await chooseSelectOption(user, "暗号化方式", /ポスト量子 ML-KEM-768 \+ AES/)
     await waitFor(() => expect(screen.getByText("3 枚")).toBeInTheDocument())
     expect(screen.getAllByText("0 bytes", { selector: "span" })).toHaveLength(2)
 
@@ -188,7 +188,7 @@ describe("encrypt page v2", () => {
     const decryptButton = screen.getByRole("button", { name: "復号する" })
     await waitFor(() => expect(decryptButton).toBeEnabled())
     await user.click(decryptButton)
-    expect(await screen.findByText("署名なし (unsigned)")).toBeInTheDocument()
+    expect(await screen.findByText("署名なし")).toBeInTheDocument()
     expect(screen.getByText("PQ復号済み平文")).toBeInTheDocument()
 
     decryptPqMessage.mockRejectedValueOnce(new AppError("SIGNATURE_INVALID"))
@@ -203,7 +203,7 @@ describe("encrypt page v2", () => {
     const user = userEvent.setup()
     encryptPq.mockRejectedValueOnce(new AppError("WORKER_UNAVAILABLE"))
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "暗号化方式", /ポスト量子 — ML-KEM-768 \+ AES/)
+    await chooseSelectOption(user, "暗号化方式", /ポスト量子 ML-KEM-768 \+ AES/)
     await chooseSelectOption(user, "受信者のML-KEM公開鍵", /確認済みの相手/)
     await user.type(screen.getByLabelText("平文"), "worker failure")
     await user.click(screen.getByRole("button", { name: "暗号化する" }))

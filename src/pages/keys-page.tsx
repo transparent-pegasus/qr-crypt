@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronDown,
   Clipboard,
   Download,
   FileCode2,
@@ -33,6 +34,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogContent,
@@ -109,7 +115,7 @@ import {
 } from "@/storage/pq-identity-repository"
 import { saveQrArtifact } from "@/storage/qr-repository"
 
-type KeysTab = "symmetric" | "identity" | "kem" | "signing" | "bundle" | "scan"
+type KeysTab = "symmetric" | "identity" | "bundle" | "scan"
 
 interface FramedQrSession {
   title: string
@@ -171,6 +177,29 @@ export function KeysPage() {
     () => new MultipartScanSession(preferences.transferTimeoutMinutes),
     [preferences.transferTimeoutMinutes],
   )
+  // 最新世代のみをカード表示し、rotatedFromId を遡った旧世代は配下に畳む
+  const identityGroups = useMemo(() => {
+    const byId = new Map(identities.map((identity) => [identity.id, identity]))
+    const superseded = new Set(
+      identities
+        .map((identity) => identity.rotatedFromId)
+        .filter((id): id is string => id !== undefined),
+    )
+    return identities
+      .filter((identity) => !superseded.has(identity.id))
+      .map((head) => {
+        const previous: PostQuantumIdentity[] = []
+        const visited = new Set([head.id])
+        for (let cursor = head.rotatedFromId; cursor !== undefined;) {
+          const generation = byId.get(cursor)
+          if (generation === undefined || visited.has(generation.id)) break
+          visited.add(generation.id)
+          previous.push(generation)
+          cursor = generation.rotatedFromId
+        }
+        return { head, previous }
+      })
+  }, [identities])
 
   useEffect(() => {
     setSensitiveSession({
@@ -439,7 +468,7 @@ export function KeysPage() {
     try {
       await Promise.all(legacyKeys.map((key) => deleteKeyRecord(key.id)))
       await refreshKeys()
-      toast.success("旧形式(RSA)の鍵を削除しました")
+      toast.success("旧形式のRSA鍵を削除しました")
     } catch (caught) {
       setError(toAppError(caught, "STORAGE_FAILED").userMessage)
     } finally {
@@ -602,7 +631,7 @@ export function KeysPage() {
         <Alert variant="destructive" role="alert">
           <AlertCircle aria-hidden="true" className="size-4" />
           <AlertTitle>
-            旧形式(RSA)の鍵 {legacyKeys.length} 件は v2 で使用不可(復元不能)
+            旧形式のRSA鍵 {legacyKeys.length} 件は v2 で使用不可、復元できません
           </AlertTitle>
           <AlertDescription className="space-y-3">
             <p>旧暗号文は復号できません。鍵は通常の一覧や選択肢には表示しません。</p>
@@ -630,9 +659,7 @@ export function KeysPage() {
         <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
           <TabsTrigger value="symmetric">共通鍵</TabsTrigger>
           <TabsTrigger value="identity">ポスト量子ID</TabsTrigger>
-          <TabsTrigger value="kem">受信公開鍵</TabsTrigger>
-          <TabsTrigger value="signing">署名公開鍵</TabsTrigger>
-          <TabsTrigger value="bundle">公開鍵セット</TabsTrigger>
+          <TabsTrigger value="bundle">相手の公開鍵</TabsTrigger>
           <TabsTrigger value="scan">鍵を読み取る</TabsTrigger>
         </TabsList>
 
@@ -679,7 +706,7 @@ export function KeysPage() {
             <ShieldCheck aria-hidden="true" className="size-4" />
             <AlertTitle>experimental・未独立監査</AlertTitle>
             <AlertDescription>
-              初期リリースは balanced (ML-KEM-768 / ML-DSA-65) のみです。
+              初期リリースは balanced のみです。ML-KEM-768 / ML-DSA-65 を使用します。
             </AlertDescription>
           </Alert>
           <CreateField
@@ -690,10 +717,11 @@ export function KeysPage() {
             busy={busy}
             onCreate={() => void createPqIdentity()}
           />
-          {identities.map((identity) => (
+          {identityGroups.map(({ head, previous }) => (
             <IdentityCard
-              key={identity.id}
-              identity={identity}
+              key={head.id}
+              identity={head}
+              previous={previous}
               busy={busy}
               onShow={showIdentityQr}
               onRotate={rotate}
@@ -705,28 +733,9 @@ export function KeysPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="kem" className="space-y-4">
-          <BundleList
-            bundles={bundles}
-            view="kem"
-            busy={busy}
-            refresh={refreshPq}
-            setError={setError}
-          />
-        </TabsContent>
-        <TabsContent value="signing" className="space-y-4">
-          <BundleList
-            bundles={bundles}
-            view="signing"
-            busy={busy}
-            refresh={refreshPq}
-            setError={setError}
-          />
-        </TabsContent>
         <TabsContent value="bundle" className="space-y-4">
           <BundleList
             bundles={bundles}
-            view="bundle"
             busy={busy}
             refresh={refreshPq}
             setError={setError}
@@ -1110,12 +1119,14 @@ function Empty({ text }: { text: string }) {
 
 function IdentityCard({
   identity,
+  previous,
   busy,
   onShow,
   onRotate,
   onRevoke,
 }: {
   identity: PostQuantumIdentity
+  previous: PostQuantumIdentity[]
   busy: boolean
   onShow: (
     identity: PostQuantumIdentity,
@@ -1139,11 +1150,11 @@ function IdentityCard({
         </p>
         <Fingerprint label="ID fingerprint" value={identity.identityFingerprint} />
         <Fingerprint
-          label={`KEM (${identity.kem.algorithm})`}
+          label={`KEM ${identity.kem.algorithm}`}
           value={identity.kem.fingerprint}
         />
         <Fingerprint
-          label={`Signing (${identity.signing.algorithm})`}
+          label={`Signing ${identity.signing.algorithm}`}
           value={identity.signing.fingerprint}
         />
         <p className="text-xs text-muted-foreground">
@@ -1207,6 +1218,48 @@ function IdentityCard({
         <p className="text-xs text-muted-foreground">
           失効はこの端末での利用停止であり、外部の相手には伝播しません。
         </p>
+        {previous.length > 0 && (
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                className="group h-9 w-full justify-between px-2 text-xs text-muted-foreground"
+              >
+                旧世代 {previous.length} 件、復号専用
+                <ChevronDown
+                  aria-hidden="true"
+                  className="size-4 transition-transform group-data-[state=open]:rotate-180"
+                />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-2 pt-2">
+              {previous.map((generation) => (
+                <div key={generation.id} className="space-y-2 rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">
+                      作成: {formatDateTime(generation.createdAt)}
+                    </p>
+                    <Badge variant="secondary">{generation.status}</Badge>
+                  </div>
+                  <p className="font-mono text-sm">
+                    比較表示: {formatFingerprint(generation.identityFingerprint)}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => void onShow(generation, "signing")}
+                  >
+                    <QrCode aria-hidden="true" />
+                    署名検証用単鍵QR
+                  </Button>
+                </div>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </CardContent>
     </Card>
   )
@@ -1214,13 +1267,11 @@ function IdentityCard({
 
 function BundleList({
   bundles,
-  view,
   busy,
   refresh,
   setError,
 }: {
   bundles: PqPublicBundleRecord[]
-  view: "kem" | "signing" | "bundle"
   busy: boolean
   refresh: () => Promise<void>
   setError: (value: string | null) => void
@@ -1229,7 +1280,7 @@ function BundleList({
   return (
     <>
       {bundles.map((record) => (
-        <Card key={`${view}-${record.recordId}`}>
+        <Card key={record.recordId}>
           <CardContent className="space-y-3 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1250,24 +1301,18 @@ function BundleList({
                 {record.trust === "fingerprint-confirmed" ? "人物確認済み" : "unverified"}
               </Badge>
             </div>
-            {view !== "signing" && (
-              <Fingerprint
-                label={`受信公開鍵 ${record.kem.algorithm}`}
-                value={record.kem.fingerprint}
-              />
-            )}
-            {view !== "kem" && (
-              <Fingerprint
-                label={`署名公開鍵 ${record.signing.algorithm}`}
-                value={record.signing.fingerprint}
-              />
-            )}
-            {view === "bundle" && (
-              <Fingerprint
-                label="Identity fingerprint"
-                value={record.identityFingerprint}
-              />
-            )}
+            <Fingerprint
+              label={`受信公開鍵 ${record.kem.algorithm}`}
+              value={record.kem.fingerprint}
+            />
+            <Fingerprint
+              label={`署名公開鍵 ${record.signing.algorithm}`}
+              value={record.signing.fingerprint}
+            />
+            <Fingerprint
+              label="Identity fingerprint"
+              value={record.identityFingerprint}
+            />
             <div className="grid grid-cols-2 gap-2">
               <Button
                 type="button"

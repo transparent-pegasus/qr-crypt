@@ -18,7 +18,7 @@ import { fakeFeatures, getPreferences, useFakeRegisterSW } from "./helpers/fakes
 import { setTestOnlineStatus, stubReachabilityFetch } from "./helpers/network"
 import { memoryLocalStorage, renderApp, resetUi } from "./helpers/render-app"
 
-const ACK_TITLE = "オフラインへ切り替わりました — 続行前の確認"
+const ACK_TITLE = "オフラインへ切り替わりました。続行前の確認"
 const INSTALL_TITLE = "オンラインではPWAの導入のみ利用できます"
 
 function response(body: string, status = 200): Response {
@@ -286,7 +286,7 @@ describe("offline acknowledgement shell", () => {
     expect(shell).toHaveTextContent(
       "オンラインを検出したため、ローカルデータを初期化しました",
     )
-    expect(shell).toHaveTextContent("論理削除を試行しました(物理消去は未保証)")
+    expect(shell).toHaveTextContent("論理削除を試行しました。物理消去は保証されません")
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(getPreferences).not.toHaveBeenCalled()
 
@@ -437,9 +437,7 @@ describe("offline acknowledgement shell", () => {
 
       await renderApp("/encrypt", { bootController: controller, routerFactory })
 
-      expect(
-        await screen.findByRole("heading", { name: ACK_TITLE }),
-      ).toBeInTheDocument()
+      expect(await screen.findByRole("heading", { name: ACK_TITLE })).toBeInTheDocument()
       expect(routerFactory).not.toHaveBeenCalled()
       expect(screen.queryByText("mounted child")).not.toBeInTheDocument()
       expect(getPreferences).not.toHaveBeenCalled()
