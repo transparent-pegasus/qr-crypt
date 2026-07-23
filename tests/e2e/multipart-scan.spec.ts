@@ -54,6 +54,12 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
   const scanDialog = page.getByRole("dialog", { name: "暗号文QRを読み取る" })
   await expect(scanDialog).toBeVisible()
   await expect(page.getByText("QRコードを順不同で読み取れます")).toBeVisible()
+  await expect(
+    scanDialog.getByRole("button", { name: "カメラを停止", exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    scanDialog.getByRole("button", { name: "読取状態を破棄", exact: true }),
+  ).toBeVisible()
 
   // The first multipart frame locks this run; an otherwise valid single QR is rejected.
   await emitInjectedQr(page, frames[0]!)

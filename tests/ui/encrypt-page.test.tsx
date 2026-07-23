@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { AppError, userMessageFor } from "@/crypto/errors"
 import type { MlKemMessageEnvelopeV2 } from "@/schemas/domain"
 import {
+  decodeQrImageFile,
   emitScannedPayload,
   encryptPq,
   decryptPqMessage,
@@ -151,6 +152,28 @@ describe("encrypt page v2", () => {
     expect(await screen.findByText("復号済み平文")).toBeInTheDocument()
     expect(screen.getByText(/メモリー内だけに保持し、保存しません/)).toBeInTheDocument()
     expect(saveQrArtifact).not.toHaveBeenCalled()
+  })
+
+  it("wires QR image import into the decrypt payload without starting a camera", async () => {
+    decodeQrImageFile.mockResolvedValueOnce("OCM1:sym-key-00000001")
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "復号" }))
+
+    await user.upload(
+      screen.getByLabelText("QR画像ファイル"),
+      new File(["png"], "ciphertext.png", { type: "image/png" }),
+    )
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("暗号文ペイロード")).toHaveValue(
+        "OCM1:sym-key-00000001",
+      ),
+    )
+    expect(startQrScan).not.toHaveBeenCalled()
+    expect(
+      screen.getByText(/画像 1 件中: 取り込み 1/),
+    ).toBeInTheDocument()
   })
 
   it("distinguishes signature validity from person trust and hides unknown-signer plaintext", async () => {

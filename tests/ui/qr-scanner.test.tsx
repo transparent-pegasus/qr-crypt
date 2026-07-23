@@ -19,12 +19,14 @@ import {
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AppError } from "@/crypto/errors"
+import { AppError, userMessageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
 import type { CameraDiagnostic, QrScanHandle } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import {
+  decodeQrImageFile,
   emitScannedPayload,
+  FakeTransferAssembler,
   multipartPayload,
   scannerStop,
   startQrScan,
@@ -50,6 +52,17 @@ function deferred<T>(): {
     reject = fail
   })
   return { promise, resolve, reject }
+}
+
+function imageFile(name: string, size = 1): File {
+  const file = new File(["x"], name, { type: "image/png" })
+  if (size !== file.size) {
+    Object.defineProperty(file, "size", {
+      configurable: true,
+      value: size,
+    })
+  }
+  return file
 }
 
 describe("QrScannerPanel single scan and camera lifecycle", () => {
@@ -323,6 +336,13 @@ describe("QrScannerModal", () => {
       name: "暗号文QRを読み取る",
     })
     expect(dialog).toHaveFocus()
+    expect(dialog).not.toHaveClass("overflow-y-auto")
+    expect(
+      dialog.querySelector("[data-qr-scanner-scroll-region]"),
+    ).toHaveClass(
+      "max-h-[calc(95dvh-4rem)]",
+      "overflow-y-auto",
+    )
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     expect(
       screen.getByText(
@@ -355,6 +375,490 @@ describe("QrScannerModal", () => {
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("keeps image import available without a camera and shows its guidance", () => {
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        cameraAvailable={false}
+        imageImport
+      />,
+    )
+
+    expect(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    ).toBeDisabled()
+    expect(
+      screen.getByRole("button", { name: "QR画像を読み込む" }),
+    ).toBeEnabled()
+    expect(
+      screen.getByText(
+        "この端末ではカメラを利用できません。QR画像の読み込み、またはペイロードの貼り付けを利用してください。",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText("QR画像ファイル")).toHaveAttribute(
+      "accept",
+      "image/*",
+    )
+    expect(screen.getByLabelText("QR画像ファイル")).toHaveAttribute(
+      "multiple",
+    )
+  })
+
+  it("disables camera entry during a batch and image entry while open", async () => {
+    const decoded = deferred<string>()
+    decodeQrImageFile.mockReturnValueOnce(decoded.promise)
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        imageImport
+      />,
+    )
+    const cameraTrigger = screen.getByRole("button", {
+      name: "暗号文QRを読み取る",
+    })
+    const imageTrigger = screen.getByRole("button", {
+      name: "QR画像を読み込む",
+    })
+
+    await user.upload(
+      screen.getByLabelText("QR画像ファイル"),
+      imageFile("pending.png"),
+    )
+    await waitFor(() => expect(decodeQrImageFile).toHaveBeenCalledOnce())
+    expect(cameraTrigger).toBeDisabled()
+    expect(imageTrigger).toBeDisabled()
+    expect(cameraTrigger.parentElement).toHaveAttribute("aria-busy", "true")
+
+    await act(async () => decoded.resolve("OCM1:image"))
+    await screen.findByText(/画像 1 件中: 取り込み 1/)
+    await waitFor(() => expect(cameraTrigger).toBeEnabled())
+
+    await user.click(cameraTrigger)
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    expect(imageTrigger).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: "Close" }))
+    expect(imageTrigger).toBeEnabled()
+  })
+
+  it("imports only the first matching single image and aggregates one summary", async () => {
+    decodeQrImageFile
+      .mockResolvedValueOnce("OCM1:first")
+      .mockResolvedValueOnce("OCM1:second")
+      .mockRejectedValueOnce(new AppError("INVALID_QR_PAYLOAD"))
+    const onSingleScan = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={onSingleScan}
+        imageImport
+      />,
+    )
+    const input = screen.getByLabelText("QR画像ファイル")
+
+    await user.upload(input, [
+      imageFile("first.png"),
+      imageFile("second.png"),
+      imageFile("broken.png"),
+    ])
+
+    expect(
+      await screen.findByText(
+        /画像 3 件中: 取り込み 1、フレーム受理 0、失敗 2、未処理 0。/,
+      ),
+    ).toBeInTheDocument()
+    expect(onSingleScan).toHaveBeenCalledOnce()
+    expect(onSingleScan).toHaveBeenCalledWith("message", "OCM1:first")
+    expect(
+      screen.getByText(/単発QRは1件のみ取り込みます。/),
+    ).toBeInTheDocument()
+    expect(input).toHaveValue("")
+  })
+
+  it("enforces the per-selection file count and file size limits", async () => {
+    decodeQrImageFile.mockResolvedValue("not-a-qrypt-payload")
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        imageImport
+      />,
+    )
+    const files = Array.from({ length: 32 }, (_, index) =>
+      imageFile(
+        `image-${index}.png`,
+        index === 0 ? 20 * 1024 * 1024 + 1 : 1,
+      ),
+    )
+
+    await user.upload(screen.getByLabelText("QR画像ファイル"), files)
+
+    expect(
+      await screen.findByText(
+        /画像 32 件中: 取り込み 0、フレーム受理 0、失敗 29、未処理 3。/,
+      ),
+    ).toBeInTheDocument()
+    expect(decodeQrImageFile).toHaveBeenCalledTimes(29)
+    expect(screen.getByText(/上限超過 2 件を未処理/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/20MBを超える画像は処理しません。/),
+    ).toBeInTheDocument()
+  })
+
+  it("stops at a complete preflight and awaits its one-time delivery", async () => {
+    const session = new MultipartScanSession(5)
+    let state: TransferState = { kind: "idle" }
+    vi.spyOn(session, "state").mockImplementation(() => state)
+    const delivery = deferred<void>()
+    const onComplete = vi.fn(() => delivery.promise)
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        multipart={{ session, onComplete }}
+        imageImport
+      />,
+    )
+    state = {
+      kind: "complete",
+      transferId: Uint8Array.of(1),
+      artifactType: "pq-message",
+      artifactBytes: Uint8Array.of(2),
+    }
+
+    await user.upload(
+      screen.getByLabelText("QR画像ファイル"),
+      imageFile("unused.png"),
+    )
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
+    expect(decodeQrImageFile).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    ).toBeDisabled()
+
+    await act(async () => delivery.resolve())
+    expect(
+      await screen.findByText(
+        /画像 1 件中: 取り込み 1、フレーム受理 0、失敗 0、未処理 1。/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it("stops at error or claimed-complete preflight without decoding files", async () => {
+    const user = userEvent.setup()
+    const errorSession = new MultipartScanSession(5)
+    let errorState: TransferState = { kind: "idle" }
+    vi.spyOn(errorSession, "state").mockImplementation(() => errorState)
+    const first = render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        multipart={{ session: errorSession, onComplete: vi.fn() }}
+        imageImport
+      />,
+    )
+    errorState = { kind: "error", code: "FRAME_MISMATCH" }
+    await user.upload(
+      screen.getByLabelText("QR画像ファイル"),
+      imageFile("error.png"),
+    )
+    expect(
+      await screen.findByText(userMessageFor("FRAME_MISMATCH")),
+    ).toBeInTheDocument()
+    expect(decodeQrImageFile).not.toHaveBeenCalled()
+
+    first.unmount()
+    resetUi()
+    const claimedSession = new MultipartScanSession(5)
+    let claimedState: TransferState = { kind: "idle" }
+    vi.spyOn(claimedSession, "state").mockImplementation(() => claimedState)
+    const onComplete = vi.fn()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        multipart={{ session: claimedSession, onComplete }}
+        imageImport
+      />,
+    )
+    claimedState = {
+      kind: "complete",
+      transferId: Uint8Array.of(1),
+      artifactType: "pq-message",
+      artifactBytes: Uint8Array.of(2),
+    }
+    claimedSession.claimCompletion()
+    await user.upload(
+      screen.getByLabelText("QR画像ファイル"),
+      imageFile("claimed.png"),
+    )
+
+    expect(
+      await screen.findByText(/取り込み済みの読取結果があります。/),
+    ).toBeInTheDocument()
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(decodeQrImageFile).not.toHaveBeenCalled()
+  })
+
+  it("continues after collecting expires at preflight, but keeps the timeout in summary", async () => {
+    const session = new MultipartScanSession(5)
+    let state: TransferState = {
+      kind: "collecting",
+      transferId: Uint8Array.of(1),
+      artifactType: "pq-message",
+      frameCount: 2,
+      receivedIndexes: new Set([0]),
+      missingIndexes: [1],
+      expiresAt: Date.now() + 60_000,
+    }
+    vi.spyOn(session, "state").mockImplementation(() => state)
+    decodeQrImageFile.mockResolvedValueOnce("OCM1:after-timeout")
+    const onSingleScan = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={onSingleScan}
+        multipart={{ session, onComplete: vi.fn() }}
+        imageImport
+      />,
+    )
+    state = { kind: "idle" }
+
+    await user.upload(
+      screen.getByLabelText("QR画像ファイル"),
+      imageFile("after-timeout.png"),
+    )
+
+    expect(
+      await screen.findByText(/読取期限を過ぎたため破棄しました。/),
+    ).toBeInTheDocument()
+    expect(onSingleScan).toHaveBeenCalledWith(
+      "message",
+      "OCM1:after-timeout",
+    )
+  })
+
+  it("rejects a single image while a multipart session is locked", async () => {
+    const session = new MultipartScanSession(5)
+    const collecting: TransferState = {
+      kind: "collecting",
+      transferId: Uint8Array.of(1),
+      artifactType: "pq-message",
+      frameCount: 2,
+      receivedIndexes: new Set([0]),
+      missingIndexes: [1],
+      expiresAt: Date.now() + 60_000,
+    }
+    vi.spyOn(session, "state").mockReturnValue(collecting)
+    decodeQrImageFile.mockResolvedValueOnce("OCM1:single")
+    const onSingleScan = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={onSingleScan}
+        multipart={{ session, onComplete: vi.fn() }}
+        imageImport
+      />,
+    )
+
+    await user.upload(
+      screen.getByLabelText("QR画像ファイル"),
+      imageFile("single.png"),
+    )
+
+    expect(
+      await screen.findByText(
+        /複数QR読取中です。単発QRは読取完了または破棄後に。/,
+      ),
+    ).toBeInTheDocument()
+    expect(onSingleScan).not.toHaveBeenCalled()
+  })
+
+  it("ends a batch on frame completion and leaves later files unprocessed", async () => {
+    const session = new MultipartScanSession(5)
+    vi.spyOn(session, "state").mockReturnValue({ kind: "idle" })
+    vi.spyOn(session, "add").mockResolvedValue({
+      kind: "complete",
+      transferId: Uint8Array.of(1),
+      artifactType: "pq-message",
+      artifactBytes: Uint8Array.of(2),
+    })
+    decodeQrImageFile.mockResolvedValue("OCF2:frame")
+    const onComplete = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        multipart={{ session, onComplete }}
+        imageImport
+      />,
+    )
+
+    await user.upload(screen.getByLabelText("QR画像ファイル"), [
+      imageFile("complete.png"),
+      imageFile("later.png"),
+    ])
+
+    expect(
+      await screen.findByText(
+        /画像 2 件中: 取り込み 1、フレーム受理 1、失敗 0、未処理 1。/,
+      ),
+    ).toBeInTheDocument()
+    expect(onComplete).toHaveBeenCalledOnce()
+    expect(decodeQrImageFile).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    {
+      name: "error",
+      next: { kind: "error", code: "FRAME_MISMATCH" } as TransferState,
+      message: userMessageFor("FRAME_MISMATCH"),
+    },
+    {
+      name: "timeout",
+      next: { kind: "idle" } as TransferState,
+      message: "読取期限を過ぎたため破棄しました。",
+    },
+  ])("ends a batch when a frame add returns $name", async ({ next, message }) => {
+    const session = new MultipartScanSession(5)
+    vi.spyOn(session, "state").mockReturnValue({ kind: "idle" })
+    vi.spyOn(session, "add").mockResolvedValue(next)
+    decodeQrImageFile.mockResolvedValue("OCF2:frame")
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        multipart={{ session, onComplete: vi.fn() }}
+        imageImport
+      />,
+    )
+
+    await user.upload(screen.getByLabelText("QR画像ファイル"), [
+      imageFile("terminal.png"),
+      imageFile("later.png"),
+    ])
+
+    expect(await screen.findByText(new RegExp(message))).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /画像 2 件中: 取り込み 0、フレーム受理 0、失敗 1、未処理 1。/,
+      ),
+    ).toBeInTheDocument()
+    expect(decodeQrImageFile).toHaveBeenCalledOnce()
+  })
+
+  it("queues an image frame behind a pending camera frame after close", async () => {
+    const firstAdd = deferred<TransferState>()
+    const secondAdd = deferred<TransferState>()
+    const assemblerAdd = vi
+      .spyOn(FakeTransferAssembler.prototype, "add")
+      .mockImplementationOnce(() => firstAdd.promise)
+      .mockImplementationOnce(() => secondAdd.promise)
+    const session = new MultipartScanSession(5)
+    decodeQrImageFile.mockResolvedValueOnce("OCF2:image")
+    const onComplete = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        multipart={{ session, onComplete }}
+        imageImport
+      />,
+    )
+    await user.click(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    )
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    act(() => emitScannedPayload("OCF2:camera"))
+    await waitFor(() => expect(assemblerAdd).toHaveBeenCalledOnce())
+    await user.click(screen.getByRole("button", { name: "Close" }))
+
+    await user.upload(
+      screen.getByLabelText("QR画像ファイル"),
+      imageFile("image.png"),
+    )
+    await waitFor(() => expect(decodeQrImageFile).toHaveBeenCalledOnce())
+    expect(assemblerAdd).toHaveBeenCalledOnce()
+
+    await act(async () =>
+      firstAdd.resolve({
+        kind: "collecting",
+        transferId: Uint8Array.of(1),
+        artifactType: "pq-message",
+        frameCount: 2,
+        receivedIndexes: new Set([0]),
+        missingIndexes: [1],
+        expiresAt: Date.now() + 60_000,
+      }),
+    )
+    await waitFor(() => expect(assemblerAdd).toHaveBeenCalledTimes(2))
+    await act(async () =>
+      secondAdd.resolve({
+        kind: "collecting",
+        transferId: Uint8Array.of(1),
+        artifactType: "pq-message",
+        frameCount: 2,
+        receivedIndexes: new Set([0, 1]),
+        missingIndexes: [],
+        expiresAt: Date.now() + 60_000,
+      }),
+    )
+
+    expect(
+      await screen.findByText(/フレーム受理 1/),
+    ).toBeInTheDocument()
+    expect(onComplete).not.toHaveBeenCalled()
+    assemblerAdd.mockRestore()
+  })
+
+  it("does not deliver or publish after an image batch is unmounted", async () => {
+    const decoded = deferred<string>()
+    decodeQrImageFile.mockReturnValueOnce(decoded.promise)
+    const onSingleScan = vi.fn()
+    const user = userEvent.setup()
+    const view = render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={onSingleScan}
+        imageImport
+      />,
+    )
+    await user.upload(
+      screen.getByLabelText("QR画像ファイル"),
+      imageFile("pending.png"),
+    )
+    await waitFor(() => expect(decodeQrImageFile).toHaveBeenCalledOnce())
+
+    view.unmount()
+    await act(async () => decoded.resolve("OCM1:late"))
+
+    expect(onSingleScan).not.toHaveBeenCalled()
+    expect(screen.queryByText(/画像 1 件中/)).not.toBeInTheDocument()
   })
 
   it.each([
@@ -391,7 +895,7 @@ describe("QrScannerModal", () => {
     ).toBeInTheDocument()
   })
 
-  it("does not let an old generation success close a reopened modal", async () => {
+  it("keeps the trigger locked until a manually closed delivery settles", async () => {
     const firstDelivery = deferred<void>()
     const onSingleScan = vi
       .fn<() => void | Promise<void>>()
@@ -417,10 +921,13 @@ describe("QrScannerModal", () => {
       screen.queryByRole("button", { name: "カメラを起動" }),
     ).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Close" }))
+    expect(trigger).toBeDisabled()
+
+    await act(async () => firstDelivery.resolve())
+    await waitFor(() => expect(trigger).toBeEnabled())
     await user.click(trigger)
     await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
 
-    await act(async () => firstDelivery.resolve())
     expect(
       screen.getByRole("dialog", { name: "QRコードを読み取る" }),
     ).toBeInTheDocument()
@@ -497,7 +1004,7 @@ describe("QrScannerModal", () => {
     ).toHaveFocus()
   })
 
-  it("claims a completion that appears after close and announces SHA-256 success", async () => {
+  it("awaits a completion that appears after close before announcing success", async () => {
     vi.useFakeTimers()
     const session = new MultipartScanSession(5)
     const pendingAdd = deferred<TransferState>()
@@ -512,7 +1019,8 @@ describe("QrScannerModal", () => {
     }
     vi.spyOn(session, "state").mockImplementation(() => state)
     vi.spyOn(session, "add").mockReturnValueOnce(pendingAdd.promise)
-    const onComplete = vi.fn()
+    const delivery = deferred<void>()
+    const onComplete = vi.fn(() => delivery.promise)
     render(
       <QrScannerModal
         triggerLabel="暗号文QRを読み取る"
@@ -547,6 +1055,17 @@ describe("QrScannerModal", () => {
       artifactType: "pq-message",
       artifactBytes: Uint8Array.of(2),
     })
+    expect(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    ).toBeDisabled()
+    expect(
+      screen.queryByText(
+        "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+      ),
+    ).not.toBeInTheDocument()
+
+    await act(async () => delivery.resolve())
+
     expect(
       screen.getByText(
         "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",

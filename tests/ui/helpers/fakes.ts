@@ -427,6 +427,7 @@ interface FakeCameraDiagnostic {
 }
 
 export const scannerStop = vi.fn()
+export const decodeQrImageFile = vi.fn(async (file: Blob) => file.text())
 let scanTextCallback: ((payload: string) => void) | null = null
 let scanErrorCallback:
   | ((error: FakeAppError, diagnostic: FakeCameraDiagnostic) => void)

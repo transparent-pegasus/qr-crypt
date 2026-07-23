@@ -92,6 +92,7 @@ vi.mock("@/qr/export-image", () => ({
   copyTextToClipboard: fakes.copyTextToClipboard,
 }))
 vi.mock("@/qr/decode", () => ({
+  decodeQrImageFile: fakes.decodeQrImageFile,
   startQrScan: fakes.startQrScan,
 }))
 vi.mock("@/qr/multipart/split", () => ({

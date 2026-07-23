@@ -9,6 +9,8 @@ import { TransferAssembler } from "@/qr/multipart/assemble"
 export class MultipartScanSession {
   readonly #assembler: TransferAssembler
   #completionClaimed = false
+  #addQueue: Promise<void> = Promise.resolve()
+  #addGeneration = 0
 
   constructor(transferTimeoutMinutes: number, now?: () => number) {
     this.#assembler = new TransferAssembler({
@@ -18,7 +20,17 @@ export class MultipartScanSession {
   }
 
   add(framePayload: string): Promise<TransferState> {
-    return this.#assembler.add(framePayload)
+    const generation = this.#addGeneration
+    const operation = this.#addQueue.then(() =>
+      generation === this.#addGeneration
+        ? this.#assembler.add(framePayload)
+        : this.#assembler.state(),
+    )
+    this.#addQueue = operation.then(
+      () => undefined,
+      () => undefined,
+    )
+    return operation
   }
 
   state(): TransferState {
@@ -26,6 +38,7 @@ export class MultipartScanSession {
   }
 
   discard(): void {
+    this.#addGeneration += 1
     this.#assembler.discard()
     this.#completionClaimed = false
   }

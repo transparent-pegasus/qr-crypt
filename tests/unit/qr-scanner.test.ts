@@ -29,11 +29,16 @@ const scanner = vi.hoisted(() => ({
   callbacks: [] as ScannerCallback[],
   decodePlans: [] as Array<() => Promise<MockControls>>,
   decode: vi.fn(),
+  imageDecode: vi.fn(),
   controlsStop: vi.fn(),
 }))
 
 vi.mock("@zxing/browser", () => ({
   BrowserQRCodeReader: class {
+    decodeFromImageUrl(url: string): Promise<MockResult> {
+      return scanner.imageDecode(url)
+    }
+
     decodeFromVideoElement(
       video: HTMLVideoElement,
       callback: ScannerCallback,
@@ -50,9 +55,13 @@ vi.mock("@zxing/browser", () => ({
 import {
   CAMERA_FRAME_READY_TIMEOUT_MS,
   CAMERA_START_TIMEOUT_MS,
+  decodeQrImageFile,
   shouldRestartQrScanOnVisibility,
   startQrScan,
 } from "@/qr/decode"
+import { MultipartScanSession } from "@/features/multipart-scan-session"
+import { TransferAssembler } from "@/qr/multipart/assemble"
+import type { TransferState } from "@/qr/multipart/transfer-state"
 
 interface Deferred<T> {
   promise: Promise<T>
@@ -141,6 +150,7 @@ beforeEach(() => {
   scanner.callbacks.splice(0)
   scanner.decodePlans.splice(0)
   scanner.decode.mockReset()
+  scanner.imageDecode.mockReset()
   scanner.controlsStop.mockReset()
   getUserMedia.mockReset()
   Object.defineProperty(navigator, "mediaDevices", {
@@ -151,6 +161,47 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe("QR image file decode", () => {
+  it("returns the decoded text and revokes the object URL", async () => {
+    const createObjectURL = vi.fn(() => "blob:qr-success")
+    const revokeObjectURL = vi.fn()
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: createObjectURL },
+      revokeObjectURL: { configurable: true, value: revokeObjectURL },
+    })
+    scanner.imageDecode.mockResolvedValue({
+      getText: () => "OCM1:decoded",
+    })
+    const file = new Blob(["image"], { type: "image/png" })
+
+    await expect(decodeQrImageFile(file)).resolves.toBe("OCM1:decoded")
+
+    expect(createObjectURL).toHaveBeenCalledWith(file)
+    expect(scanner.imageDecode).toHaveBeenCalledWith("blob:qr-success")
+    expect(revokeObjectURL).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:qr-success")
+  })
+
+  it("maps image decoder failures and still revokes the object URL", async () => {
+    const createObjectURL = vi.fn(() => "blob:qr-failure")
+    const revokeObjectURL = vi.fn()
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: createObjectURL },
+      revokeObjectURL: { configurable: true, value: revokeObjectURL },
+    })
+    scanner.imageDecode.mockRejectedValue(new Error("decoder internals"))
+
+    await expect(
+      decodeQrImageFile(new Blob(["broken"], { type: "image/png" })),
+    ).rejects.toMatchObject({
+      code: "INVALID_QR_PAYLOAD",
+      message: "INVALID_QR_PAYLOAD",
+    })
+    expect(revokeObjectURL).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:qr-failure")
+  })
 })
 
 describe("camera scanner lifecycle", () => {
@@ -739,5 +790,67 @@ describe("camera scanner lifecycle", () => {
     expect(scanner.controlsStop).toHaveBeenCalledTimes(1)
     expect(track.stop).toHaveBeenCalledTimes(1)
     expect(video.srcObject).toBeNull()
+  })
+})
+
+describe("MultipartScanSession", () => {
+  it("serializes concurrent add calls on one session", async () => {
+    const first = deferred<TransferState>()
+    const second = deferred<TransferState>()
+    const pending = [first, second]
+    let active = 0
+    let maximumActive = 0
+    const add = vi
+      .spyOn(TransferAssembler.prototype, "add")
+      .mockImplementation(async () => {
+        active += 1
+        maximumActive = Math.max(maximumActive, active)
+        const operation = pending.shift()
+        try {
+          return await operation!.promise
+        } finally {
+          active -= 1
+        }
+      })
+    const session = new MultipartScanSession(5)
+
+    const firstResult = session.add("OCF2:first")
+    const secondResult = session.add("OCF2:second")
+    await flushMicrotasks()
+
+    expect(add).toHaveBeenCalledOnce()
+    expect(maximumActive).toBe(1)
+
+    first.resolve({ kind: "idle" })
+    await expect(firstResult).resolves.toEqual({ kind: "idle" })
+    await flushMicrotasks()
+    expect(add).toHaveBeenCalledTimes(2)
+    expect(maximumActive).toBe(1)
+
+    second.resolve({ kind: "idle" })
+    await expect(secondResult).resolves.toEqual({ kind: "idle" })
+    expect(maximumActive).toBe(1)
+    add.mockRestore()
+  })
+
+  it("invalidates queued frames when the session is discarded", async () => {
+    const pending = deferred<TransferState>()
+    const add = vi
+      .spyOn(TransferAssembler.prototype, "add")
+      .mockImplementationOnce(() => pending.promise)
+    const session = new MultipartScanSession(5)
+
+    const activeResult = session.add("OCF2:active")
+    const queuedResult = session.add("OCF2:queued")
+    await flushMicrotasks()
+    expect(add).toHaveBeenCalledOnce()
+
+    session.discard()
+    pending.resolve({ kind: "idle" })
+
+    await expect(activeResult).resolves.toEqual({ kind: "idle" })
+    await expect(queuedResult).resolves.toEqual({ kind: "idle" })
+    expect(add).toHaveBeenCalledOnce()
+    add.mockRestore()
   })
 })

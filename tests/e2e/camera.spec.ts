@@ -1,9 +1,10 @@
 import { expect as baseExpect, test } from "@playwright/test"
+import * as QRCode from "qrcode"
 import { openOfflineApp } from "./helpers"
 
 const expect = baseExpect.configure({ timeout: 30_000 })
 
-test("fake camera をモーダルで停止し、閉じると全 track を停止する", async ({
+test("fake camera を破棄・再起動し、閉じると全 track を停止する", async ({
   context,
   page,
 }) => {
@@ -79,9 +80,11 @@ test("fake camera をモーダルで停止し、閉じると全 track を停止�
     )
     .toBe(true)
 
-  await page.getByRole("button", { name: "カメラを停止", exact: true }).click()
+  await page
+    .getByRole("button", { name: "読取状態を破棄", exact: true })
+    .click()
   await expect(
-    page.getByRole("button", { name: "カメラを再起動", exact: true }),
+    page.getByRole("button", { name: "カメラを起動", exact: true }),
   ).toBeVisible()
   await expect
     .poll(() =>
@@ -101,7 +104,7 @@ test("fake camera をモーダルで停止し、閉じると全 track を停止�
     .toBe(true)
 
   await page
-    .getByRole("button", { name: "カメラを再起動", exact: true })
+    .getByRole("button", { name: "カメラを起動", exact: true })
     .click()
   await expect
     .poll(() =>
@@ -148,4 +151,30 @@ test("fake camera をモーダルで停止し、閉じると全 track を停止�
     ).__cameraProbe
     probe?.restorePlay()
   })
+})
+
+test("単発 QR の PNG ファイルを復号入力へ取り込む", async ({
+  context,
+  page,
+}) => {
+  const payload = "OCM1:image-import-e2e"
+  const png = await QRCode.toBuffer(payload, {
+    errorCorrectionLevel: "M",
+    margin: 4,
+    width: 512,
+  })
+
+  await openOfflineApp(page, context, "/encrypt")
+  await page.getByRole("tab", { name: "復号", exact: true }).click()
+  await page.getByLabel("QR画像ファイル", { exact: true }).setInputFiles({
+    name: "ciphertext.png",
+    mimeType: "image/png",
+    buffer: png,
+  })
+
+  await expect(page.getByLabel("暗号文ペイロード", { exact: true })).toHaveValue(
+    payload,
+  )
+  await expect(page.getByText(/画像 1 件中: 取り込み 1/)).toBeVisible()
+  await expect(page.getByRole("dialog")).toHaveCount(0)
 })

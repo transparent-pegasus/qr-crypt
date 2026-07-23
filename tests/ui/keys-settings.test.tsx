@@ -43,6 +43,22 @@ describe("key management v2", () => {
       expect(await screen.findByRole("tab", { name })).toBeInTheDocument()
     }
     expect(screen.getAllByRole("tab")).toHaveLength(3)
+    expect(screen.getByRole("tablist")).toHaveClass(
+      "grid",
+      "h-11",
+      "w-full",
+      "grid-cols-3",
+    )
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab).toHaveClass(
+        "h-9",
+        "cursor-pointer",
+        "px-1",
+        "text-sm",
+      )
+      await user.click(tab)
+      expect(screen.getByRole("tabpanel")).toHaveClass("mt-6")
+    }
     expect(screen.queryByRole("tab", { name: "鍵を読み取る" })).not.toBeInTheDocument()
     expect(screen.queryByRole("tab", { name: "受信公開鍵" })).not.toBeInTheDocument()
     expect(screen.queryByRole("tab", { name: "署名公開鍵" })).not.toBeInTheDocument()

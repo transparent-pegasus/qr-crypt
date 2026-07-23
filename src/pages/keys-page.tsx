@@ -712,13 +712,28 @@ export function KeysPage() {
       )}
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as KeysTab)}>
-        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 p-1">
-          <TabsTrigger value="symmetric">共通鍵</TabsTrigger>
-          <TabsTrigger value="identity">ポスト量子ID</TabsTrigger>
-          <TabsTrigger value="bundle">相手の公開鍵</TabsTrigger>
+        <TabsList className="grid h-11 w-full grid-cols-3">
+          <TabsTrigger
+            value="symmetric"
+            className="h-9 cursor-pointer px-1 text-sm"
+          >
+            共通鍵
+          </TabsTrigger>
+          <TabsTrigger
+            value="identity"
+            className="h-9 cursor-pointer px-1 text-sm"
+          >
+            ポスト量子ID
+          </TabsTrigger>
+          <TabsTrigger
+            value="bundle"
+            className="h-9 cursor-pointer px-1 text-sm"
+          >
+            相手の公開鍵
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="symmetric" className="space-y-4">
+        <TabsContent value="symmetric" className="mt-6 space-y-4">
           <CreateField
             label="共通鍵名"
             value={keyName}
@@ -756,7 +771,7 @@ export function KeysPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="identity" className="space-y-4">
+        <TabsContent value="identity" className="mt-6 space-y-4">
           <Alert>
             <ShieldCheck aria-hidden="true" className="size-4" />
             <AlertTitle>experimental・未独立監査</AlertTitle>
@@ -786,7 +801,7 @@ export function KeysPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="bundle" className="space-y-4">
+        <TabsContent value="bundle" className="mt-6 space-y-4">
           <QrScannerModal
             triggerLabel="鍵QRを読み取る"
             singleTargets={["symmetric-key"]}
