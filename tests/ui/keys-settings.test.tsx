@@ -170,9 +170,7 @@ describe("key management v2", () => {
     const user = userEvent.setup()
     await renderApp("/keys")
     await user.click(await screen.findByRole("tab", { name: "ポスト量子ID" }))
-    expect(
-      screen.getByText(/maximum（ML-KEM-1024 \/ ML-DSA-87）のみです/),
-    ).toBeInTheDocument()
+    expect(screen.getByText("experimental・未独立監査")).toBeInTheDocument()
     expect(screen.queryByText(/balanced/i)).not.toBeInTheDocument()
     expect(screen.getByText("3".repeat(64))).toBeInTheDocument()
     expect(screen.getByText("1".repeat(64))).toBeInTheDocument()

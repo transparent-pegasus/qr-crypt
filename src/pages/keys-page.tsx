@@ -765,9 +765,6 @@ export function KeysPage() {
           <Alert>
             <ShieldCheck aria-hidden="true" className="size-4" />
             <AlertTitle>experimental・未独立監査</AlertTitle>
-            <AlertDescription>
-              本リリースは maximum（ML-KEM-1024 / ML-DSA-87）のみです。
-            </AlertDescription>
           </Alert>
           <CreateField
             label="ポスト量子ID名"
