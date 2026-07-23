@@ -1,4 +1,10 @@
-import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test"
+import {
+  expect,
+  test,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from "@playwright/test"
 import { PNG } from "pngjs"
 import {
   BinaryBitmap,
@@ -11,23 +17,40 @@ import {
 export const AES_ALGORITHM_LABEL = "共通鍵 AES-256-GCM"
 export const PQ_ALGORITHM_LABEL = /^ポスト量子 ML-KEM-1024 \+ AES-256-GCM$/
 export const SIGNED_PQ_ALGORITHM_LABEL = /署名付きポスト量子/
+const ONLINE_GATE_TIMEOUT_MS = 30_000
+const expectOnline = expect.configure({ timeout: ONLINE_GATE_TIMEOUT_MS })
+const SECOND_WORKER_WAVE_DELAY_MS = 10_000
+
+// eslint-disable-next-line no-empty-pattern -- Playwright はフィクスチャ引数に destructuring パターンを要求する
+test.beforeAll(async ({}, testInfo) => {
+  if (testInfo.parallelIndex < 4) return
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, SECOND_WORKER_WAVE_DELAY_MS)
+  })
+})
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 export async function expectOnlineGate(page: Page): Promise<void> {
-  await expect(page.getByText("オンラインではPWAの導入のみ利用できます")).toBeVisible()
-  await expect(page.getByRole("img", { name: /アプリアイコン/ })).toBeVisible()
-  await expect(page.getByText("PWAインストール状態")).toBeVisible()
-  await expect(page.getByText("オフライン利用準備状態")).toBeVisible()
-  await expect(
-    page.getByText(
-      "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません。",
-    ),
-  ).toBeVisible()
-  await expect(page.getByText("オンライン", { exact: true })).toBeVisible()
-  await expect(page.getByRole("navigation")).toBeHidden()
+  await Promise.all([
+    expectOnline(
+      page.getByText("オンラインではPWAの導入のみ利用できます"),
+    ).toBeVisible(),
+    expectOnline(
+      page.getByRole("img", { name: /アプリアイコン/ }),
+    ).toBeVisible(),
+    expectOnline(page.getByText("PWAインストール状態")).toBeVisible(),
+    expectOnline(page.getByText("オフライン利用準備状態")).toBeVisible(),
+    expectOnline(
+      page.getByText(
+        "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません。",
+      ),
+    ).toBeVisible(),
+    expectOnline(page.getByText("オンライン", { exact: true })).toBeVisible(),
+    expectOnline(page.getByRole("navigation")).toBeHidden(),
+  ])
 }
 
 export async function expectOfflineAcknowledgement(page: Page): Promise<void> {

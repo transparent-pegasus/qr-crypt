@@ -17,7 +17,7 @@ import { toast } from "sonner"
 import { useFeatureSupport, useSensitiveSession } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
 import { QrDisplay } from "@/components/qr-display"
-import { QrScannerPanel } from "@/components/qr-scanner-panel"
+import { QrScannerModal } from "@/components/qr-scanner-panel"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
@@ -122,7 +122,7 @@ import {
 } from "@/storage/pq-identity-repository"
 import { saveQrArtifact } from "@/storage/qr-repository"
 
-type KeysTab = "symmetric" | "identity" | "bundle" | "scan"
+type KeysTab = "symmetric" | "identity" | "bundle"
 
 interface FramedQrSession {
   title: string
@@ -607,8 +607,6 @@ export function KeysPage() {
     setError(null)
     try {
       await importDecoded(decodePayload(payload))
-    } catch (caught) {
-      setError(toAppError(caught, "INVALID_QR_PAYLOAD").userMessage)
     } finally {
       setBusy(false)
     }
@@ -718,7 +716,6 @@ export function KeysPage() {
           <TabsTrigger value="symmetric">共通鍵</TabsTrigger>
           <TabsTrigger value="identity">ポスト量子ID</TabsTrigger>
           <TabsTrigger value="bundle">相手の公開鍵</TabsTrigger>
-          <TabsTrigger value="scan">鍵を読み取る</TabsTrigger>
         </TabsList>
 
         <TabsContent value="symmetric" className="space-y-4">
@@ -790,15 +787,17 @@ export function KeysPage() {
         </TabsContent>
 
         <TabsContent value="bundle" className="space-y-4">
-          <BundleList
-            bundles={bundles}
-            busy={busy}
-            refresh={refreshPq}
-            setError={setError}
+          <QrScannerModal
+            triggerLabel="鍵QRを読み取る"
+            singleTargets={["symmetric-key"]}
+            cameraAvailable={camera}
+            title="鍵QRを読み取る"
+            onSingleScan={(_target, payload) => importScannedPayload(payload)}
+            multipart={{
+              session: scanSession,
+              onComplete: (completion) => handleCompletedArtifact(completion),
+            }}
           />
-        </TabsContent>
-
-        <TabsContent value="scan" className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="key-payload">鍵ペイロード</Label>
             <Textarea
@@ -818,16 +817,6 @@ export function KeysPage() {
               鍵を読み取る
             </Button>
           </div>
-          <QrScannerPanel
-            singleTargets={["symmetric-key"]}
-            cameraAvailable={camera}
-            title="鍵QRを読み取る"
-            onSingleScan={(_target, payload) => importScannedPayload(payload)}
-            multipart={{
-              session: scanSession,
-              onComplete: (completion) => handleCompletedArtifact(completion),
-            }}
-          />
           {singleKeyRead && (
             <Alert>
               <CheckCircle2 aria-hidden="true" className="size-4" />
@@ -846,6 +835,12 @@ export function KeysPage() {
               </AlertDescription>
             </Alert>
           )}
+          <BundleList
+            bundles={bundles}
+            busy={busy}
+            refresh={refreshPq}
+            setError={setError}
+          />
         </TabsContent>
       </Tabs>
 

@@ -36,12 +36,14 @@ describe("key management v2", () => {
     resetUi()
   })
 
-  it("shows four tabs, hides legacy RSA keys, and provides their deletion route", async () => {
+  it("shows three tabs, hides legacy RSA keys, and provides their deletion route", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    for (const name of ["共通鍵", "ポスト量子ID", "相手の公開鍵", "鍵を読み取る"]) {
+    for (const name of ["共通鍵", "ポスト量子ID", "相手の公開鍵"]) {
       expect(await screen.findByRole("tab", { name })).toBeInTheDocument()
     }
+    expect(screen.getAllByRole("tab")).toHaveLength(3)
+    expect(screen.queryByRole("tab", { name: "鍵を読み取る" })).not.toBeInTheDocument()
     expect(screen.queryByRole("tab", { name: "受信公開鍵" })).not.toBeInTheDocument()
     expect(screen.queryByRole("tab", { name: "署名公開鍵" })).not.toBeInTheDocument()
     expect(
@@ -57,7 +59,7 @@ describe("key management v2", () => {
     const user = userEvent.setup()
     const originalCount = fakeBundles.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "鍵を読み取る" }))
+    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
     await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:fake")
     await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
 
@@ -83,7 +85,7 @@ describe("key management v2", () => {
   it("confers fingerprint-confirmed trust only after the explicit checkbox", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "鍵を読み取る" }))
+    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
     await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:fake")
     await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
     const dialog = await screen.findByRole("dialog", {
@@ -117,7 +119,7 @@ describe("key management v2", () => {
     encodePublicIdentityBundleV2(legacyBundle)
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "鍵を読み取る" }))
+    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
     await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:legacy-balanced")
     await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
 
@@ -149,7 +151,7 @@ describe("key management v2", () => {
     }
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "鍵を読み取る" }))
+    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
     const input = screen.getByLabelText("鍵ペイロード")
 
     encodeKemPublicKeyEnvelopeV2(legacyKem)
@@ -247,9 +249,9 @@ describe("key management v2", () => {
     const user = userEvent.setup()
     const originalCount = fakeKeys.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "鍵を読み取る" }))
+    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
     expect(startQrScan).not.toHaveBeenCalled()
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "鍵QRを読み取る" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     await act(async () => emitScannedPayload("OCK1:imported-key-000001"))
 

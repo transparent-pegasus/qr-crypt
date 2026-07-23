@@ -1,12 +1,31 @@
 import "./helpers/module-mocks"
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { StrictMode, useState } from "react"
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { QrScannerPanel } from "@/components/qr-scanner-panel"
+import {
+  QrScannerModal,
+  QrScannerPanel,
+} from "@/components/qr-scanner-panel"
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { AppError } from "@/crypto/errors"
+import { MultipartScanSession } from "@/features/multipart-scan-session"
 import type { CameraDiagnostic, QrScanHandle } from "@/qr/decode"
+import type { TransferState } from "@/qr/multipart/transfer-state"
 import {
   emitScannedPayload,
+  multipartPayload,
   scannerStop,
   startQrScan,
 } from "./helpers/fakes"
@@ -22,12 +41,15 @@ function setVisibility(state: DocumentVisibilityState): void {
 function deferred<T>(): {
   promise: Promise<T>
   resolve: (value: T) => void
+  reject: (reason: unknown) => void
 } {
   let resolve: (value: T) => void = () => undefined
-  const promise = new Promise<T>((settle) => {
+  let reject: (reason: unknown) => void = () => undefined
+  const promise = new Promise<T>((settle, fail) => {
     resolve = settle
+    reject = fail
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 
 describe("QrScannerPanel single scan and camera lifecycle", () => {
@@ -66,6 +88,42 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     expect(onSingleScan).toHaveBeenCalledOnce()
     expect(onSingleScan).toHaveBeenCalledWith("message", "OCM1:message")
     expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+  })
+
+  it("starts automatically only when autoStart is enabled", async () => {
+    const view = render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        autoStart
+      />,
+    )
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    view.unmount()
+    resetUi()
+    render(
+      <QrScannerPanel singleTargets={["message"]} onSingleScan={vi.fn()} />,
+    )
+    await act(async () => Promise.resolve())
+    expect(startQrScan).not.toHaveBeenCalled()
+  })
+
+  it("leaves exactly one live auto-start run under StrictMode", async () => {
+    render(
+      <StrictMode>
+        <QrScannerPanel
+          singleTargets={["message"]}
+          onSingleScan={vi.fn()}
+          autoStart
+        />
+      </StrictMode>,
+    )
+
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
+    expect(startQrScan.mock.calls[0]?.[3]?.signal?.aborted).toBe(true)
+    expect(startQrScan.mock.calls[1]?.[3]?.signal?.aborted).toBe(false)
+    expect(scannerStop).toHaveBeenCalledOnce()
   })
 
   it("keeps scanning after target and multipart rejections", async () => {
@@ -232,5 +290,336 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
 
     expect(signal?.aborted).toBe(true)
     expect(scannerStop).toHaveBeenCalledOnce()
+  })
+})
+
+describe("QrScannerModal", () => {
+  beforeEach(() => {
+    setVisibility("visible")
+    resetUi()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    setVisibility("visible")
+    resetUi()
+  })
+
+  it("opens with content focus, auto-starts, and stops immediately on manual close", async () => {
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        title="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+    const trigger = screen.getByRole("button", {
+      name: "暗号文QRを読み取る",
+    })
+    await user.click(trigger)
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "暗号文QRを読み取る",
+    })
+    expect(dialog).toHaveFocus()
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    expect(
+      screen.getByText(
+        "カメラ画像は保存されません。閉じる・停止ボタン・画面離脱で停止します。",
+      ),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Close" }))
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    expect(scannerStop).toHaveBeenCalledOnce()
+    expect(trigger).toHaveFocus()
+  })
+
+  it("disables the trigger and shows guidance when the camera is unavailable", () => {
+    render(
+      <QrScannerModal
+        triggerLabel="鍵QRを読み取る"
+        singleTargets={["symmetric-key"]}
+        onSingleScan={vi.fn()}
+        cameraAvailable={false}
+      />,
+    )
+
+    expect(
+      screen.getByRole("button", { name: "鍵QRを読み取る" }),
+    ).toBeDisabled()
+    expect(
+      screen.getByText(
+        "この端末ではカメラを利用できません。ペイロードを貼り付けてください。",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ["synchronous throw", () => {
+      throw new AppError("UNSUPPORTED_ALGORITHM")
+    }],
+    [
+      "asynchronous rejection",
+      () => Promise.reject(new AppError("UNSUPPORTED_ALGORITHM")),
+    ],
+  ])("keeps the modal open for a %s delivery failure", async (_name, callback) => {
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={callback}
+      />,
+    )
+    await user.click(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    )
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    await act(async () => emitScannedPayload("OCM1:message"))
+
+    expect(
+      await screen.findByText(
+        new AppError("UNSUPPORTED_ALGORITHM").userMessage,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("dialog", { name: "QRコードを読み取る" }),
+    ).toBeInTheDocument()
+  })
+
+  it("does not let an old generation success close a reopened modal", async () => {
+    const firstDelivery = deferred<void>()
+    const onSingleScan = vi
+      .fn<() => void | Promise<void>>()
+      .mockReturnValueOnce(firstDelivery.promise)
+      .mockReturnValueOnce(undefined)
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={onSingleScan}
+      />,
+    )
+    const trigger = screen.getByRole("button", {
+      name: "暗号文QRを読み取る",
+    })
+
+    await user.click(trigger)
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    act(() => emitScannedPayload("OCM1:first"))
+    expect(await screen.findByText("取り込み中です…")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "カメラを起動" }),
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Close" }))
+    await user.click(trigger)
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
+
+    await act(async () => firstDelivery.resolve())
+    expect(
+      screen.getByRole("dialog", { name: "QRコードを読み取る" }),
+    ).toBeInTheDocument()
+
+    await act(async () => emitScannedPayload("OCM1:second"))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "QRコードを読み取る" }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(onSingleScan).toHaveBeenCalledTimes(2)
+  })
+
+  it("surfaces a delivery failure that settles after manual close", async () => {
+    const delivery = deferred<void>()
+    const user = userEvent.setup()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={() => delivery.promise}
+      />,
+    )
+    await user.click(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    )
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    act(() => emitScannedPayload("OCM1:message"))
+    await screen.findByText("取り込み中です…")
+    await user.click(screen.getByRole("button", { name: "Close" }))
+
+    await act(async () =>
+      delivery.reject(new AppError("UNSUPPORTED_ALGORITHM")),
+    )
+    expect(
+      await screen.findByText(
+        new AppError("UNSUPPORTED_ALGORITHM").userMessage,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("does not steal focus from a follow-on dialog after automatic close", async () => {
+    function Harness() {
+      const [followOnOpen, setFollowOnOpen] = useState(false)
+      return (
+        <>
+          <QrScannerModal
+            triggerLabel="鍵QRを読み取る"
+            singleTargets={["symmetric-key"]}
+            onSingleScan={() => setFollowOnOpen(true)}
+          />
+          <Dialog open={followOnOpen} onOpenChange={setFollowOnOpen}>
+            <DialogContent>
+              <DialogTitle>共通鍵を取り込みます</DialogTitle>
+              <button type="button">保存確認</button>
+            </DialogContent>
+          </Dialog>
+        </>
+      )
+    }
+
+    const user = userEvent.setup()
+    render(<Harness />)
+    await user.click(screen.getByRole("button", { name: "鍵QRを読み取る" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    await act(async () => emitScannedPayload("OCK1:key"))
+
+    const followOn = await screen.findByRole("dialog", {
+      name: "共通鍵を取り込みます",
+    })
+    expect(
+      within(followOn).getByRole("button", { name: "保存確認" }),
+    ).toHaveFocus()
+  })
+
+  it("claims a completion that appears after close and announces SHA-256 success", async () => {
+    vi.useFakeTimers()
+    const session = new MultipartScanSession(5)
+    const pendingAdd = deferred<TransferState>()
+    let state: TransferState = {
+      kind: "collecting",
+      transferId: Uint8Array.of(1),
+      artifactType: "pq-message",
+      frameCount: 2,
+      receivedIndexes: new Set([0]),
+      missingIndexes: [1],
+      expiresAt: Date.now() + 60_000,
+    }
+    vi.spyOn(session, "state").mockImplementation(() => state)
+    vi.spyOn(session, "add").mockReturnValueOnce(pendingAdd.promise)
+    const onComplete = vi.fn()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        multipart={{ session, onComplete }}
+      />,
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    act(() => emitScannedPayload("OCF2:last"))
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+
+    state = {
+      kind: "complete",
+      transferId: Uint8Array.of(1),
+      artifactType: "pq-message",
+      artifactBytes: Uint8Array.of(2),
+    }
+    await act(async () => {
+      pendingAdd.resolve(state)
+      await vi.advanceTimersByTimeAsync(1_000)
+    })
+
+    expect(onComplete).toHaveBeenCalledOnce()
+    expect(onComplete).toHaveBeenCalledWith({
+      artifactType: "pq-message",
+      artifactBytes: Uint8Array.of(2),
+    })
+    expect(
+      screen.getByText(
+        "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it("auto-closes after an open multipart completion and keeps its SHA-256 notice", async () => {
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    const onComplete = vi.fn()
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        multipart={{ session, onComplete }}
+      />,
+    )
+    await user.click(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    )
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
+    )
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "QRコードを読み取る" }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(onComplete).toHaveBeenCalledOnce()
+    expect(
+      screen.getByText(
+        "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+      ),
+    ).toBeInTheDocument()
+    await waitFor(() => expect(scannerStop).toHaveBeenCalledOnce())
+  })
+
+  it("announces a collecting session timeout while closed", async () => {
+    vi.useFakeTimers()
+    const session = new MultipartScanSession(5)
+    let state: TransferState = {
+      kind: "collecting",
+      transferId: Uint8Array.of(1),
+      artifactType: "pq-message",
+      frameCount: 3,
+      receivedIndexes: new Set([0]),
+      missingIndexes: [1, 2],
+      expiresAt: Date.now() + 60_000,
+    }
+    vi.spyOn(session, "state").mockImplementation(() => state)
+    render(
+      <QrScannerModal
+        triggerLabel="暗号文QRを読み取る"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        multipart={{ session, onComplete: vi.fn() }}
+      />,
+    )
+
+    expect(
+      screen.getByText("複数QR読取中: 受信 1 / 3"),
+    ).toBeInTheDocument()
+    state = { kind: "idle" }
+    await act(async () => vi.advanceTimersByTimeAsync(1_000))
+    expect(
+      screen.getByText(
+        "読取期限を過ぎたため、一時読取状態を破棄しました。",
+      ),
+    ).toBeInTheDocument()
   })
 })

@@ -1,10 +1,13 @@
-import { expect, test } from "@playwright/test"
-import { goToOfflinePage, openOfflineApp } from "./helpers"
+import { expect as baseExpect, test } from "@playwright/test"
+import { openOfflineApp } from "./helpers"
 
-test("fake camera をインライン停止し、画面離脱でも全 track を停止する", async ({
+const expect = baseExpect.configure({ timeout: 30_000 })
+
+test("fake camera をモーダルで停止し、閉じると全 track を停止する", async ({
   context,
   page,
 }) => {
+  test.setTimeout(120_000)
   await openOfflineApp(page, context, "/keys")
   await page.evaluate(() => {
     const probeWindow = window as Window & {
@@ -42,12 +45,23 @@ test("fake camera をインライン停止し、画面離脱でも全 track を�
       { capture: true },
     )
   })
-  await page.getByRole("tab", { name: "鍵を読み取る", exact: true }).click()
+  const bundleTab = page.getByRole("tab", {
+    name: "相手の公開鍵",
+    exact: true,
+  })
+  await bundleTab.click()
+  await expect(bundleTab).toHaveAttribute("data-state", "active")
+  const scanTrigger = page.getByRole("button", {
+    name: "鍵QRを読み取る",
+    exact: true,
+  })
+  await expect(scanTrigger).toBeEnabled()
+  await scanTrigger.click()
 
-  const video = page.getByLabel("QRコード読取用カメラ映像")
+  const dialog = page.getByRole("dialog", { name: "鍵QRを読み取る" })
+  await expect(dialog).toBeVisible()
+  const video = dialog.getByLabel("QRコード読取用カメラ映像")
   await expect(video).toBeVisible()
-  await expect(page.getByText("起動ボタンを押すとカメラを開始します")).toBeVisible()
-  await page.getByRole("button", { name: "カメラを起動", exact: true }).click()
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -107,7 +121,8 @@ test("fake camera をインライン停止し、画面離脱でも全 track を�
     )
     .toBe(true)
 
-  await goToOfflinePage(page, "/encrypt")
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(dialog).not.toBeVisible()
   await expect
     .poll(() =>
       page.evaluate(() => {

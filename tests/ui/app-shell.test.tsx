@@ -104,7 +104,10 @@ describe("app shell and feature gate", () => {
       detectFeatures: () => ({ ...fakeFeatures }),
     })
     await user.click(await screen.findByRole("tab", { name: "復号" }))
-    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeDisabled()
+    expect(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    ).toBeDisabled()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(
       screen.getByText(
         "この端末ではカメラを利用できません。ペイロードを貼り付けてください。",

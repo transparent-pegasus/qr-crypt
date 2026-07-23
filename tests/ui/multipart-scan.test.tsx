@@ -98,6 +98,29 @@ describe("QrScannerPanel multipart scan", () => {
     expect(onComplete).toHaveBeenCalledOnce()
   })
 
+  it("delivers an unclaimed complete session without starting the camera", async () => {
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    vi.spyOn(session, "state").mockReturnValue({
+      kind: "complete",
+      transferId: Uint8Array.of(1),
+      artifactType: "pq-message",
+      artifactBytes: Uint8Array.of(2),
+    })
+    const onComplete = vi.fn()
+    render(scanner(session, onComplete))
+
+    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
+    expect(onComplete).toHaveBeenCalledWith({
+      artifactType: "pq-message",
+      artifactBytes: Uint8Array.of(2),
+    })
+    expect(startQrScan).not.toHaveBeenCalled()
+    expect(scannerStop).not.toHaveBeenCalled()
+  })
+
   it("locks to multipart synchronously and rejects a competing single payload", async () => {
     const user = userEvent.setup()
     const session = new MultipartScanSession(5)
@@ -196,6 +219,35 @@ describe("QrScannerPanel multipart scan", () => {
       screen.getByText("全フレームのSHA-256整合性を確認しました。"),
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+  })
+
+  it("locks restart and discard while completion delivery is pending", async () => {
+    const delivery = deferred<void>()
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    const onComplete = vi.fn(() => delivery.promise)
+    render(scanner(session, onComplete))
+    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await screen.findByRole("button", { name: "カメラを停止" })
+
+    act(() => emitScannedPayload(multipartPayload("transfer-a", 0, 1)))
+    expect(await screen.findByText("取り込み中です…")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "カメラを起動" }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "読取状態を破棄" }),
+    ).toBeDisabled()
+
+    act(() => emitScannedPayload(multipartPayload("transfer-a", 0, 1)))
+    expect(onComplete).toHaveBeenCalledOnce()
+    expect(startQrScan).toHaveBeenCalledOnce()
+
+    await act(async () => delivery.resolve())
+    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(
+      screen.getByRole("button", { name: "読取状態を破棄" }),
+    ).toBeEnabled()
   })
 
   it("detects timeout, stops, and returns to idle", async () => {

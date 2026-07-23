@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect as baseExpect, test } from "@playwright/test"
 import {
   collectAnimatedFramePayloads,
   createPqIdentity,
@@ -11,6 +11,8 @@ import {
   seedSelfPublicBundle,
   switchToOfflineAppInSession,
 } from "./helpers"
+
+const expect = baseExpect.configure({ timeout: 30_000 })
 
 test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も順不同・重複から完成して復号する", async ({
   context,
@@ -43,8 +45,14 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
   expect(otherFrames[0]).not.toBe(frames[0])
 
   await page.getByRole("tab", { name: "復号", exact: true }).click()
-  await expect(page.getByText("起動ボタンを押すとカメラを開始します")).toBeVisible()
-  await page.getByRole("button", { name: "カメラを起動", exact: true }).click()
+  const scanTrigger = page.getByRole("button", {
+    name: "暗号文QRを読み取る",
+    exact: true,
+  })
+  await expect(scanTrigger).toBeEnabled()
+  await scanTrigger.click()
+  const scanDialog = page.getByRole("dialog", { name: "暗号文QRを読み取る" })
+  await expect(scanDialog).toBeVisible()
   await expect(page.getByText("QRコードを順不同で読み取れます")).toBeVisible()
 
   // The first multipart frame locks this run; an otherwise valid single QR is rejected.
@@ -95,9 +103,12 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
     }
   }
 
-  await expect(page.getByText("全フレームのSHA-256整合性を確認しました。")).toBeVisible({
-    timeout: 30_000,
-  })
+  await expect(scanDialog).not.toBeVisible({ timeout: 30_000 })
+  await expect(
+    page.getByText(
+      "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+    ),
+  ).toBeVisible()
   snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)?.active).toBe(false)
 

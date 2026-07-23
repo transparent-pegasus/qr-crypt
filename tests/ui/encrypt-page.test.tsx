@@ -137,9 +137,16 @@ describe("encrypt page v2", () => {
     await renderApp("/encrypt")
     await user.click(await screen.findByRole("tab", { name: "復号" }))
     expect(startQrScan).not.toHaveBeenCalled()
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+    )
     await waitFor(() => expect(startQrScan).toHaveBeenCalled())
     await act(async () => emitScannedPayload("OCM1:sym-key-00000001"))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "暗号文QRを読み取る" }),
+      ).not.toBeInTheDocument(),
+    )
     await user.click(await screen.findByRole("button", { name: "復号する" }))
     expect(await screen.findByText("復号済み平文")).toBeInTheDocument()
     expect(screen.getByText(/メモリー内だけに保持し、保存しません/)).toBeInTheDocument()

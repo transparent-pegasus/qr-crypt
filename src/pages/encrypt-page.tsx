@@ -32,7 +32,7 @@ import {
 } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
 import { QrDisplay } from "@/components/qr-display"
-import { QrScannerPanel } from "@/components/qr-scanner-panel"
+import { QrScannerModal } from "@/components/qr-scanner-panel"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -690,7 +690,8 @@ export function EncryptPage() {
             {busy ? "復号中…" : "復号する"}
           </Button>
 
-          <QrScannerPanel
+          <QrScannerModal
+            triggerLabel="暗号文QRを読み取る"
             singleTargets={["message"]}
             cameraAvailable={camera}
             title="暗号文QRを読み取る"
