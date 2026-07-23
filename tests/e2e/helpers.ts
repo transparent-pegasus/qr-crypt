@@ -9,7 +9,7 @@ import {
 } from "@zxing/library"
 
 export const AES_ALGORITHM_LABEL = "共通鍵 AES-256-GCM"
-export const PQ_ALGORITHM_LABEL = /^ポスト量子 ML-KEM-768 \+ AES-256-GCM$/
+export const PQ_ALGORITHM_LABEL = /^ポスト量子 ML-KEM-1024 \+ AES-256-GCM$/
 export const SIGNED_PQ_ALGORITHM_LABEL = /署名付きポスト量子/
 
 function escapeRegex(value: string): string {
@@ -186,12 +186,12 @@ export async function createPqIdentity(page: Page, name: string): Promise<void> 
   await goToOfflinePage(page, "/keys")
   await page.getByRole("tab", { name: "ポスト量子ID", exact: true }).click()
   await page.getByLabel("ポスト量子ID名", { exact: true }).fill(name)
-  await page.getByRole("button", { name: "balanced IDを作成", exact: true }).click()
+  await page.getByRole("button", { name: "maximum IDを作成", exact: true }).click()
   await expect(page.getByText(name, { exact: true }).first()).toBeVisible({
     timeout: 45_000,
   })
-  await expect(page.getByText("KEM ML-KEM-768", { exact: true })).toBeVisible()
-  await expect(page.getByText("Signing ML-DSA-65", { exact: true })).toBeVisible()
+  await expect(page.getByText("KEM ML-KEM-1024", { exact: true })).toBeVisible()
+  await expect(page.getByText("Signing ML-DSA-87", { exact: true })).toBeVisible()
 }
 
 export async function seedSelfPublicBundle(
@@ -533,7 +533,7 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
     const response = await route.fetch()
     const source = await response.text()
     const startQrScanPattern =
-      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=let [$\w]+=new [$\w]+,[$\w]+=[$\w]+\?\.once\?\?!0,[$\w]+=!1,[$\w]+=!1)/g
+      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=[\s\S]{0,1000}?video:\1,onError:\3,stoppedPromise:[$\w]+,resolveStopped:[$\w]+,phase:[`"']acquiring[`"'],stopped:!1,emitted:!1,errorReported:!1)/g
     const matches = [...source.matchAll(startQrScanPattern)]
     if (matches.length !== 1) {
       throw new Error("Production scanner bundle marker was not found")

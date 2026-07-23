@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react"
-import { Camera, ScanLine, X } from "lucide-react"
-import { startQrScan, type QrScanHandle } from "@/qr/decode"
+import { Camera, RefreshCw, ScanLine, X } from "lucide-react"
+import {
+  startQrScan,
+  type CameraDiagnostic,
+  type CameraScanState,
+  type QrScanHandle,
+} from "@/qr/decode"
 import type { AppError } from "@/crypto/errors"
 import { Button } from "@/components/ui/button"
 import {
@@ -56,7 +61,10 @@ export function QrScannerDialog({
   const videoRef = useRef<HTMLVideoElement>(null)
   const onScanRef = useRef(onScan)
   const onOpenChangeRef = useRef(onOpenChange)
+  const cameraStateRef = useRef<CameraScanState>("idle")
+  const [cameraGeneration, setCameraGeneration] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [diagnostic, setDiagnostic] = useState<CameraDiagnostic | null>(null)
   const [status, setStatus] = useState("カメラを準備しています…")
   useEffect(() => {
     onScanRef.current = onScan
@@ -66,13 +74,40 @@ export function QrScannerDialog({
   }, [onOpenChange])
 
   useEffect(() => {
+    if (!open || !cameraAvailable) return
+    const onVisibilityChange = () => {
+      const shouldRestart =
+        startQrScan.shouldRestartOnVisibility?.(
+          cameraStateRef.current,
+          document.visibilityState,
+        ) ??
+        (document.visibilityState === "visible" &&
+          (cameraStateRef.current === "failed" ||
+            cameraStateRef.current === "track-ended"))
+      if (!shouldRestart) {
+        return
+      }
+      // 同じ visible イベントが続いても、次の effect 開始前に二重再起動しない。
+      cameraStateRef.current = "acquiring"
+      setError(null)
+      setDiagnostic(null)
+      setCameraGeneration((value) => value + 1)
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange)
+  }, [cameraAvailable, open])
+
+  useEffect(() => {
     if (!open) return
     let cancelled = false
     let handle: QrScanHandle | null = null
+    let errorReported = false
     const abortController = new AbortController()
+    cameraStateRef.current = "acquiring"
     queueMicrotask(() => {
       if (!cancelled) {
         setError(null)
+        setDiagnostic(null)
         setStatus("カメラを準備しています…")
       }
     })
@@ -83,6 +118,7 @@ export function QrScannerDialog({
     }
 
     if (!cameraAvailable) {
+      cameraStateRef.current = "failed"
       queueMicrotask(() => {
         if (!cancelled) {
           setError("この端末ではカメラを利用できません。ペイロードを貼り付けてください。")
@@ -99,7 +135,9 @@ export function QrScannerDialog({
       if (cancelled) return
       const video = videoRef.current
       if (!video) {
+        cameraStateRef.current = "failed"
         setError("カメラ画面を準備できませんでした。ダイアログを開き直してください。")
+        setStatus("カメラ画面を準備できませんでした")
         return
       }
       void startQrScan(
@@ -117,9 +155,18 @@ export function QrScannerDialog({
           onScanRef.current(text)
           onOpenChangeRef.current(false)
         },
-        (scanError: AppError) => {
+        (scanError: AppError, cameraDiagnostic: CameraDiagnostic) => {
           if (cancelled) return
+          errorReported = true
+          cameraStateRef.current =
+            cameraDiagnostic.phase === "track-ended" ? "track-ended" : "failed"
           setError(scanError.userMessage)
+          setDiagnostic(
+            scanError.code === "CAMERA_PERMISSION_DENIED" ||
+              scanError.code === "CAMERA_NOT_AVAILABLE"
+              ? cameraDiagnostic
+              : null,
+          )
           setStatus("カメラでエラーが発生しました")
           stop()
         },
@@ -128,16 +175,21 @@ export function QrScannerDialog({
         .then((scanHandle) => {
           if (cancelled) {
             scanHandle.stop()
+          } else if (errorReported) {
+            scanHandle.stop()
           } else {
             handle = scanHandle
+            cameraStateRef.current = "playing"
             setStatus("QRコードを枠内に合わせてください")
           }
         })
         .catch(() => {
-          if (!cancelled) {
+          if (!cancelled && !errorReported) {
+            cameraStateRef.current = "failed"
             setError(
               "カメラを起動できませんでした。ブラウザーの設定でカメラを許可してください。",
             )
+            setDiagnostic(null)
             setStatus("カメラを起動できませんでした")
           }
         })
@@ -148,7 +200,7 @@ export function QrScannerDialog({
       abortController.abort()
       stop()
     }
-  }, [cameraAvailable, open, target])
+  }, [cameraAvailable, cameraGeneration, open, target])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -186,7 +238,31 @@ export function QrScannerDialog({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+        {diagnostic && (
+          <p
+            aria-label="カメラ診断"
+            className="font-mono text-xs text-muted-foreground"
+          >
+            診断: {diagnostic.name ?? "unknown"} @{diagnostic.phase}
+          </p>
+        )}
         <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 cursor-pointer focus-visible:ring-2"
+            disabled={!cameraAvailable}
+            onClick={() => {
+              cameraStateRef.current = "acquiring"
+              setError(null)
+              setDiagnostic(null)
+              setStatus("カメラを準備しています…")
+              setCameraGeneration((value) => value + 1)
+            }}
+          >
+            <RefreshCw aria-hidden="true" />
+            カメラを再起動
+          </Button>
           <Button
             type="button"
             variant="outline"

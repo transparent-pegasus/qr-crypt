@@ -3,10 +3,23 @@ import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MultipartScanPanel } from "@/components/multipart-scan-panel"
-import { userMessageFor } from "@/crypto/errors"
+import { AppError, userMessageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
+import type { CameraDiagnostic } from "@/qr/decode"
 import { emitScannedPayload, multipartPayload, startQrScan } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
+
+const reactHooks = vi.hoisted(() => ({
+  actualUseRef: null as typeof import("react").useRef | null,
+  useRef: vi.fn(),
+}))
+
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>()
+  reactHooks.actualUseRef = actual.useRef
+  reactHooks.useRef.mockImplementation(actual.useRef)
+  return { ...actual, useRef: reactHooks.useRef }
+})
 
 describe("multipart continuous scan UI", () => {
   beforeEach(resetUi)
@@ -102,5 +115,51 @@ describe("multipart continuous scan UI", () => {
       screen.getByText("読取期限を過ぎたため、一時読取状態を破棄しました。"),
     ).toBeInTheDocument()
     expect(screen.queryByLabelText("複数QR読取進捗")).not.toBeInTheDocument()
+  })
+
+  it("reports a missing video ref instead of returning silently", async () => {
+    reactHooks.useRef.mockImplementationOnce((initialValue: unknown) => {
+      const ref = reactHooks.actualUseRef!(initialValue)
+      Object.defineProperty(ref, "current", {
+        configurable: true,
+        get: () => null,
+        set: () => undefined,
+      })
+      return ref
+    })
+    const session = new MultipartScanSession(5)
+
+    render(<MultipartScanPanel session={session} onComplete={vi.fn()} />)
+
+    expect(
+      await screen.findByText(
+        "カメラ画面を準備できませんでした。ダイアログを開き直してください。",
+      ),
+    ).toBeInTheDocument()
+    expect(startQrScan).not.toHaveBeenCalled()
+  })
+
+  it("shows camera diagnostics and restarts only once for repeated visible events", async () => {
+    const cameraError = new AppError("CAMERA_NOT_AVAILABLE")
+    startQrScan.mockImplementationOnce(async (_video, _onText, onError) => {
+      const reportError = onError as unknown as (
+        error: AppError,
+        diagnostic: CameraDiagnostic,
+      ) => void
+      reportError(cameraError, { phase: "track-ended", name: null })
+      throw cameraError
+    })
+    const session = new MultipartScanSession(5)
+    render(<MultipartScanPanel session={session} onComplete={vi.fn()} />)
+
+    expect(await screen.findByText(cameraError.userMessage)).toBeInTheDocument()
+    expect(screen.getByText("診断: unknown @track-ended")).toBeInTheDocument()
+
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"))
+      document.dispatchEvent(new Event("visibilitychange"))
+    })
+
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
   })
 })

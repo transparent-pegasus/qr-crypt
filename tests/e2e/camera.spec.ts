@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 import { openOfflineApp } from "./helpers"
 
-test("fake camera の映像を再生しダイアログ終了時に全 track を停止する", async ({
+test("fake camera の起動中にダイアログを閉じると全 track を停止する", async ({
   context,
   page,
 }) => {
@@ -12,12 +12,25 @@ test("fake camera の映像を再生しダイアログ終了時に全 track を�
         playing: boolean
         hadLiveTrack: boolean
         stream: MediaStream | null
+        restorePlay: () => void
       }
     }
+    const originalPlay = HTMLMediaElement.prototype.play
     probeWindow.__cameraProbe = {
       playing: false,
       hadLiveTrack: false,
       stream: null,
+      restorePlay: () => {
+        HTMLMediaElement.prototype.play = originalPlay
+      },
+    }
+    HTMLMediaElement.prototype.play = function () {
+      const playing = originalPlay.call(this)
+      if (this.getAttribute("aria-label") !== "QRコード読取用カメラ映像") {
+        return playing
+      }
+      // 新実装の「stream 取得済み・scanner 起動待ち」を保ち、close 時の abort を検証する。
+      return playing.then(() => new Promise<void>(() => undefined))
     }
     document.addEventListener(
       "playing",
@@ -28,6 +41,7 @@ test("fake camera の映像を再生しダイアログ終了時に全 track を�
         const stream = video.srcObject
         if (!(stream instanceof MediaStream)) return
         probeWindow.__cameraProbe = {
+          ...probeWindow.__cameraProbe!,
           playing: true,
           hadLiveTrack: stream.getTracks().some((track) => track.readyState === "live"),
           stream,
@@ -54,7 +68,20 @@ test("fake camera の映像を再生しダイアログ終了時に全 track を�
       }),
     )
     .toBe(true)
-  await expect(scanner.getByText("QRコードを枠内に合わせてください")).toBeVisible()
+  await expect(scanner.getByText("カメラを準備しています…")).toBeVisible()
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stream = (
+          window as Window & { __cameraProbe?: { stream: MediaStream | null } }
+        ).__cameraProbe?.stream
+        return (
+          stream instanceof MediaStream &&
+          stream.getTracks().some((track) => track.readyState === "live")
+        )
+      }),
+    )
+    .toBe(true)
 
   await scanner.getByRole("button", { name: "キャンセル" }).click()
   await expect(scanner).toBeHidden()
@@ -74,4 +101,12 @@ test("fake camera の映像を再生しダイアログ終了時に全 track を�
       }),
     )
     .toBe(true)
+  await page.evaluate(() => {
+    const probe = (
+      window as Window & {
+        __cameraProbe?: { restorePlay: () => void }
+      }
+    ).__cameraProbe
+    probe?.restorePlay()
+  })
 })

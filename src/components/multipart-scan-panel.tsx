@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from "react"
 import { Camera, RefreshCw, ScanLine, Trash2 } from "lucide-react"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import type { V2ArtifactType } from "@/schemas/domain"
-import type { QrScanHandle } from "@/qr/decode"
-import { startQrScan } from "@/qr/decode"
+import {
+  startQrScan,
+  type CameraDiagnostic,
+  type CameraScanState,
+  type QrScanHandle,
+} from "@/qr/decode"
 import { AppError, userMessageFor } from "@/crypto/errors"
 import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -37,10 +41,12 @@ export function MultipartScanPanel({
   const scanHandleRef = useRef<QrScanHandle | null>(null)
   const onCompleteRef = useRef(onComplete)
   const previousKindRef = useRef<TransferState["kind"]>(session.state().kind)
+  const cameraStateRef = useRef<CameraScanState>("idle")
   const [state, setState] = useState<TransferState>(() => currentState(session))
   const [cameraGeneration, setCameraGeneration] = useState(0)
   const [cameraStatus, setCameraStatus] = useState("カメラを準備しています…")
   const [error, setError] = useState<string | null>(null)
+  const [diagnostic, setDiagnostic] = useState<CameraDiagnostic | null>(null)
 
   useEffect(() => {
     onCompleteRef.current = onComplete
@@ -59,23 +65,61 @@ export function MultipartScanPanel({
   }, [session])
 
   useEffect(() => {
+    if (
+      !cameraAvailable ||
+      state.kind === "complete" ||
+      state.kind === "error"
+    ) {
+      return
+    }
+    const onVisibilityChange = () => {
+      const shouldRestart =
+        startQrScan.shouldRestartOnVisibility?.(
+          cameraStateRef.current,
+          document.visibilityState,
+        ) ??
+        (document.visibilityState === "visible" &&
+          (cameraStateRef.current === "failed" ||
+            cameraStateRef.current === "track-ended"))
+      if (!shouldRestart) {
+        return
+      }
+      cameraStateRef.current = "acquiring"
+      setError(null)
+      setDiagnostic(null)
+      setCameraGeneration((value) => value + 1)
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange)
+  }, [cameraAvailable, state.kind])
+
+  useEffect(() => {
     const initialState = session.state()
     if (
       !cameraAvailable ||
       initialState.kind === "complete" ||
       initialState.kind === "error"
     ) {
+      cameraStateRef.current = "idle"
       return
     }
     let cancelled = false
+    let errorReported = false
     const abortController = new AbortController()
     scanHandleRef.current?.stop()
     scanHandleRef.current = null
+    cameraStateRef.current = "acquiring"
 
     const start = async () => {
       setCameraStatus("カメラを準備しています…")
+      setDiagnostic(null)
       const video = videoRef.current
-      if (video === null) return
+      if (video === null) {
+        cameraStateRef.current = "failed"
+        setError("カメラ画面を準備できませんでした。ダイアログを開き直してください。")
+        setCameraStatus("カメラ画面を準備できませんでした")
+        return
+      }
       try {
         const handle = await startQrScan(
           video,
@@ -105,16 +149,26 @@ export function MultipartScanPanel({
               }
             })
           },
-          (scanError) => {
+          (scanError, cameraDiagnostic) => {
             if (cancelled) return
+            errorReported = true
+            cameraStateRef.current =
+              cameraDiagnostic.phase === "track-ended" ? "track-ended" : "failed"
             setError(scanError.userMessage)
+            setDiagnostic(
+              scanError.code === "CAMERA_PERMISSION_DENIED" ||
+                scanError.code === "CAMERA_NOT_AVAILABLE"
+                ? cameraDiagnostic
+                : null,
+            )
             setCameraStatus("カメラでエラーが発生しました")
           },
           { once: false, signal: abortController.signal },
         )
-        if (cancelled) handle.stop()
+        if (cancelled || errorReported) handle.stop()
         else {
           scanHandleRef.current = handle
+          cameraStateRef.current = "playing"
           setCameraStatus("QRコードを順不同で読み取れます")
         }
       } catch (caught) {
@@ -122,6 +176,10 @@ export function MultipartScanPanel({
           const appError =
             caught instanceof AppError ? caught : new AppError("CAMERA_NOT_AVAILABLE")
           setError(appError.userMessage)
+          if (!errorReported) {
+            cameraStateRef.current = "failed"
+            setDiagnostic(null)
+          }
           setCameraStatus("カメラを起動できませんでした")
         }
       }
@@ -211,6 +269,14 @@ export function MultipartScanPanel({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+        {diagnostic && (
+          <p
+            aria-label="カメラ診断"
+            className="font-mono text-xs text-muted-foreground"
+          >
+            診断: {diagnostic.name ?? "unknown"} @{diagnostic.phase}
+          </p>
+        )}
 
         <div className="grid grid-cols-2 gap-2">
           <Button
@@ -219,7 +285,10 @@ export function MultipartScanPanel({
             className="h-11 cursor-pointer focus-visible:ring-2"
             disabled={!cameraAvailable}
             onClick={() => {
+              cameraStateRef.current = "acquiring"
               setError(null)
+              setDiagnostic(null)
+              setCameraStatus("カメラを準備しています…")
               setCameraGeneration((value) => value + 1)
             }}
           >
@@ -235,7 +304,9 @@ export function MultipartScanPanel({
               const next = session.state()
               previousKindRef.current = next.kind
               setState(next)
+              cameraStateRef.current = "acquiring"
               setError(null)
+              setDiagnostic(null)
               setCameraGeneration((value) => value + 1)
             }}
           >
