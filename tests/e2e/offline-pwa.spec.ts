@@ -38,7 +38,7 @@ test("precache 済み Worker だけでオフライン PQ 鍵生成・Encaps・De
   await expect(mainNavigation(page)).toBeVisible()
   await expect(
     page.getByRole("heading", {
-      name: "オフラインへ切り替わりました。続行前の確認",
+      name: "続行前の確認",
     }),
   ).toBeHidden()
 

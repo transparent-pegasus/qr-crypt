@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 interface MockResult {
   getText(): string
@@ -16,7 +16,8 @@ type ScannerCallback = (
 
 const scanner = vi.hoisted(() => ({
   callback: undefined as ScannerCallback | undefined,
-  rejection: undefined as Error | undefined,
+  rejections: [] as Array<Error | undefined>,
+  acquire: vi.fn(),
   controlsStop: vi.fn(),
 }))
 
@@ -27,8 +28,10 @@ vi.mock("@zxing/browser", () => ({
       _video: HTMLVideoElement,
       callback: ScannerCallback,
     ): Promise<{ stop(): void }> {
+      scanner.acquire()
       scanner.callback = callback
-      if (scanner.rejection !== undefined) throw scanner.rejection
+      const rejection = scanner.rejections.shift()
+      if (rejection !== undefined) throw rejection
       return { stop: scanner.controlsStop }
     }
   },
@@ -56,9 +59,14 @@ function videoWithTrack(): { video: HTMLVideoElement; track: FakeTrack } {
 
 beforeEach(() => {
   scanner.callback = undefined
-  scanner.rejection = undefined
+  scanner.rejections.splice(0)
+  scanner.acquire.mockReset()
   scanner.controlsStop.mockReset()
   vi.stubGlobal("MediaStream", FakeMediaStream)
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe("camera scanner lifecycle", () => {
@@ -101,16 +109,71 @@ describe("camera scanner lifecycle", () => {
     handle.stop()
   })
 
-  it.each([
-    ["NotAllowedError", "CAMERA_PERMISSION_DENIED"],
-    ["NotFoundError", "CAMERA_NOT_AVAILABLE"],
-    ["NotReadableError", "CAMERA_NOT_AVAILABLE"],
-  ] as const)("maps %s startup rejection to %s", async (name, code) => {
+  it("rejects NotAllowedError immediately as CAMERA_PERMISSION_DENIED", async () => {
     const { video, track } = videoWithTrack()
-    scanner.rejection = new DOMException("camera", name)
+    scanner.rejections.push(new DOMException("camera", "NotAllowedError"))
     const onError = vi.fn()
-    await expect(startQrScan(video, vi.fn(), onError)).rejects.toMatchObject({ code })
-    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code }))
+    await expect(startQrScan(video, vi.fn(), onError)).rejects.toMatchObject({
+      code: "CAMERA_PERMISSION_DENIED",
+    })
+    expect(scanner.acquire).toHaveBeenCalledTimes(1)
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "CAMERA_PERMISSION_DENIED" }),
+    )
     expect(track.stop).toHaveBeenCalledTimes(1)
+  })
+
+  it("retries a transient NotReadableError and resolves without emitting an error", async () => {
+    vi.useFakeTimers()
+    const { video, track } = videoWithTrack()
+    scanner.rejections.push(new DOMException("camera", "NotReadableError"))
+    const onError = vi.fn()
+    const scanPromise = startQrScan(video, vi.fn(), onError)
+
+    await vi.advanceTimersByTimeAsync(300)
+
+    await expect(scanPromise).resolves.toBeDefined()
+    expect(scanner.acquire).toHaveBeenCalledTimes(2)
+    expect(onError).not.toHaveBeenCalled()
+    expect(track.stop).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects a persistent NotReadableError after three retries", async () => {
+    vi.useFakeTimers()
+    const { video } = videoWithTrack()
+    scanner.rejections.push(
+      ...Array.from(
+        { length: 4 },
+        () => new DOMException("camera", "NotReadableError"),
+      ),
+    )
+    const onError = vi.fn()
+    const rejection = expect(startQrScan(video, vi.fn(), onError)).rejects.toMatchObject({
+      code: "CAMERA_NOT_AVAILABLE",
+    })
+
+    await vi.advanceTimersByTimeAsync(900)
+
+    await rejection
+    expect(scanner.acquire).toHaveBeenCalledTimes(4)
+    expect(onError).toHaveBeenCalledTimes(1)
+  })
+
+  it("does not acquire again when aborted during retry backoff", async () => {
+    vi.useFakeTimers()
+    const { video } = videoWithTrack()
+    scanner.rejections.push(new DOMException("camera", "AbortError"))
+    const controller = new AbortController()
+    const rejection = expect(
+      startQrScan(video, vi.fn(), vi.fn(), { signal: controller.signal }),
+    ).rejects.toMatchObject({ code: "CAMERA_NOT_AVAILABLE" })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    controller.abort()
+    await vi.advanceTimersByTimeAsync(300)
+
+    await rejection
+    expect(scanner.acquire).toHaveBeenCalledTimes(1)
   })
 })

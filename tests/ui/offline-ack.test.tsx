@@ -18,7 +18,7 @@ import { fakeFeatures, getPreferences, useFakeRegisterSW } from "./helpers/fakes
 import { setTestOnlineStatus, stubReachabilityFetch } from "./helpers/network"
 import { memoryLocalStorage, renderApp, resetUi } from "./helpers/render-app"
 
-const ACK_TITLE = "オフラインへ切り替わりました。続行前の確認"
+const ACK_TITLE = "続行前の確認"
 const INSTALL_TITLE = "オンラインではPWAの導入のみ利用できます"
 
 function response(body: string, status = 200): Response {
@@ -96,6 +96,9 @@ describe("offline acknowledgement shell", () => {
       name: "リスクを理解してオフライン機能を表示",
     })
 
+    expect(
+      screen.getByText("オフラインへ切り替わりました", { exact: true }),
+    ).toBeInTheDocument()
     expect(heading).toHaveFocus()
     expect(shell).toHaveClass("max-h-dvh", "overflow-y-auto")
     expect(shell.className).toContain("safe-area-inset-top")
@@ -286,7 +289,7 @@ describe("offline acknowledgement shell", () => {
     expect(shell).toHaveTextContent(
       "オンラインを検出したため、ローカルデータを初期化しました",
     )
-    expect(shell).toHaveTextContent("論理削除を試行しました。物理消去は保証されません")
+    expect(shell).toHaveTextContent("論理削除を試行しました。物理消去は保証されません。")
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(getPreferences).not.toHaveBeenCalled()
 

@@ -366,7 +366,7 @@ export function KeysPage() {
     if (!symmetricQr?.acknowledged) return
     try {
       await copyTextToClipboard(symmetricQr.payload)
-      toast.success("コピーしました。クリップボード同期に注意してください")
+      toast.success("コピーしました。クリップボード同期に注意してください。")
     } catch {
       setError("コピーできませんでした。ブラウザーの権限を確認してください。")
     }

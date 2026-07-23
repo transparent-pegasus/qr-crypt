@@ -24,7 +24,6 @@ describe("multipart continuous scan UI", () => {
 
     await act(async () => emitScannedPayload(multipartPayload("transfer-a", 2, 3)))
     expect(await screen.findByText("受信 1 / 3")).toBeInTheDocument()
-    expect(screen.getByText("受信済み index: 2")).toBeInTheDocument()
     expect(screen.getByText("欠損 index: 0, 1")).toBeInTheDocument()
 
     await act(async () => emitScannedPayload(multipartPayload("transfer-a", 2, 3)))

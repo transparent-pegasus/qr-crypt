@@ -50,14 +50,13 @@ import {
   formatDateTime,
   formatSuggestedDate,
 } from "@/features/presentation"
-import { measurePqEnvelopeSize, type PqSizeBreakdown } from "@/features/pq-size-breakdown"
 import { useAutoClear } from "@/hooks/use-auto-clear"
 import { useKeys } from "@/hooks/use-keys"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
 import { bytesToUtf8, sha256Hex, utf8ToBytes } from "@/lib/bytes"
-import { ecLevelFor, estimatePayloadChars, payloadFits } from "@/qr/encode"
+import { ecLevelFor, payloadFits } from "@/qr/encode"
 import {
   buildExportFileName,
   copyTextToClipboard,
@@ -131,10 +130,6 @@ function isSignedAlgorithm(algorithm: UiAlgorithm): boolean {
   return algorithm === "MLKEM768_MLDSA65_A256GCM"
 }
 
-function isPqAlgorithm(algorithm: UiAlgorithm): boolean {
-  return algorithm !== "A256GCM"
-}
-
 export function EncryptPage() {
   const { keys, loading: keysLoading, error: keysError } = useKeys()
   const {
@@ -162,8 +157,6 @@ export function EncryptPage() {
   const [decryptInput, setDecryptInput] = useState("")
   const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
   const [scannerOpen, setScannerOpen] = useState(false)
-  const [sizeBreakdown, setSizeBreakdown] = useState<PqSizeBreakdown | null>(null)
-  const [sizePending, setSizePending] = useState(false)
   const [clearStatus, setClearStatus] = useState("")
 
   const algorithms = useMemo(
@@ -248,56 +241,6 @@ export function EncryptPage() {
     (parsedDecrypt.kind === "message"
       ? decryptAesKey !== undefined
       : decryptIdentity !== undefined)
-
-  useEffect(() => {
-    let active = true
-    if (!isPqAlgorithm(algorithm) || overPlaintextLimit) {
-      queueMicrotask(() => {
-        if (active) {
-          setSizeBreakdown(null)
-          setSizePending(false)
-        }
-      })
-      return () => {
-        active = false
-      }
-    }
-    queueMicrotask(() => {
-      if (active) setSizePending(true)
-    })
-    void measurePqEnvelopeSize({
-      plaintext: plaintextBytes,
-      kemAlgorithm: selectedRecipient?.kem.algorithm ?? "ML-KEM-768",
-      recipientKemKeyId: selectedRecipient?.kem.keyId ?? "A".repeat(22),
-      ...(signed
-        ? {
-            signingAlgorithm: selectedSender?.signing.algorithm ?? "ML-DSA-65",
-            senderSigningKeyId: selectedSender?.signing.keyId ?? "B".repeat(22),
-          }
-        : {}),
-      frameBytes: preferences.frameBytes,
-    })
-      .then((measured) => {
-        if (active) setSizeBreakdown(measured)
-      })
-      .catch(() => {
-        if (active) setSizeBreakdown(null)
-      })
-      .finally(() => {
-        if (active) setSizePending(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [
-    algorithm,
-    overPlaintextLimit,
-    plaintextBytes,
-    preferences.frameBytes,
-    selectedRecipient,
-    selectedSender,
-    signed,
-  ])
 
   useEffect(() => {
     setSensitiveSession({
@@ -484,15 +427,6 @@ export function EncryptPage() {
     }
   }
 
-  const aesEstimate = useMemo(() => {
-    if (algorithm !== "A256GCM") return null
-    try {
-      return estimatePayloadChars(plaintextBytes.byteLength, algorithm)
-    } catch {
-      return null
-    }
-  }, [algorithm, plaintextBytes.byteLength])
-
   const resultSuite: WireSuite | "A256GCM" | null =
     result?.kind === "aes" ? "A256GCM" : (result?.envelope.suite ?? null)
 
@@ -621,46 +555,6 @@ export function EncryptPage() {
               </Alert>
             )}
           </div>
-
-          <Card aria-live="polite" aria-busy={sizePending}>
-            <CardHeader className="p-4 pb-3">
-              <CardTitle className="text-base">実測サイズ内訳</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 p-4 pt-0 text-sm">
-              <DetailRow label="本文" value={`${plaintextBytes.byteLength} bytes`} mono />
-              <DetailRow
-                label="KEM暗号文"
-                value={`${sizeBreakdown?.kemCiphertextBytes ?? 0} bytes`}
-                mono
-              />
-              <DetailRow
-                label="署名"
-                value={`${sizeBreakdown?.signatureBytes ?? 0} bytes`}
-                mono
-              />
-              <DetailRow
-                label="エンベロープ計"
-                value={
-                  algorithm === "A256GCM"
-                    ? `QR文字列 ${aesEstimate ?? 0} bytes`
-                    : sizePending
-                      ? "計算中…"
-                      : `${sizeBreakdown?.envelopeBytes ?? 0} bytes`
-                }
-                mono
-              />
-              <DetailRow
-                label="QR枚数"
-                value={`${algorithm === "A256GCM" ? 1 : (sizeBreakdown?.frameCount ?? 0)} 枚`}
-                mono
-              />
-              {signed && (
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  短文でもポスト量子署名が本文より大幅に大きくなり、QR枚数を支配します。
-                </p>
-              )}
-            </CardContent>
-          </Card>
 
           <Button
             type="button"
@@ -806,7 +700,7 @@ export function EncryptPage() {
                       人物確認:{" "}
                       {decrypted.sender?.trust === "fingerprint-confirmed"
                         ? "人物確認済み"
-                        : "未確認。鍵の有効性と人物確認は別です"}
+                        : "未確認。鍵の有効性と人物確認は別です。"}
                     </p>
                   </div>
                 )}

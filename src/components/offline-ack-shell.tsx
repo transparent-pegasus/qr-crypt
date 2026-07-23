@@ -51,7 +51,7 @@ export function OfflineAckShell({
                   オンラインを検出したため、ローカルデータを初期化しました
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  論理削除を試行しました。物理消去は保証されません
+                  論理削除を試行しました。物理消去は保証されません。
                 </p>
               </div>
             </div>
@@ -63,14 +63,19 @@ export function OfflineAckShell({
             aria-hidden="true"
             className="mt-0.5 size-6 shrink-0 text-warning"
           />
-          <h1
-            id="offline-ack-title"
-            ref={headingRef}
-            tabIndex={-1}
-            className="text-xl font-bold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-2xl"
-          >
-            オフラインへ切り替わりました。続行前の確認
-          </h1>
+          <div className="min-w-0 flex-1 space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">
+              オフラインへ切り替わりました
+            </p>
+            <h1
+              id="offline-ack-title"
+              ref={headingRef}
+              tabIndex={-1}
+              className="text-xl font-bold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-2xl"
+            >
+              続行前の確認
+            </h1>
+          </div>
         </header>
 
         <div className="space-y-4 text-sm leading-relaxed text-muted-foreground sm:text-base">

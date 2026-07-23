@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import {
   AlertCircle,
   CheckCircle2,
@@ -65,7 +65,7 @@ import {
 } from "@/lib/limits"
 import { deleteEntireDatabase } from "@/storage/database"
 import { clearAllKeys } from "@/storage/key-repository"
-import { clearAllQrArtifacts, listQrArtifacts } from "@/storage/qr-repository"
+import { clearAllQrArtifacts } from "@/storage/qr-repository"
 
 type TypedDeleteAction = "keys" | "reset"
 
@@ -73,7 +73,7 @@ export function SettingsPage() {
   const features = useFeatureSupport()
   const { theme, setTheme } = useTheme()
   const { clearTransient } = useTransientClear()
-  const { keys, refresh: refreshKeys } = useKeys()
+  const { refresh: refreshKeys } = useKeys()
   const {
     preferences,
     loading: preferencesLoading,
@@ -81,7 +81,6 @@ export function SettingsPage() {
     updatePreferences,
   } = usePreferences()
   const pwa = usePwaOfflineReady()
-  const [qrCount, setQrCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [clearQrOpen, setClearQrOpen] = useState(false)
   const [typedAction, setTypedAction] = useState<TypedDeleteAction | null>(null)
@@ -104,18 +103,6 @@ export function SettingsPage() {
     }
   }, [])
 
-  const loadQrCount = useCallback(async () => {
-    try {
-      setQrCount((await listQrArtifacts()).length)
-    } catch {
-      setError("保存済み鍵QRの件数を取得できませんでした。")
-    }
-  }, [])
-
-  useEffect(() => {
-    queueMicrotask(() => void loadQrCount())
-  }, [loadQrCount])
-
   const savePreference = async (patch: Partial<Preferences>) => {
     try {
       await updatePreferences(patch)
@@ -135,7 +122,6 @@ export function SettingsPage() {
     try {
       await clearAllQrArtifacts()
       setClearQrOpen(false)
-      await loadQrCount()
       toast.success("すべての保存済み鍵QRを消去しました")
     } catch {
       setError("保存済み鍵QRを消去できませんでした。")
@@ -162,8 +148,7 @@ export function SettingsPage() {
         for (const key of keysToRemove) window.localStorage.removeItem(key)
         clearTransient()
         await refreshKeys()
-        await loadQrCount()
-        toast.success("論理削除を試行しました。物理消去は保証されません")
+        toast.success("論理削除を試行しました。物理消去は保証されません。")
       }
       setTypedAction(null)
       setDeleteConfirmation("")
@@ -226,6 +211,21 @@ export function SettingsPage() {
           <AlertDescription>{error ?? preferencesError ?? pwa.error}</AlertDescription>
         </Alert>
       )}
+
+      <SettingsCard title="表示">
+        <SettingField label="テーマ" htmlFor="theme-select">
+          <Select value={theme} onValueChange={(value) => setTheme(value as Theme)}>
+            <SelectTrigger id="theme-select" className="h-11 text-base">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="system">システム</SelectItem>
+              <SelectItem value="light">ライト</SelectItem>
+              <SelectItem value="dark">ダーク</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingField>
+      </SettingsCard>
 
       <SettingsCard title="既定値">
         <SettingField label="デフォルト暗号方式" htmlFor="default-algorithm">
@@ -369,6 +369,53 @@ export function SettingsPage() {
         </p>
       </SettingsCard>
 
+      <SettingsCard title="平文の扱い">
+        <div className="flex min-h-11 items-center justify-between gap-4">
+          <Label htmlFor="clear-after-encrypt" className="leading-relaxed">
+            暗号化後に平文を自動消去
+          </Label>
+          <Switch
+            id="clear-after-encrypt"
+            checked={preferences.autoClearPlaintextAfterEncrypt}
+            onCheckedChange={(checked) =>
+              void savePreference({ autoClearPlaintextAfterEncrypt: checked })
+            }
+            aria-label="暗号化後に平文を自動消去"
+          />
+        </div>
+        <div className="flex min-h-11 items-center justify-between gap-4">
+          <div className="space-y-1">
+            <Label htmlFor="background-clear" className="leading-relaxed">
+              バックグラウンド移行後に自動消去
+            </Label>
+            <p
+              id="background-clear-description"
+              className="text-xs leading-relaxed text-muted-foreground"
+            >
+              有効時はバックグラウンド移行から約5分後に平文を消去します。
+            </p>
+          </div>
+          <Switch
+            id="background-clear"
+            checked={preferences.backgroundClearEnabled}
+            onCheckedChange={(checked) =>
+              void savePreference({ backgroundClearEnabled: checked })
+            }
+            aria-label="バックグラウンド移行後に自動消去"
+            aria-describedby="background-clear-description"
+          />
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-11 w-full cursor-pointer focus-visible:ring-2"
+          onClick={clearTransientData}
+        >
+          <Eraser aria-hidden="true" />
+          すべての平文を消去
+        </Button>
+      </SettingsCard>
+
       <SettingsCard title="オンライン検出時の保護">
         <div className="flex min-h-11 items-center justify-between gap-4">
           <div className="space-y-1">
@@ -466,99 +513,6 @@ export function SettingsPage() {
         </Collapsible>
       </Card>
 
-      <SettingsCard title="平文の扱い">
-        <div className="flex min-h-11 items-center justify-between gap-4">
-          <Label htmlFor="clear-after-encrypt" className="leading-relaxed">
-            暗号化後に平文を自動消去
-          </Label>
-          <Switch
-            id="clear-after-encrypt"
-            checked={preferences.autoClearPlaintextAfterEncrypt}
-            onCheckedChange={(checked) =>
-              void savePreference({ autoClearPlaintextAfterEncrypt: checked })
-            }
-            aria-label="暗号化後に平文を自動消去"
-          />
-        </div>
-        <div className="flex min-h-11 items-center justify-between gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="background-clear" className="leading-relaxed">
-              バックグラウンド移行後に自動消去
-            </Label>
-            <p
-              id="background-clear-description"
-              className="text-xs leading-relaxed text-muted-foreground"
-            >
-              有効時はバックグラウンド移行から約5分後に平文を消去します。
-            </p>
-          </div>
-          <Switch
-            id="background-clear"
-            checked={preferences.backgroundClearEnabled}
-            onCheckedChange={(checked) =>
-              void savePreference({ backgroundClearEnabled: checked })
-            }
-            aria-label="バックグラウンド移行後に自動消去"
-            aria-describedby="background-clear-description"
-          />
-        </div>
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-11 w-full cursor-pointer focus-visible:ring-2"
-          onClick={clearTransientData}
-        >
-          <Eraser aria-hidden="true" />
-          すべての平文を消去
-        </Button>
-      </SettingsCard>
-
-      <SettingsCard title="表示">
-        <SettingField label="テーマ" htmlFor="theme-select">
-          <Select value={theme} onValueChange={(value) => setTheme(value as Theme)}>
-            <SelectTrigger id="theme-select" className="h-11 text-base">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="system">システム</SelectItem>
-              <SelectItem value="light">ライト</SelectItem>
-              <SelectItem value="dark">ダーク</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingField>
-      </SettingsCard>
-
-      <SettingsCard title="PWAアプリ情報">
-        <InfoRow
-          label="PWAインストール状態"
-          value={standalone ? "インストール済み" : "ブラウザー表示中"}
-        />
-        <InfoRow
-          label="オフライン利用準備状態"
-          value={pwa.offlineReady ? "準備完了" : "準備中"}
-        />
-        {!features.serviceWorker && (
-          <Alert variant="destructive">
-            <AlertCircle aria-hidden="true" className="size-4" />
-            <AlertDescription>
-              この機能は利用できません: Service Worker。オフライン起動を利用できません。
-            </AlertDescription>
-          </Alert>
-        )}
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          アプリの更新は行わない方針です。新しいバージョンの利用には端末の完全フォーマット後の再インストールが必要です。
-        </p>
-        <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
-          <InfoRow label="バージョン" value={__APP_VERSION__} mono />
-          <InfoRow label="ビルド" value={env.buildSha.slice(0, 7)} mono />
-          <InfoRow label="保存鍵" value={`${keys.length} 件`} mono />
-          <InfoRow label="保存済み鍵QR" value={`${qrCount} 件`} mono />
-        </div>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          オフライン利用準備状態は資産の保存状態を示します。安全性を示すものではありません。
-        </p>
-      </SettingsCard>
-
       <Card className="border-destructive/60">
         <CardHeader className="p-4 pb-3">
           <CardTitle className="flex items-center gap-2 text-base text-destructive">
@@ -606,6 +560,46 @@ export function SettingsPage() {
           </p>
         </CardContent>
       </Card>
+
+      <SettingsCard title="PWAアプリ情報">
+        <InfoRow
+          label="PWAインストール状態"
+          value={standalone ? "インストール済み" : "ブラウザー表示中"}
+        />
+        <InfoRow
+          label="オフライン利用準備状態"
+          value={pwa.offlineReady ? "準備完了" : "準備中"}
+        />
+        {!features.serviceWorker && (
+          <Alert variant="destructive">
+            <AlertCircle aria-hidden="true" className="size-4" />
+            <AlertDescription>
+              この機能は利用できません: Service Worker。オフライン起動を利用できません。
+            </AlertDescription>
+          </Alert>
+        )}
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          アプリの更新は行わない方針です。新しいバージョンの利用には端末の完全フォーマット後の再インストールが必要です。
+        </p>
+        <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
+          <InfoRow label="バージョン" value={__APP_VERSION__} mono />
+          <InfoRow label="ビルド" value={env.buildSha.slice(0, 7)} mono />
+        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          オフライン利用準備状態は資産の保存状態を示します。安全性を示すものではありません。
+        </p>
+      </SettingsCard>
+
+      <SettingsCard title="機能検出">
+        <FeatureRow label="Web Crypto" supported={features.webCrypto} />
+        <FeatureRow label="IndexedDB" supported={features.indexedDb} />
+        <FeatureRow label="カメラ" supported={features.camera} />
+        <FeatureRow label="Service Worker" supported={features.serviceWorker} />
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Web
+          CryptoまたはIndexedDBが利用できない場合はUNSUPPORTED_BROWSER画面で全機能を停止します。
+        </p>
+      </SettingsCard>
 
       <Card>
         <Collapsible open={securityOpen} onOpenChange={setSecurityOpen}>
@@ -668,17 +662,6 @@ export function SettingsPage() {
           </CollapsibleContent>
         </Collapsible>
       </Card>
-
-      <SettingsCard title="機能検出">
-        <FeatureRow label="Web Crypto" supported={features.webCrypto} />
-        <FeatureRow label="IndexedDB" supported={features.indexedDb} />
-        <FeatureRow label="カメラ" supported={features.camera} />
-        <FeatureRow label="Service Worker" supported={features.serviceWorker} />
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Web
-          CryptoまたはIndexedDBが利用できない場合はUNSUPPORTED_BROWSER画面で全機能を停止します。
-        </p>
-      </SettingsCard>
 
       <AlertDialog open={clearQrOpen} onOpenChange={setClearQrOpen}>
         <AlertDialogContent>

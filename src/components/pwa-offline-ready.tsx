@@ -41,6 +41,7 @@ export function PwaOfflineReady({
   registerHook: UseRegisterSwHook | undefined
 }) {
   const [error, setError] = useState<string | null>(null)
+  const [swActive, setSwActive] = useState(false)
   const registrationOptions = useMemo<RegisterSWOptions>(
     () => ({
       onRegisterError: () => {
@@ -53,12 +54,23 @@ export function PwaOfflineReady({
   const [offlineReady] = useRegistration(registrationOptions).offlineReady
 
   useEffect(() => {
+    if (!("serviceWorker" in navigator)) return
+    let cancelled = false
+    void navigator.serviceWorker.ready.then(() => {
+      if (!cancelled) setSwActive(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     if (offlineReady) toast.success("オフライン利用の準備ができました")
   }, [offlineReady])
 
   const contextValue = useMemo(
-    () => ({ offlineReady, error }),
-    [error, offlineReady],
+    () => ({ offlineReady: offlineReady || swActive, error }),
+    [error, offlineReady, swActive],
   )
 
   return (

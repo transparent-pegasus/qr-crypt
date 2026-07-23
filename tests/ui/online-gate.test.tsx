@@ -2,7 +2,7 @@ import "./helpers/module-mocks"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { fakeFeatures, useFakeRegisterSW } from "./helpers/fakes"
+import { fakeFeatures, fakePwa, useFakeRegisterSW } from "./helpers/fakes"
 import { setTestOnlineStatus } from "./helpers/network"
 import { renderApp, resetUi } from "./helpers/render-app"
 import { createBootController } from "@/app/boot/boot-controller"
@@ -10,6 +10,33 @@ import { createBootController } from "@/app/boot/boot-controller"
 describe("OnlineGate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
+
+  it("shows ready when a previously installed service worker is active", async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { ready: Promise.resolve() },
+    })
+    fakePwa.offlineReady = false
+    try {
+      const { AppProviders } = await import("@/app/providers")
+      const { OnlineInstallScreen } = await import("@/components/online-gate")
+      render(
+        <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+          <OnlineInstallScreen />
+        </AppProviders>,
+      )
+
+      await waitFor(() =>
+        expect(screen.getByText("オフライン利用準備状態").parentElement).toHaveTextContent(
+          "準備完了",
+        ),
+      )
+    } finally {
+      if (original) Object.defineProperty(navigator, "serviceWorker", original)
+      else Reflect.deleteProperty(navigator, "serviceWorker")
+    }
+  })
 
   it("shows only installation guidance while online and handles beforeinstallprompt", async () => {
     setTestOnlineStatus(true)
@@ -39,7 +66,7 @@ describe("OnlineGate", () => {
     expect(screen.getByText("オフライン利用準備状態")).toBeInTheDocument()
     expect(
       screen.getByText(
-        "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません",
+        "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません。",
       ),
     ).toBeInTheDocument()
     expect(

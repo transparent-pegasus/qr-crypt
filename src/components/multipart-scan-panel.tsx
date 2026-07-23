@@ -68,6 +68,7 @@ export function MultipartScanPanel({
       return
     }
     let cancelled = false
+    const abortController = new AbortController()
     scanHandleRef.current?.stop()
     scanHandleRef.current = null
 
@@ -109,7 +110,7 @@ export function MultipartScanPanel({
             setError(scanError.userMessage)
             setCameraStatus("カメラでエラーが発生しました")
           },
-          { once: false },
+          { once: false, signal: abortController.signal },
         )
         if (cancelled) handle.stop()
         else {
@@ -129,6 +130,7 @@ export function MultipartScanPanel({
     queueMicrotask(() => void start())
     return () => {
       cancelled = true
+      abortController.abort()
       scanHandleRef.current?.stop()
       scanHandleRef.current = null
     }
@@ -182,9 +184,6 @@ export function MultipartScanPanel({
               <span>{Math.round((received / frameCount) * 100)}%</span>
             </div>
             <Progress value={(received / frameCount) * 100} />
-            <p className="text-xs text-muted-foreground">
-              受信済み index: {[...collecting.receivedIndexes].join(", ") || "なし"}
-            </p>
             <p className="text-xs text-muted-foreground">
               欠損 index: {collecting.missingIndexes.join(", ") || "なし"}
             </p>

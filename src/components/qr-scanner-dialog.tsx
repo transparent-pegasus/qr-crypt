@@ -69,6 +69,7 @@ export function QrScannerDialog({
     if (!open) return
     let cancelled = false
     let handle: QrScanHandle | null = null
+    const abortController = new AbortController()
     queueMicrotask(() => {
       if (!cancelled) {
         setError(null)
@@ -87,7 +88,11 @@ export function QrScannerDialog({
           setError("この端末ではカメラを利用できません。ペイロードを貼り付けてください。")
         }
       })
-      return stop
+      return () => {
+        cancelled = true
+        abortController.abort()
+        stop()
+      }
     }
 
     queueMicrotask(() => {
@@ -118,7 +123,7 @@ export function QrScannerDialog({
           setStatus("カメラでエラーが発生しました")
           stop()
         },
-        { once: true },
+        { once: true, signal: abortController.signal },
       )
         .then((scanHandle) => {
           if (cancelled) {
@@ -140,6 +145,7 @@ export function QrScannerDialog({
 
     return () => {
       cancelled = true
+      abortController.abort()
       stop()
     }
   }, [cameraAvailable, open, target])

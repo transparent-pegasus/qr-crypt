@@ -23,7 +23,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
   await expect(page.getByText("オフライン利用準備状態")).toBeVisible()
   await expect(
     page.getByText(
-      "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません",
+      "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません。",
     ),
   ).toBeVisible()
   await expect(page.getByText("オンライン", { exact: true })).toBeVisible()
@@ -32,7 +32,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
 
 export async function expectOfflineAcknowledgement(page: Page): Promise<void> {
   const shell = page.getByRole("main", {
-    name: "オフラインへ切り替わりました。続行前の確認",
+    name: "続行前の確認",
   })
   await expect(shell).toBeVisible()
   await expect(
@@ -131,7 +131,7 @@ export async function switchToColdOfflineApp(
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
     page.getByRole("heading", {
-      name: "オフラインへ切り替わりました。続行前の確認",
+      name: "続行前の確認",
     }),
   ).toBeHidden()
   await expect(mainNavigation(page)).toBeVisible()

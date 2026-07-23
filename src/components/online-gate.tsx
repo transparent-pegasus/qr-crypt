@@ -158,7 +158,7 @@ export function OnlineInstallScreen() {
           <div className="space-y-1">
             <h2 className="font-semibold">機内モードへ切り替えてください</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません
+              機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません。
             </p>
           </div>
         </div>

@@ -46,19 +46,6 @@ describe("encrypt page v2", () => {
     expect(screen.queryByText(/RSA/)).not.toBeInTheDocument()
   })
 
-  it("recalculates the serialized frame count immediately when signing changes", async () => {
-    const user = userEvent.setup()
-    await renderApp("/encrypt")
-    await chooseSelectOption(user, "暗号化方式", /ポスト量子 ML-KEM-768 \+ AES/)
-    await waitFor(() => expect(screen.getByText("3 枚")).toBeInTheDocument())
-    expect(screen.getAllByText("0 bytes", { selector: "span" })).toHaveLength(2)
-
-    await chooseSelectOption(user, "暗号化方式", /署名付きポスト量子/)
-    await waitFor(() => expect(screen.getByText("8 枚")).toBeInTheDocument())
-    expect(screen.getByText("3309 bytes")).toBeInTheDocument()
-    expect(screen.getByText(/短文でもポスト量子署名が本文より/)).toBeInTheDocument()
-  })
-
   it("shows pending state, produces controllable OCF2 frames, and has no persistence UI", async () => {
     const user = userEvent.setup()
     let resolveEncryption: ((value: MlKemMessageEnvelopeV2) => void) | undefined

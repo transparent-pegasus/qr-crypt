@@ -83,8 +83,7 @@ export async function renderQrSvgString(
 }
 
 // 同寸ダミーエンベロープを実際に CBOR+base64url 化して長さを返す(plan §12-9)。
-// v1 経路専用 — PQ 方式のサイズ内訳は WP-14 の framed 見積り(plan2.1 §D/U24:
-// 実エンベロープ → OCF2 分割 → frameCount)で置き換える。
+// v1 経路専用。
 export function estimatePayloadChars(
   plaintextBytes: number,
   algorithm: UiAlgorithm,
