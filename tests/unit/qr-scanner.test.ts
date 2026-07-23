@@ -45,7 +45,6 @@ import {
   CAMERA_START_TIMEOUT_MS,
   shouldRestartQrScanOnVisibility,
   startQrScan,
-  type CameraScanState,
 } from "@/qr/decode"
 
 interface Deferred<T> {
@@ -446,18 +445,13 @@ describe("camera scanner lifecycle", () => {
     secondHandle.stop()
   })
 
-  it("ignores repeated visible events once a failed attempt starts restarting", () => {
-    let state: CameraScanState = "failed"
-    let restarts = 0
-
-    for (let index = 0; index < 3; index += 1) {
-      if (shouldRestartQrScanOnVisibility(state, "visible")) {
-        state = "acquiring"
-        restarts += 1
-      }
+  it("uses the visibility predicate only to request the stopped UI", () => {
+    let uiMode: "running" | "stopped" = "running"
+    if (shouldRestartQrScanOnVisibility("failed", "visible")) {
+      uiMode = "stopped"
     }
 
-    expect(restarts).toBe(1)
+    expect(uiMode).toBe("stopped")
     expect(shouldRestartQrScanOnVisibility("track-ended", "visible")).toBe(true)
     expect(shouldRestartQrScanOnVisibility("failed", "hidden")).toBe(false)
   })

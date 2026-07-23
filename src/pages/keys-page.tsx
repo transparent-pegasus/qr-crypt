@@ -16,9 +16,8 @@ import {
 import { toast } from "sonner"
 import { useFeatureSupport, useSensitiveSession } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
-import { MultipartScanPanel } from "@/components/multipart-scan-panel"
 import { QrDisplay } from "@/components/qr-display"
-import { QrScannerDialog } from "@/components/qr-scanner-dialog"
+import { QrScannerPanel } from "@/components/qr-scanner-panel"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
@@ -202,7 +201,6 @@ export function KeysPage() {
   const [fingerprintChecked, setFingerprintChecked] = useState(false)
   const [singleKeyRead, setSingleKeyRead] = useState<SingleKeyRead | null>(null)
   const [singleKeyFingerprint, setSingleKeyFingerprint] = useState("")
-  const [scannerOpen, setScannerOpen] = useState(false)
   const [pendingSymmetricImport, setPendingSymmetricImport] =
     useState<StoredKeyRecord | null>(null)
   const [symmetricImportName, setSymmetricImportName] = useState("")
@@ -819,22 +817,16 @@ export function KeysPage() {
               <KeyRound aria-hidden="true" />
               鍵を読み取る
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-full"
-              disabled={busy || !camera}
-              onClick={() => setScannerOpen(true)}
-            >
-              <QrCode aria-hidden="true" />
-              単枚共通鍵QRを読み取る
-            </Button>
           </div>
-          <MultipartScanPanel
-            session={scanSession}
-            cameraAvailable={camera && !scannerOpen}
-            title="鍵の複数QRを連続読み取り"
-            onComplete={(completion) => handleCompletedArtifact(completion)}
+          <QrScannerPanel
+            singleTargets={["symmetric-key"]}
+            cameraAvailable={camera}
+            title="鍵QRを読み取る"
+            onSingleScan={(_target, payload) => importScannedPayload(payload)}
+            multipart={{
+              session: scanSession,
+              onComplete: (completion) => handleCompletedArtifact(completion),
+            }}
           />
           {singleKeyRead && (
             <Alert>
@@ -1103,13 +1095,6 @@ export function KeysPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <QrScannerDialog
-        open={scannerOpen}
-        onOpenChange={setScannerOpen}
-        target="symmetric-key"
-        cameraAvailable={camera}
-        onScan={(payload) => void importScannedPayload(payload)}
-      />
     </section>
   )
 }

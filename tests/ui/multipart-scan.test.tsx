@@ -1,56 +1,87 @@
 import "./helpers/module-mocks"
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { MultipartScanPanel } from "@/components/multipart-scan-panel"
+import { QrScannerPanel } from "@/components/qr-scanner-panel"
 import { AppError, userMessageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
-import type { CameraDiagnostic } from "@/qr/decode"
-import { emitScannedPayload, multipartPayload, startQrScan } from "./helpers/fakes"
+import type { TransferState } from "@/qr/multipart/transfer-state"
+import {
+  emitScannedPayload,
+  multipartPayload,
+  scannerStop,
+  startQrScan,
+} from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
 
-const reactHooks = vi.hoisted(() => ({
-  actualUseRef: null as typeof import("react").useRef | null,
-  useRef: vi.fn(),
-}))
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+} {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((settle) => {
+    resolve = settle
+  })
+  return { promise, resolve }
+}
 
-vi.mock("react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react")>()
-  reactHooks.actualUseRef = actual.useRef
-  reactHooks.useRef.mockImplementation(actual.useRef)
-  return { ...actual, useRef: reactHooks.useRef }
-})
+function scanner(
+  session: MultipartScanSession,
+  onComplete = vi.fn(),
+  onSingleScan = vi.fn(),
+) {
+  return (
+    <QrScannerPanel
+      singleTargets={["message"]}
+      onSingleScan={onSingleScan}
+      multipart={{ session, onComplete }}
+    />
+  )
+}
 
-describe("multipart continuous scan UI", () => {
+describe("QrScannerPanel multipart scan", () => {
   beforeEach(resetUi)
   afterEach(() => {
     vi.useRealTimers()
     resetUi()
   })
 
-  it("accepts out-of-order frames, ignores duplicates, shows missing indexes, and survives camera restart", async () => {
+  it("starts explicitly, preserves progress across restart, and completes once", async () => {
     const user = userEvent.setup()
     const session = new MultipartScanSession(5)
     const onComplete = vi.fn()
-    render(<MultipartScanPanel session={session} onComplete={onComplete} />)
-    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    render(scanner(session, onComplete))
+    expect(startQrScan).not.toHaveBeenCalled()
 
-    await act(async () => emitScannedPayload(multipartPayload("transfer-a", 2, 3)))
+    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    expect(startQrScan.mock.calls[0]?.[3]).toMatchObject({ once: false })
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 2, 3)),
+    )
     expect(await screen.findByText("受信 1 / 3")).toBeInTheDocument()
     expect(screen.getByText("欠損 index: 0, 1")).toBeInTheDocument()
 
-    await act(async () => emitScannedPayload(multipartPayload("transfer-a", 2, 3)))
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 2, 3)),
+    )
     expect(screen.getByText("受信 1 / 3")).toBeInTheDocument()
-
-    await act(async () => emitScannedPayload(multipartPayload("transfer-a", 0, 3)))
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 0, 3)),
+    )
     expect(await screen.findByText("受信 2 / 3")).toBeInTheDocument()
     expect(screen.getByText("欠損 index: 1")).toBeInTheDocument()
 
+    await user.click(screen.getByRole("button", { name: "カメラを停止" }))
+    expect(screen.getByText("受信 2 / 3")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "カメラを再起動" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
     expect(screen.getByText("受信 2 / 3")).toBeInTheDocument()
 
-    await act(async () => emitScannedPayload(multipartPayload("transfer-a", 1, 3)))
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 1, 3)),
+    )
     await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
     expect(onComplete).toHaveBeenCalledWith({
       artifactType: "pq-public-identity",
@@ -59,113 +90,162 @@ describe("multipart continuous scan UI", () => {
     expect(
       screen.getByText("全フレームのSHA-256整合性を確認しました。"),
     ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 1, 3)),
+    )
+    expect(onComplete).toHaveBeenCalledOnce()
   })
 
-  it("rejects frames from another transfer with the FRAME_MISMATCH user message", async () => {
+  it("locks to multipart synchronously and rejects a competing single payload", async () => {
+    const user = userEvent.setup()
     const session = new MultipartScanSession(5)
-    render(<MultipartScanPanel session={session} onComplete={vi.fn()} />)
-    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    const onSingleScan = vi.fn()
+    render(scanner(session, vi.fn(), onSingleScan))
+    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await screen.findByRole("button", { name: "カメラを停止" })
 
-    await act(async () => emitScannedPayload(multipartPayload("transfer-a", 0, 2)))
-    expect(await screen.findByText("欠損 index: 1")).toBeInTheDocument()
-    await act(async () => emitScannedPayload(multipartPayload("transfer-b", 1, 2)))
+    act(() => emitScannedPayload(multipartPayload("transfer-a", 0, 2)))
+    act(() => emitScannedPayload("OCM1:single"))
 
-    expect(await screen.findByText(userMessageFor("FRAME_MISMATCH"))).toBeInTheDocument()
-  })
-
-  it("keeps assembler progress when the scanner panel is remounted", async () => {
-    const session = new MultipartScanSession(5)
-    const onComplete = vi.fn()
-    const first = render(<MultipartScanPanel session={session} onComplete={onComplete} />)
-    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
-    await act(async () => emitScannedPayload(multipartPayload("transfer-a", 0, 2)))
+    expect(
+      await screen.findByText(
+        "複数QR読取中です。単発QRは読取完了または破棄後に。",
+      ),
+    ).toBeInTheDocument()
+    expect(onSingleScan).not.toHaveBeenCalled()
     expect(await screen.findByText("受信 1 / 2")).toBeInTheDocument()
-
-    first.unmount()
-    render(<MultipartScanPanel session={session} onComplete={onComplete} />)
-    await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
-    expect(screen.getByText("受信 1 / 2")).toBeInTheDocument()
-
-    await act(async () => emitScannedPayload(multipartPayload("transfer-a", 1, 2)))
-    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
+    expect(scannerStop).not.toHaveBeenCalled()
   })
 
-  it("discards an incomplete transfer and reports timeout", async () => {
+  it("keeps the camera running on transfer error, then discards to idle", async () => {
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    render(scanner(session))
+    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await screen.findByText("QRコードを順不同で読み取れます")
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 0, 2)),
+    )
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-b", 1, 2)),
+    )
+    expect(
+      await screen.findByText(userMessageFor("FRAME_MISMATCH")),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "カメラを停止" })).toBeEnabled()
+    expect(scannerStop).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "読取状態を破棄" }))
+    expect(scannerStop).toHaveBeenCalledOnce()
+    expect(screen.queryByLabelText("複数QR読取進捗")).not.toBeInTheDocument()
+    expect(startQrScan).toHaveBeenCalledOnce()
+    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+
+    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
+  })
+
+  it("suppresses completion from a pending add after stop", async () => {
+    const pending = deferred<TransferState>()
+    const session = new MultipartScanSession(5)
+    vi.spyOn(session, "add").mockReturnValueOnce(pending.promise)
+    const onComplete = vi.fn()
+    render(scanner(session, onComplete))
+    fireEvent.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    act(() => emitScannedPayload("OCF2:pending"))
+    fireEvent.click(screen.getByRole("button", { name: "カメラを停止" }))
+    await act(async () =>
+      pending.resolve({
+        kind: "complete",
+        transferId: Uint8Array.of(1),
+        artifactType: "pq-message",
+        artifactBytes: Uint8Array.of(2),
+      }),
+    )
+
+    expect(onComplete).not.toHaveBeenCalled()
+    expect(
+      screen.queryByText("全フレームのSHA-256整合性を確認しました。"),
+    ).not.toBeInTheDocument()
+  })
+
+  it("shows an AppError from the one-time completion callback", async () => {
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    const onComplete = vi.fn(() => {
+      throw new AppError("UNSUPPORTED_ALGORITHM")
+    })
+    render(scanner(session, onComplete))
+    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await screen.findByRole("button", { name: "カメラを停止" })
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
+    )
+
+    expect(onComplete).toHaveBeenCalledOnce()
+    expect(
+      await screen.findByText(userMessageFor("UNSUPPORTED_ALGORITHM")),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText("全フレームのSHA-256整合性を確認しました。"),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+  })
+
+  it("detects timeout, stops, and returns to idle", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-01-02T03:04:05Z"))
     const session = new MultipartScanSession(1)
-    render(<MultipartScanPanel session={session} onComplete={vi.fn()} />)
+    render(scanner(session))
+    fireEvent.click(screen.getByRole("button", { name: "カメラを起動" }))
     await act(async () => {
       await Promise.resolve()
       await Promise.resolve()
     })
-    expect(startQrScan).toHaveBeenCalledOnce()
-
+    act(() => emitScannedPayload(multipartPayload("transfer-a", 0, 2)))
     await act(async () => {
-      emitScannedPayload(multipartPayload("transfer-a", 0, 2))
       await Promise.resolve()
       await Promise.resolve()
     })
     expect(screen.getByText("受信 1 / 2")).toBeInTheDocument()
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(61_000)
-    })
+    await act(async () => vi.advanceTimersByTimeAsync(61_000))
+
     expect(
       screen.getByText("読取期限を過ぎたため、一時読取状態を破棄しました。"),
     ).toBeInTheDocument()
     expect(screen.queryByLabelText("複数QR読取進捗")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(scannerStop).toHaveBeenCalled()
   })
 
-  it("reports a missing video ref instead of returning silently", async () => {
-    reactHooks.useRef.mockImplementationOnce((initialValue: unknown) => {
-      const ref = reactHooks.actualUseRef!(initialValue)
-      Object.defineProperty(ref, "current", {
-        configurable: true,
-        get: () => null,
-        set: () => undefined,
-      })
-      return ref
-    })
+  it("reflects an external discard and stops the current run", async () => {
+    vi.useFakeTimers()
     const session = new MultipartScanSession(5)
-
-    render(<MultipartScanPanel session={session} onComplete={vi.fn()} />)
-
-    expect(
-      await screen.findByText(
-        "カメラ画面を準備できませんでした。ダイアログを開き直してください。",
-      ),
-    ).toBeInTheDocument()
-    expect(startQrScan).not.toHaveBeenCalled()
-  })
-
-  it("shows camera diagnostics and restarts only once for repeated visible events", async () => {
-    const cameraError = new AppError("CAMERA_NOT_AVAILABLE")
-    startQrScan.mockImplementationOnce(async (_video, _onText, onError) => {
-      const reportError = onError as unknown as (
-        error: AppError,
-        diagnostic: CameraDiagnostic,
-      ) => void
-      reportError(cameraError, {
-        phase: "track-ended",
-        name: null,
-        detail: "0x0 rs=2 track=ended/unmuted",
-      })
-      throw cameraError
+    render(scanner(session))
+    fireEvent.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
     })
-    const session = new MultipartScanSession(5)
-    render(<MultipartScanPanel session={session} onComplete={vi.fn()} />)
-
-    expect(await screen.findByText(cameraError.userMessage)).toBeInTheDocument()
-    expect(
-      screen.getByText("診断: unknown @track-ended [0x0 rs=2 track=ended/unmuted]"),
-    ).toBeInTheDocument()
-
-    act(() => {
-      document.dispatchEvent(new Event("visibilitychange"))
-      document.dispatchEvent(new Event("visibilitychange"))
+    act(() => emitScannedPayload(multipartPayload("transfer-a", 0, 2)))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
     })
+    expect(screen.getByText("受信 1 / 2")).toBeInTheDocument()
 
-    await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
+    session.discard()
+    await act(async () => vi.advanceTimersByTimeAsync(1_000))
+
+    expect(screen.queryByLabelText("複数QR読取進捗")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(scannerStop).toHaveBeenCalled()
   })
 })

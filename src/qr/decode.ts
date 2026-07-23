@@ -76,6 +76,7 @@ let activeAttempt: CameraAttempt | null = null
 // getUserMedia 自体は中断できないため、未解決の取得を追い越さない直列キューにする。
 let cameraAcquisitionQueue: Promise<void> = Promise.resolve()
 
+// true は自動再起動ではなく、UI を stopped（再起動ボタン表示）へ遷移させる指示。
 export function shouldRestartQrScanOnVisibility(
   state: CameraScanState,
   visibilityState: DocumentVisibilityState,

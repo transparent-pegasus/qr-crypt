@@ -248,9 +248,9 @@ describe("key management v2", () => {
     const originalCount = fakeKeys.length
     await renderApp("/keys")
     await user.click(await screen.findByRole("tab", { name: "鍵を読み取る" }))
+    expect(startQrScan).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
-    await user.click(screen.getByRole("button", { name: "単枚共通鍵QRを読み取る" }))
-    await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
     await act(async () => emitScannedPayload("OCK1:imported-key-000001"))
 
     const dialog = await screen.findByRole("dialog", { name: "共通鍵を取り込みます" })

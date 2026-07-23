@@ -9,7 +9,6 @@ import {
   FileCode2,
   LoaderCircle,
   Lock,
-  ScanLine,
 } from "lucide-react"
 import { toast } from "sonner"
 import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
@@ -32,9 +31,8 @@ import {
   useTransientClear,
 } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
-import { MultipartScanPanel } from "@/components/multipart-scan-panel"
 import { QrDisplay } from "@/components/qr-display"
-import { QrScannerDialog } from "@/components/qr-scanner-dialog"
+import { QrScannerPanel } from "@/components/qr-scanner-panel"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -189,7 +187,6 @@ export function EncryptPage() {
   const [outputName, setOutputName] = useState("")
   const [decryptInput, setDecryptInput] = useState("")
   const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
-  const [scannerOpen, setScannerOpen] = useState(false)
   const [clearStatus, setClearStatus] = useState("")
 
   const algorithms = useMemo(
@@ -621,16 +618,6 @@ export function EncryptPage() {
         </>
       ) : (
         <>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 w-full cursor-pointer focus-visible:ring-2"
-            disabled={!camera || busy}
-            onClick={() => setScannerOpen(true)}
-          >
-            <ScanLine aria-hidden="true" />
-            単枚QRを読み取る
-          </Button>
           <div className="space-y-2">
             <Label htmlFor="decrypt-payload">暗号文ペイロード</Label>
             <Textarea
@@ -703,17 +690,27 @@ export function EncryptPage() {
             {busy ? "復号中…" : "復号する"}
           </Button>
 
-          <MultipartScanPanel
-            session={multipartSession}
-            cameraAvailable={camera && !scannerOpen}
-            onComplete={({ artifactType, artifactBytes }) => {
-              if (artifactType !== "pq-message") throw new AppError("INVALID_QR_PAYLOAD")
-              const envelope = decodeMlKemEnvelopeV2(artifactBytes)
-              setDecryptInput(
-                buildV2Payload("pq-message", encodeMlKemEnvelopeV2(envelope)),
-              )
+          <QrScannerPanel
+            singleTargets={["message"]}
+            cameraAvailable={camera}
+            title="暗号文QRを読み取る"
+            onSingleScan={(_target, payload) => {
+              setDecryptInput(payload)
               setDecrypted(null)
               setError(null)
+            }}
+            multipart={{
+              session: multipartSession,
+              onComplete: ({ artifactType, artifactBytes }) => {
+                if (artifactType !== "pq-message")
+                  throw new AppError("INVALID_QR_PAYLOAD")
+                const envelope = decodeMlKemEnvelopeV2(artifactBytes)
+                setDecryptInput(
+                  buildV2Payload("pq-message", encodeMlKemEnvelopeV2(envelope)),
+                )
+                setDecrypted(null)
+                setError(null)
+              },
             }}
           />
 
@@ -913,17 +910,6 @@ export function EncryptPage() {
         </section>
       )}
 
-      <QrScannerDialog
-        open={scannerOpen}
-        onOpenChange={setScannerOpen}
-        target="message"
-        cameraAvailable={camera}
-        onScan={(payload) => {
-          setDecryptInput(payload)
-          setDecrypted(null)
-          setError(null)
-        }}
-      />
     </section>
   )
 }

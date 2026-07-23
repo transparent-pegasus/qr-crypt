@@ -420,15 +420,28 @@ export const buildExportFileName = vi.fn(
 export const triggerDownload = vi.fn()
 export const copyTextToClipboard = vi.fn(async () => undefined)
 
+interface FakeCameraDiagnostic {
+  phase: "acquiring" | "acquired" | "playing" | "track-ended"
+  name: string | null
+  detail: string
+}
+
 export const scannerStop = vi.fn()
 let scanTextCallback: ((payload: string) => void) | null = null
-let scanErrorCallback: ((error: FakeAppError) => void) | null = null
+let scanErrorCallback:
+  | ((error: FakeAppError, diagnostic: FakeCameraDiagnostic) => void)
+  | null = null
 export const startQrScan = vi.fn(
   async (
     _video: HTMLVideoElement,
     onText: (payload: string) => void,
-    onError: (error: FakeAppError) => void,
-  ) => {
+    onError: (
+      error: FakeAppError,
+      diagnostic: FakeCameraDiagnostic,
+    ) => void,
+    _options?: { once?: boolean; signal?: AbortSignal },
+  ): Promise<{ stop: () => void }> => {
+    void _options
     scanTextCallback = onText
     scanErrorCallback = onError
     return { stop: scannerStop }
@@ -437,8 +450,15 @@ export const startQrScan = vi.fn(
 export function emitScannedPayload(payload: string): void {
   scanTextCallback?.(payload)
 }
-export function emitScanError(code: ErrorCode): void {
-  scanErrorCallback?.(new FakeAppError(code))
+export function emitScanError(
+  code: ErrorCode,
+  diagnostic: FakeCameraDiagnostic = {
+    phase: "acquiring",
+    name: null,
+    detail: "0x0 rs=0 track=none",
+  },
+): void {
+  scanErrorCallback?.(new FakeAppError(code), diagnostic)
 }
 
 export const disposePqClient = vi.fn()

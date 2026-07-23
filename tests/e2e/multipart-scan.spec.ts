@@ -43,11 +43,21 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
   expect(otherFrames[0]).not.toBe(frames[0])
 
   await page.getByRole("tab", { name: "復号", exact: true }).click()
+  await expect(page.getByText("起動ボタンを押すとカメラを開始します")).toBeVisible()
+  await page.getByRole("button", { name: "カメラを起動", exact: true }).click()
   await expect(page.getByText("QRコードを順不同で読み取れます")).toBeVisible()
 
-  // A frame from another transfer must poison this session with FRAME_MISMATCH.
+  // The first multipart frame locks this run; an otherwise valid single QR is rejected.
   await emitInjectedQr(page, frames[0]!)
   await expect(page.getByText(`受信 1 / ${frames.length}`, { exact: true })).toBeVisible()
+  await emitInjectedQr(page, "OCM1:competing-single")
+  await expect(
+    page.getByText("複数QR読取中です。単発QRは読取完了または破棄後に。"),
+  ).toBeVisible()
+  let snapshot = await injectedScanSnapshot(page)
+  expect(snapshot.at(-1)).toMatchObject({ active: true, once: false, emissions: 2 })
+
+  // A frame from another transfer must poison this session with FRAME_MISMATCH.
   await emitInjectedQr(page, otherFrames[0]!)
   await expect(
     page.getByText(
@@ -56,13 +66,17 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
   ).toBeVisible()
 
   await page.getByRole("button", { name: "読取状態を破棄" }).click()
+  await expect(page.getByRole("button", { name: "カメラを起動" })).toBeVisible()
+  snapshot = await injectedScanSnapshot(page)
+  expect(snapshot.at(-1)?.active).toBe(false)
+  await page.getByRole("button", { name: "カメラを起動" }).click()
   await expect(page.getByText("QRコードを順不同で読み取れます")).toBeVisible()
 
   // Restart with the last frame, repeat it, then finish in reverse order.
   const lastIndex = frames.length - 1
   await emitInjectedQr(page, frames[lastIndex]!)
   await expect(page.getByText(`受信 1 / ${frames.length}`, { exact: true })).toBeVisible()
-  let snapshot = await injectedScanSnapshot(page)
+  snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)).toMatchObject({ active: true, once: false, emissions: 1 })
 
   await emitInjectedQr(page, frames[lastIndex]!)
