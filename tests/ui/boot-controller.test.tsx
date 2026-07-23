@@ -10,6 +10,34 @@ import {
 import { useBootState } from "@/app/boot/use-boot-state"
 import { createWipeCoordinator } from "@/app/boot/wipe-coordinator"
 
+class MemoryStorage implements Storage {
+  readonly values = new Map<string, string>()
+  get length(): number {
+    return this.values.size
+  }
+  clear(): void {
+    this.values.clear()
+  }
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null
+  }
+  key(index: number): string | null {
+    return Array.from(this.values.keys())[index] ?? null
+  }
+  removeItem(key: string): void {
+    this.values.delete(key)
+  }
+  setItem(key: string, value: string): void {
+    this.values.set(key, String(value))
+  }
+}
+
+const localStorage = new MemoryStorage()
+Object.defineProperty(window, "localStorage", {
+  configurable: true,
+  value: localStorage,
+})
+
 function response(body: string, status = 200): Response {
   return { status, text: vi.fn(async () => body) } as unknown as Response
 }
@@ -27,6 +55,7 @@ function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSn
 
 afterEach(() => {
   cleanup()
+  window.localStorage.clear()
   vi.useRealTimers()
   vi.restoreAllMocks()
 })
@@ -99,6 +128,130 @@ describe("destructive reachability probe", () => {
 })
 
 describe("boot decisions", () => {
+  it.each([
+    ["consume succeeds", true, "offline-confirmed"],
+    ["consume fails and wipe qualifies", false, "wiped"],
+  ] as const)(
+    "latches an offline nudge while a deferred maintenance token %s",
+    async (_label, tokenResult, expectedState) => {
+      let resolveToken: ((value: boolean) => void) | undefined
+      const consumeMaintenanceToken = vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveToken = resolve
+          }),
+      )
+      const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
+      const resetTransient = vi.fn()
+      const controller = createBootController({
+        consumeMaintenanceToken,
+        fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+        performWipe,
+        readDecision: async () =>
+          decision({ maintenanceTokenArmed: true, sensitiveDataExists: true }),
+      })
+      controller.addTransientResetHandler(resetTransient)
+
+      const pendingProbe = controller.probe()
+      await waitFor(() =>
+        expect(controller.getState()).toEqual({ kind: "network-confirmed" }),
+      )
+      expect(controller.nudgeDisplayOffline()).toBe(true)
+      expect(controller.nudgeDisplayOffline()).toBe(false)
+      expect(controller.getState()).toEqual({ kind: "network-confirmed" })
+
+      resolveToken?.(tokenResult)
+      await pendingProbe
+
+      expect(consumeMaintenanceToken).toHaveBeenCalledTimes(1)
+      expect(controller.getState().kind).toBe(expectedState)
+      expect(resetTransient).toHaveBeenCalledTimes(tokenResult ? 1 : 0)
+      expect(performWipe).toHaveBeenCalledTimes(tokenResult ? 0 : 1)
+      expect(controller.nudgeDisplayOffline()).toBe(false)
+    },
+  )
+
+  it("sets the acknowledgement marker before publishing network-confirmed", async () => {
+    const order: string[] = []
+    const originalSetItem = localStorage.setItem.bind(localStorage)
+    const setItem = vi.spyOn(window.localStorage, "setItem")
+    setItem.mockImplementation((key, value) => {
+      if (key === "oc-offline-ack-pending" && value === "1") order.push("marker")
+      originalSetItem(key, value)
+    })
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      readDecision: async () => decision(),
+    })
+    controller.subscribe(() => {
+      if (controller.getState().kind === "network-confirmed") order.push("publish")
+    })
+
+    await controller.probe()
+
+    expect(order).toEqual(["marker", "publish"])
+  })
+
+  it("keeps nudge a strict no-op outside one network-confirmed episode", async () => {
+    let resolveFetch: ((value: Response) => void) | undefined
+    const fetchImpl = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve
+        }),
+    )
+    const controller = createBootController({
+      fetchImpl,
+      readDecision: async () => decision(),
+    })
+    const listener = vi.fn()
+    controller.subscribe(listener)
+
+    expect(controller.nudgeDisplayOffline()).toBe(false)
+    expect(listener).not.toHaveBeenCalled()
+    const pending = controller.probe()
+    const probingEmits = listener.mock.calls.length
+    expect(controller.getState().kind).toBe("probing")
+    expect(controller.nudgeDisplayOffline()).toBe(false)
+    expect(listener).toHaveBeenCalledTimes(probingEmits)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+
+    resolveFetch?.(response("offline", 503))
+    await pending
+    const offlineEmits = listener.mock.calls.length
+    expect(controller.nudgeDisplayOffline()).toBe(false)
+    expect(listener).toHaveBeenCalledTimes(offlineEmits)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ["wiped", { ok: true, failedSteps: [] }],
+    ["partial-failure", { ok: false, failedSteps: ["database"] }],
+  ] as const)("does not nudge the %s terminal state", async (kind, report) => {
+    let resolveWipe: ((value: typeof report) => void) | undefined
+    const performWipe = vi.fn(
+      () =>
+        new Promise<typeof report>((resolve) => {
+          resolveWipe = resolve
+        }),
+    )
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      performWipe,
+      readDecision: async () => decision({ sensitiveDataExists: true }),
+    })
+    const pending = controller.probe()
+    await waitFor(() => expect(controller.getState().kind).toBe("wiping"))
+    expect(controller.nudgeDisplayOffline()).toBe(false)
+    expect(performWipe).toHaveBeenCalledTimes(1)
+
+    resolveWipe?.(report)
+    await pending
+    expect(controller.getState().kind).toBe(kind)
+    expect(controller.nudgeDisplayOffline()).toBe(false)
+    expect(performWipe).toHaveBeenCalledTimes(1)
+  })
+
   it("does not wipe the install path when no sensitive row exists", async () => {
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const controller = createBootController({

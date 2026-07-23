@@ -111,6 +111,24 @@ export async function switchToOfflineApp(
   await context.setOffline(true)
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(page.getByText("オンラインではPWAの導入のみ利用できます")).toBeHidden()
+  await expectOfflineAcknowledgement(page)
+  await acknowledgeOfflineRisk(page)
+  await expect(mainNavigation(page)).toBeVisible()
+}
+
+/**
+ * Test-only marker-absent cold boot. Loading once online is necessary to prime
+ * the service worker; removing the non-sensitive marker isolates the true cold
+ * contract before the offline reload.
+ */
+export async function switchToColdOfflineApp(
+  page: Page,
+  context: BrowserContext,
+): Promise<void> {
+  await waitForServiceWorkerControl(page)
+  await page.evaluate(() => localStorage.removeItem("oc-offline-ack-pending"))
+  await context.setOffline(true)
+  await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
     page.getByRole("heading", {
       name: "オフラインへ切り替わりました — 続行前の確認",
@@ -514,11 +532,14 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
   await page.route("**/assets/index-*.js", async (route) => {
     const response = await route.fetch()
     const source = await response.text()
-    const marker = "async function FF(e,t,n,r){"
-    if (!source.includes(marker)) {
+    const startQrScanPattern =
+      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=let [$\w]+=new [$\w]+,[$\w]+=[$\w]+\?\.once\?\?!0,[$\w]+=!1,[$\w]+=!1)/g
+    const matches = [...source.matchAll(startQrScanPattern)]
+    if (matches.length !== 1) {
       throw new Error("Production scanner bundle marker was not found")
     }
-    const injected = `${marker}if(globalThis.__qryptE2eDecoder){return await globalThis.__qryptE2eDecoder(e,t,n,r)}`
+    const [marker, video, onText, onError, options] = matches[0]!
+    const injected = `${marker}if(globalThis.__qryptE2eDecoder){return await globalThis.__qryptE2eDecoder(${video},${onText},${onError},${options})}`
     await route.fulfill({ response, body: source.replace(marker, injected) })
   })
 }

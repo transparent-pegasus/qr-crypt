@@ -88,3 +88,21 @@ test("暗号フローは外部送信せず、秘密・message artifact を残さ
   )
   expect(localStorageKeys.every((key) => key === "oc-theme")).toBe(true)
 })
+
+test("承認保留中の localStorage はテーマと値1の非機微マーカーだけを許可する", async ({
+  page,
+}) => {
+  await loadOnlineGate(page)
+  const entries = await page.evaluate(() =>
+    Object.fromEntries(
+      Object.entries(window.localStorage).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    ),
+  )
+
+  expect(entries).toEqual({
+    "oc-offline-ack-pending": "1",
+    "oc-theme": "system",
+  })
+})

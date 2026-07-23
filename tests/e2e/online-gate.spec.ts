@@ -5,7 +5,9 @@ import {
   expectOnlineGate,
   loadOnlineGate,
   mainNavigation,
+  switchToColdOfflineApp,
   switchToOfflineApp,
+  waitForServiceWorkerControl,
 } from "./helpers"
 
 test("オンライン遷移で機能と一時平文を隠しオフライン復帰時に消去済みにする", async ({
@@ -30,16 +32,51 @@ test("オンライン遷移で機能と一時平文を隠しオフライン復�
   await expect(page.getByLabel("平文", { exact: true })).toHaveValue("")
 })
 
-test("再読み込みしたコールドオフライン起動では承認を要求しない", async ({
+test("マーカー不在の真のコールドオフライン起動では承認を要求しない", async ({
   context,
   page,
 }) => {
   await loadOnlineGate(page)
-  await switchToOfflineApp(page, context)
+  await switchToColdOfflineApp(page, context)
   await expect(
     page.getByRole("heading", {
       name: "オフラインへ切り替わりました — 続行前の確認",
     }),
   ).toBeHidden()
   await expect(mainNavigation(page)).toBeVisible()
+})
+
+test("2タブの片側承認は他方の進行中 shell を解除せず origin の次回起動へ反映する", async ({
+  context,
+  page,
+}) => {
+  const peer = await context.newPage()
+  try {
+    await Promise.all([loadOnlineGate(page), loadOnlineGate(peer)])
+    await Promise.all([
+      waitForServiceWorkerControl(page),
+      waitForServiceWorkerControl(peer),
+    ])
+
+    await context.setOffline(true)
+    await Promise.all([
+      expectOfflineAcknowledgement(page),
+      expectOfflineAcknowledgement(peer),
+    ])
+
+    await acknowledgeOfflineRisk(page)
+    await expect(mainNavigation(page)).toBeVisible()
+    await expectOfflineAcknowledgement(peer)
+    await expect(peer.getByRole("navigation")).toBeHidden()
+
+    await peer.reload({ waitUntil: "domcontentloaded" })
+    await expect(mainNavigation(peer)).toBeVisible()
+    await expect(
+      peer.getByRole("heading", {
+        name: "オフラインへ切り替わりました — 続行前の確認",
+      }),
+    ).toBeHidden()
+  } finally {
+    await peer.close()
+  }
 })

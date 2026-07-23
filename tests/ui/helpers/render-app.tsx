@@ -2,6 +2,7 @@ import { cleanup, render } from "@testing-library/react"
 import { createElement, type ComponentProps } from "react"
 import { resetFakes } from "./fakes"
 import { setTestOnlineStatus } from "./network"
+import { clearAckPending } from "@/app/offline-ack-marker"
 
 type AppComponent = typeof import("@/app/App").App
 let appComponent: AppComponent | null = null
@@ -34,7 +35,7 @@ class MemoryLocalStorage implements Storage {
   }
 }
 
-const memoryLocalStorage = new MemoryLocalStorage()
+export const memoryLocalStorage = new MemoryLocalStorage()
 Object.defineProperty(window, "localStorage", {
   configurable: true,
   value: memoryLocalStorage,
@@ -59,10 +60,13 @@ export async function renderApp(path = "/", props: ComponentProps<AppComponent> 
   return render(createElement(appComponent, props))
 }
 
-export function resetUi(): void {
+export function resetUi({ clearStorage = true }: { clearStorage?: boolean } = {}): void {
   cleanup()
   resetFakes()
-  memoryLocalStorage.clear()
+  if (clearStorage) {
+    memoryLocalStorage.clear()
+    clearAckPending()
+  }
   document.documentElement.classList.remove("dark")
   setTestOnlineStatus(false)
   window.history.pushState({}, "", "/")

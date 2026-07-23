@@ -22,6 +22,7 @@ import {
   STORE_KEYS,
   STORE_PREFERENCES,
 } from "@/storage/database"
+import { OFFLINE_ACK_PENDING_KEY } from "@/app/offline-ack-marker"
 
 class MemoryStorage implements Storage {
   readonly values = new Map<string, string>()
@@ -71,6 +72,7 @@ function dependencies(
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   resetDatabaseAccessBarrierForTesting()
   await deleteEntireDatabase()
   await deleteDB(RESET_CHURN_DATABASE_NAME)
@@ -200,10 +202,34 @@ describe("best-effort local reset", () => {
   it("removes only oc-* localStorage keys", () => {
     const storage = new MemoryStorage()
     storage.setItem("oc-theme", "dark")
+    storage.setItem(OFFLINE_ACK_PENDING_KEY, "1")
     storage.setItem("oc-sensitive", "value")
     storage.setItem("unrelated", "keep")
     clearOcLocalStorage(storage)
     expect(Array.from(storage.values.entries())).toEqual([["unrelated", "keep"]])
+  })
+
+  it("re-establishes the real marker after online wipe but not user reset", async () => {
+    const storage = new MemoryStorage()
+    vi.stubGlobal("window", { localStorage: storage })
+    storage.setItem("oc-theme", "dark")
+    storage.setItem(OFFLINE_ACK_PENDING_KEY, "1")
+    const resetDependencies = dependencies({
+      clearLocalStorage: () => clearOcLocalStorage(storage),
+    })
+
+    await bestEffortLocalReset(
+      { reason: "online-detected", resetChurnMb: 0 },
+      resetDependencies,
+    )
+    expect(Array.from(storage.values.entries())).toEqual([[OFFLINE_ACK_PENDING_KEY, "1"]])
+
+    storage.setItem("oc-theme", "light")
+    await bestEffortLocalReset(
+      { reason: "user-requested", resetChurnMb: 0 },
+      resetDependencies,
+    )
+    expect(Array.from(storage.values.entries())).toEqual([])
   })
 
   it("performs the real logical DB deletion and absence verification", async () => {

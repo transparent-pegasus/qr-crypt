@@ -18,6 +18,7 @@ import {
   TRANSFER_TIMEOUT_MINUTES_MIN,
 } from "@/lib/limits"
 import { getDb } from "@/storage/database"
+import { setAckPending } from "@/app/offline-ack-marker"
 
 export const BOOT_PROBE_TIMEOUT_MS = 3_000
 export const MAINTENANCE_TOKEN_METADATA_KEY = "maintenance-token"
@@ -90,6 +91,7 @@ export interface BootController {
   acquire(): void
   addTransientResetHandler(handler: () => void): () => void
   getState(): BootState
+  nudgeDisplayOffline(): boolean
   probe(): Promise<void>
   release(): void
   start(): void
@@ -208,7 +210,11 @@ function optionalBoolean(value: unknown): boolean {
   return value === undefined || typeof value === "boolean"
 }
 
-function optionalIntegerInRange(value: unknown, minimum: number, maximum: number): boolean {
+function optionalIntegerInRange(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): boolean {
   return (
     value === undefined ||
     (typeof value === "number" &&
@@ -407,6 +413,13 @@ export function createBootController(
   let consumerCount = 0
   let releaseGeneration = 0
   let networkTransitionHandled = false
+  let confirmationEpisode:
+    | {
+        generation: number
+        continuationPending: boolean
+        offlineRequested: boolean
+      }
+    | undefined
 
   const emit = (nextState: BootState) => {
     state = nextState
@@ -426,10 +439,26 @@ export function createBootController(
   const isDestructiveTerminal = () =>
     state.kind === "wiping" || state.kind === "wiped" || state.kind === "partial-failure"
 
+  const finishNonDestructiveConfirmation = (
+    episode: NonNullable<typeof confirmationEpisode>,
+  ) => {
+    resetTransient()
+    episode.continuationPending = false
+    if (
+      confirmationEpisode === episode &&
+      episode.offlineRequested &&
+      state.kind === "network-confirmed"
+    ) {
+      networkTransitionHandled = false
+      emit({ kind: "offline-confirmed" })
+    }
+  }
+
   const probe = async (): Promise<void> => {
-    if (isDestructiveTerminal()) return
+    if (isDestructiveTerminal() || confirmationEpisode?.continuationPending) return
     const probeGeneration = ++generation
     activeProbe?.abort()
+    confirmationEpisode = undefined
     const controller = new AbortController()
     activeProbe = controller
     emit({ kind: "probing", generation: probeGeneration })
@@ -444,8 +473,6 @@ export function createBootController(
         ? { timeoutMs: options.probeTimeoutMs }
         : {}),
     })
-    const decision = await decisionPromise
-
     if (probeGeneration !== generation || controller.signal.aborted) return
     activeProbe = undefined
     if (!confirmed) {
@@ -455,18 +482,29 @@ export function createBootController(
     }
 
     networkTransitionHandled = true
+    const episode = {
+      generation: probeGeneration,
+      continuationPending: true,
+      offlineRequested: false,
+    }
+    confirmationEpisode = episode
+    setAckPending()
     emit({ kind: "network-confirmed" })
+
+    // Sentinel success is the one-way boundary. From here onward no offline
+    // request, generation update, or AbortSignal may cancel token consumption
+    // or a qualifying wipe decision.
+    const decision = await decisionPromise
 
     if (decision.maintenanceTokenArmed) {
       const tokenConsumed = await consumeToken()
-      if (probeGeneration !== generation) return
       if (tokenConsumed) {
-        resetTransient()
+        finishNonDestructiveConfirmation(episode)
         return
       }
     }
     if (!decision.sensitiveDataExists || !decision.wipeOnOnline) {
-      resetTransient()
+      finishNonDestructiveConfirmation(episode)
       return
     }
 
@@ -477,14 +515,29 @@ export function createBootController(
         resetChurnMb: decision.resetChurnMb,
         resetTransient,
       })
+      episode.continuationPending = false
       emit(
         report.ok
           ? { kind: "wiped" }
           : { kind: "partial-failure", failedSteps: report.failedSteps },
       )
     } catch {
+      episode.continuationPending = false
       emit({ kind: "partial-failure", failedSteps: ["reset"] })
     }
+  }
+
+  const nudgeDisplayOffline = (): boolean => {
+    if (state.kind !== "network-confirmed") return false
+    const episode = confirmationEpisode
+    if (!episode || episode.offlineRequested) return false
+
+    episode.offlineRequested = true
+    if (!episode.continuationPending) {
+      networkTransitionHandled = false
+      emit({ kind: "offline-confirmed" })
+    }
+    return true
   }
 
   const handleOnline = () => {
@@ -494,15 +547,17 @@ export function createBootController(
 
   const handleOffline = () => {
     if (isDestructiveTerminal()) return
-    networkTransitionHandled = false
     if (state.kind === "network-confirmed") {
+      nudgeDisplayOffline()
+      return
+    }
+    networkTransitionHandled = false
+    if (state.kind === "probing") {
       activeProbe?.abort()
       activeProbe = undefined
       generation += 1
       emit({ kind: "offline-confirmed" })
-      return
     }
-    if (state.kind === "probing") void probe()
   }
 
   const start = () => {
@@ -536,6 +591,7 @@ export function createBootController(
       return () => transientResetHandlers.delete(handler)
     },
     getState: () => state,
+    nudgeDisplayOffline,
     probe,
     release() {
       consumerCount = Math.max(0, consumerCount - 1)

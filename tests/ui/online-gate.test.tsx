@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fakeFeatures, useFakeRegisterSW } from "./helpers/fakes"
 import { setTestOnlineStatus } from "./helpers/network"
 import { renderApp, resetUi } from "./helpers/render-app"
+import { createBootController } from "@/app/boot/boot-controller"
 
 describe("OnlineGate", () => {
   beforeEach(resetUi)
@@ -13,7 +14,20 @@ describe("OnlineGate", () => {
   it("shows only installation guidance while online and handles beforeinstallprompt", async () => {
     setTestOnlineStatus(true)
     const user = userEvent.setup()
-    await renderApp("/encrypt")
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => ({
+        status: 200,
+        text: vi.fn(async () => "QRYPT-REACHABLE"),
+      })) as unknown as typeof fetch,
+      readDecision: async () => ({
+        wipeOnOnline: true,
+        sensitiveDataExists: false,
+        maintenanceTokenArmed: false,
+        resetChurnMb: 0,
+        preferencesReadFailed: false,
+      }),
+    })
+    await renderApp("/encrypt", { bootController: controller })
 
     expect(
       await screen.findByText("オンラインではPWAの導入のみ利用できます"),
@@ -56,6 +70,7 @@ describe("OnlineGate", () => {
         "インストール済み",
       ),
     )
+    controller.stop()
   })
 
   it("fires TransientClear on offline-to-online and restores children when offline", async () => {

@@ -22,8 +22,12 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 function storedTheme(): Theme {
-  const value = window.localStorage.getItem("oc-theme")
-  return value === "light" || value === "dark" || value === "system" ? value : "system"
+  try {
+    const value = window.localStorage.getItem("oc-theme")
+    return value === "light" || value === "dark" || value === "system" ? value : "system"
+  } catch {
+    return "system"
+  }
 }
 
 function applyTheme(theme: Theme, prefersDark: boolean): void {
@@ -39,12 +43,20 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(storedTheme)
 
   const setTheme = useCallback((nextTheme: Theme) => {
-    window.localStorage.setItem("oc-theme", nextTheme)
+    try {
+      window.localStorage.setItem("oc-theme", nextTheme)
+    } catch {
+      // Theme persistence is best-effort; rendering must survive denied storage.
+    }
     setThemeState(nextTheme)
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem("oc-theme", theme)
+    try {
+      window.localStorage.setItem("oc-theme", theme)
+    } catch {
+      // Keep the in-memory theme when persistence is unavailable.
+    }
     const media = window.matchMedia("(prefers-color-scheme: dark)")
     const syncTheme = () => applyTheme(theme, media.matches)
     syncTheme()

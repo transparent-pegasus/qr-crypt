@@ -1,7 +1,7 @@
-import { useCallback, useMemo, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react"
 import { RouterProvider } from "react-router-dom"
-import type { BootController } from "@/app/boot/boot-controller"
+import { getDefaultBootController, type BootController } from "@/app/boot/boot-controller"
 import { useBootState } from "@/app/boot/use-boot-state"
 import { useDisplayGate } from "@/app/display-gate"
 import {
@@ -107,14 +107,55 @@ function BootGate({
   const display = useDisplayGate()
   const { clearTransientForOnlineEpisode } = display
   const { resetSensitiveSession } = useSensitiveSession()
+  const resolvedController = controller ?? getDefaultBootController()
   const resetTransient = useCallback(() => {
     clearTransientForOnlineEpisode()
     resetSensitiveSession()
   }, [clearTransientForOnlineEpisode, resetSensitiveSession])
   const state = useBootState({
-    ...(controller ? { controller } : {}),
+    controller: resolvedController,
     resetTransient,
   })
+  const nudgedDisplayGeneration = useRef<number | null>(null)
+  const reconciledOnlineGeneration = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (
+      !display.online &&
+      display.sessionSawCommittedOnline &&
+      nudgedDisplayGeneration.current !== display.offlineGeneration &&
+      resolvedController.nudgeDisplayOffline()
+    ) {
+      // Only a successful controller-side atomic transition is consumed.
+      nudgedDisplayGeneration.current = display.offlineGeneration
+    }
+  }, [
+    display.offlineGeneration,
+    display.online,
+    display.sessionSawCommittedOnline,
+    resolvedController,
+    state.kind,
+  ])
+
+  useEffect(() => {
+    if (
+      !display.online ||
+      state.kind !== "offline-confirmed" ||
+      reconciledOnlineGeneration.current === display.offlineGeneration
+    ) {
+      return
+    }
+
+    // Let a simultaneously delivered display-offline commit settle first. It
+    // prevents the old online snapshot from turning the same offline edge back
+    // into a sentinel probe. A genuine online re-commit remains eligible.
+    const generation = display.offlineGeneration
+    const timeoutId = window.setTimeout(() => {
+      reconciledOnlineGeneration.current = generation
+      void resolvedController.probe()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
+  }, [display.offlineGeneration, display.online, resolvedController, state.kind])
   const routerEligible =
     state.kind === "offline-confirmed" &&
     !display.online &&

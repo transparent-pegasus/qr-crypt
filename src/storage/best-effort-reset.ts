@@ -10,7 +10,8 @@
 //      全タブへ停止/close 要求
 //   5. Vault 配下の EncryptedSecret を先に削除 → Vault 鍵レコード削除
 //      (暗号シュレッディング。非抽出 CryptoKey の byte 上書きは主張しない)
-//   6. 全 DB(pqIdentities/pqPublicBundles 含む)+ oc-* localStorage を削除
+//   6. 全 DB(pqIdentities/pqPublicBundles 含む)+ oc-* localStorage を削除。
+//      online-detected のみ ack マーカーを直後に再設定してから terminal publish
 //   7. DB 不在を再確認して barrier 維持(deleteDB({blocked}) に timeout+UI)
 //
 // churn(resetChurnMb)は既定 0 の実験オプション。消去保証にならない
@@ -19,6 +20,7 @@ import { deleteDB, openDB } from "idb"
 import type { DBSchema, IDBPDatabase } from "idb"
 import { RESET_CHURN_MB_MAX, RESET_CHURN_MB_MIN } from "@/lib/limits"
 import { DB_NAME, databaseExists, deleteEntireDatabase } from "@/storage/database"
+import { setAckPending } from "@/app/offline-ack-marker"
 
 const VAULT_KEY_METADATA_KEY = "vault-key"
 const STORE_APP_METADATA = "appMetadata"
@@ -208,8 +210,9 @@ export async function deleteVaultKeyRecord(): Promise<void> {
 }
 
 export function clearOcLocalStorage(
-  storage: Storage | undefined =
-    typeof window === "undefined" ? undefined : window.localStorage,
+  storage: Storage | undefined = typeof window === "undefined"
+    ? undefined
+    : window.localStorage,
 ): void {
   if (!storage) return
   const keys: string[] = []
@@ -250,6 +253,11 @@ export async function bestEffortLocalReset(
   // Step 6: logical deletion. Churn is optional, bounded, and runs only after it.
   await attempt("database", dependencies.deleteDatabase)
   await attempt("local-storage", dependencies.clearLocalStorage)
+  if (args.reason === "online-detected") {
+    // clearOcLocalStorage removes the old marker. Re-establish it before the
+    // controller can publish wiped: online contact itself requires approval.
+    setAckPending()
+  }
   const resetChurnMb = boundedChurnMegabytes(args.resetChurnMb)
   if (resetChurnMb > 0) {
     await attempt("churn", async () => {
@@ -264,7 +272,5 @@ export async function bestEffortLocalReset(
       throw new Error("database remains")
     }
   })
-
-  void args.reason
   return { ok: failedSteps.length === 0, failedSteps }
 }

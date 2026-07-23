@@ -100,18 +100,110 @@ test("鍵作成後に sentinel 到達可能な online へ戻ると wipe し、�
   await expect(
     shell.getByText("オンラインを検出したため、ローカルデータを初期化しました"),
   ).toBeVisible()
-  const reload = shell.getByRole("button", { name: "再読み込みして続行" })
-  await expect(reload).toBeDisabled()
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("oc-offline-ack-pending")))
+    .toBe("1")
+
+  // A manual reload without acknowledgement must not bypass the shell.
+  await page.reload({ waitUntil: "domcontentloaded" })
+  await expect(shell).toBeVisible()
+  await expect(mainNavigation(page)).toBeHidden()
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("oc-offline-ack-pending")))
+    .toBe("1")
+
+  const continueButton = shell.getByRole("button", {
+    name: "リスクを理解してオフライン機能を表示",
+  })
+  await expect(continueButton).toBeDisabled()
   await shell
     .getByRole("checkbox", {
       name: "上記を理解した上で、リスクを受け入れてこの端末で続行します",
     })
     .check()
-  await reload.click()
+  await continueButton.click()
 
   await expect(mainNavigation(page)).toBeVisible()
   await expect(shell).toBeHidden()
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("oc-offline-ack-pending")))
+    .toBeNull()
+  await page.reload({ waitUntil: "domcontentloaded" })
+  await expect(mainNavigation(page)).toBeVisible()
   expect(await rawStoreCount(page, "keys")).toBe(0)
   expect(await rawStoreCount(page, "pqIdentities")).toBe(0)
   expect(await rawStoreCount(page, "qrArtifacts")).toBe(0)
+})
+
+test("2タブ wipe broadcast と peer の online marker 書込が競合しても pending を保持する", async ({
+  context,
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const peer = await context.newPage()
+  const senderSentinel: SentinelControl = { reachable: true, hits: 0 }
+  const peerSentinel: SentinelControl = { reachable: false, hits: 0 }
+  try {
+    await peer.addInitScript(() => {
+      const nativeSetItem = Storage.prototype.setItem
+      Storage.prototype.setItem = function setItem(key: string, value: string) {
+        if (key === "oc-offline-ack-pending") {
+          const count = Number(sessionStorage.getItem("__peer_marker_writes") ?? "0")
+          sessionStorage.setItem("__peer_marker_writes", String(count + 1))
+        }
+        nativeSetItem.call(this, key, value)
+      }
+    })
+    await Promise.all([
+      controlSentinel(page, senderSentinel),
+      controlSentinel(peer, peerSentinel),
+    ])
+    await Promise.all([loadOnlineGate(page, "/keys"), loadOnlineGate(peer)])
+
+    senderSentinel.reachable = false
+    await switchToOfflineApp(page, context)
+    await expect(
+      peer.getByRole("heading", {
+        name: "オフラインへ切り替わりました — 続行前の確認",
+      }),
+    ).toBeVisible()
+    await createSymmetricKey(page, "broadcast競合確認鍵")
+
+    await peer.evaluate(() => {
+      sessionStorage.setItem("__peer_marker_writes", "0")
+      const channel = new BroadcastChannel("qrypt-wipe")
+      channel.addEventListener("message", () => {
+        const count = Number(sessionStorage.getItem("__peer_wipe_messages") ?? "0")
+        sessionStorage.setItem("__peer_wipe_messages", String(count + 1))
+      })
+      ;(window as Window & { __peerWipeProbe?: BroadcastChannel }).__peerWipeProbe =
+        channel
+    })
+
+    senderSentinel.reachable = true
+    await context.setOffline(false)
+    await expect(
+      page.getByRole("heading", {
+        name: "オンラインを検出したため、ローカルデータを初期化しました",
+      }),
+    ).toBeVisible({ timeout: 45_000 })
+
+    await expect
+      .poll(() =>
+        peer.evaluate(() =>
+          Number(sessionStorage.getItem("__peer_wipe_messages") ?? "0"),
+        ),
+      )
+      .toBe(1)
+    expect(
+      await peer.evaluate(() =>
+        Number(sessionStorage.getItem("__peer_marker_writes") ?? "0"),
+      ),
+    ).toBe(1)
+    expect(
+      await peer.evaluate(() => localStorage.getItem("oc-offline-ack-pending")),
+    ).toBe("1")
+  } finally {
+    await peer.close()
+  }
 })

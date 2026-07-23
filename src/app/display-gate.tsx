@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import { useOnlineStatus } from "@/hooks/use-online-status"
+import { clearAckPending, readAckPending, setAckPending } from "@/app/offline-ack-marker"
 
 export interface DisplayGatePhase {
   online: boolean
@@ -32,6 +33,18 @@ const INITIAL_PHASE: DisplayGatePhase = {
   offlineGeneration: 0,
   ackPending: false,
   acceptedGeneration: null,
+}
+
+function initialPhase(): DisplayGatePhase {
+  if (!readAckPending()) return INITIAL_PHASE
+  return {
+    online: false,
+    coldOffline: false,
+    sessionSawCommittedOnline: false,
+    offlineGeneration: 1,
+    ackPending: true,
+    acceptedGeneration: null,
+  }
 }
 
 const DisplayGateContext = createContext<DisplayGateContextValue | null>(null)
@@ -68,16 +81,21 @@ export function DisplayGateProvider({
   clearTransient: () => void
 }) {
   const committedOnline = useOnlineStatus()
-  const [phase, setPhase] = useState<DisplayGatePhase>(INITIAL_PHASE)
+  const [phase, setPhase] = useState<DisplayGatePhase>(initialPhase)
   const phaseRef = useRef(phase)
   const transientClearedForOnlineEpisode = useRef(false)
 
-  // Keep the connectivity value and its generation/ack state in one render.
-  // React discards this render and retries before committing descendants, so a
-  // true -> false edge cannot briefly mount Router with stale ack state.
-  if (phase.online !== committedOnline) {
+  // Commit the observer snapshot in a layout effect so persistence never runs
+  // during render. For an online observation, establish the marker before the
+  // context publishes online=true to descendants.
+  useLayoutEffect(() => {
+    if (phase.online === committedOnline) return
+    if (committedOnline) setAckPending()
+    // This layout bridge is the observer's atomic commit boundary: delaying it
+    // would let descendants paint with a stale online/ack combination.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPhase((current) => transitionPhase(current, committedOnline))
-  }
+  }, [committedOnline, phase.online])
 
   const clearTransientForOnlineEpisode = useCallback(() => {
     if (transientClearedForOnlineEpisode.current) return
@@ -112,6 +130,7 @@ export function DisplayGateProvider({
       return false
     }
 
+    clearAckPending()
     const accepted: DisplayGatePhase = {
       ...current,
       ackPending: false,
