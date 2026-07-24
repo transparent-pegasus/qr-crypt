@@ -33,18 +33,6 @@ export type CameraScanState = "idle" | "acquiring" | "playing" | "failed" | "tra
 export const CAMERA_START_TIMEOUT_MS = 8_000
 export const CAMERA_FRAME_READY_TIMEOUT_MS = 6_000
 
-export async function decodeQrImageFile(file: Blob): Promise<string> {
-  const url = URL.createObjectURL(file)
-  try {
-    const result = await new BrowserQRCodeReader().decodeFromImageUrl(url)
-    return result.getText()
-  } catch {
-    throw new ConcreteAppError("INVALID_QR_PAYLOAD")
-  } finally {
-    URL.revokeObjectURL(url)
-  }
-}
-
 const maxAcquireRetries = 3
 const acquireRetryDelayMs = 300
 const frameRetryDelayMs = 250

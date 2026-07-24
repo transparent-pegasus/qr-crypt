@@ -2,6 +2,10 @@
 // boolean は "true"/"false" の列挙のみ受理し、z.coerce.boolean の罠を避ける。
 // 不正値は起動時に throw する(黙って既定値へフォールバックしない)。
 import { z } from "zod"
+import {
+  FRAME_INTERVAL_MS_DEFAULT,
+  isFrameIntervalMs,
+} from "@/lib/frame-interval"
 import type { PqProfileId, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 
 export interface AppEnv {
@@ -41,6 +45,16 @@ const intFromString = (defaultValue: number, min: number, max: number) =>
     .default(String(defaultValue))
     .transform((value) => Number(value))
     .pipe(z.number().int().min(min).max(max))
+
+const frameIntervalMsFromString = z
+  .string()
+  .default(String(FRAME_INTERVAL_MS_DEFAULT))
+  .transform((value) => Number(value))
+  .pipe(
+    z.number().refine(isFrameIntervalMs, {
+      message: "must be a current frame-interval value",
+    }),
+  )
 
 // maximum 署名付き OCM2 の正準 CBOR 実測 fixture を式へ分解した固定部。
 // SignedMessageBody の plaintext byte string だけが可変で、ML-DSA-87 署名は
@@ -83,7 +97,7 @@ const rawSchema = z.object({
   VITE_ENABLE_PRIVATE_KEY_EXPORT: boolFromString("false"),
   VITE_ENABLE_ENCRYPTED_SEED_BACKUP: boolFromString("false"),
   VITE_QR_FRAME_BYTES: intFromString(600, 400, 900),
-  VITE_QR_FRAME_INTERVAL_MS: intFromString(800, 150, 2000),
+  VITE_QR_FRAME_INTERVAL_MS: frameIntervalMsFromString,
   VITE_QR_MAX_FRAMES: intFromString(64, 1, 64),
   // 未知のプロバイダー名は起動時エラー(plan2 §1-3)
   VITE_PQ_PROVIDER: z.enum(["noble"]).default("noble"),

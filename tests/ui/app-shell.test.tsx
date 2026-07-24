@@ -100,7 +100,7 @@ describe("app shell and feature gate", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("keeps image import available but disables keys-page camera reading when camera is absent", async () => {
+  it("keeps the app available but disables camera reading when camera is absent", async () => {
     Object.assign(fakeFeatures, { camera: false })
     const user = userEvent.setup()
     await renderApp("/encrypt", {
@@ -108,22 +108,7 @@ describe("app shell and feature gate", () => {
     })
     await user.click(await screen.findByRole("tab", { name: "復号" }))
     expect(
-      screen.queryByRole("button", { name: "暗号文QRを読み取る" }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: "QR画像を読み込む" }),
-    ).toBeEnabled()
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-    expect(
-      screen.queryByText(
-        "この端末ではカメラを利用できません。ペイロードを貼り付けてください。",
-      ),
-    ).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole("link", { name: "鍵追加" }))
-    await user.click(await screen.findByRole("tab", { name: "読込" }))
-    expect(
-      screen.getByRole("button", { name: "鍵QRを読み取る" }),
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
     ).toBeDisabled()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(

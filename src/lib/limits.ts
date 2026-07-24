@@ -1,5 +1,18 @@
 // サイズ制約の単一導出表(plan §13 C12、v2: plan2.1 §D2)。個別モジュールでの再定義禁止。
 import { env } from "@/schemas/env-schema"
+export {
+  FRAME_INTERVAL_MS_DEFAULT,
+  FRAME_INTERVAL_MS_MAX,
+  FRAME_INTERVAL_MS_MIN,
+  FRAME_INTERVAL_MS_STEP,
+  FRAME_INTERVAL_MS_VALUES,
+  isBootReadableFrameIntervalMs,
+  isFrameIntervalMs,
+  LEGACY_FRAME_INTERVAL_MS_MAX,
+  LEGACY_FRAME_INTERVAL_MS_MIN,
+  normalizeLegacyFrameIntervalMs,
+  type FrameIntervalMs,
+} from "@/lib/frame-interval"
 
 // 平文の最大 UTF-8 バイト数(spec §7.2、env で調整可能)
 export const MAX_PLAINTEXT_BYTES = env.maxPlaintextBytes
@@ -52,11 +65,25 @@ export const FRAME_BYTES_MAX = 900
 export const FRAME_BYTES_DEFAULT = 600
 // 送信側 split のみが使う chunk 下限(preferences 範囲とは独立。上記 wipe ハザード回避)。
 export const FRAME_CHUNK_MIN_BYTES = 200
-// OCI2/OCP2/OCS2 鍵 QR 表示専用の固定 chunk(設定・Preferences 非連動・非永続)。
+// OCP2/OCS2 単鍵 QR 表示専用の固定 chunk(設定・Preferences 非連動・非永続)。
 export const PQ_KEY_QR_FRAME_BYTES = 280
-export const FRAME_INTERVAL_MS_MIN = 150
-export const FRAME_INTERVAL_MS_MAX = 2000
-export const FRAME_INTERVAL_MS_DEFAULT = 800
+// OCI2 は読取安定性のため 200B を目安に 20〜25 枚へ均等分割する。
+export const PQ_IDENTITY_QR_TARGET_FRAME_BYTES = 200
+export const PQ_IDENTITY_QR_FRAME_COUNT_MIN = 20
+export const PQ_IDENTITY_QR_FRAME_COUNT_MAX = 25
+
+export function pqIdentityQrFrameCount(artifactByteLength: number): number {
+  if (!Number.isSafeInteger(artifactByteLength) || artifactByteLength < 1) {
+    throw new RangeError("artifactByteLength out of range")
+  }
+  return Math.min(
+    PQ_IDENTITY_QR_FRAME_COUNT_MAX,
+    Math.max(
+      PQ_IDENTITY_QR_FRAME_COUNT_MIN,
+      Math.ceil(artifactByteLength / PQ_IDENTITY_QR_TARGET_FRAME_BYTES),
+    ),
+  )
+}
 export const TRANSFER_TIMEOUT_MINUTES_MIN = 1
 export const TRANSFER_TIMEOUT_MINUTES_MAX = 120
 export const TRANSFER_TIMEOUT_MINUTES_DEFAULT = 10
@@ -72,7 +99,8 @@ export const RESET_CHURN_MB_MAX = 512
 // OCI2 bundle                    4,402              12/8/5
 // OCP2 KEM / OCS2 DSA           1,733 / 2,755       5/3/2 / 7/5/4
 // OCB2 reserved sizing fixture   4,637              12/8/6
-// 鍵系固定 chunk 280B (PQ_KEY_QR_FRAME_BYTES): OCI2 4,402→16 / OCP2 1,733→7 / OCS2 2,755→10
+// OCI2 は count 均等分割: 4,402B→23 枚(191/192B)。
+// 単鍵固定 chunk 280B (PQ_KEY_QR_FRAME_BYTES): OCP2 1,733→7 / OCS2 2,755→10
 // 各 OCF2 文字列の EC-Q 実生成も maximum-artifact-size.golden.test.ts で固定する。
 export const PROTOCOL_MAX_FRAMES = 64
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX

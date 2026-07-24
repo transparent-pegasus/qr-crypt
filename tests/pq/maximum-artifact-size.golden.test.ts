@@ -9,13 +9,20 @@ import {
   encodeUnsignedMessageBodyV2,
 } from "@/crypto/pq/canonical-cbor"
 import { DSA_SIZES } from "@/crypto/pq/profiles"
-import { sha256 } from "@/lib/bytes"
-import { MAX_PLAINTEXT_BYTES, PQ_KEY_QR_FRAME_BYTES } from "@/lib/limits"
+import { concatBytes, sha256 } from "@/lib/bytes"
+import {
+  MAX_PLAINTEXT_BYTES,
+  PQ_IDENTITY_QR_FRAME_COUNT_MAX,
+  PQ_IDENTITY_QR_FRAME_COUNT_MIN,
+  PQ_IDENTITY_QR_TARGET_FRAME_BYTES,
+  PQ_KEY_QR_FRAME_BYTES,
+  pqIdentityQrFrameCount,
+} from "@/lib/limits"
 import { payloadFits, renderQrSvgString } from "@/qr/encode"
 import { splitIntoFrames } from "@/qr/multipart/split"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
-import { parseAppEnv } from "@/schemas/env-schema"
+import { env, parseAppEnv } from "@/schemas/env-schema"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 const CREATED_AT = 1_700_000_000_000
@@ -64,12 +71,12 @@ function messageArtifact(signed: boolean, plaintextBytes: number): Uint8Array {
   })
 }
 
-function artifactFixtures(): ArtifactFixture[] {
-  const bundle = {
+function publicIdentityArtifact(name: string): Uint8Array {
+  return encodePublicIdentityBundleV2({
     version: 2 as const,
     type: "pq-public-identity" as const,
     identityId: KEY_ID,
-    name: "テスト",
+    name,
     kem: {
       algorithm: "ML-KEM-1024" as const,
       keyId: KEY_ID,
@@ -81,7 +88,10 @@ function artifactFixtures(): ArtifactFixture[] {
       publicKey: new Uint8Array(2592).fill(0x99),
     },
     createdAt: CREATED_AT,
-  }
+  })
+}
+
+function artifactFixtures(): ArtifactFixture[] {
   const kemKey = {
     version: 2 as const,
     type: "pq-kem-public-key" as const,
@@ -163,7 +173,7 @@ function artifactFixtures(): ArtifactFixture[] {
     {
       label: "OCI2 public bundle",
       artifactType: "pq-public-identity",
-      bytes: encodePublicIdentityBundleV2(bundle),
+      bytes: publicIdentityArtifact("テスト"),
       expectedBytes: 4402,
       expectedFrames: { 400: 12, 600: 8, 900: 5 },
     },
@@ -276,9 +286,75 @@ describe("maximum canonical CBOR artifact sizing", () => {
     }
   })
 
-  it("key artifacts split at PQ_KEY_QR_FRAME_BYTES with EC-Q-fit frames", async () => {
+  it.each(["短", "A".repeat(80), "鍵".repeat(80)])(
+    "balances OCI2 names through the 80-character limit with real EC-Q fit: %s",
+    async (name) => {
+      const artifactBytes = publicIdentityArtifact(name)
+      const frameCount = pqIdentityQrFrameCount(artifactBytes.byteLength)
+      const frames = await splitIntoFrames({
+        artifactType: "pq-public-identity",
+        artifactBytes,
+        frameCount,
+      })
+
+      expect(frames).toHaveLength(frameCount)
+      expect(frameCount).toBeGreaterThanOrEqual(PQ_IDENTITY_QR_FRAME_COUNT_MIN)
+      expect(frameCount).toBeLessThanOrEqual(PQ_IDENTITY_QR_FRAME_COUNT_MAX)
+      const chunkLengths = frames.map((frame) => frame.chunk.byteLength)
+      expect(Math.max(...chunkLengths) - Math.min(...chunkLengths)).toBeLessThanOrEqual(
+        1,
+      )
+      expect(concatBytes(...frames.map((frame) => frame.chunk))).toEqual(artifactBytes)
+      for (const frame of frames) {
+        const payload = encodeFrameToPayload(frame)
+        expect(payloadFits(payload, "Q")).toBe(true)
+        expect(await renderQrSvgString(payload, { ecLevel: "Q" })).toContain("<svg")
+      }
+    },
+    60_000,
+  )
+
+  it("clamps the semantic OCI2 target to 20–25 frames", () => {
+    expect(pqIdentityQrFrameCount(PQ_IDENTITY_QR_TARGET_FRAME_BYTES)).toBe(20)
+    expect(
+      pqIdentityQrFrameCount(
+        PQ_IDENTITY_QR_FRAME_COUNT_MIN * PQ_IDENTITY_QR_TARGET_FRAME_BYTES + 1,
+      ),
+    ).toBe(21)
+    expect(
+      pqIdentityQrFrameCount(
+        PQ_IDENTITY_QR_FRAME_COUNT_MAX * PQ_IDENTITY_QR_TARGET_FRAME_BYTES,
+      ),
+    ).toBe(25)
+    expect(
+      pqIdentityQrFrameCount(
+        (PQ_IDENTITY_QR_FRAME_COUNT_MAX + 1) *
+          PQ_IDENTITY_QR_TARGET_FRAME_BYTES,
+      ),
+    ).toBe(25)
+  })
+
+  it("fails closed when VITE_QR_MAX_FRAMES is below the selected OCI2 count", async () => {
+    const artifactBytes = publicIdentityArtifact("テスト")
+    const frameCount = pqIdentityQrFrameCount(artifactBytes.byteLength)
+    expect(frameCount).toBe(23)
+    const originalMaximum = env.qrMaxFrames
+    try {
+      env.qrMaxFrames = frameCount - 1
+      await expect(
+        splitIntoFrames({
+          artifactType: "pq-public-identity",
+          artifactBytes,
+          frameCount,
+        }),
+      ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+    } finally {
+      env.qrMaxFrames = originalMaximum
+    }
+  })
+
+  it("single-key artifacts retain PQ_KEY_QR_FRAME_BYTES with EC-Q-fit frames", async () => {
     const expectedByType = {
-      "pq-public-identity": 16,
       "pq-kem-public-key": 7,
       "pq-dsa-public-key": 10,
     } as const

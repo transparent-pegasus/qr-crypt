@@ -57,7 +57,7 @@ import {
 } from "@/features/presentation"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePreferences } from "@/hooks/use-preferences"
-import { PQ_KEY_QR_FRAME_BYTES } from "@/lib/limits"
+import { PQ_KEY_QR_FRAME_BYTES, pqIdentityQrFrameCount } from "@/lib/limits"
 import { ecLevelFor } from "@/qr/encode"
 import {
   buildExportFileName,
@@ -220,11 +220,18 @@ export function KeyDetailDialog({
         kind: "identity-qr",
         title,
         outputName: `${title}-${formatSuggestedDate(Date.now())}`,
-        frames: await splitIntoFrames({
-          artifactType,
-          artifactBytes,
-          frameBytes: PQ_KEY_QR_FRAME_BYTES,
-        }),
+        frames:
+          artifactType === "pq-public-identity"
+            ? await splitIntoFrames({
+                artifactType,
+                artifactBytes,
+                frameCount: pqIdentityQrFrameCount(artifactBytes.byteLength),
+              })
+            : await splitIntoFrames({
+                artifactType,
+                artifactBytes,
+                frameBytes: PQ_KEY_QR_FRAME_BYTES,
+              }),
       })
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").userMessage)

@@ -187,6 +187,7 @@ describe("preferences and plaintext non-persistence", () => {
       qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
+      frameIntervalMs: 1_000,
     })
     expect(
       await updatePreferences({
@@ -252,6 +253,83 @@ describe("preferences and plaintext non-persistence", () => {
         wipeOnOnline: false,
       })
     }
+  })
+
+  it("normalizes only persisted legacy frame intervals before merging a current patch", async () => {
+    const database = await getDb()
+    for (const [legacyInterval, normalizedInterval] of [
+      [800, 1_000],
+      [1_250, 1_500],
+      [1_750, 2_000],
+    ] as const) {
+      await database.put(STORE_PREFERENCES, {
+        key: "preferences",
+        value: {
+          frameIntervalMs: legacyInterval,
+          wipeOnOnline: false,
+        },
+      })
+
+      await expect(readBootDecision()).resolves.toMatchObject({
+        preferencesReadFailed: false,
+        wipeOnOnline: false,
+      })
+      await expect(getPreferences()).resolves.toMatchObject({
+        frameIntervalMs: normalizedInterval,
+        wipeOnOnline: false,
+      })
+      await expect(
+        updatePreferences({ qrErrorCorrection: "M" }),
+      ).resolves.toMatchObject({
+        frameIntervalMs: normalizedInterval,
+        qrErrorCorrection: "M",
+        wipeOnOnline: false,
+      })
+    }
+
+    await database.put(STORE_PREFERENCES, {
+      key: "preferences",
+      value: { frameIntervalMs: 800 },
+    })
+    await expect(
+      updatePreferences({ frameIntervalMs: 1_250 }),
+    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+  })
+
+  it("accepts current 2500/3000 intervals in storage and boot readability", async () => {
+    for (const frameIntervalMs of [2_500, 3_000]) {
+      await expect(
+        updatePreferences({ frameIntervalMs, wipeOnOnline: false }),
+      ).resolves.toMatchObject({
+        frameIntervalMs,
+        wipeOnOnline: false,
+      })
+      await expect(readBootDecision()).resolves.toMatchObject({
+        preferencesReadFailed: false,
+        wipeOnOnline: false,
+      })
+    }
+  })
+
+  it("rejects 2250 as both a new write and a stored boot value", async () => {
+    await expect(
+      updatePreferences({ frameIntervalMs: 2_250 }),
+    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+
+    await (
+      await getDb()
+    ).put(STORE_PREFERENCES, {
+      key: "preferences",
+      value: {
+        frameIntervalMs: 2_250,
+        wipeOnOnline: false,
+      },
+    })
+    await expect(getPreferences()).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+    await expect(readBootDecision()).resolves.toMatchObject({
+      preferencesReadFailed: true,
+      wipeOnOnline: true,
+    })
   })
 
   it("rejects legacy algorithm and balanced profile injection through updates", async () => {

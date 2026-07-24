@@ -126,9 +126,30 @@ describe("key list page", () => {
     expect(splitIntoFrames).toHaveBeenLastCalledWith(
       expect.objectContaining({
         artifactType: "pq-public-identity",
+        frameCount: 20,
+      }),
+    )
+    expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameBytes")
+
+    await user.click(within(dialog).getByRole("button", { name: "詳細に戻る" }))
+    await user.click(within(dialog).getByRole("button", { name: "暗号化用単鍵QR" }))
+    expect(splitIntoFrames).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        artifactType: "pq-kem-public-key",
         frameBytes: 280,
       }),
     )
+    expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
+
+    await user.click(within(dialog).getByRole("button", { name: "詳細に戻る" }))
+    await user.click(within(dialog).getByRole("button", { name: "署名検証用単鍵QR" }))
+    expect(splitIntoFrames).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        artifactType: "pq-dsa-public-key",
+        frameBytes: 280,
+      }),
+    )
+    expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
     await user.click(rowFor("共通鍵A"))

@@ -425,7 +425,6 @@ interface FakeCameraDiagnostic {
 }
 
 export const scannerStop = vi.fn()
-export const decodeQrImageFile = vi.fn(async (file: Blob) => file.text())
 let scanTextCallback: ((payload: string) => void) | null = null
 let scanErrorCallback:
   | ((error: FakeAppError, diagnostic: FakeCameraDiagnostic) => void)
@@ -563,23 +562,38 @@ export const splitIntoFrames = vi.fn(
     artifactType,
     artifactBytes,
     frameBytes,
+    frameCount: requestedFrameCount,
   }: {
     artifactType: V2ArtifactType
     artifactBytes: Uint8Array
-    frameBytes: number
+    frameBytes?: number
+    frameCount?: number
   }): Promise<QrFrameV2[]> => {
-    const frameCount = Math.max(1, Math.ceil(artifactBytes.byteLength / frameBytes))
-    return Array.from({ length: frameCount }, (_, frameIndex) => ({
-      version: 2,
-      type: "qr-frame",
-      transferId: new Uint8Array(16).fill(3),
-      artifactType,
-      frameIndex,
-      frameCount,
-      totalByteLength: artifactBytes.byteLength,
-      payloadSha256: new Uint8Array(32),
-      chunk: artifactBytes.slice(frameIndex * frameBytes, (frameIndex + 1) * frameBytes),
-    }))
+    const frameCount =
+      requestedFrameCount ??
+      Math.max(1, Math.ceil(artifactBytes.byteLength / (frameBytes ?? 1)))
+    const baseChunkBytes = Math.floor(artifactBytes.byteLength / frameCount)
+    const largerChunks = artifactBytes.byteLength % frameCount
+    let offset = 0
+    return Array.from({ length: frameCount }, (_, frameIndex) => {
+      const chunkBytes =
+        requestedFrameCount === undefined
+          ? (frameBytes ?? artifactBytes.byteLength)
+          : baseChunkBytes + (frameIndex < largerChunks ? 1 : 0)
+      const frame: QrFrameV2 = {
+        version: 2,
+        type: "qr-frame",
+        transferId: new Uint8Array(16).fill(3),
+        artifactType,
+        frameIndex,
+        frameCount,
+        totalByteLength: artifactBytes.byteLength,
+        payloadSha256: new Uint8Array(32),
+        chunk: artifactBytes.slice(offset, offset + chunkBytes),
+      }
+      offset += chunkBytes
+      return frame
+    })
   },
 )
 

@@ -58,6 +58,8 @@ import {
   FRAME_BYTES_MIN,
   FRAME_INTERVAL_MS_MAX,
   FRAME_INTERVAL_MS_MIN,
+  FRAME_INTERVAL_MS_STEP,
+  isFrameIntervalMs,
   RESET_CHURN_MB_MAX,
   RESET_CHURN_MB_MIN,
   TRANSFER_TIMEOUT_MINUTES_MAX,
@@ -150,9 +152,15 @@ export function SettingsPage() {
     raw: string,
     minimum: number,
     maximum: number,
+    isAllowed: (value: number) => boolean = () => true,
   ) => {
     const value = Number(raw)
-    if (Number.isSafeInteger(value) && value >= minimum && value <= maximum) {
+    if (
+      Number.isSafeInteger(value) &&
+      value >= minimum &&
+      value <= maximum &&
+      isAllowed(value)
+    ) {
       void savePreference({ [key]: value })
     }
   }
@@ -319,6 +327,7 @@ export function SettingsPage() {
             type="number"
             min={FRAME_INTERVAL_MS_MIN}
             max={FRAME_INTERVAL_MS_MAX}
+            step={FRAME_INTERVAL_MS_STEP}
             value={preferences.frameIntervalMs}
             onChange={(event) =>
               saveIntegerPreference(
@@ -326,6 +335,7 @@ export function SettingsPage() {
                 event.target.value,
                 FRAME_INTERVAL_MS_MIN,
                 FRAME_INTERVAL_MS_MAX,
+                isFrameIntervalMs,
               )
             }
           />

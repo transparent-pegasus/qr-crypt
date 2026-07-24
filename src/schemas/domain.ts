@@ -308,7 +308,7 @@ export interface Preferences {
   autoClearPlaintextAfterEncrypt: boolean
   backgroundClearEnabled: boolean
   frameBytes: number // 400–900(limits.ts が単一導出元)
-  frameIntervalMs: number // 150–2000
+  frameIntervalMs: number // 1000–3000、500ms 刻み(limits.ts が単一導出元)
   transferTimeoutMinutes: number // 既定 10
   wipeOnOnline: boolean // 既定 true(オーナー要件。plan2.1 §B5)
   resetChurnMb: number // 0–512・既定 0(実験オプション。plan2.1 §B4)
@@ -320,7 +320,7 @@ export const PQ_PREFERENCE_DEFAULTS = {
   defaultPqProfile: "maximum",
   requireSignature: false,
   frameBytes: 600,
-  frameIntervalMs: 800,
+  frameIntervalMs: 1000,
   transferTimeoutMinutes: 10,
   wipeOnOnline: true,
   resetChurnMb: 0,

@@ -160,8 +160,22 @@ QrFrameV2 = {
 - フレーム文字列 = `OCF2:<base64url(正準CBOR(frame))>`。EC レベルは **Q 固定**。
   1 フレーム文字列はプレフィックス込み **≤1663 文字**(QR v40-Q)。
   生成後に `payloadFits(…, "Q")` を確認し、収まらなければ `QR_TOO_LARGE`
-- 既定: chunk 600B / 切替 800ms / 最大 64 フレーム(設定で 400–900B・150–2000ms)
-- 鍵系 artifact(OCI2/OCP2/OCS2)の表示は chunk 280B 固定(`PQ_KEY_QR_FRAME_BYTES`、設定対象外)
+- message 系の既定は chunk 600B / 切替 1,000ms / 最大 64 フレーム。
+  chunk は 400–900B で設定できる。切替間隔の現行値は
+  **1,000 / 1,500 / 2,000 / 2,500 / 3,000ms** のみ(UI は 500ms 刻み)で、
+  grid 外の env 値と新規保存値は拒否する
+- OCI2 表示は
+  `clamp(ceil(artifactBytes / 200), 20, 25)` 枚を選ぶ count 均等分割とする。
+  実測 4,402B fixture は 23 枚(191/192B)となり、chunk 長の差は最大 1 byte。
+  選択枚数が `VITE_QR_MAX_FRAMES` を超える場合は `QR_TOO_LARGE` で fail-closed
+- OCP2/OCS2 単鍵表示は固定 chunk 280B
+  (`PQ_KEY_QR_FRAME_BYTES`、設定対象外)を維持する
+- boot 互換のため、保存済み legacy interval の safe integer 150–2,000ms と
+  現行 grid の和集合だけを読み取る。repository は保存済み legacy 値だけを
+  1,000–3,000ms へ clamp 後、最寄り 500ms(midpoint は上側)へ正規化する。
+  patch/env の grid 外値は正規化せず拒否する
+- UI 上のフレーム位置・欠損位置は wire の 0 起点 `frameIndex` を直接表示せず、
+  `frameIndex + 1` の「n枚目」として表示する
 - 組立の不変条件: first frame で immutable metadata
   (transferId/artifactType/frameCount/totalByteLength/payloadSha256)を凍結。
   同 index は完全一致のみ重複無視、1 byte でも差異・別 transferId 混入は

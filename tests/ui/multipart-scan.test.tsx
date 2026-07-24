@@ -72,7 +72,7 @@ describe("QrScannerPanel multipart scan", () => {
       emitScannedPayload(multipartPayload("transfer-a", 2, 3)),
     )
     expect(await screen.findByText("受信 1 / 3")).toBeInTheDocument()
-    expect(screen.getByText("欠損 index: 0, 1")).toBeInTheDocument()
+    expect(screen.getByText("未読取フレーム: 1枚目、2枚目")).toBeInTheDocument()
 
     await act(async () =>
       emitScannedPayload(multipartPayload("transfer-a", 2, 3)),
@@ -82,7 +82,7 @@ describe("QrScannerPanel multipart scan", () => {
       emitScannedPayload(multipartPayload("transfer-a", 0, 3)),
     )
     expect(await screen.findByText("受信 2 / 3")).toBeInTheDocument()
-    expect(screen.getByText("欠損 index: 1")).toBeInTheDocument()
+    expect(screen.getByText("未読取フレーム: 2枚目")).toBeInTheDocument()
 
     view.unmount()
     expect(scannerStop).toHaveBeenCalledOnce()

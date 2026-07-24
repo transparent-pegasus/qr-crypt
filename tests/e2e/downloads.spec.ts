@@ -223,8 +223,8 @@ test("署名付き複数フレームを操作し ZIP と全 PNG を実ファイ�
   await expect(counter).not.toHaveText(initialCounter)
   await frames.getByRole("button", { name: "前のフレーム" }).click()
   await expect(counter).toHaveText(initialCounter)
-  await frames.getByLabel("表示速度").fill("150")
-  await expect(frames.getByText("150 ms", { exact: true })).toBeVisible()
+  await frames.getByLabel("表示速度").fill("2500")
+  await expect(frames.getByText("2500 ms", { exact: true })).toBeVisible()
 
   await frames.getByRole("button", { name: "全画面表示" }).click()
   const fullscreen = page.getByRole("dialog", { name: /暗号文 \d+ \/ \d+を全画面表示/ })

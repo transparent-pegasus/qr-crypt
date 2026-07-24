@@ -37,7 +37,21 @@ maximum の実測 fixture（`maxPlaintext=4,096B`、`name="テスト"`）:
 | OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 5/3/2 / 7/5/4 |
 | OCB2 reserved sizing fixture | 4,637 | 12/8/6 |
 
-鍵系 artifact(OCI2/OCP2/OCS2)の表示は chunk 280B 固定(`PQ_KEY_QR_FRAME_BYTES`、設定対象外; 上表の 400/600/900 は message 系・設定範囲の実測)。
+OCI2 表示は count 均等分割
+`clamp(ceil(artifactBytes / 200), 20, 25)` を使う。4,402B fixture は
+23 枚(191/192B)となる。短い名前から 80 文字の最大名まで、byte-exact 復元、
+非空かつ差 1 byte 以内の chunk、実 EC-Q 生成をテストする。
+`VITE_QR_MAX_FRAMES` が選択枚数未満なら `QR_TOO_LARGE` で fail-closed とする。
+OCP2/OCS2 は固定 chunk 280B(`PQ_KEY_QR_FRAME_BYTES`)を維持し、
+実測 fixture は 7/10 枚となる。上表の 400/600/900 は message 系の設定範囲。
+
+現行の複数QR切替間隔は
+1,000 / 1,500 / 2,000 / 2,500 / 3,000ms のみで、既定は 1,000ms。
+grid 外の新規 preferences と env 値は拒否する。boot は legacy safe integer
+150–2,000ms と現行 grid の和集合だけを読み取り、repository は保存済み
+legacy 値だけを現行 grid の最寄り値(midpoint は上側)へ正規化してから
+現行 patch を merge する。これにより `wipeOnOnline=false` を含む legacy row を
+誤って unreadable とせず、保存済み／新規 2,250ms は拒否する。
 
 ## 1. 採用ライブラリの事実(2026-07-24 時点)
 

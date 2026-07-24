@@ -79,6 +79,91 @@ describe("splitIntoFrames", () => {
     expect(joined).toEqual(artifactBytes)
   })
 
+  it("balances an explicit frame count with non-empty byte-exact chunks", async () => {
+    const artifactBytes = pseudoArtifact(1_000)
+    const frames = await splitIntoFrames({
+      artifactType: "pq-message",
+      artifactBytes,
+      frameCount: 7,
+    })
+
+    expect(frames).toHaveLength(7)
+    const chunkLengths = frames.map((frame) => frame.chunk.byteLength)
+    expect(Math.max(...chunkLengths) - Math.min(...chunkLengths)).toBeLessThanOrEqual(1)
+    expect(chunkLengths.every((length) => length > 0 && length <= 900)).toBe(true)
+    const reconstructed = new Uint8Array(artifactBytes.byteLength)
+    let offset = 0
+    for (const frame of frames) {
+      reconstructed.set(frame.chunk, offset)
+      offset += frame.chunk.byteLength
+    }
+    expect(reconstructed).toEqual(artifactBytes)
+    expect(framePayloads(frames).every((payload) => payloadFits(payload, "Q"))).toBe(
+      true,
+    )
+  })
+
+  it("supports one-byte balanced chunks without creating empty frames", async () => {
+    const artifactBytes = Uint8Array.of(1, 2, 3, 4)
+    const frames = await splitIntoFrames({
+      artifactType: "pq-message",
+      artifactBytes,
+      frameCount: artifactBytes.byteLength,
+    })
+    expect(frames.map((frame) => frame.chunk.byteLength)).toEqual([1, 1, 1, 1])
+    expect(frames.map((frame) => frame.chunk[0])).toEqual([1, 2, 3, 4])
+  })
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid frameCount=%s",
+    async (frameCount) => {
+      await expect(
+        splitIntoFrames({
+          artifactType: "pq-message",
+          artifactBytes: pseudoArtifact(100),
+          frameCount,
+        }),
+      ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+    },
+  )
+
+  it("rejects counts above the artifact length, env limit, or 900-byte chunk limit", async () => {
+    await expect(
+      splitIntoFrames({
+        artifactType: "pq-message",
+        artifactBytes: Uint8Array.of(1, 2),
+        frameCount: 3,
+      }),
+    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+    await expect(
+      splitIntoFrames({
+        artifactType: "pq-message",
+        artifactBytes: new Uint8Array(65),
+        frameCount: 65,
+      }),
+    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+    await expect(
+      splitIntoFrames({
+        artifactType: "pq-message",
+        artifactBytes: new Uint8Array(1_801),
+        frameCount: 2,
+      }),
+    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+  })
+
+  it("rejects selecting both split modes or neither mode at runtime", async () => {
+    const common = {
+      artifactType: "pq-message" as const,
+      artifactBytes: pseudoArtifact(100),
+    }
+    await expect(
+      splitIntoFrames({ ...common, frameBytes: 400, frameCount: 1 } as never),
+    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+    await expect(splitIntoFrames(common as never)).rejects.toMatchObject({
+      code: "QR_TOO_LARGE",
+    })
+  })
+
   it("generates exactly 64 frames at the protocol limit", async () => {
     const frames = await splitIntoFrames({
       artifactType: "pq-message",

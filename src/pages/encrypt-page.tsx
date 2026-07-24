@@ -26,6 +26,7 @@ import {
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { generateArtifactId } from "@/crypto/random"
 import {
+  useFeatureSupport,
   useSensitiveSession,
   useTransientClear,
 } from "@/app/providers"
@@ -171,6 +172,7 @@ export function EncryptPage() {
   } = usePqRecords()
   const { preferences, error: preferencesError } = usePreferences()
   const getPqClient = usePqCryptoClient()
+  const { camera } = useFeatureSupport()
   const { nonce } = useTransientClear()
   const { setSensitiveSession, resetSensitiveSession } = useSensitiveSession()
   const [mode, setMode] = useState<PageMode>("encrypt")
@@ -622,16 +624,15 @@ export function EncryptPage() {
                 id="decrypt-camera-title"
                 className="font-semibold leading-none tracking-tight"
               >
-                画像で読み取る
+                カメラで読み取る
               </h3>
             </CardHeader>
             <CardContent className="space-y-4 p-4 pt-0">
               <QrScannerModal
                 triggerLabel="暗号文QRを読み取る"
-                camera={false}
-                imageImport
                 className="space-y-6"
                 singleTargets={["message"]}
+                cameraAvailable={camera}
                 title="暗号文QRを読み取る"
                 onSingleScan={(_target, payload) => {
                   setDecryptInput(payload)

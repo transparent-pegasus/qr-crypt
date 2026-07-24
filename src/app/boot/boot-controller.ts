@@ -10,8 +10,7 @@ import {
 import {
   FRAME_BYTES_MAX,
   FRAME_BYTES_MIN,
-  FRAME_INTERVAL_MS_MAX,
-  FRAME_INTERVAL_MS_MIN,
+  isBootReadableFrameIntervalMs,
   RESET_CHURN_MB_MAX,
   RESET_CHURN_MB_MIN,
   TRANSFER_TIMEOUT_MINUTES_MAX,
@@ -246,11 +245,8 @@ function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
     optionalBoolean(value.autoClearPlaintextAfterEncrypt) &&
     optionalBoolean(value.backgroundClearEnabled) &&
     optionalIntegerInRange(value.frameBytes, FRAME_BYTES_MIN, FRAME_BYTES_MAX) &&
-    optionalIntegerInRange(
-      value.frameIntervalMs,
-      FRAME_INTERVAL_MS_MIN,
-      FRAME_INTERVAL_MS_MAX,
-    ) &&
+    (value.frameIntervalMs === undefined ||
+      isBootReadableFrameIntervalMs(value.frameIntervalMs)) &&
     optionalIntegerInRange(
       value.transferTimeoutMinutes,
       TRANSFER_TIMEOUT_MINUTES_MIN,

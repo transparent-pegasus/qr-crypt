@@ -196,6 +196,7 @@ units:
     last_checked: 2026-07-24
     files:
       - src/lib/limits.ts # dated measured CBOR/OCF2 size comments
+      - src/lib/frame-interval.ts # persisted/displayed QR interval policy grid
       - tests/pq/maximum-artifact-size.golden.test.ts
       - src/schemas/env-schema.ts # MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES mirrors the golden
       - .env.prod # runtime crypto/framing policy defaults
@@ -209,9 +210,10 @@ units:
       comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
       env-schema.ts, and the .env.prod/.env.example defaults together, then
       sync the copy of the table in docs/security-review.md.
-      PQ_KEY_QR_FRAME_BYTES (280, 2026-07-24) in limits.ts is mirrored as a
-      prose note in docs/qr-protocol-v2.md and docs/security-review.md and as
-      frame counts (16/7/10) in the golden test — keep all four in agreement.
+      OCI2 balanced count mode (target 200B, clamp 20–25; 4,402B fixture → 23
+      frames) and PQ_KEY_QR_FRAME_BYTES (OCP2/OCS2 fixed 280B → 7/10 frames,
+      2026-07-24) in limits.ts are mirrored in docs/qr-protocol-v2.md,
+      docs/security-review.md, and the golden test — keep all four in agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [security-review]
 

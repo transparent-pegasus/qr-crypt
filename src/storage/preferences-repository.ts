@@ -8,8 +8,9 @@ import { AppError, toAppError } from "@/crypto/errors"
 import {
   FRAME_BYTES_MAX,
   FRAME_BYTES_MIN,
-  FRAME_INTERVAL_MS_MAX,
-  FRAME_INTERVAL_MS_MIN,
+  isBootReadableFrameIntervalMs,
+  isFrameIntervalMs,
+  normalizeLegacyFrameIntervalMs,
   RESET_CHURN_MB_MAX,
   RESET_CHURN_MB_MIN,
   TRANSFER_TIMEOUT_MINUTES_MAX,
@@ -73,6 +74,14 @@ function normalizeLegacyStoredPreferences(
     normalized.defaultPqProfile = "maximum"
   }
   if (
+    isBootReadableFrameIntervalMs(normalized.frameIntervalMs) &&
+    !isFrameIntervalMs(normalized.frameIntervalMs)
+  ) {
+    normalized.frameIntervalMs = normalizeLegacyFrameIntervalMs(
+      normalized.frameIntervalMs,
+    )
+  }
+  if (
     (normalized.requireSignature === true || env.requireSignature) &&
     normalized.defaultAlgorithm === "MLKEM1024_A256GCM"
   ) {
@@ -92,7 +101,8 @@ function validatePreferencesPatch(patch: unknown): asserts patch is Partial<Pref
     ("defaultAlgorithm" in candidate &&
       !UI_ALGORITHMS.includes(candidate.defaultAlgorithm as UiAlgorithm)) ||
     ("defaultPqProfile" in candidate &&
-      !PQ_PROFILES_ALLOWED.includes(candidate.defaultPqProfile as PqProfileId))
+      !PQ_PROFILES_ALLOWED.includes(candidate.defaultPqProfile as PqProfileId)) ||
+    ("frameIntervalMs" in candidate && !isFrameIntervalMs(candidate.frameIntervalMs))
   ) {
     throw new AppError("STORAGE_FAILED")
   }
@@ -118,11 +128,7 @@ function validatePreferences(value: unknown): Preferences {
     typeof candidate.autoClearPlaintextAfterEncrypt !== "boolean" ||
     typeof candidate.backgroundClearEnabled !== "boolean" ||
     !isIntInRange(candidate.frameBytes, FRAME_BYTES_MIN, FRAME_BYTES_MAX) ||
-    !isIntInRange(
-      candidate.frameIntervalMs,
-      FRAME_INTERVAL_MS_MIN,
-      FRAME_INTERVAL_MS_MAX,
-    ) ||
+    !isFrameIntervalMs(candidate.frameIntervalMs) ||
     !isIntInRange(
       candidate.transferTimeoutMinutes,
       TRANSFER_TIMEOUT_MINUTES_MIN,

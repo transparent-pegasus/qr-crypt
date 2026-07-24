@@ -42,15 +42,28 @@ Agent CLIs take input through a composer — a stateful input box with slash-com
 Therefore, never submit `/clear` or delegated prompts to an agent pane with `pane run`. Always use a submission sequence that cancels retained state, waits at bounded settle points, clears the conversation, and force-submits exactly one instruction. The bundled helper implements exactly that sequence:
 
 ```bash
-COMPOSER_SUBMIT=.agents/skills/using-herdr-sibling-panes/scripts/composer-submit.sh
+COMPOSER_SUBMIT=.claude/skills/using-herdr-sibling-panes/scripts/composer-submit.sh
 rtk "$COMPOSER_SUBMIT" "$PANE" "$INSTRUCTION"
 ```
 
-The helper uses `ctrl+c` to cancel retained state, `esc` to dismiss completion/follow-up UI, and `esc ctrl+enter` to force-send while emptying the composer. The `esc ctrl+enter` pair is required even when no completion menu is visible. Before first use with a new agent CLI, verify these cancel, dismiss, and force-send keys against that composer and adjust the helper if they differ.
+The helper first refuses panes whose agent status is not `idle` or `done`, and
+accepts either status again after `/clear` (Codex may report `done` for a
+successfully cleared conversation). It
+uses `ctrl+c` to cancel retained state for supported non-Codex composers, but
+uses `esc` followed by `ctrl+u` for Codex because `ctrl+c` on an empty idle
+Codex composer can terminate the TUI. Codex v0.145 is submitted with
+`esc enter`; `ctrl+enter` leaves pasted text in its composer. Claude Code is
+submitted with plain `enter`; `esc ctrl+enter` leaves pasted text in its
+composer. Other supported composers use `esc ctrl+enter`. Before first use
+with a new agent CLI, verify these cancel, dismiss, and force-send keys against
+that composer and adjust the helper if they differ.
 
 If the helper is unavailable, use this exact fallback. Do not remove the settle points:
 
 ```bash
+# Codex: use `esc`, settle, then `ctrl+u` instead of this `ctrl+c` step,
+# and use `esc enter` instead of both `esc ctrl+enter` submit steps.
+# Claude Code: use plain `enter` instead of both submit steps.
 rtk herdr pane send-keys "$PANE" ctrl+c
 rtk sleep 0.40
 rtk herdr pane send-keys "$PANE" esc
@@ -73,7 +86,7 @@ Every instruction must include the repo path, exact command or path, edit policy
 ```bash
 PANE=1-2
 INSTRUCTION="Please run rtk make lint in /path/to/repo. Make no edits. Report the command, exit code, and errors. End with LINT_OK immediately followed by _7F3A."
-COMPOSER_SUBMIT=.agents/skills/using-herdr-sibling-panes/scripts/composer-submit.sh
+COMPOSER_SUBMIT=.claude/skills/using-herdr-sibling-panes/scripts/composer-submit.sh
 rtk "$COMPOSER_SUBMIT" "$PANE" "$INSTRUCTION"
 rtk herdr pane list
 rtk herdr pane read 1-2 --source recent --lines 40

@@ -29,16 +29,11 @@ const scanner = vi.hoisted(() => ({
   callbacks: [] as ScannerCallback[],
   decodePlans: [] as Array<() => Promise<MockControls>>,
   decode: vi.fn(),
-  imageDecode: vi.fn(),
   controlsStop: vi.fn(),
 }))
 
 vi.mock("@zxing/browser", () => ({
   BrowserQRCodeReader: class {
-    decodeFromImageUrl(url: string): Promise<MockResult> {
-      return scanner.imageDecode(url)
-    }
-
     decodeFromVideoElement(
       video: HTMLVideoElement,
       callback: ScannerCallback,
@@ -55,7 +50,6 @@ vi.mock("@zxing/browser", () => ({
 import {
   CAMERA_FRAME_READY_TIMEOUT_MS,
   CAMERA_START_TIMEOUT_MS,
-  decodeQrImageFile,
   shouldRestartQrScanOnVisibility,
   startQrScan,
 } from "@/qr/decode"
@@ -150,7 +144,6 @@ beforeEach(() => {
   scanner.callbacks.splice(0)
   scanner.decodePlans.splice(0)
   scanner.decode.mockReset()
-  scanner.imageDecode.mockReset()
   scanner.controlsStop.mockReset()
   getUserMedia.mockReset()
   Object.defineProperty(navigator, "mediaDevices", {
@@ -161,47 +154,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
-})
-
-describe("QR image file decode", () => {
-  it("returns the decoded text and revokes the object URL", async () => {
-    const createObjectURL = vi.fn(() => "blob:qr-success")
-    const revokeObjectURL = vi.fn()
-    Object.defineProperties(URL, {
-      createObjectURL: { configurable: true, value: createObjectURL },
-      revokeObjectURL: { configurable: true, value: revokeObjectURL },
-    })
-    scanner.imageDecode.mockResolvedValue({
-      getText: () => "OCM1:decoded",
-    })
-    const file = new Blob(["image"], { type: "image/png" })
-
-    await expect(decodeQrImageFile(file)).resolves.toBe("OCM1:decoded")
-
-    expect(createObjectURL).toHaveBeenCalledWith(file)
-    expect(scanner.imageDecode).toHaveBeenCalledWith("blob:qr-success")
-    expect(revokeObjectURL).toHaveBeenCalledOnce()
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:qr-success")
-  })
-
-  it("maps image decoder failures and still revokes the object URL", async () => {
-    const createObjectURL = vi.fn(() => "blob:qr-failure")
-    const revokeObjectURL = vi.fn()
-    Object.defineProperties(URL, {
-      createObjectURL: { configurable: true, value: createObjectURL },
-      revokeObjectURL: { configurable: true, value: revokeObjectURL },
-    })
-    scanner.imageDecode.mockRejectedValue(new Error("decoder internals"))
-
-    await expect(
-      decodeQrImageFile(new Blob(["broken"], { type: "image/png" })),
-    ).rejects.toMatchObject({
-      code: "INVALID_QR_PAYLOAD",
-      message: "INVALID_QR_PAYLOAD",
-    })
-    expect(revokeObjectURL).toHaveBeenCalledOnce()
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:qr-failure")
-  })
 })
 
 describe("camera scanner lifecycle", () => {

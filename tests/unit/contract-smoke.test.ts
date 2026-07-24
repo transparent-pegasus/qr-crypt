@@ -3,7 +3,13 @@
 // WP-2 はこのテストを緑に保ったまま拡張してよい(削除・弱体化は不可)。
 import { describe, expect, it } from "vitest"
 import { AppError, ERROR_CODES, toAppError, userMessageFor } from "@/crypto/errors"
-import { KEY_ID_PATTERN, MAX_CIPHERTEXT_BYTES, MAX_PLAINTEXT_BYTES } from "@/lib/limits"
+import {
+  FRAME_INTERVAL_MS_VALUES,
+  isFrameIntervalMs,
+  KEY_ID_PATTERN,
+  MAX_CIPHERTEXT_BYTES,
+  MAX_PLAINTEXT_BYTES,
+} from "@/lib/limits"
 import { ecLevelFor, payloadFits, qrByteCapacity } from "@/qr/encode"
 import { QR_PREFIX } from "@/qr/payload"
 import { toUiAlgorithm, toWireAlgorithm } from "@/schemas/domain"
@@ -36,6 +42,24 @@ describe("contract smoke", () => {
     const normalized = parseAppEnv({ VITE_ENABLE_RSA: "true" })
     expect(normalized.enableRsa).toBe(false)
     expect(normalized.buildSha).toBe("development")
+    expect(normalized.qrFrameIntervalMs).toBe(1_000)
+    expect(FRAME_INTERVAL_MS_VALUES).toEqual([1_000, 1_500, 2_000, 2_500, 3_000])
+    for (const frameIntervalMs of FRAME_INTERVAL_MS_VALUES) {
+      expect(isFrameIntervalMs(frameIntervalMs)).toBe(true)
+      expect(
+        parseAppEnv({
+          VITE_QR_FRAME_INTERVAL_MS: String(frameIntervalMs),
+        }).qrFrameIntervalMs,
+      ).toBe(frameIntervalMs)
+    }
+    for (const frameIntervalMs of [999, 1_250, 2_250, 3_001]) {
+      expect(isFrameIntervalMs(frameIntervalMs)).toBe(false)
+      expect(() =>
+        parseAppEnv({
+          VITE_QR_FRAME_INTERVAL_MS: String(frameIntervalMs),
+        }),
+      ).toThrow("環境変数が不正です")
+    }
     expect(() => parseAppEnv({ VITE_ENABLE_RSA: "yes" })).toThrow("環境変数が不正です")
     expect(() => parseAppEnv({ VITE_QR_RENDER_SIZE: "abc" })).toThrow(
       "環境変数が不正です",

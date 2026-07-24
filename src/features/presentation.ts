@@ -42,6 +42,12 @@ export function formatFingerprint(fingerprintHex: string): string {
   return groups.join(" ")
 }
 
+export function formatFramePositions(indexes: readonly number[]): string {
+  return indexes.length === 0
+    ? "なし"
+    : indexes.map((index) => `${index + 1}枚目`).join("、")
+}
+
 export function shortTechnicalId(value: string | undefined): string {
   if (!value) return "—"
   return value.length > 8 ? `${value.slice(0, 8)}…` : value

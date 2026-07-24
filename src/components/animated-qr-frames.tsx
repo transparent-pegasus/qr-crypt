@@ -18,7 +18,15 @@ import {
   triggerDownload,
 } from "@/qr/export-image"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
+import {
+  FRAME_INTERVAL_MS_DEFAULT,
+  FRAME_INTERVAL_MS_MAX,
+  FRAME_INTERVAL_MS_MIN,
+  FRAME_INTERVAL_MS_STEP,
+  isFrameIntervalMs,
+} from "@/lib/limits"
 import { toAppError } from "@/crypto/errors"
+import { formatFramePositions } from "@/features/presentation"
 import { env } from "@/schemas/env-schema"
 import { QrDisplay } from "@/components/qr-display"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -39,6 +47,10 @@ export interface AnimatedQrFramesProps {
 interface FrameSlot {
   frame: QrFrameV2
   payload: string
+}
+
+function currentFrameInterval(value: number): number {
+  return isFrameIntervalMs(value) ? value : FRAME_INTERVAL_MS_DEFAULT
 }
 
 export function AnimatedQrFrames({
@@ -70,7 +82,7 @@ export function AnimatedQrFrames({
   )
   const [position, setPosition] = useState(0)
   const [paused, setPaused] = useState(false)
-  const [speed, setSpeed] = useState(frameIntervalMs)
+  const [speed, setSpeed] = useState(() => currentFrameInterval(frameIntervalMs))
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const firstRenderedRef = useRef(false)
@@ -84,7 +96,7 @@ export function AnimatedQrFrames({
   useEffect(() => {
     let active = true
     queueMicrotask(() => {
-      if (active) setSpeed(frameIntervalMs)
+      if (active) setSpeed(currentFrameInterval(frameIntervalMs))
     })
     return () => {
       active = false
@@ -191,7 +203,8 @@ export function AnimatedQrFrames({
         <Alert variant="destructive" role="alert">
           <AlertTitle>フレームが欠損しています</AlertTitle>
           <AlertDescription>
-            欠損 index: {missingIndexes.join(", ")}。欠損したままでは復元できません。
+            欠損フレーム: {formatFramePositions(missingIndexes)}
+            。欠損したままでは復元できません。
           </AlertDescription>
         </Alert>
       )}
@@ -254,11 +267,14 @@ export function AnimatedQrFrames({
           id="frame-speed"
           aria-label="表示速度"
           type="range"
-          min={150}
-          max={2000}
-          step={50}
+          min={FRAME_INTERVAL_MS_MIN}
+          max={FRAME_INTERVAL_MS_MAX}
+          step={FRAME_INTERVAL_MS_STEP}
           value={speed}
-          onChange={(event) => setSpeed(Number(event.target.value))}
+          onChange={(event) => {
+            const nextSpeed = Number(event.target.value)
+            if (isFrameIntervalMs(nextSpeed)) setSpeed(nextSpeed)
+          }}
         />
       </div>
 

@@ -2,15 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import {
   Camera,
   CameraOff,
-  ImagePlus,
   RefreshCw,
   ScanLine,
   Trash2,
 } from "lucide-react"
 import { AppError, userMessageFor } from "@/crypto/errors"
 import type { MultipartScanSession } from "@/features/multipart-scan-session"
+import { formatFramePositions } from "@/features/presentation"
 import {
-  decodeQrImageFile,
   startQrScan,
   type CameraDiagnostic,
   type CameraScanState,
@@ -95,8 +94,6 @@ const MODAL_STOP_HINT =
   "カメラ画像は保存されません。閉じる・停止ボタン・画面離脱で停止します。"
 const MULTIPART_STOP_HINT =
   "カメラ画像は保存されません。閉じる・破棄ボタン・画面離脱で停止します。"
-const IMAGE_IMPORT_FILE_LIMIT = 30
-const IMAGE_IMPORT_BYTES_LIMIT = 20 * 1024 * 1024
 
 function targetForPayload(payload: string): ScannerTarget | null {
   for (const target of Object.keys(TARGET_PREFIX) as ScannerTarget[]) {
@@ -739,7 +736,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             </div>
             <Progress value={(received / frameCount) * 100} />
             <p className="text-xs text-muted-foreground">
-              欠損 index: {collecting.missingIndexes.join(", ") || "なし"}
+              未読取フレーム: {formatFramePositions(collecting.missingIndexes)}
             </p>
             <p className="text-xs text-muted-foreground">
               読取期限: {new Date(collecting.expiresAt).toLocaleTimeString("ja-JP")}
@@ -803,39 +800,15 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   )
 }
 
-interface ImageBatchSummary {
-  total: number
-  imported: number
-  acceptedFrames: number
-  failed: number
-  unprocessed: number
-  reasons: string[]
-}
-
-function addImageBatchReason(summary: ImageBatchSummary, reason: string): void {
-  if (!summary.reasons.includes(reason)) summary.reasons.push(reason)
-}
-
-function imageBatchNotice(summary: ImageBatchSummary): string {
-  const counts = `画像 ${summary.total} 件中: 取り込み ${summary.imported}、フレーム受理 ${summary.acceptedFrames}、失敗 ${summary.failed}、未処理 ${summary.unprocessed}。`
-  return summary.reasons.length === 0
-    ? counts
-    : `${counts}\n${summary.reasons.join(" ")}`
-}
-
 export type QrScannerModalProps = QrScannerPanelProps & {
   triggerLabel: string
-  camera?: boolean
-  imageImport?: boolean
   className?: string
 }
 
 export function QrScannerModal(props: QrScannerModalProps) {
   const {
     triggerLabel,
-    camera = true,
     cameraAvailable = true,
-    imageImport = false,
     title = "QRコードを読み取る",
     stopHint = MODAL_STOP_HINT,
     className,
@@ -843,11 +816,9 @@ export function QrScannerModal(props: QrScannerModalProps) {
   const multipartSession = props.multipart?.session
   const multipartRef = useRef(props.multipart)
   const contentRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const mountedRef = useRef(true)
   const openRef = useRef(false)
   const openGenerationRef = useRef(0)
-  const batchGenerationRef = useRef(0)
   const deliveryBusyRef = useRef(false)
   const automaticCloseRef = useRef(false)
   const previousClosedKindRef = useRef<TransferState["kind"]>(
@@ -878,13 +849,11 @@ export function QrScannerModal(props: QrScannerModalProps) {
     return () => {
       mountedRef.current = false
       openGenerationRef.current += 1
-      batchGenerationRef.current += 1
     }
   }, [])
 
   useEffect(() => {
     previousClosedKindRef.current = multipartSession?.state().kind ?? "idle"
-    batchGenerationRef.current += 1
   }, [multipartSession])
 
   useEffect(() => {
@@ -965,7 +934,6 @@ export function QrScannerModal(props: QrScannerModalProps) {
     openRef.current = nextOpen
     if (nextOpen) {
       openGenerationRef.current += 1
-      batchGenerationRef.current += 1
       automaticCloseRef.current = false
       previousClosedKindRef.current =
         multipartSession?.state().kind ?? "idle"
@@ -1007,263 +975,6 @@ export function QrScannerModal(props: QrScannerModalProps) {
       ) {
         setClosedNotice(deliveryError(caught).userMessage)
       }
-    } finally {
-      endDelivery()
-    }
-  }
-
-  const importImages = async (files: File[]) => {
-    if (
-      files.length === 0 ||
-      openRef.current ||
-      !imageImport ||
-      !beginDelivery()
-    ) {
-      return
-    }
-
-    const generation = ++batchGenerationRef.current
-    const isCurrent = () =>
-      mountedRef.current && batchGenerationRef.current === generation
-    const selected = files.slice(0, IMAGE_IMPORT_FILE_LIMIT)
-    const summary: ImageBatchSummary = {
-      total: files.length,
-      imported: 0,
-      acceptedFrames: 0,
-      failed: 0,
-      unprocessed: files.length - selected.length,
-      reasons: [],
-    }
-    if (files.length > selected.length) {
-      addImageBatchReason(
-        summary,
-        `1回に処理できる画像は${IMAGE_IMPORT_FILE_LIMIT}件までです。上限超過 ${files.length - selected.length} 件を未処理にしました。`,
-      )
-    }
-
-    const configuration = multipartRef.current
-    const session = configuration?.session
-    let previousKind = previousClosedKindRef.current
-    let locked: boolean
-    let singleHandled = false
-
-    const observeSession = (): TransferState | undefined => {
-      if (session === undefined) return undefined
-      const next = session.state()
-      const expired =
-        previousKind === "collecting" && next.kind === "idle"
-      previousKind = next.kind
-      previousClosedKindRef.current = next.kind
-      if (next.kind === "collecting") locked = true
-      if (expired) {
-        locked = false
-        addImageBatchReason(
-          summary,
-          "読取期限を過ぎたため破棄しました。",
-        )
-      }
-      return next
-    }
-
-    const deliverCompletion = async (
-      complete: Extract<TransferState, { kind: "complete" }>,
-    ): Promise<boolean> => {
-      if (session === undefined || configuration === undefined) return true
-      if (!session.claimCompletion()) {
-        addImageBatchReason(
-          summary,
-          "取り込み済みの読取結果があります。",
-        )
-        return true
-      }
-      try {
-        await configuration.onComplete({
-          artifactType: complete.artifactType,
-          artifactBytes: complete.artifactBytes,
-        })
-        if (!isCurrent()) return false
-        summary.imported += 1
-      } catch (caught) {
-        if (!isCurrent()) return false
-        summary.failed += 1
-        addImageBatchReason(summary, deliveryError(caught).userMessage)
-      }
-      return true
-    }
-
-    const publishSummary = () => {
-      if (isCurrent()) setClosedNotice(imageBatchNotice(summary))
-    }
-
-    try {
-      const preflight = observeSession()
-      if (preflight?.kind === "error") {
-        summary.unprocessed += selected.length
-        addImageBatchReason(summary, userMessageFor(preflight.code))
-        publishSummary()
-        return
-      }
-      if (preflight?.kind === "complete") {
-        summary.unprocessed += selected.length
-        if (!(await deliverCompletion(preflight))) return
-        publishSummary()
-        return
-      }
-      locked = preflight?.kind === "collecting"
-
-      for (let index = 0; index < selected.length; index += 1) {
-        if (!isCurrent()) return
-
-        const beforeFile = observeSession()
-        if (beforeFile?.kind === "error") {
-          summary.unprocessed += selected.length - index
-          addImageBatchReason(summary, userMessageFor(beforeFile.code))
-          publishSummary()
-          return
-        }
-        if (beforeFile?.kind === "complete") {
-          summary.unprocessed += selected.length - index
-          if (!(await deliverCompletion(beforeFile))) return
-          publishSummary()
-          return
-        }
-
-        const file = selected[index]!
-        setClosedNotice(
-          `QR画像を処理中です（${index + 1} / ${selected.length}件）`,
-        )
-        if (file.size > IMAGE_IMPORT_BYTES_LIMIT) {
-          summary.unprocessed += 1
-          addImageBatchReason(
-            summary,
-            "20MBを超える画像は処理しません。",
-          )
-          continue
-        }
-
-        let payload: string
-        try {
-          payload = await decodeQrImageFile(file)
-        } catch (caught) {
-          if (!isCurrent()) return
-          summary.failed += 1
-          addImageBatchReason(summary, deliveryError(caught).userMessage)
-          continue
-        }
-        if (!isCurrent()) return
-
-        const afterDecode = observeSession()
-        if (afterDecode?.kind === "error") {
-          summary.unprocessed += selected.length - index
-          addImageBatchReason(summary, userMessageFor(afterDecode.code))
-          publishSummary()
-          return
-        }
-        if (afterDecode?.kind === "complete") {
-          summary.unprocessed += selected.length - index
-          if (!(await deliverCompletion(afterDecode))) return
-          publishSummary()
-          return
-        }
-
-        if (payload.startsWith("OCF2:")) {
-          if (session === undefined) {
-            summary.failed += 1
-            addImageBatchReason(
-              summary,
-              "この画面では複数QRを受理しません。",
-            )
-            continue
-          }
-
-          locked = true
-          let next: TransferState
-          try {
-            next = await session.add(payload)
-          } catch (caught) {
-            if (!isCurrent()) return
-            summary.failed += 1
-            addImageBatchReason(summary, deliveryError(caught).userMessage)
-            continue
-          }
-          if (!isCurrent()) return
-          previousKind = next.kind
-          previousClosedKindRef.current = next.kind
-          if (next.kind === "collecting") {
-            summary.acceptedFrames += 1
-            continue
-          }
-          if (next.kind === "complete") {
-            summary.acceptedFrames += 1
-            summary.unprocessed += selected.length - index - 1
-            if (!(await deliverCompletion(next))) return
-            publishSummary()
-            return
-          }
-          if (next.kind === "error") {
-            summary.failed += 1
-            summary.unprocessed += selected.length - index - 1
-            addImageBatchReason(summary, userMessageFor(next.code))
-            publishSummary()
-            return
-          }
-
-          summary.failed += 1
-          summary.unprocessed += selected.length - index - 1
-          addImageBatchReason(
-            summary,
-            "読取期限を過ぎたため破棄しました。",
-          )
-          publishSummary()
-          return
-        }
-
-        const target = targetForPayload(payload)
-        if (target !== null && locked) {
-          summary.failed += 1
-          addImageBatchReason(
-            summary,
-            "複数QR読取中です。単発QRは読取完了または破棄後に。",
-          )
-          continue
-        }
-        if (
-          target === null ||
-          !props.singleTargets.includes(target)
-        ) {
-          summary.failed += 1
-          addImageBatchReason(
-            summary,
-            mismatchMessage(
-              payload,
-              props.singleTargets,
-              session !== undefined,
-            ),
-          )
-          continue
-        }
-        if (singleHandled) {
-          summary.failed += 1
-          addImageBatchReason(
-            summary,
-            "単発QRは1件のみ取り込みます。",
-          )
-          continue
-        }
-
-        singleHandled = true
-        try {
-          await props.onSingleScan(target, payload)
-          if (!isCurrent()) return
-          summary.imported += 1
-        } catch (caught) {
-          if (!isCurrent()) return
-          summary.failed += 1
-          addImageBatchReason(summary, deliveryError(caught).userMessage)
-        }
-      }
-
-      publishSummary()
     } finally {
       endDelivery()
     }
@@ -1312,83 +1023,43 @@ export function QrScannerModal(props: QrScannerModalProps) {
       className={cn("space-y-2", className)}
       aria-busy={deliveryBusy}
     >
-      {camera && (
-        <Dialog open={open} onOpenChange={handleOpenChange}>
-          <DialogTrigger asChild>
-            <Button
-              type="button"
-              className="h-11 w-full"
-              disabled={!cameraAvailable || deliveryBusy}
-            >
-              <Camera aria-hidden="true" />
-              {triggerLabel}
-            </Button>
-          </DialogTrigger>
-          <DialogContent
-            ref={contentRef}
-            tabIndex={-1}
-            className="max-h-[95dvh] max-w-lg p-4"
-            onOpenAutoFocus={(event) => {
-              event.preventDefault()
-              contentRef.current?.focus()
-            }}
-            onCloseAutoFocus={(event) => {
-              if (!automaticCloseRef.current) return
-              event.preventDefault()
-              automaticCloseRef.current = false
-            }}
-          >
-            <DialogTitle className="sr-only">{title}</DialogTitle>
-            <div
-              data-qr-scanner-scroll-region
-              className="max-h-[calc(95dvh-4rem)] overflow-y-auto"
-            >
-              {open && panel}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-      {imageImport && (
-        <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogTrigger asChild>
           <Button
             type="button"
-            variant={camera ? "secondary" : "default"}
             className="h-11 w-full"
-            disabled={open || deliveryBusy}
-            onClick={() => fileInputRef.current?.click()}
+            disabled={!cameraAvailable || deliveryBusy}
           >
-            <ImagePlus aria-hidden="true" />
-            QR画像を読み込む
+            <Camera aria-hidden="true" />
+            {triggerLabel}
           </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            aria-label="QR画像ファイル"
-            className="sr-only"
-            onChange={(event) => {
-              const input = event.currentTarget
-              const files = Array.from(input.files ?? [])
-              void importImages(files).finally(() => {
-                input.value = ""
-              })
-            }}
-          />
-        </>
-      )}
-      {camera && !cameraAvailable && (
+        </DialogTrigger>
+        <DialogContent
+          ref={contentRef}
+          tabIndex={-1}
+          className="max-h-[95dvh] max-w-lg p-4"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            contentRef.current?.focus()
+          }}
+          onCloseAutoFocus={(event) => {
+            if (!automaticCloseRef.current) return
+            event.preventDefault()
+            automaticCloseRef.current = false
+          }}
+        >
+          <DialogTitle className="sr-only">{title}</DialogTitle>
+          <div
+            data-qr-scanner-scroll-region
+            className="max-h-[calc(95dvh-4rem)] overflow-y-auto"
+          >
+            {open && panel}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {!cameraAvailable && (
         <p className="text-sm text-muted-foreground">
-          {imageImport ? (
-            <>
-              この端末ではカメラを利用できません。QR画像の読み込み、またはペイロードの貼り付けを利用してください。
-              <span hidden>
-                この端末ではカメラを利用できません。ペイロードを貼り付けてください。
-              </span>
-            </>
-          ) : (
-            "この端末ではカメラを利用できません。ペイロードを貼り付けてください。"
-          )}
+          この端末ではカメラを利用できません。ペイロードを貼り付けてください。
         </p>
       )}
       {closedNotice && (

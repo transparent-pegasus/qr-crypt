@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { AppError, userMessageFor } from "@/crypto/errors"
 import type { MlKemMessageEnvelopeV2 } from "@/schemas/domain"
 import {
-  decodeQrImageFile,
+  emitScannedPayload,
   encryptPq,
   decryptPqMessage,
   fakeBundles,
@@ -111,9 +111,9 @@ describe("encrypt page v2", () => {
     await user.click(within(result).getByRole("button", { name: "一時停止" }))
     expect(within(result).getByRole("button", { name: "再生" })).toBeInTheDocument()
     fireEvent.change(within(result).getByLabelText("表示速度"), {
-      target: { value: "150" },
+      target: { value: "2500" },
     })
-    expect(within(result).getByText("150 ms")).toBeInTheDocument()
+    expect(within(result).getByText("2500 ms")).toBeInTheDocument()
     await waitFor(() => expect(renderQrDataUrl).toHaveBeenCalled())
     expect(renderQrDataUrl.mock.calls.at(-1)?.[0]).toMatch(/^OCF2:/)
     const fullscreen = within(result).getByRole("button", { name: "全画面表示" })
@@ -130,61 +130,30 @@ describe("encrypt page v2", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("uses only primary image import for QR decryption and does not persist", async () => {
-    decodeQrImageFile.mockResolvedValueOnce("OCM1:sym-key-00000001")
+  it("does not persist during scan decryption success", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
     await user.click(await screen.findByRole("tab", { name: "復号" }))
     expect(
-      screen.getByRole("heading", { name: "画像で読み取る" }),
+      screen.getByRole("heading", { name: "カメラで読み取る" }),
     ).toBeInTheDocument()
-    expect(
-      screen.queryByRole("button", { name: "暗号文QRを読み取る" }),
-    ).not.toBeInTheDocument()
-    const imageImport = screen.getByRole("button", {
-      name: "QR画像を読み込む",
-    })
-    expect(imageImport).toHaveClass("bg-primary")
-    expect(imageImport).not.toHaveClass("bg-secondary")
     expect(startQrScan).not.toHaveBeenCalled()
-    await user.upload(
-      screen.getByLabelText("QR画像ファイル"),
-      new File(["png"], "ciphertext.png", { type: "image/png" }),
+    await user.click(
+      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
     )
+    await waitFor(() => expect(startQrScan).toHaveBeenCalled())
+    await act(async () => emitScannedPayload("OCM1:sym-key-00000001"))
     await waitFor(() =>
-      expect(screen.getByLabelText("暗号文ペイロード")).toHaveValue(
-        "OCM1:sym-key-00000001",
-      ),
+      expect(
+        screen.queryByRole("dialog", { name: "暗号文QRを読み取る" }),
+      ).not.toBeInTheDocument(),
     )
-    expect(startQrScan).not.toHaveBeenCalled()
     await user.click(await screen.findByRole("button", { name: "復号する" }))
     expect(await screen.findByText("復号済み平文")).toBeInTheDocument()
     expect(screen.getByText(/メモリー内だけに保持し、保存しません/)).toBeInTheDocument()
     expect(
       screen.queryByText(/保存済み鍵QR|鍵QRを保存/),
     ).not.toBeInTheDocument()
-  })
-
-  it("wires QR image import into the decrypt payload without starting a camera", async () => {
-    decodeQrImageFile.mockResolvedValueOnce("OCM1:sym-key-00000001")
-    const user = userEvent.setup()
-    await renderApp("/encrypt")
-    await user.click(await screen.findByRole("tab", { name: "復号" }))
-
-    await user.upload(
-      screen.getByLabelText("QR画像ファイル"),
-      new File(["png"], "ciphertext.png", { type: "image/png" }),
-    )
-
-    await waitFor(() =>
-      expect(screen.getByLabelText("暗号文ペイロード")).toHaveValue(
-        "OCM1:sym-key-00000001",
-      ),
-    )
-    expect(startQrScan).not.toHaveBeenCalled()
-    expect(
-      screen.getByText(/画像 1 件中: 取り込み 1/),
-    ).toBeInTheDocument()
   })
 
   it("distinguishes signature validity from person trust and hides unknown-signer plaintext", async () => {
