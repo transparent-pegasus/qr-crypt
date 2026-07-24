@@ -77,13 +77,28 @@ ML-KEM-1024+HKDF-SHA256+A256GCM
 ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM
 ```
 
+`src/crypto/pq/profiles.ts` の固定サイズ(すべて byte):
+
+| profile | KEM | public key | expanded secret key | ciphertext | shared secret | seed |
+|---|---|---:|---:|---:|---:|---:|
+| balanced | ML-KEM-768 | 1184 | 2400 | 1088 | 32 | 64 |
+| maximum | ML-KEM-1024 | 1568 | 3168 | 1568 | 32 | 64 |
+
+| profile | DSA | public key | expanded secret key | signature | seed |
+|---|---|---:|---:|---:|---:|
+| balanced | ML-DSA-65 | 1952 | 4032 | 3309 | 32 |
+| maximum | ML-DSA-87 | 2592 | 4896 | 4627 | 32 |
+
+expanded secret key は実行時に seed から展開する値で、wire や永続ストレージへ
+保存しない(§7)。
+
 - 上記 4 suite は **wire/codec 契約として維持**する。`WireSuite`、
   `resolveSuite`、`suiteComponents` は 768/65 と 1024/87 の双方を認識し、
   正当な同一プロファイル対を往復できる。
 - suite は **選択済み鍵の実 algorithm の組から一意導出**(`resolveSuite`)。
   署名付きは (768,65) / (1024,87) の同一プロファイル対のみ。混在は
   `UNSUPPORTED_ALGORITHM`。
-- **active policy（2026-07-23）**は maximum（1024/87）の 2 suite
+- **active policy（2026-07-24）**は maximum（1024/87）の 2 suite
   （署名なし・署名付き）のみを運用対象とする。balanced profile および 768 系
   2 suite は「認識済みだが非対応」であり、構造不正にはせず、取込・鍵生成・
   ローテーション・暗号化・復号・Worker RPC・QR 再出力などの運用境界で暗号処理前に
@@ -170,10 +185,46 @@ QrFrameV2 = {
 - シード復号後は keygen で公開鍵を再生成し、**保存公開鍵と完全一致してから**
   sign/decaps に使う(レコード差替えの fail-closed)
 
+### 7.1 公開鍵 artifact と指紋
+
+`OCI2` の map は次の形を取り、`name` だけが省略可能である。KEM/DSA は §4 の
+同一 profile 対だけを受理し、公開鍵長も同表と完全一致しなければならない。
+
+```typescript
+PublicIdentityBundleV2 = {
+  version: 2
+  type: "pq-public-identity"
+  identityId: string
+  name?: string
+  kem: { algorithm: MlKemAlgorithm, keyId: string, publicKey: bytes }
+  signing: { algorithm: MlDsaAlgorithm, keyId: string, publicKey: bytes }
+  createdAt: uint
+}
+```
+
+`OCP2` / `OCS2` はそれぞれ `type` が `pq-kem-public-key` /
+`pq-dsa-public-key` の単鍵 map で、共通キーは
+`version, type, identityId, name?, algorithm, keyId, publicKey, createdAt`。
+`identityId` と各 `keyId` は base64url 22 文字、`name` は存在する場合
+1–100 UTF-16 単位、`createdAt` は非負 safe integer とする。
+
+個別鍵指紋と identity 指紋は次のバイト列への SHA-256:
+
+```
+kem      = UTF8("QRYPT-FP-KEM-V2") || 0x00 || UTF8(algorithm) || 0x00 || publicKey
+signing  = UTF8("QRYPT-FP-DSA-V2") || 0x00 || UTF8(algorithm) || 0x00 || publicKey
+identity = UTF8("QRYPT-FP-ID-V2") || 0x00
+           || canonicalCbor({ version, type, identityId, kem, signing, createdAt })
+```
+
+identity 指紋は未認証・可変の `name` を除外する一方、`identityId` と
+`createdAt` は含める。
+
 ## 8. ゴールデンフィクスチャ(hex 凍結)
 
 `tests/pq/canonical-cbor.golden.test.ts` / `tests/pq/wire-bytes.golden.test.ts`
-と一致すること。共通フィクスチャ: `KEY_ID = "AAECAwQFBgcICQoLDA0ODw"`
+および `tests/pq/composition-golden.test.ts` と一致すること。共通フィクスチャ:
+`KEY_ID = "AAECAwQFBgcICQoLDA0ODw"`
 (生バイト `000102030405060708090a0b0c0d0e0f`)。
 以下の 768 系 fixture は wire/codec 契約の互換性を固定するものであり、
 active policy で利用可能であることを意味しない。
@@ -193,6 +244,17 @@ active policy で利用可能であることを意味しない。
   1301B、SHA-256 `53b5af7642d5394156ef4eacfac829181a682e067d9c1fbc8297206117cea924`
 - bundle(名前「テスト」, 鍵 0x0a/0x0b 充填): 3377B、SHA-256
   `db7231d753096cc2847e87767040772ca7daef5f726104549d75f1359429925c`
+- 個別 KEM 鍵指紋(ML-KEM-768、公開鍵 0x0a×1184):
+  `86cca89b088994ddd47493b21d6c2ff3e3d44621ab842d289ca92325b1425dc9`
+- 上記 bundle の identity 指紋(`name` 除外):
+  `803025820e019d89098a95ec449fb59aa6f0232c856d036172425e81a2716122`
+- maximum 署名付き end-to-end composition(固定 seed/randomness):
+  - KEM ciphertext SHA-256:
+    `7e7cc499f2d0f3bb0bb7aa61a3705c83bfc5cf2446b6bc81a1aa4badd2ea25ae`
+  - 正準 CBOR envelope SHA-256:
+    `5986a6b363df30bc95dfa668b03359315df88d3b7f67593dbe62bf61cc4b2f18`
+  - ML-DSA-87 signature SHA-256:
+    `e14ce55d6babde5635701fcf79566b8b064fc353ccbbdc7b8de50ade1385fcb2`
 
 ## 9. エラー対応表(v2 追加分)
 

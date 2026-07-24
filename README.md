@@ -62,17 +62,17 @@ v2 は **experimental** です。リポジトリ内の実装・テスト・文�
 
 ### PQ ベンチ参考値
 
-2026-07-23 に `aube bench:pq`（Vitest 4.1.10、Linux x86_64、
+2026-07-24 に `aube bench:pq`（Vitest 4.1.10、Linux x86_64、
 Intel Core i7-10870H）を 1 回実行した値です。`hz` は 1 秒あたりの処理回数、
 mean は 1 処理あたりの平均ミリ秒です。
 
 | 処理 | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| ML-KEM-1024 keygen | 1,176.31 | 0.8501 | 1,114.96 | 0.8969 |
-| ML-KEM-1024 encapsulate | 1,034.01 | 0.9671 | 1,006.43 | 0.9936 |
-| ML-KEM-1024 decapsulate | 800.77 | 1.2488 | 775.31 | 1.2898 |
-| ML-DSA-87 sign | 87.8166 | 11.3874 | 81.5052 | 12.2692 |
-| ML-DSA-87 verify | 301.58 | 3.3158 | 277.19 | 3.6076 |
+| ML-KEM-1024 keygen | 1,053.52 | 0.9492 | 1,075.08 | 0.9302 |
+| ML-KEM-1024 encapsulate | 969.86 | 1.0311 | 959.56 | 1.0421 |
+| ML-KEM-1024 decapsulate | 711.05 | 1.4064 | 743.56 | 1.3449 |
+| ML-DSA-87 sign | 87.8268 | 11.3860 | 89.0098 | 11.2347 |
+| ML-DSA-87 verify | 274.85 | 3.6384 | 259.16 | 3.8587 |
 
 これは開発機上の参考値であり、実ブラウザー・低性能端末での実測や
 `release-approved` 判定の代替ではありません。
@@ -107,8 +107,8 @@ mean は 1 処理あたりの平均ミリ秒です。
 
 ツールバージョンは `mise.toml` で固定しています。
 
-* node `26.1.0`
-* aube `1.24.0`
+* node `26.5.0`
+* aube `1.32.0`
 
 ```bash
 mise install
@@ -228,7 +228,12 @@ GitHub の Cloudflare Git Integration とは二重運用しません。GitHub Ac
 4. バンドルへの外部ネットワーク参照が無いことの確認（e2e §30.5）
 5. `aube-lock.yaml` の差分レビュー（provenance 維持）
 
-加えて [docs/browser-matrix.md](docs/browser-matrix.md) の v2 実機計測（少なくとも Android Chrome・iOS Safari）が揃い、独立監査記録が揃うまで `release-approved` としません。
+2026-07-24 時点の blocker（[docs/security-review.md](docs/security-review.md) §1）:
+`@noble/post-quantum` 0.6.1 は独立監査未了、`sharp@0.34.5` の
+`GHSA-f88m-g3jw-g9cj` は OPEN（dev chain: wrangler → miniflare → sharp、
+修正は `sharp>=0.35.0`・override 承認待ち）。加えて
+[docs/browser-matrix.md](docs/browser-matrix.md) の v2 実機計測（少なくとも
+Android Chrome・iOS Safari）と独立監査記録が揃うまで `release-approved` としません。
 
 ## ドキュメント
 

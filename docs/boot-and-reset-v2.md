@@ -38,7 +38,15 @@ offline-confirmed -- display online 再コミット --> probing (最大1回)
   機微データ存在を読む
 - 破壊トリガーは network-confirmed のみ。初期 `navigator.onLine=true` でも
   sentinel 失敗なら wipe しない
-- 設定読取に失敗した場合の fail-safe は **wipe 側**(機微データ保護優先)
+- 設定読取失敗は `preferencesReadFailed=true` として `wipeOnOnline=true` を
+  強制する。ただし破壊操作には keys / `pqIdentities` / Vault 鍵のいずれかの
+  存在を独立に確認できたことも必要で、DB open/count/lookup 失敗だけを機微データ
+  存在の証拠として初期化してはならない
+- 2026-07-24 時点の boot 読取互換 allowlist は algorithm
+  (`A256GCM`, `RSA-HYBRID`, `MLKEM768_A256GCM`,
+  `MLKEM768_MLDSA65_A256GCM`, `MLKEM1024_A256GCM`,
+  `MLKEM1024_MLDSA87_A256GCM`)と profile (`balanced`, `maximum`)。
+  保存済み設定を読取失敗へ変えて上記 fail-safe を誤発火させないため append-only とする
 - sentinel 本文一致後は破壊判断をラッチする。offline 要求は maintenance token
   消費、transient reset、または条件を満たす wipe を取り消さない。世代番号と
   AbortSignal が probe を失効できるのは sentinel 確定前だけである

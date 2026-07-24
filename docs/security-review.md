@@ -37,13 +37,14 @@ maximum の実測 fixture（`maxPlaintext=4,096B`、`name="テスト"`）:
 | OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 5/3/2 / 7/5/4 |
 | OCB2 reserved sizing fixture | 4,637 | 12/8/6 |
 
-## 1. 採用ライブラリの事実(2026-07-22 時点)
+## 1. 採用ライブラリの事実(2026-07-24 時点)
 
 ### @noble/post-quantum 0.6.1(exact pin・範囲指定禁止)
 
-- リリース: 2026-04-12。npm provenance ✓(近傍版すべて attested)
+- リリース: 2026-04-12。npm provenance ✓(近傍版すべて attested)。**2026-07-24 再確認: 0.6.1 が最新、repo / GHSA / OSV に advisory なし**
 - 依存: noble 系のみ(@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - 実装: FIPS 203(ML-KEM)/ FIPS 204(ML-DSA)
+- FIPS エラッタ(§3-1・2026-07-24): NIST は prospective correction のみ(FIPS 204 sheet 更新 2026-02-27)。API / サイズ表への影響なし
 - **独立監査: 未了**。0.6.1 時点の監査状態は self-audit(scope: everything)のみ
 - **サイドチャネル: JS 実装として constant-time を保証しない**。特に ML-KEM
   decaps の implicit-rejection 経路について JS/JIT の定時間性を明記のうえ非保証
@@ -55,9 +56,14 @@ maximum の実測 fixture（`maxPlaintext=4,096B`、`name="テスト"`）:
 
 ### 供給網
 
-- `aube-lock.yaml` にロック済み(コミット必須)。v1 期の供給網判断は
+- `aube-lock.yaml` にロック済み(コミット必須)。v1 期の供給網判断と 2026-07-24 再確認は
   `docs/threat-model.md` §5.1 参照
 - ZIP 出力は依存追加せず自前 store-only 実装(`fflate` は provenance 無しのため不採用)
+- **OPEN(dev chain)**: `sharp@0.34.5` — `GHSA-f88m-g3jw-g9cj`
+  (CVE-2026-33327 / CVE-2026-33328 / CVE-2026-35590 / CVE-2026-35591、公開 2026-07-17)。
+  経路: `wrangler@4.113.0` → `miniflare@4.20260721.0` → sharp exact-pin。
+  修正は `sharp>=0.35.0`、in-range なし、override 承認待ち。`aube audit` は現状 exit 1(期待どおり)
+- 供給網ピン再確認クリーン: `react-hook-form@7.82.0`、`eslint-config-prettier@10.1.8`
 
 ## 2. 表示禁止事項(spec2 §20)
 
