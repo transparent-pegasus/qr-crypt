@@ -201,7 +201,15 @@ export function AppProviders({
           <SensitiveSessionProvider>
             <DisplayGateLayer>
               <PwaOfflineReady registerHook={pwaHook}>{children}</PwaOfflineReady>
-              <Toaster position="top-center" richColors />
+              <Toaster
+                position="bottom-center"
+                richColors
+                // 下部ナビ(h-16 + safe-area)に被せず、その上へ 1rem の余白で表示
+                offset={{ bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)" }}
+                mobileOffset={{
+                  bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)",
+                }}
+              />
             </DisplayGateLayer>
           </SensitiveSessionProvider>
         </TransientClearProvider>
