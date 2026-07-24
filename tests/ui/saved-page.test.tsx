@@ -55,7 +55,7 @@ describe("saved QR page", () => {
     )
   })
 
-  it("re-splits a saved PQ public QR at 300 bytes and marks only its first frame", async () => {
+  it("re-splits a saved PQ public QR at 280 bytes and marks only its first frame", async () => {
     fakeArtifacts.splice(0, fakeArtifacts.length, {
       id: "saved-pq-identity",
       name: "保存した公開鍵セット",
@@ -85,7 +85,7 @@ describe("saved QR page", () => {
     expect(splitIntoFrames).toHaveBeenCalledWith({
       artifactType: "pq-public-identity",
       artifactBytes: expect.any(Uint8Array),
-      frameBytes: 300,
+      frameBytes: 280,
     })
     await waitFor(() =>
       expect(markQrViewed).toHaveBeenCalledWith(

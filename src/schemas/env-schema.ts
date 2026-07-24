@@ -83,7 +83,7 @@ const rawSchema = z.object({
   VITE_ENABLE_PRIVATE_KEY_EXPORT: boolFromString("false"),
   VITE_ENABLE_ENCRYPTED_SEED_BACKUP: boolFromString("false"),
   VITE_QR_FRAME_BYTES: intFromString(600, 400, 900),
-  VITE_QR_FRAME_INTERVAL_MS: intFromString(450, 150, 2000),
+  VITE_QR_FRAME_INTERVAL_MS: intFromString(800, 150, 2000),
   VITE_QR_MAX_FRAMES: intFromString(64, 1, 64),
   // 未知のプロバイダー名は起動時エラー(plan2 §1-3)
   VITE_PQ_PROVIDER: z.enum(["noble"]).default("noble"),

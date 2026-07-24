@@ -231,7 +231,7 @@ describe("key management v2", () => {
     expect(splitIntoFrames).toHaveBeenLastCalledWith(
       expect.objectContaining({
         artifactType: "pq-public-identity",
-        frameBytes: 300,
+        frameBytes: 280,
       }),
     )
     await user.click(

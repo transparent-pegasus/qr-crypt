@@ -278,8 +278,8 @@ describe("maximum canonical CBOR artifact sizing", () => {
 
   it("key artifacts split at PQ_KEY_QR_FRAME_BYTES with EC-Q-fit frames", async () => {
     const expectedByType = {
-      "pq-public-identity": 15,
-      "pq-kem-public-key": 6,
+      "pq-public-identity": 16,
+      "pq-kem-public-key": 7,
       "pq-dsa-public-key": 10,
     } as const
     for (const fixture of artifactFixtures()) {

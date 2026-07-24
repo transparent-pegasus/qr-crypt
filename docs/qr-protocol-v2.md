@@ -160,8 +160,8 @@ QrFrameV2 = {
 - フレーム文字列 = `OCF2:<base64url(正準CBOR(frame))>`。EC レベルは **Q 固定**。
   1 フレーム文字列はプレフィックス込み **≤1663 文字**(QR v40-Q)。
   生成後に `payloadFits(…, "Q")` を確認し、収まらなければ `QR_TOO_LARGE`
-- 既定: chunk 600B / 切替 450ms / 最大 64 フレーム(設定で 400–900B・150–2000ms)
-- 鍵系 artifact(OCI2/OCP2/OCS2)の表示は chunk 300B 固定(`PQ_KEY_QR_FRAME_BYTES`、設定対象外)
+- 既定: chunk 600B / 切替 800ms / 最大 64 フレーム(設定で 400–900B・150–2000ms)
+- 鍵系 artifact(OCI2/OCP2/OCS2)の表示は chunk 280B 固定(`PQ_KEY_QR_FRAME_BYTES`、設定対象外)
 - 組立の不変条件: first frame で immutable metadata
   (transferId/artifactType/frameCount/totalByteLength/payloadSha256)を凍結。
   同 index は完全一致のみ重複無視、1 byte でも差異・別 transferId 混入は

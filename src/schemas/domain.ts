@@ -345,7 +345,7 @@ export const PQ_PREFERENCE_DEFAULTS = {
   defaultPqProfile: "maximum",
   requireSignature: false,
   frameBytes: 600,
-  frameIntervalMs: 450,
+  frameIntervalMs: 800,
   transferTimeoutMinutes: 10,
   wipeOnOnline: true,
   resetChurnMb: 0,
