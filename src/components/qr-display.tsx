@@ -21,6 +21,7 @@ export interface QrDisplayProps {
   size?: number
   title?: string
   onRendered?: () => void
+  fullscreenEnabled?: boolean
 }
 
 export function QrDisplay({
@@ -29,6 +30,7 @@ export function QrDisplay({
   size = 512,
   title = "QRコード",
   onRendered,
+  fullscreenEnabled = true,
 }: QrDisplayProps) {
   const identity = `${payload}\u0000${ecLevel}\u0000${size}`
   const [rendered, setRendered] = useState<{
@@ -116,52 +118,56 @@ export function QrDisplay({
           データサイズ: {new TextEncoder().encode(payload).byteLength} bytes / EC=
           {ecLevel}
         </span>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 cursor-pointer focus-visible:ring-2"
-          disabled={!dataUrl}
-          onClick={() => setFullscreen(true)}
-        >
-          <Expand aria-hidden="true" />
-          全画面表示
-        </Button>
+        {fullscreenEnabled && (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 cursor-pointer focus-visible:ring-2"
+            disabled={!dataUrl}
+            onClick={() => setFullscreen(true)}
+          >
+            <Expand aria-hidden="true" />
+            全画面表示
+          </Button>
+        )}
       </div>
 
-      <Dialog open={fullscreen} onOpenChange={setFullscreen}>
-        <DialogContent className="h-dvh max-w-none border-0 bg-white p-4 text-slate-950 sm:rounded-none [&>button.absolute]:hidden">
-          <DialogHeader className="sr-only">
-            <DialogTitle>{title}を全画面表示</DialogTitle>
-            <DialogDescription>
-              白い背景にQRコードを全画面で表示します。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
-            {dataUrl && (
-              <img
-                src={dataUrl}
-                alt={`${title}の全画面画像`}
-                width={size}
-                height={size}
-                className="h-auto w-[min(90vw,512px)] bg-white"
-              />
-            )}
-            <p className="text-center text-sm text-slate-700">
-              画面の輝度を上げると読み取りやすくなります
-            </p>
-            <DialogClose asChild>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 min-w-32 cursor-pointer border-slate-300 bg-white text-slate-950 focus-visible:ring-2"
-              >
-                <X aria-hidden="true" />
-                閉じる
-              </Button>
-            </DialogClose>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {fullscreenEnabled && (
+        <Dialog open={fullscreen} onOpenChange={setFullscreen}>
+          <DialogContent className="h-dvh max-w-none border-0 bg-white p-4 text-slate-950 sm:rounded-none [&>button.absolute]:hidden">
+            <DialogHeader className="sr-only">
+              <DialogTitle>{title}を全画面表示</DialogTitle>
+              <DialogDescription>
+                白い背景にQRコードを全画面で表示します。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
+              {dataUrl && (
+                <img
+                  src={dataUrl}
+                  alt={`${title}の全画面画像`}
+                  width={size}
+                  height={size}
+                  className="h-auto w-[min(90vw,512px)] bg-white"
+                />
+              )}
+              <p className="text-center text-sm text-slate-700">
+                画面の輝度を上げると読み取りやすくなります
+              </p>
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 min-w-32 cursor-pointer border-slate-300 bg-white text-slate-950 focus-visible:ring-2"
+                >
+                  <X aria-hidden="true" />
+                  閉じる
+                </Button>
+              </DialogClose>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

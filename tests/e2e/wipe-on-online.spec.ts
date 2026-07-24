@@ -4,6 +4,7 @@ import {
   expectOnlineGate,
   loadOnlineGate,
   mainNavigation,
+  rawQrArtifacts,
   rawStoreCount,
   switchToOfflineApp,
 } from "./helpers"
@@ -132,7 +133,7 @@ test("鍵作成後に sentinel 到達可能な online へ戻ると wipe し、�
   await expect(mainNavigation(page)).toBeVisible()
   expect(await rawStoreCount(page, "keys")).toBe(0)
   expect(await rawStoreCount(page, "pqIdentities")).toBe(0)
-  expect(await rawStoreCount(page, "qrArtifacts")).toBe(0)
+  expect(await rawQrArtifacts(page)).toEqual([])
 })
 
 test("2タブ wipe broadcast と peer の online marker 書込が競合しても pending を保持する", async ({

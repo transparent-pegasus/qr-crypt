@@ -13,7 +13,6 @@ import {
   fakeIdentities,
   fakePqDecrypt,
   renderQrDataUrl,
-  saveQrArtifact,
   startQrScan,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
@@ -128,9 +127,8 @@ describe("encrypt page v2", () => {
 
     expect(within(result).queryByRole("button", { name: "保存" })).not.toBeInTheDocument()
     expect(
-      within(result).queryByText(/保存済みを開く|重複して保存/),
+      within(result).queryByText(/保存済み|重複して保存|鍵QRを保存/),
     ).not.toBeInTheDocument()
-    expect(saveQrArtifact).not.toHaveBeenCalled()
   })
 
   it("does not persist during scan decryption success", async () => {
@@ -151,7 +149,9 @@ describe("encrypt page v2", () => {
     await user.click(await screen.findByRole("button", { name: "復号する" }))
     expect(await screen.findByText("復号済み平文")).toBeInTheDocument()
     expect(screen.getByText(/メモリー内だけに保持し、保存しません/)).toBeInTheDocument()
-    expect(saveQrArtifact).not.toHaveBeenCalled()
+    expect(
+      screen.queryByText(/保存済み鍵QR|鍵QRを保存/),
+    ).not.toBeInTheDocument()
   })
 
   it("wires QR image import into the decrypt payload without starting a camera", async () => {

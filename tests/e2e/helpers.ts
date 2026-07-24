@@ -186,13 +186,17 @@ export async function goToOfflinePage(
 ): Promise<void> {
   if (new URL(page.url()).pathname === path) return
   const labels = {
-    "/encrypt": "暗号化",
-    "/keys": "鍵",
-    "/saved": "保存済み",
+    "/encrypt": "暗号・復号",
+    "/keys": "鍵追加",
+    "/saved": "鍵一覧",
     "/settings": "設定",
   } as const
   await mainNavigation(page)
-    .getByRole("link", { name: new RegExp(`^${labels[path]}`) })
+    .getByRole("link", {
+      name: new RegExp(
+        `^${escapeRegex(labels[path])}(?: 現在のページ)?$`,
+      ),
+    })
     .click()
   await expect(page).toHaveURL(new RegExp(`${escapeRegex(path)}$`))
 }
@@ -203,7 +207,11 @@ export async function createSymmetricKey(page: Page, name: string): Promise<void
   await chooseOption(page, "種類", "共通鍵")
   await page.getByLabel("共通鍵名", { exact: true }).fill(name)
   await page.getByRole("button", { name: "共通鍵を作成", exact: true }).click()
-  await expect(page.getByText(name, { exact: true }).first()).toBeVisible()
+  const dialog = page.getByRole("dialog", { name, exact: true })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText("AES-256-GCM", { exact: true })).toBeVisible()
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(dialog).toBeHidden()
 }
 
 export async function createPqIdentity(page: Page, name: string): Promise<void> {
@@ -212,11 +220,14 @@ export async function createPqIdentity(page: Page, name: string): Promise<void> 
   await chooseOption(page, "種類", "ポスト量子ID")
   await page.getByLabel("ポスト量子ID名", { exact: true }).fill(name)
   await page.getByRole("button", { name: "ポスト量子IDを作成", exact: true }).click()
-  await expect(page.getByText(name, { exact: true }).first()).toBeVisible({
+  const dialog = page.getByRole("dialog", { name, exact: true })
+  await expect(dialog).toBeVisible({
     timeout: 45_000,
   })
-  await expect(page.getByText("KEM ML-KEM-1024", { exact: true })).toBeVisible()
-  await expect(page.getByText("Signing ML-DSA-87", { exact: true })).toBeVisible()
+  await expect(dialog.getByText("KEM ML-KEM-1024", { exact: true })).toBeVisible()
+  await expect(dialog.getByText("Signing ML-DSA-87", { exact: true })).toBeVisible()
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(dialog).toBeHidden()
 }
 
 export async function seedSelfPublicBundle(
@@ -362,28 +373,12 @@ export async function rawQrArtifacts(page: Page): Promise<QrArtifactSummary[]> {
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const database = open.result
-          if (!database.objectStoreNames.contains("qrArtifacts")) {
+          if (database.objectStoreNames.contains("qrArtifacts")) {
+            database.close()
+            reject(new Error("qrArtifacts store must not exist"))
+          } else {
             database.close()
             resolve([])
-            return
-          }
-          const request = database
-            .transaction("qrArtifacts")
-            .objectStore("qrArtifacts")
-            .getAll()
-          request.onerror = () => reject(request.error)
-          request.onsuccess = () => {
-            database.close()
-            resolve(
-              (request.result as Array<{ kind?: unknown; payload?: unknown }>).map(
-                (record) => ({
-                  ...(typeof record.kind === "string" ? { kind: record.kind } : {}),
-                  ...(typeof record.payload === "string"
-                    ? { payload: record.payload }
-                    : {}),
-                }),
-              ),
-            )
           }
         }
       }),

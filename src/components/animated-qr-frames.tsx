@@ -33,6 +33,7 @@ export interface AnimatedQrFramesProps {
   size?: number
   title?: string
   onFirstRendered?: () => void
+  fullscreenEnabled?: boolean
 }
 
 interface FrameSlot {
@@ -47,6 +48,7 @@ export function AnimatedQrFrames({
   size = env.qrRenderSize,
   title = "複数QR",
   onFirstRendered,
+  fullscreenEnabled = true,
 }: AnimatedQrFramesProps) {
   const { slots, missingIndexes, frameCount } = useMemo(() => {
     const expected = Math.max(0, ...frames.map((frame) => frame.frameCount))
@@ -200,6 +202,7 @@ export function AnimatedQrFrames({
         size={size}
         title={`${title} ${currentIndex! + 1} / ${frameCount}`}
         onRendered={handleRendered}
+        fullscreenEnabled={fullscreenEnabled}
       />
 
       <div className="flex items-center justify-center gap-2">

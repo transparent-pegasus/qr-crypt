@@ -117,21 +117,13 @@ vi.mock("@/storage/key-repository", () => ({
   markKeyUsed: fakes.markKeyUsed,
   clearAllKeys: fakes.clearAllKeys,
 }))
-vi.mock("@/storage/qr-repository", () => ({
-  listQrArtifacts: fakes.listQrArtifacts,
-  saveQrArtifact: fakes.saveQrArtifact,
-  findQrByPayloadSha256: fakes.findQrByPayloadSha256,
-  renameQrArtifact: fakes.renameQrArtifact,
-  deleteQrArtifact: fakes.deleteQrArtifact,
-  markQrViewed: fakes.markQrViewed,
-  clearAllQrArtifacts: fakes.clearAllQrArtifacts,
-}))
 vi.mock("@/storage/pq-identity-repository", () => ({
   listIdentities: fakes.listIdentities,
   saveIdentity: fakes.saveIdentity,
   saveRotation: fakes.saveRotation,
   revokeIdentity: fakes.revokeIdentity,
   deleteIdentity: fakes.deleteIdentity,
+  clearAllIdentities: fakes.clearAllIdentities,
   markIdentityUsed: fakes.markIdentityUsed,
 }))
 vi.mock("@/storage/pq-bundle-repository", () => ({

@@ -65,7 +65,7 @@ import {
 } from "@/lib/limits"
 import { deleteEntireDatabase } from "@/storage/database"
 import { clearAllKeys } from "@/storage/key-repository"
-import { clearAllQrArtifacts } from "@/storage/qr-repository"
+import { clearAllIdentities } from "@/storage/pq-identity-repository"
 
 type TypedDeleteAction = "keys" | "reset"
 
@@ -82,7 +82,6 @@ export function SettingsPage() {
   } = usePreferences()
   const pwa = usePwaOfflineReady()
   const [error, setError] = useState<string | null>(null)
-  const [clearQrOpen, setClearQrOpen] = useState(false)
   const [typedAction, setTypedAction] = useState<TypedDeleteAction | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
   const [securityOpen, setSecurityOpen] = useState(true)
@@ -117,25 +116,12 @@ export function SettingsPage() {
     toast.success("すべての平文を消去しました")
   }
 
-  const clearSavedQr = async () => {
-    setWorking(true)
-    try {
-      await clearAllQrArtifacts()
-      setClearQrOpen(false)
-      toast.success("すべての保存済み鍵QRを消去しました")
-    } catch {
-      setError("保存済み鍵QRを消去できませんでした。")
-    } finally {
-      setWorking(false)
-    }
-  }
-
   const performTypedDelete = async () => {
     if (!typedAction || deleteConfirmation !== "全削除") return
     setWorking(true)
     try {
       if (typedAction === "keys") {
-        await clearAllKeys()
+        await Promise.all([clearAllKeys(), clearAllIdentities()])
         await refreshKeys()
         toast.success("すべての鍵を消去しました")
       } else {
@@ -523,15 +509,6 @@ export function SettingsPage() {
         <CardContent className="space-y-3 p-4 pt-0">
           <Button
             type="button"
-            variant="outline"
-            className="h-11 w-full cursor-pointer justify-start border-destructive/50 text-destructive focus-visible:ring-2"
-            onClick={() => setClearQrOpen(true)}
-          >
-            <Trash2 aria-hidden="true" />
-            すべての保存済み鍵QRを消去
-          </Button>
-          <Button
-            type="button"
             variant="destructive"
             className="h-11 w-full cursor-pointer justify-start focus-visible:ring-2"
             onClick={() => {
@@ -662,27 +639,6 @@ export function SettingsPage() {
           </CollapsibleContent>
         </Collapsible>
       </Card>
-
-      <AlertDialog open={clearQrOpen} onOpenChange={setClearQrOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>すべての保存済み鍵QRを消去しますか</AlertDialogTitle>
-            <AlertDialogDescription>
-              アプリ内に保存した鍵QRをすべて削除します。鍵本体は削除しません。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={working}
-              onClick={() => void clearSavedQr()}
-            >
-              消去する
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog
         open={maintenanceOpen}

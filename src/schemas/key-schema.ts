@@ -1,17 +1,13 @@
-// 鍵・QR アーティファクト関連の実行時検証。
+// 鍵・ポスト量子レコード関連の実行時検証。
 // ドメイン型そのものは domain.ts が単一所有(ここは zod スキーマのみ)。
 import { z } from "zod"
 import { DSA_SEED_BYTES, IV_BYTES, KEM_SEED_BYTES, KEY_ID_PATTERN } from "@/lib/limits"
 import type {
   PostQuantumIdentity,
   PqPublicBundleRecord,
-  QrArtifactKind,
-  Sensitivity,
   StoredKeyRecord,
-  StoredQrArtifact,
 } from "@/schemas/domain"
 import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
-import { decodePayload } from "@/qr/payload"
 
 // 制御文字(C0 領域と DEL)を含むか。正規表現リテラルに制御文字を
 // 埋め込まないため、コードポイント判定で実装する。
@@ -23,7 +19,7 @@ export function hasControlChars(value: string): boolean {
   return false
 }
 
-// QR 名(spec §14): trim 後 1〜80 文字、制御文字禁止。同名は許可(ID で区別)。
+// 表示・出力名: trim 後 1〜80 文字、制御文字禁止。
 export const qrNameSchema = z
   .string()
   .transform((value) => value.trim())
@@ -147,164 +143,6 @@ export function validateStoredKeyRecord(value: unknown): StoredKeyRecord {
   })()
   if (!valid) throw new Error("invalid key record")
   return record as StoredKeyRecord
-}
-
-// v1 read/migration boundary. This deliberately retains ciphertext so the v2
-// versionchange transaction can classify and purge old rows before active reads.
-export type LegacyStoredKeyRecordV1 = StoredKeyRecord
-export interface LegacyStoredQrArtifactV1 {
-  id: string
-  name: string
-  kind: QrArtifactKind | "ciphertext"
-  sensitivity: Sensitivity
-  algorithm: string
-  payload: string
-  payloadSha256: string
-  byteLength: number
-  createdAt: number
-  keyId?: string
-  lastViewedAt?: number
-}
-
-export const legacyStoredQrArtifactV1Schema = z
-  .object({
-    id: keyIdSchema,
-    name: qrNameSchema,
-    kind: z.enum(["ciphertext", "symmetric-key", "public-key", "encrypted-private-key"]),
-    sensitivity: z.enum(["public", "confidential", "secret"]),
-    algorithm: z.string().min(1),
-    payload: z.string().min(1),
-    payloadSha256: fingerprintSchema,
-    byteLength: z.number().int().nonnegative(),
-    createdAt: timestampSchema,
-    keyId: keyIdSchema.optional(),
-    lastViewedAt: timestampSchema.optional(),
-  })
-  .strict()
-
-export function validateLegacyStoredKeyRecordV1(value: unknown): LegacyStoredKeyRecordV1 {
-  return validateStoredKeyRecord(value)
-}
-
-export function validateLegacyStoredQrArtifactV1(
-  value: unknown,
-): LegacyStoredQrArtifactV1 {
-  const artifact = legacyStoredQrArtifactV1Schema.parse(value)
-  const expectedSensitivity =
-    artifact.kind === "public-key"
-      ? "public"
-      : artifact.kind === "ciphertext"
-        ? "confidential"
-        : "secret"
-  if (artifact.sensitivity !== expectedSensitivity) {
-    throw new Error("invalid QR sensitivity")
-  }
-  return artifact as LegacyStoredQrArtifactV1
-}
-
-export type ActiveStoredQrArtifactKind = QrArtifactKind
-export type ActiveStoredQrArtifact = StoredQrArtifact
-
-const activeQrArtifactCommon = {
-  id: keyIdSchema,
-  name: qrNameSchema,
-  algorithm: z.string().min(1),
-  payload: z.string().min(1),
-  payloadSha256: fingerprintSchema,
-  byteLength: z.number().int().nonnegative(),
-  createdAt: timestampSchema,
-  keyId: keyIdSchema.optional(),
-  lastViewedAt: timestampSchema.optional(),
-}
-
-export const activeStoredQrArtifactSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      ...activeQrArtifactCommon,
-      kind: z.literal("symmetric-key"),
-      sensitivity: z.literal("secret"),
-    })
-    .strict(),
-  z
-    .object({
-      ...activeQrArtifactCommon,
-      kind: z.literal("public-key"),
-      sensitivity: z.literal("public"),
-    })
-    .strict(),
-  z
-    .object({
-      ...activeQrArtifactCommon,
-      kind: z.literal("encrypted-private-key"),
-      sensitivity: z.literal("secret"),
-    })
-    .strict(),
-  z
-    .object({
-      ...activeQrArtifactCommon,
-      kind: z.literal("pq-public-identity"),
-      sensitivity: z.literal("public"),
-      keyId: keyIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      ...activeQrArtifactCommon,
-      kind: z.literal("pq-kem-public-key"),
-      sensitivity: z.literal("public"),
-      keyId: keyIdSchema,
-    })
-    .strict(),
-  z
-    .object({
-      ...activeQrArtifactCommon,
-      kind: z.literal("pq-dsa-public-key"),
-      sensitivity: z.literal("public"),
-      keyId: keyIdSchema,
-    })
-    .strict(),
-])
-
-export function validateStoredQrArtifact(value: unknown): ActiveStoredQrArtifact {
-  const artifact = activeStoredQrArtifactSchema.parse(value)
-  const decoded = decodePayload(artifact.payload)
-
-  switch (artifact.kind) {
-    case "symmetric-key":
-    case "public-key":
-      if (
-        decoded.kind !== artifact.kind ||
-        decoded.envelope.algorithm !== artifact.algorithm ||
-        (artifact.keyId !== undefined && decoded.envelope.keyId !== artifact.keyId)
-      ) {
-        throw new Error("QR kind and payload do not match")
-      }
-      break
-    case "pq-kem-public-key":
-    case "pq-dsa-public-key":
-      if (
-        decoded.kind !== artifact.kind ||
-        decoded.envelope.algorithm !== artifact.algorithm ||
-        decoded.envelope.keyId !== artifact.keyId
-      ) {
-        throw new Error("QR kind and payload do not match")
-      }
-      break
-    case "pq-public-identity":
-      if (
-        decoded.kind !== artifact.kind ||
-        artifact.algorithm !==
-          `${decoded.envelope.kem.algorithm}+${decoded.envelope.signing.algorithm}` ||
-        decoded.envelope.identityId !== artifact.keyId
-      ) {
-        throw new Error("QR kind and payload do not match")
-      }
-      break
-    case "encrypted-private-key":
-      // OCB2 is reserved and remains non-persistable until its wire schema is active.
-      throw new Error("QR kind and payload do not match")
-  }
-  return artifact as ActiveStoredQrArtifact
 }
 
 const bytes = (length: number) =>

@@ -1,20 +1,19 @@
-// IndexedDB 接続(spec §15)。DB 名 qrypt / version 2。
-// upgrade 処理は migrations.ts の版別マップに委譲する(plan §12-7)。
+// IndexedDB 接続(spec §15)。schema 変更時は DB_VERSION を上げるだけでよく、
+// upgrade 時に旧 object store を全削除してから現行 schema を作り直す
+// （段階 migration なし・旧データは丸ごと破棄）。
 import { deleteDB, openDB } from "idb"
 import type { DBSchema, IDBPDatabase } from "idb"
 import { AppError, toAppError } from "@/crypto/errors"
-import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
 import type {
-  LegacyStoredKeyRecordV1,
-  LegacyStoredQrArtifactV1,
-} from "@/schemas/key-schema"
-import { applyMigrations } from "@/storage/migrations"
+  PostQuantumIdentity,
+  PqPublicBundleRecord,
+  StoredKeyRecord,
+} from "@/schemas/domain"
 
 export const DB_NAME = "qrypt"
-export const DB_VERSION = 2
+export const DB_VERSION = 3
 
 export const STORE_KEYS = "keys"
-export const STORE_QR_ARTIFACTS = "qrArtifacts"
 export const STORE_PREFERENCES = "preferences"
 export const STORE_APP_METADATA = "appMetadata"
 export const STORE_PQ_IDENTITIES = "pqIdentities"
@@ -28,14 +27,8 @@ export interface KeyValueRow {
 export interface OfflineCipherDb extends DBSchema {
   keys: {
     key: string
-    value: LegacyStoredKeyRecordV1
+    value: StoredKeyRecord
     indexes: { "by-fingerprint": string; "by-createdAt": number }
-  }
-  qrArtifacts: {
-    key: string
-    value: LegacyStoredQrArtifactV1
-    // by-payloadSha256 は非 unique(意図的な重複保存を許可。plan §13 C9)
-    indexes: { "by-payloadSha256": string; "by-createdAt": number }
   }
   preferences: { key: string; value: KeyValueRow }
   appMetadata: { key: string; value: KeyValueRow }
@@ -112,8 +105,32 @@ function openApplicationDatabase(
       blockedTimeoutId = undefined
     }
     const opening = openDB<OfflineCipherDb>(DB_NAME, DB_VERSION, {
-      upgrade(database, oldVersion, _newVersion, transaction) {
-        applyMigrations(database, oldVersion, transaction)
+      upgrade(database, oldVersion) {
+        if (oldVersion !== 0) {
+          for (const name of Array.from(database.objectStoreNames)) {
+            database.deleteObjectStore(name)
+          }
+        }
+        const keys = database.createObjectStore(STORE_KEYS, { keyPath: "id" })
+        keys.createIndex("by-fingerprint", "fingerprint", { unique: true })
+        keys.createIndex("by-createdAt", "createdAt")
+
+        database.createObjectStore(STORE_PREFERENCES, { keyPath: "key" })
+        database.createObjectStore(STORE_APP_METADATA, { keyPath: "key" })
+
+        const identities = database.createObjectStore(STORE_PQ_IDENTITIES, {
+          keyPath: "id",
+        })
+        identities.createIndex("by-createdAt", "createdAt")
+        identities.createIndex("by-kemKeyId", "kem.keyId", { unique: true })
+        identities.createIndex("by-signingKeyId", "signing.keyId", {
+          unique: true,
+        })
+
+        const bundles = database.createObjectStore(STORE_PQ_PUBLIC_BUNDLES, {
+          keyPath: "recordId",
+        })
+        bundles.createIndex("by-identityId", "identityId")
       },
       blocked() {
         try {

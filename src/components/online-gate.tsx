@@ -107,7 +107,7 @@ export function OnlineInstallScreen() {
                 オンラインではPWAの導入のみ利用できます
               </h2>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                暗号化・復号・鍵管理・保存済みQR・設定はオフライン時だけ表示します。
+                暗号・復号、鍵追加、鍵一覧、設定はオフライン時だけ表示します。
               </p>
             </div>
           </div>

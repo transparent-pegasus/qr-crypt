@@ -19,7 +19,6 @@ import type {
   PublicIdentityBundleV2,
   QrFrameV2,
   StoredKeyRecord,
-  StoredQrArtifact,
   V2ArtifactType,
 } from "@/schemas/domain"
 import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
@@ -78,7 +77,6 @@ function defaultKeys(): StoredKeyRecord[] {
 }
 
 export const fakeKeys: StoredKeyRecord[] = defaultKeys()
-export const fakeArtifacts: StoredQrArtifact[] = []
 
 const IDENTITY_ID = "I".repeat(22)
 const KEM_KEY_ID = "K".repeat(22)
@@ -812,6 +810,9 @@ export const deleteIdentity = vi.fn(async (id: string) => {
   const index = fakeIdentities.findIndex((identity) => identity.id === id)
   if (index >= 0) fakeIdentities.splice(index, 1)
 })
+export const clearAllIdentities = vi.fn(async () => {
+  fakeIdentities.splice(0)
+})
 export const markIdentityUsed = vi.fn(async () => undefined)
 
 export const listBundles = vi.fn(async () => [...fakeBundles])
@@ -844,37 +845,6 @@ export const findBundleByKemKeyId = vi.fn(async (keyId: string) =>
   fakeBundles.find((record) => record.kem.keyId === keyId),
 )
 
-export const listQrArtifacts = vi.fn(async () => [...fakeArtifacts])
-export const saveQrArtifact = vi.fn(
-  async (artifact: StoredQrArtifact, options?: { allowDuplicate?: boolean }) => {
-    const duplicate = fakeArtifacts.some(
-      (item) => item.payloadSha256 === artifact.payloadSha256,
-    )
-    if (duplicate && !options?.allowDuplicate) {
-      throw new FakeAppError("DUPLICATE_QR")
-    }
-    fakeArtifacts.unshift(artifact)
-  },
-)
-export const findQrByPayloadSha256 = vi.fn(async (hash: string) =>
-  fakeArtifacts.find((artifact) => artifact.payloadSha256 === hash),
-)
-export const renameQrArtifact = vi.fn(async (id: string, name: string) => {
-  const artifact = fakeArtifacts.find((item) => item.id === id)
-  if (artifact) artifact.name = name
-})
-export const deleteQrArtifact = vi.fn(async (id: string) => {
-  const index = fakeArtifacts.findIndex((item) => item.id === id)
-  if (index >= 0) fakeArtifacts.splice(index, 1)
-})
-export const markQrViewed = vi.fn(async (id: string, when: number) => {
-  const artifact = fakeArtifacts.find((item) => item.id === id)
-  if (artifact) artifact.lastViewedAt = when
-})
-export const clearAllQrArtifacts = vi.fn(async () => {
-  fakeArtifacts.splice(0)
-})
-
 export const getPreferences = vi.fn(async () => ({ ...fakePreferences }))
 export const updatePreferences = vi.fn(async (patch: Partial<Preferences>) => {
   Object.assign(fakePreferences, patch)
@@ -882,7 +852,6 @@ export const updatePreferences = vi.fn(async (patch: Partial<Preferences>) => {
 })
 export const deleteEntireDatabase = vi.fn(async () => {
   fakeKeys.splice(0)
-  fakeArtifacts.splice(0)
   fakeIdentities.splice(0)
   fakeBundles.splice(0)
 })
@@ -899,7 +868,6 @@ export function useFakeRegisterSW(_options?: RegisterSWOptions) {
 
 export function resetFakes(): void {
   fakeKeys.splice(0, fakeKeys.length, ...defaultKeys())
-  fakeArtifacts.splice(0)
   const identity = defaultIdentity()
   fakeIdentities.splice(0, fakeIdentities.length, identity)
   fakeBundles.splice(0, fakeBundles.length, recordFromIdentity(identity))

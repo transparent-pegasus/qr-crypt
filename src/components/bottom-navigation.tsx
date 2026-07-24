@@ -1,11 +1,11 @@
-import { Archive, KeyRound, Lock, Settings } from "lucide-react"
+import { KeyRound, List, LockKeyhole, Settings } from "lucide-react"
 import { NavLink, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
 const ITEMS = [
-  { to: "/encrypt", label: "暗号化", icon: Lock },
-  { to: "/keys", label: "鍵", icon: KeyRound },
-  { to: "/saved", label: "保存済み", icon: Archive },
+  { to: "/encrypt", label: "暗号・復号", icon: LockKeyhole },
+  { to: "/keys", label: "鍵追加", icon: KeyRound },
+  { to: "/saved", label: "鍵一覧", icon: List },
   { to: "/settings", label: "設定", icon: Settings },
 ] as const
 
@@ -23,6 +23,7 @@ export function BottomNavigation() {
             <NavLink
               key={item.to}
               to={item.to}
+              aria-label={item.label}
               onKeyDown={(event) => {
                 if (event.key === " ") {
                   event.preventDefault()
@@ -37,13 +38,7 @@ export function BottomNavigation() {
                 )
               }
             >
-              {({ isActive }) => (
-                <>
-                  <Icon aria-hidden="true" className="size-5" />
-                  <span>{item.label}</span>
-                  {isActive && <span className="sr-only">現在のページ</span>}
-                </>
-              )}
+              <Icon aria-hidden="true" className="size-6" />
             </NavLink>
           )
         })}

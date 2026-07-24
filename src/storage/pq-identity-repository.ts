@@ -144,6 +144,14 @@ export async function deleteIdentity(id: string): Promise<void> {
   }
 }
 
+export async function clearAllIdentities(): Promise<void> {
+  try {
+    await (await getDb()).clear(STORE_PQ_IDENTITIES)
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
+}
+
 export async function markIdentityUsed(id: string, usedAt: number): Promise<void> {
   try {
     const database = await getDb()

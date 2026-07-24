@@ -21,9 +21,12 @@ describe("app shell and feature gate", () => {
     const links = within(navigation).getAllByRole("link")
     expect(links).toHaveLength(4)
     await waitFor(() => expect(links[0]).toHaveAttribute("aria-current", "page"))
-    expect(links.map((link) => link.textContent)).toEqual(
-      expect.arrayContaining(["暗号化現在のページ", "鍵", "保存済み", "設定"]),
-    )
+    for (const name of ["暗号・復号", "鍵追加", "鍵一覧", "設定"]) {
+      expect(within(navigation).getByRole("link", { name })).toHaveAttribute(
+        "aria-label",
+        name,
+      )
+    }
     expect(
       links.filter((link) => link.getAttribute("aria-current") === "page"),
     ).toHaveLength(1)

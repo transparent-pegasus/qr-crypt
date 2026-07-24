@@ -5,29 +5,26 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import type {
   DsaPublicKeyEnvelopeV2,
   KemPublicKeyEnvelopeV2,
-  PostQuantumIdentity,
   PublicIdentityBundleV2,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
   armMaintenanceToken,
+  clearAllIdentities,
+  clearAllKeys,
   confirmBundleFingerprint,
   createIdentity,
   createSymmetricKeyRecord,
-  deleteIdentity,
   deleteKeyRecord,
   emitScannedPayload,
   encodeDsaPublicKeyEnvelopeV2,
   encodeKemPublicKeyEnvelopeV2,
   encodePublicIdentityBundleV2,
-  fakeArtifacts,
   fakeBundles,
   fakeIdentities,
   fakeKeys,
   fakePreferences,
   saveBundle,
-  saveQrArtifact,
-  splitIntoFrames,
   startQrScan,
   updatePreferences,
 } from "./helpers/fakes"
@@ -83,6 +80,9 @@ describe("key management v2", () => {
     await user.click(screen.getByRole("button", { name: "ポスト量子IDを作成" }))
     await waitFor(() => expect(createIdentity).toHaveBeenCalledOnce())
     expect(fakeIdentities).toHaveLength(identityCount + 1)
+    let dialog = await screen.findByRole("dialog", { name: "新しいPQ ID" })
+    expect(within(dialog).getByText("3".repeat(64))).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
     await user.click(screen.getByRole("combobox", { name: "種類" }))
     await user.click(screen.getByRole("option", { name: "共通鍵" }))
@@ -93,6 +93,9 @@ describe("key management v2", () => {
     expect(fakeKeys.filter((key) => key.kind === "symmetric")).toHaveLength(
       symmetricCount + 1,
     )
+    dialog = await screen.findByRole("dialog", { name: "新しい共通鍵" })
+    expect(within(dialog).getByText("AES-256-GCM")).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
     expect(screen.queryByText(/maximum IDを作成/)).not.toBeInTheDocument()
   })
 
@@ -209,140 +212,6 @@ describe("key management v2", () => {
     expect(screen.queryByText("単鍵を読み取りました")).not.toBeInTheDocument()
   })
 
-  it("exposes maximum identity fingerprints, lifecycle actions, and all OCF2 outputs", async () => {
-    const user = userEvent.setup()
-    await renderApp("/keys")
-    expect(await screen.findByText("experimental・未独立監査")).toBeInTheDocument()
-    expect(screen.queryByText(/balanced/i)).not.toBeInTheDocument()
-    expect(screen.getByText("3".repeat(64))).toBeInTheDocument()
-    expect(screen.getByText("1".repeat(64))).toBeInTheDocument()
-    expect(screen.getByText("2".repeat(64))).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "ローテーション" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "この端末で失効" })).toBeInTheDocument()
-
-    await user.click(screen.getByRole("button", { name: "公開鍵セットQR" }))
-    const qrDialog = await screen.findByRole("dialog", { name: /公開鍵セット/ })
-    expect(qrDialog).toHaveFocus()
-    expect(within(qrDialog).getByText(/OCF2フレーム/)).toBeInTheDocument()
-    expect(within(qrDialog).getByRole("button", { name: "一時停止" })).toBeInTheDocument()
-    expect(
-      within(qrDialog).getByRole("button", { name: /ZIPで出力/ }),
-    ).toBeInTheDocument()
-    expect(splitIntoFrames).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        artifactType: "pq-public-identity",
-        frameBytes: 280,
-      }),
-    )
-    await user.click(
-      within(qrDialog).getByRole("button", {
-        name: "保存済み鍵QRへ保存",
-      }),
-    )
-    await waitFor(() => expect(saveQrArtifact).toHaveBeenCalledOnce())
-    expect(fakeArtifacts[0]).toMatchObject({
-      kind: "pq-public-identity",
-      sensitivity: "public",
-      algorithm: "ML-KEM-1024+ML-DSA-87",
-      keyId: fakeIdentities[0]?.id,
-    })
-    expect(fakeIdentities).toHaveLength(1)
-  })
-
-  it("collapses rotated generations under the active identity card", async () => {
-    const user = userEvent.setup()
-    const head = fakeIdentities[0]!
-    const rotated: PostQuantumIdentity = {
-      ...head,
-      id: "O".repeat(22),
-      kem: { ...head.kem, keyId: "L".repeat(22), fingerprint: "4".repeat(64) },
-      signing: { ...head.signing, keyId: "M".repeat(22), fingerprint: "5".repeat(64) },
-      identityFingerprint: "6".repeat(64),
-      status: "rotated",
-      createdAt: head.createdAt - 1_000,
-      rotatedAt: head.createdAt,
-    }
-    fakeIdentities.splice(
-      0,
-      fakeIdentities.length,
-      { ...head, rotatedFromId: rotated.id },
-      rotated,
-    )
-
-    await renderApp("/keys")
-    expect(await screen.findByText("3".repeat(64))).toBeInTheDocument()
-    expect(screen.getAllByText("active")).toHaveLength(1)
-    expect(screen.queryByText("rotated")).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole("button", { name: /旧世代 1 件、復号専用/ }))
-    expect(screen.getByText("rotated")).toBeInTheDocument()
-    expect(screen.getAllByRole("button", { name: "署名検証用単鍵QR" })).toHaveLength(2)
-  })
-
-  it("requires destructive confirmation before deleting symmetric keys or identities", async () => {
-    const user = userEvent.setup()
-    await renderApp("/keys")
-
-    await user.click(await screen.findByRole("button", { name: "共通鍵Aを削除" }))
-    let confirmation = await screen.findByRole("alertdialog", {
-      name: "「共通鍵A」を削除しますか?",
-    })
-    expect(
-      within(confirmation).getByText(
-        "この鍵で暗号化した暗号文は復号できなくなります。元に戻せません。",
-      ),
-    ).toBeInTheDocument()
-    expect(deleteKeyRecord).not.toHaveBeenCalled()
-    await user.click(within(confirmation).getByRole("button", { name: "キャンセル" }))
-    expect(deleteKeyRecord).not.toHaveBeenCalled()
-
-    await user.click(screen.getByRole("button", { name: "共通鍵Aを削除" }))
-    confirmation = await screen.findByRole("alertdialog", {
-      name: "「共通鍵A」を削除しますか?",
-    })
-    await user.click(within(confirmation).getByRole("button", { name: "削除する" }))
-    await waitFor(() =>
-      expect(deleteKeyRecord).toHaveBeenCalledWith("sym-key-00000001"),
-    )
-
-    await user.click(screen.getByRole("button", { name: "自分のPQ IDを削除" }))
-    confirmation = await screen.findByRole("alertdialog", {
-      name: "「自分のPQ ID」を削除しますか?",
-    })
-    expect(
-      within(confirmation).getByText(
-        "このID宛の暗号文は復号できなくなります。失効と異なり元に戻せません。",
-      ),
-    ).toBeInTheDocument()
-    expect(deleteIdentity).not.toHaveBeenCalled()
-    await user.click(within(confirmation).getByRole("button", { name: "削除する" }))
-    await waitFor(() => expect(deleteIdentity).toHaveBeenCalledWith("I".repeat(22)))
-  })
-
-  it("retains duplicate handling for saved key QR without introducing message persistence", async () => {
-    const user = userEvent.setup()
-    await renderApp("/keys")
-    await user.click(await screen.findByRole("button", { name: "秘密鍵QRを表示" }))
-    const dialog = await screen.findByRole("dialog", { name: "共通鍵QR" })
-    await user.click(
-      within(dialog).getByRole("checkbox", { name: "リスクを理解しました" }),
-    )
-    const save = within(dialog).getByRole("button", { name: "保存済み鍵QRへ保存" })
-    await user.click(save)
-    await waitFor(() => expect(saveQrArtifact).toHaveBeenCalledTimes(1))
-    expect(fakeArtifacts).toHaveLength(1)
-
-    await user.click(save)
-    const duplicate = await screen.findByRole("alertdialog", {
-      name: "同じ内容の鍵QRが保存済みです",
-    })
-    await user.click(within(duplicate).getByRole("button", { name: "重複して保存" }))
-    await waitFor(() => expect(fakeArtifacts).toHaveLength(2))
-    expect(fakeArtifacts.every((artifact) => artifact.kind === "symmetric-key")).toBe(
-      true,
-    )
-  })
-
   it("keeps single-frame OCK1 camera import behind a secret-key confirmation", async () => {
     const user = userEvent.setup()
     const originalCount = fakeKeys.length
@@ -450,5 +319,28 @@ describe("settings v2", () => {
     expect(action).toBeEnabled()
     await user.click(action)
     await waitFor(() => expect(armMaintenanceToken).toHaveBeenCalledTimes(1))
+  })
+
+  it("clears symmetric keys and post-quantum identities together", async () => {
+    const user = userEvent.setup()
+    await renderApp("/settings")
+    expect(fakeKeys.length).toBeGreaterThan(0)
+    expect(fakeIdentities.length).toBeGreaterThan(0)
+
+    await user.click(await screen.findByRole("button", { name: "すべての鍵を消去" }))
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "すべての鍵を消去",
+    })
+    const action = within(dialog).getByRole("button", { name: "論理削除を実行" })
+    expect(action).toBeDisabled()
+    await user.type(within(dialog).getByLabelText("確認文字列"), "全削除")
+    await user.click(action)
+
+    await waitFor(() => {
+      expect(clearAllKeys).toHaveBeenCalledOnce()
+      expect(clearAllIdentities).toHaveBeenCalledOnce()
+    })
+    expect(fakeKeys).toHaveLength(0)
+    expect(fakeIdentities).toHaveLength(0)
   })
 })

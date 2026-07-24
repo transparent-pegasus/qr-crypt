@@ -3,8 +3,8 @@ import { env } from "@/schemas/env-schema"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { NetworkStatusBadge } from "@/components/network-status"
 import { EncryptPage } from "@/pages/encrypt-page"
+import { KeyListPage } from "@/pages/key-list-page"
 import { KeysPage } from "@/pages/keys-page"
-import { SavedPage } from "@/pages/saved-page"
 import { SettingsPage } from "@/pages/settings-page"
 
 export function AppLayout() {
@@ -35,7 +35,7 @@ export function createAppRouter() {
         { index: true, element: <Navigate to="/encrypt" replace /> },
         { path: "encrypt", element: <EncryptPage /> },
         { path: "keys", element: <KeysPage /> },
-        { path: "saved", element: <SavedPage /> },
+        { path: "saved", element: <KeyListPage /> },
         { path: "settings", element: <SettingsPage /> },
         { path: "*", element: <Navigate to="/encrypt" replace /> },
       ],

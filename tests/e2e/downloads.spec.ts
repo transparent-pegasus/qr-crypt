@@ -125,6 +125,77 @@ test("PNG と SVG のダウンロード内容が画面のペイロードと一�
   })
 })
 
+test("鍵一覧モーダルから秘密鍵QRと公開鍵セットQRを出力する", async ({
+  context,
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const symmetricName = "一覧出力秘密鍵"
+  const identityName = "一覧出力PQ-ID"
+  await openOfflineApp(page, context, "/keys")
+  await createSymmetricKey(page, symmetricName)
+
+  await goToOfflinePage(page, "/saved")
+  await page.getByRole("tab", { name: "共通鍵", exact: true }).click()
+  await page.getByRole("button", { name: new RegExp(symmetricName) }).click()
+  let dialog = page.getByRole("dialog", { name: symmetricName })
+  await dialog
+    .getByRole("button", { name: "秘密鍵QRを表示", exact: true })
+    .click()
+  dialog = page.getByRole("dialog", { name: "共通鍵QR" })
+  await dialog
+    .getByRole("checkbox", { name: "リスクを理解しました" })
+    .check()
+
+  const secretPngPromise = page.waitForEvent("download")
+  await dialog.getByRole("button", { name: "PNG", exact: true }).click()
+  const secretPng = await secretPngPromise
+  expect(secretPng.suggestedFilename()).toMatch(
+    /^一覧出力秘密鍵-[A-Za-z0-9_-]{8}\.png$/,
+  )
+  expect(decodePng(await downloadBuffer(secretPng))).toMatch(/^OCK1:/)
+
+  const secretSvgPromise = page.waitForEvent("download")
+  await dialog.getByRole("button", { name: "SVG", exact: true }).click()
+  const secretSvg = await secretSvgPromise
+  expect(secretSvg.suggestedFilename()).toMatch(
+    /^一覧出力秘密鍵-[A-Za-z0-9_-]{8}\.svg$/,
+  )
+  expect((await downloadBuffer(secretSvg)).toString("utf8")).toContain("<svg")
+
+  await dialog.getByRole("button", { name: "詳細に戻る" }).click()
+  await page
+    .getByRole("dialog", { name: symmetricName })
+    .getByRole("button", { name: "Close", exact: true })
+    .click()
+  await goToOfflinePage(page, "/keys")
+  await createPqIdentity(page, identityName)
+
+  await goToOfflinePage(page, "/saved")
+  await page.getByRole("button", { name: new RegExp(identityName) }).click()
+  dialog = page.getByRole("dialog", { name: identityName })
+  await dialog
+    .getByRole("button", { name: "公開鍵セットQR", exact: true })
+    .click()
+  dialog = page.getByRole("dialog", {
+    name: `${identityName} 公開鍵セット`,
+  })
+  const frames = dialog.getByRole("region", {
+    name: `${identityName} 公開鍵セットフレーム表示`,
+  })
+  const payloads = await collectAnimatedFramePayloads(frames)
+  expect(payloads.length).toBeGreaterThan(0)
+  expect(payloads.every((payload) => payload.startsWith("OCF2:"))).toBe(true)
+
+  const publicSvgPromise = page.waitForEvent("download")
+  await frames.getByRole("button", { name: "現在のSVG" }).click()
+  const publicSvg = await publicSvgPromise
+  expect(publicSvg.suggestedFilename()).toMatch(
+    /公開鍵セット-.+-frame-\d{2}\.svg$/,
+  )
+  expect((await downloadBuffer(publicSvg)).toString("utf8")).toContain("<svg")
+})
+
 test("署名付き複数フレームを操作し ZIP と全 PNG を実ファイルとして出力する", async ({
   context,
   page,

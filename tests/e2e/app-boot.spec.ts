@@ -31,9 +31,11 @@ test("オンライン導入画面、PWA 資産、オフライン起動とナビ�
   await expect(page).toHaveURL(/\/encrypt$/)
   const navigation = mainNavigation(page)
   await expect(navigation.getByRole("link")).toHaveCount(4)
-  for (const label of ["暗号化", "鍵", "保存済み", "設定"]) {
+  for (const label of ["暗号・復号", "鍵追加", "鍵一覧", "設定"]) {
     await expect(
-      navigation.getByRole("link", { name: new RegExp(`^${label}`) }),
+      navigation.getByRole("link", {
+        name: new RegExp(`^${label}(?: 現在のページ)?$`),
+      }),
     ).toBeVisible()
   }
 })

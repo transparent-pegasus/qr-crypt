@@ -16,16 +16,6 @@ export type QrEcLevel = "L" | "M" | "Q" | "H"
 
 export type KeyKind = "symmetric" | "rsa-key-pair" | "public-key"
 
-export type QrArtifactKind =
-  | "symmetric-key"
-  | "public-key"
-  | "encrypted-private-key"
-  | "pq-public-identity"
-  | "pq-kem-public-key"
-  | "pq-dsa-public-key"
-
-export type Sensitivity = "public" | "confidential" | "secret"
-
 export interface StoredKeyRecord {
   id: string
   name: string
@@ -38,21 +28,6 @@ export interface StoredKeyRecord {
   publicKey?: CryptoKey
   privateKey?: CryptoKey
   symmetricKey?: CryptoKey
-}
-
-export interface StoredQrArtifact {
-  id: string
-  name: string
-  kind: QrArtifactKind
-  sensitivity: Sensitivity
-  algorithm: string
-  payload: string
-  payloadSha256: string
-  byteLength: number
-  createdAt: number
-  // spec §14 の一覧表示要件(鍵IDまたは受信者鍵ID)のための拡張
-  keyId?: string
-  lastViewedAt?: number
 }
 
 // v1 A256GCM ワイヤー専用 mapper。PQ 方式のワイヤー解決は crypto/pq/suites.ts の
