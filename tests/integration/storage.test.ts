@@ -7,13 +7,19 @@ import {
   createSymmetricKeyRecord,
 } from "@/crypto/key-generation"
 import { generateArtifactId, generateKeyId } from "@/crypto/random"
-import { encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
+import {
+  encodeDsaPublicKeyEnvelopeV2,
+  encodeKemPublicKeyEnvelopeV2,
+  encodeMlKemEnvelopeV2,
+  encodePublicIdentityBundleV2,
+} from "@/crypto/pq/canonical-cbor"
 import { toBase64Url } from "@/lib/base64url"
 import { bytesToHex, utf8ByteLength, utf8ToBytes } from "@/lib/bytes"
 import { encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
 import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
 import type {
   PqProfileId,
+  StorablePqArtifactKind,
   StoredKeyRecord,
   StoredQrArtifact,
   UiAlgorithm,
@@ -80,6 +86,94 @@ async function qrArtifact(
     keyId,
     ...overrides,
   }
+}
+
+async function pqQrArtifacts(): Promise<StoredQrArtifact[]> {
+  const identityId = "I".repeat(22)
+  const kemKeyId = "K".repeat(22)
+  const dsaKeyId = "S".repeat(22)
+  const createdAt = NOW
+  const definitions: {
+    name: string
+    kind: StorablePqArtifactKind
+    bytes: Uint8Array
+    algorithm: string
+    keyId: string
+  }[] = [
+    {
+      name: "公開鍵セット",
+      kind: "pq-public-identity",
+      bytes: encodePublicIdentityBundleV2({
+        version: 2,
+        type: "pq-public-identity",
+        identityId,
+        name: "保存テスト",
+        kem: {
+          algorithm: "ML-KEM-1024",
+          keyId: kemKeyId,
+          publicKey: new Uint8Array(1568).fill(1),
+        },
+        signing: {
+          algorithm: "ML-DSA-87",
+          keyId: dsaKeyId,
+          publicKey: new Uint8Array(2592).fill(2),
+        },
+        createdAt,
+      }),
+      algorithm: "ML-KEM-1024+ML-DSA-87",
+      keyId: identityId,
+    },
+    {
+      name: "暗号化用公開鍵",
+      kind: "pq-kem-public-key",
+      bytes: encodeKemPublicKeyEnvelopeV2({
+        version: 2,
+        type: "pq-kem-public-key",
+        identityId,
+        name: "保存テスト",
+        algorithm: "ML-KEM-1024",
+        keyId: kemKeyId,
+        publicKey: new Uint8Array(1568).fill(1),
+        createdAt,
+      }),
+      algorithm: "ML-KEM-1024",
+      keyId: kemKeyId,
+    },
+    {
+      name: "署名検証用公開鍵",
+      kind: "pq-dsa-public-key",
+      bytes: encodeDsaPublicKeyEnvelopeV2({
+        version: 2,
+        type: "pq-dsa-public-key",
+        identityId,
+        name: "保存テスト",
+        algorithm: "ML-DSA-87",
+        keyId: dsaKeyId,
+        publicKey: new Uint8Array(2592).fill(2),
+        createdAt,
+      }),
+      algorithm: "ML-DSA-87",
+      keyId: dsaKeyId,
+    },
+  ]
+
+  return Promise.all(
+    definitions.map(async (definition, index) => {
+      const payload = buildV2Payload(definition.kind, definition.bytes)
+      return {
+        id: generateArtifactId(),
+        name: definition.name,
+        kind: definition.kind,
+        sensitivity: "public",
+        algorithm: definition.algorithm,
+        payload,
+        payloadSha256: await payloadSha256Hex(payload),
+        byteLength: utf8ByteLength(payload),
+        createdAt: NOW + index,
+        keyId: definition.keyId,
+      }
+    }),
+  )
 }
 
 describe("database creation and migrations", () => {
@@ -255,6 +349,121 @@ describe("QR repository", () => {
     expect((await listQrArtifacts()).map((artifact) => artifact.id)).not.toContain(
       malformed.id,
     )
+  })
+
+  it("round-trips, renames, and marks all storable PQ public QR kinds", async () => {
+    const artifacts = await pqQrArtifacts()
+    for (const artifact of artifacts) await saveQrArtifact(artifact)
+
+    for (const [index, artifact] of artifacts.entries()) {
+      await renameQrArtifact(artifact.id, `PQ QR ${index + 1}`)
+      await markQrViewed(artifact.id, NOW + 100 + index)
+    }
+
+    const listed = await listQrArtifacts()
+    expect(listed).toHaveLength(3)
+    for (const [index, artifact] of artifacts.entries()) {
+      expect(listed.find((entry) => entry.id === artifact.id)).toMatchObject({
+        kind: artifact.kind,
+        name: `PQ QR ${index + 1}`,
+        sensitivity: "public",
+        algorithm: artifact.algorithm,
+        keyId: artifact.keyId,
+        lastViewedAt: NOW + 100 + index,
+      })
+    }
+  })
+
+  it("rejects PQ payload metadata mismatches and quarantines malformed raw rows", async () => {
+    const [identity, kem] = await pqQrArtifacts()
+    expect(identity).toBeDefined()
+    expect(kem).toBeDefined()
+    const invalidArtifacts: StoredQrArtifact[] = [
+      {
+        ...kem!,
+        id: generateArtifactId(),
+        kind: "pq-dsa-public-key",
+      },
+      {
+        ...kem!,
+        id: generateArtifactId(),
+        algorithm: "ML-KEM-768",
+      },
+      {
+        ...kem!,
+        id: generateArtifactId(),
+        keyId: "Z".repeat(22),
+      },
+      {
+        ...identity!,
+        id: generateArtifactId(),
+        sensitivity: "secret",
+      },
+    ]
+
+    for (const artifact of invalidArtifacts) {
+      await expect(saveQrArtifact(artifact)).rejects.toMatchObject({
+        code: "STORAGE_FAILED",
+      })
+    }
+    expect(await (await getDb()).count(STORE_QR_ARTIFACTS)).toBe(0)
+
+    const malformedRaw = {
+      ...identity!,
+      id: generateArtifactId(),
+      algorithm: "ML-KEM-1024",
+    }
+    await (await getDb()).add(STORE_QR_ARTIFACTS, malformedRaw)
+    expect((await listQrArtifacts()).map((artifact) => artifact.id)).not.toContain(
+      malformedRaw.id,
+    )
+  })
+
+  it("rejects OCM2 and OCF2 message artifacts at the active-kind boundary", async () => {
+    const recipientKemKeyId = generateKeyId()
+    const ocm2 = buildV2Payload(
+      "pq-message",
+      encodeMlKemEnvelopeV2({
+        version: 2,
+        type: "pq-message",
+        suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+        recipientKemKeyId,
+        kemCiphertext: new Uint8Array(1568),
+        hkdfSalt: new Uint8Array(32),
+        iv: new Uint8Array(12),
+        ciphertext: new Uint8Array(16),
+      }),
+    )
+    const ocf2 = encodeFrameToPayload({
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16),
+      artifactType: "pq-message",
+      frameIndex: 0,
+      frameCount: 1,
+      totalByteLength: 1,
+      payloadSha256: new Uint8Array(32),
+      chunk: Uint8Array.of(1),
+    })
+
+    for (const payload of [ocm2, ocf2]) {
+      const messageArtifact = {
+        id: generateArtifactId(),
+        name: "保存禁止メッセージ",
+        kind: "pq-message",
+        sensitivity: "confidential",
+        algorithm: "ML-KEM-1024",
+        payload,
+        payloadSha256: await payloadSha256Hex(payload),
+        byteLength: utf8ByteLength(payload),
+        createdAt: NOW,
+        keyId: recipientKemKeyId,
+      } as unknown as StoredQrArtifact
+      await expect(saveQrArtifact(messageArtifact)).rejects.toMatchObject({
+        code: "STORAGE_FAILED",
+      })
+    }
+    expect(await (await getDb()).count(STORE_QR_ARTIFACTS)).toBe(0)
   })
 })
 

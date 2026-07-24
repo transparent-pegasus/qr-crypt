@@ -239,24 +239,70 @@ export const activeStoredQrArtifactSchema = z.discriminatedUnion("kind", [
       sensitivity: z.literal("secret"),
     })
     .strict(),
+  z
+    .object({
+      ...activeQrArtifactCommon,
+      kind: z.literal("pq-public-identity"),
+      sensitivity: z.literal("public"),
+      keyId: keyIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...activeQrArtifactCommon,
+      kind: z.literal("pq-kem-public-key"),
+      sensitivity: z.literal("public"),
+      keyId: keyIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...activeQrArtifactCommon,
+      kind: z.literal("pq-dsa-public-key"),
+      sensitivity: z.literal("public"),
+      keyId: keyIdSchema,
+    })
+    .strict(),
 ])
 
 export function validateStoredQrArtifact(value: unknown): ActiveStoredQrArtifact {
   const artifact = activeStoredQrArtifactSchema.parse(value)
   const decoded = decodePayload(artifact.payload)
-  const expectedKind =
-    artifact.kind === "symmetric-key"
-      ? "symmetric-key"
-      : artifact.kind === "public-key"
-        ? "public-key"
-        : undefined
-  if (
-    expectedKind === undefined ||
-    decoded.kind !== expectedKind ||
-    decoded.envelope.algorithm !== artifact.algorithm ||
-    (artifact.keyId !== undefined && decoded.envelope.keyId !== artifact.keyId)
-  ) {
-    throw new Error("QR kind and payload do not match")
+
+  switch (artifact.kind) {
+    case "symmetric-key":
+    case "public-key":
+      if (
+        decoded.kind !== artifact.kind ||
+        decoded.envelope.algorithm !== artifact.algorithm ||
+        (artifact.keyId !== undefined && decoded.envelope.keyId !== artifact.keyId)
+      ) {
+        throw new Error("QR kind and payload do not match")
+      }
+      break
+    case "pq-kem-public-key":
+    case "pq-dsa-public-key":
+      if (
+        decoded.kind !== artifact.kind ||
+        decoded.envelope.algorithm !== artifact.algorithm ||
+        decoded.envelope.keyId !== artifact.keyId
+      ) {
+        throw new Error("QR kind and payload do not match")
+      }
+      break
+    case "pq-public-identity":
+      if (
+        decoded.kind !== artifact.kind ||
+        artifact.algorithm !==
+          `${decoded.envelope.kem.algorithm}+${decoded.envelope.signing.algorithm}` ||
+        decoded.envelope.identityId !== artifact.keyId
+      ) {
+        throw new Error("QR kind and payload do not match")
+      }
+      break
+    case "encrypted-private-key":
+      // OCB2 is reserved and remains non-persistable until its wire schema is active.
+      throw new Error("QR kind and payload do not match")
   }
   return artifact as ActiveStoredQrArtifact
 }

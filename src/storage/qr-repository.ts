@@ -13,6 +13,9 @@ const ACTIVE_QR_ARTIFACT_KINDS = new Set([
   "symmetric-key",
   "public-key",
   "encrypted-private-key",
+  "pq-public-identity",
+  "pq-kem-public-key",
+  "pq-dsa-public-key",
 ])
 
 // This check intentionally runs before schema decoding and before getDb(). A caller

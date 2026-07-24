@@ -16,7 +16,13 @@ export type QrEcLevel = "L" | "M" | "Q" | "H"
 
 export type KeyKind = "symmetric" | "rsa-key-pair" | "public-key"
 
-export type QrArtifactKind = "symmetric-key" | "public-key" | "encrypted-private-key"
+export type QrArtifactKind =
+  | "symmetric-key"
+  | "public-key"
+  | "encrypted-private-key"
+  | "pq-public-identity"
+  | "pq-kem-public-key"
+  | "pq-dsa-public-key"
 
 export type Sensitivity = "public" | "confidential" | "secret"
 
@@ -271,6 +277,10 @@ export const V2_ARTIFACT_TYPES = [
   "encrypted-seed-backup",
 ] as const
 export type V2ArtifactType = (typeof V2_ARTIFACT_TYPES)[number]
+export type StorablePqArtifactKind = Exclude<
+  V2ArtifactType,
+  "pq-message" | "encrypted-seed-backup"
+>
 
 export interface QrFrameV2 {
   version: 2
