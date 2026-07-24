@@ -693,6 +693,7 @@ export function EncryptPage() {
           <QrScannerModal
             triggerLabel="暗号文QRを読み取る"
             imageImport
+            className="space-y-6"
             singleTargets={["message"]}
             cameraAvailable={camera}
             title="暗号文QRを読み取る"

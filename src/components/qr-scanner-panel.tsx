@@ -28,6 +28,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
+import { cn } from "@/lib/utils"
 
 export type ScannerTarget = "message" | "symmetric-key" | "public-key"
 
@@ -825,6 +826,7 @@ function imageBatchNotice(summary: ImageBatchSummary): string {
 export type QrScannerModalProps = QrScannerPanelProps & {
   triggerLabel: string
   imageImport?: boolean
+  className?: string
 }
 
 export function QrScannerModal(props: QrScannerModalProps) {
@@ -834,6 +836,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
     imageImport = false,
     title = "QRコードを読み取る",
     stopHint = MODAL_STOP_HINT,
+    className,
   } = props
   const multipartSession = props.multipart?.session
   const multipartRef = useRef(props.multipart)
@@ -1304,7 +1307,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
 
   return (
     <div
-      className="space-y-2"
+      className={cn("space-y-2", className)}
       aria-busy={deliveryBusy}
     >
       <Dialog open={open} onOpenChange={handleOpenChange}>
