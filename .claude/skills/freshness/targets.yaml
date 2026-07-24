@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-07-24 # last revision of this registry itself
+updated: 2026-07-25 # last revision of this registry itself
 
 units:
   - id: deps
@@ -95,16 +95,26 @@ units:
     last_checked: 2026-07-24
     files:
       - .github/workflows/cloudflare-pages.yml
+      - .github/workflows/github-release.yml
     why: >
-      Floating major tags (actions/checkout@v6, jdx/mise-action@v3,
-      cloudflare/wrangler-action@v3) accumulate drift; majors move.
+      CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
+      image, and GitHub runner/CLI behavior all drift with upstream releases.
     method: |
-      Check each action repo for newer majors; bump the uses: lines.
-      Keep mise-action reading mise.toml. VITE_BUILD_SHA stays ${{ github.sha }}.
+      Review both workflows. Check each action repository for newer majors and
+      security advisories. Keep release-workflow actions pinned to full SHAs;
+      verify each SHA still matches the documented tag. Review the pinned
+      Cosign release, verifier image digest, and verification contract. Keep
+      mise-action reading mise.toml and VITE_BUILD_SHA sourced from
+      ${{ github.sha }}.
     verify: |
       Local only — a freshness sweep must not push:
-      rg -n 'uses:' .github/workflows/cloudflare-pages.yml, then
-      git ls-remote --exit-code <action repo> <tag> for each pinned tag.
+      mise x \
+        github:rhysd/actionlint@v1.7.12 \
+        github:koalaman/shellcheck@v0.11.0 -- \
+        actionlint .github/workflows/*.yml, then
+      rg -n 'uses:|cosign-release:' .github/workflows/*.yml, then
+      git ls-remote --exit-code <action repo> <tag> for every referenced tag
+      and confirm pinned release-workflow SHAs match.
       If a recent user-authorized CI run exists, confirm it is green.
       Otherwise report the unit as blocked and leave last_checked unchanged.
 
