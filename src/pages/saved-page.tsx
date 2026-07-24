@@ -22,7 +22,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -299,7 +298,6 @@ export function SavedPage() {
         <NoAutofocusDialogContent className="max-h-[95dvh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selected?.name}</DialogTitle>
-            <DialogDescription>保存済み鍵QRの詳細と出力操作です。</DialogDescription>
           </DialogHeader>
           {selected && (
             <div className="space-y-4">

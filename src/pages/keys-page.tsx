@@ -1303,7 +1303,9 @@ function CreateField({
         {kind === "pq-identity" && (
           <Alert>
             <ShieldCheck aria-hidden="true" className="size-4" />
-            <AlertTitle>experimental・未独立監査</AlertTitle>
+            <AlertDescription className="font-medium leading-none tracking-tight">
+              experimental・未独立監査
+            </AlertDescription>
           </Alert>
         )}
         <Button
