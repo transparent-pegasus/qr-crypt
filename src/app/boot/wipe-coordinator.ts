@@ -1,4 +1,5 @@
 import { WIPE_BROADCAST_CHANNEL } from "@/app/boot/boot-contract"
+import { dropVaultKeyCache as dropVaultKeyCacheModule } from "@/crypto/vault/vault-key"
 import type { PqCryptoClient } from "@/crypto/pq/worker-client"
 import {
   bestEffortLocalReset,
@@ -88,8 +89,7 @@ function notImplemented(error: unknown): boolean {
 
 async function dropVaultKeyCache(): Promise<void> {
   try {
-    const vault = await import("@/crypto/vault/vault-key")
-    vault.dropVaultKeyCache()
+    dropVaultKeyCacheModule()
   } catch (error) {
     if (!notImplemented(error)) throw error
   }

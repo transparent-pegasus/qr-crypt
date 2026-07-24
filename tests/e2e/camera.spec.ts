@@ -47,7 +47,7 @@ test("fake camera を破棄・再起動し、閉じると全 track を停止す�
     )
   })
   const bundleTab = page.getByRole("tab", {
-    name: "相手の公開鍵",
+    name: "鍵を読み込む",
     exact: true,
   })
   await bundleTab.click()

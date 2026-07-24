@@ -5,7 +5,7 @@ import {
   openOfflineApp,
 } from "./helpers"
 
-test("320px 幅で鍵タブが横 overflow せず3等分になる", async ({
+test("320px 幅で鍵タブが横 overflow せず2等分になる", async ({
   context,
   page,
 }) => {
@@ -14,7 +14,7 @@ test("320px 幅で鍵タブが横 overflow せず3等分になる", async ({
 
   const tablist = page.getByRole("tablist")
   const tabs = tablist.getByRole("tab")
-  await expect(tabs).toHaveCount(3)
+  await expect(tabs).toHaveCount(2)
   const overflow = await tablist.evaluate((element) => ({
     clientWidth: element.clientWidth,
     scrollWidth: element.scrollWidth,
@@ -46,7 +46,7 @@ test("共通 Close の寸法・タイトル余白・固定位置と非表示指�
     .getByRole("button", { name: "保存済み鍵QRへ保存" })
     .click()
   await expect(
-    page.getByText("共通鍵QRを保存しました", { exact: true }),
+    page.getByText("鍵QRを保存しました", { exact: true }),
   ).toBeVisible()
 
   const fullscreenButton = keyDialog.getByRole("button", {

@@ -28,7 +28,7 @@ test("鍵 QR は保存・重複検知・表示・改名・削除でき、暗号�
   await expect(save).toBeDisabled()
   await keyQrDialog.getByRole("checkbox", { name: "リスクを理解しました" }).check()
   await save.click()
-  await expect(page.getByText("共通鍵QRを保存しました", { exact: true })).toBeVisible()
+  await expect(page.getByText("鍵QRを保存しました", { exact: true })).toBeVisible()
 
   await save.click()
   const duplicate = page.getByRole("alertdialog", {
@@ -73,6 +73,10 @@ test("鍵 QR は保存・重複検知・表示・改名・削除でき、暗号�
   await page
     .getByRole("dialog", { name: renamedQr })
     .getByRole("button", { name: "削除" })
+    .click()
+  await page
+    .getByRole("alertdialog", { name: "保存済み鍵QRを削除しますか?" })
+    .getByRole("button", { name: "削除する" })
     .click()
   await expect(page.getByText("保存済み鍵QRはありません。")).toBeVisible()
   expect(await rawQrArtifacts(page)).toHaveLength(0)
