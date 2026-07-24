@@ -37,6 +37,8 @@ maximum の実測 fixture（`maxPlaintext=4,096B`、`name="テスト"`）:
 | OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 5/3/2 / 7/5/4 |
 | OCB2 reserved sizing fixture | 4,637 | 12/8/6 |
 
+鍵系 artifact(OCI2/OCP2/OCS2)の表示は chunk 300B 固定(`PQ_KEY_QR_FRAME_BYTES`、設定対象外; 上表の 400/600/900 は message 系・設定範囲の実測)。
+
 ## 1. 採用ライブラリの事実(2026-07-24 時点)
 
 ### @noble/post-quantum 0.6.1(exact pin・範囲指定禁止)

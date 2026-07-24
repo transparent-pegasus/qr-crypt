@@ -44,9 +44,16 @@ export const KEM_SEED_BYTES = 64
 export const DSA_SEED_BYTES = 32
 
 // フレーム設定の範囲と既定(spec2 §12。Preferences/env の検証は本表を参照)
+// FRAME_BYTES_MIN=400 を下げてはならない: 同一 origin の旧 PWA バンドルが
+// IndexedDB を共有したまま frameBytes < 400 を validatePreferences すると
+// STORAGE_FAILED → boot の preferencesReadFailed 経由で wipeOnOnline が強制される。
 export const FRAME_BYTES_MIN = 400
 export const FRAME_BYTES_MAX = 900
 export const FRAME_BYTES_DEFAULT = 600
+// 送信側 split のみが使う chunk 下限(preferences 範囲とは独立。上記 wipe ハザード回避)。
+export const FRAME_CHUNK_MIN_BYTES = 200
+// OCI2/OCP2/OCS2 鍵 QR 表示専用の固定 chunk(設定・Preferences 非連動・非永続)。
+export const PQ_KEY_QR_FRAME_BYTES = 300
 export const FRAME_INTERVAL_MS_MIN = 150
 export const FRAME_INTERVAL_MS_MAX = 2000
 export const FRAME_INTERVAL_MS_DEFAULT = 450
@@ -65,6 +72,7 @@ export const RESET_CHURN_MB_MAX = 512
 // OCI2 bundle                    4,402              12/8/5
 // OCP2 KEM / OCS2 DSA           1,733 / 2,755       5/3/2 / 7/5/4
 // OCB2 reserved sizing fixture   4,637              12/8/6
+// 鍵系固定 chunk 300B (PQ_KEY_QR_FRAME_BYTES): OCI2 4,402→15 / OCP2 1,733→6 / OCS2 2,755→10
 // 各 OCF2 文字列の EC-Q 実生成も maximum-artifact-size.golden.test.ts で固定する。
 export const PROTOCOL_MAX_FRAMES = 64
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX

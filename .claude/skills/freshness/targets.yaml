@@ -209,6 +209,9 @@ units:
       comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
       env-schema.ts, and the .env.prod/.env.example defaults together, then
       sync the copy of the table in docs/security-review.md.
+      PQ_KEY_QR_FRAME_BYTES (300, 2026-07-24) in limits.ts is mirrored as a
+      prose note in docs/qr-protocol-v2.md and docs/security-review.md and as
+      frame counts (15/6/10) in the golden test — keep all four in agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [security-review]
 

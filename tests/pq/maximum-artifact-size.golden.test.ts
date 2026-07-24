@@ -10,7 +10,7 @@ import {
 } from "@/crypto/pq/canonical-cbor"
 import { DSA_SIZES } from "@/crypto/pq/profiles"
 import { sha256 } from "@/lib/bytes"
-import { MAX_PLAINTEXT_BYTES } from "@/lib/limits"
+import { MAX_PLAINTEXT_BYTES, PQ_KEY_QR_FRAME_BYTES } from "@/lib/limits"
 import { payloadFits, renderQrSvgString } from "@/qr/encode"
 import { splitIntoFrames } from "@/qr/multipart/split"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
@@ -275,4 +275,27 @@ describe("maximum canonical CBOR artifact sizing", () => {
       }
     }
   })
+
+  it("key artifacts split at PQ_KEY_QR_FRAME_BYTES with EC-Q-fit frames", async () => {
+    const expectedByType = {
+      "pq-public-identity": 15,
+      "pq-kem-public-key": 6,
+      "pq-dsa-public-key": 10,
+    } as const
+    for (const fixture of artifactFixtures()) {
+      if (!(fixture.artifactType in expectedByType)) continue
+      const expectedFrames =
+        expectedByType[fixture.artifactType as keyof typeof expectedByType]
+      const frames = await splitIntoFrames({
+        artifactType: fixture.artifactType,
+        artifactBytes: fixture.bytes,
+        frameBytes: PQ_KEY_QR_FRAME_BYTES,
+      })
+      expect(frames).toHaveLength(expectedFrames)
+      for (const frame of frames) {
+        const payload = encodeFrameToPayload(frame)
+        expect(payloadFits(payload, "Q")).toBe(true)
+      }
+    }
+  }, 60_000)
 })
