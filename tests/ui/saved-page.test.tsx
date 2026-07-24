@@ -117,11 +117,7 @@ describe("saved QR page", () => {
     let confirmation = await screen.findByRole("alertdialog", {
       name: "保存済み鍵QRを削除しますか?",
     })
-    expect(
-      within(confirmation).getByText(
-        "保存済み鍵QRを削除しますか? 元に戻せません。",
-      ),
-    ).toBeInTheDocument()
+    expect(within(confirmation).getByText("元に戻せません。")).toBeInTheDocument()
     expect(deleteQrArtifact).not.toHaveBeenCalled()
     await user.click(within(confirmation).getByRole("button", { name: "キャンセル" }))
     expect(deleteQrArtifact).not.toHaveBeenCalled()

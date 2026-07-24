@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { CheckCircle2, Download, Plane, Share2 } from "lucide-react"
+import { CheckCircle2, Download, Share2, WifiOff } from "lucide-react"
 import { useDisplayGate } from "@/app/display-gate"
 import { NetworkStatusBadge } from "@/components/network-status"
 import { usePwaOfflineReady } from "@/components/pwa-offline-ready"
@@ -154,11 +154,11 @@ export function OnlineInstallScreen() {
         </div>
 
         <div className="flex items-start gap-3 rounded-xl border border-primary/40 bg-primary/5 p-5">
-          <Plane aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-primary" />
+          <WifiOff aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-primary" />
           <div className="space-y-1">
-            <h2 className="font-semibold">機内モードへ切り替えてください</h2>
+            <h2 className="font-semibold">オフラインに切り替えてください</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。オフライン化は端末の安全性を証明しません。
+              機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。一度オンラインに接続した端末は侵害されている可能性があり、オフライン化しても信頼できる状態に戻るわけではありません。
             </p>
           </div>
         </div>

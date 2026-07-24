@@ -243,6 +243,8 @@ units:
     files:
       - src/pages/settings-page.tsx # 「セキュリティについて」 disclosures
       - src/pages/keys-page.tsx # experimental / 未独立監査 banners
+      - src/components/online-gate.tsx # オフライン切替の侵害前提コピー (2026-07-24)
+      - src/components/offline-ack-shell.tsx # 「接続した端末は常に侵害されうる」前提コピー
     why: >
       In-app disclosures (noble unaudited, JS side-channel caveat, wipe
       honesty, feature rows) mirror docs; they stale when audit status,
