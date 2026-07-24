@@ -1,60 +1,72 @@
-# Qrypt QR プロトコル仕様 v2(ポスト量子)
+# Qrypt QR Protocol Specification v2 (Post-Quantum)
 
-本書は v2(ML-KEM / ML-DSA)ワイヤー形式の正式仕様である。実装
-(`src/crypto/pq/*`, `src/qr/payload-v2.ts`, `src/qr/multipart/*`)と
-`tests/pq/*` のゴールデンフィクスチャは本書に従う。v1 形式は
-`docs/qr-protocol.md` を維持する(v1 プレフィックスの ML 用途再利用は禁止)。
-契約の出典は `.tmp/plan2.1.md`(spec2 差分の確定上書き)。
+This document is the normative specification of the v2 (ML-KEM / ML-DSA)
+wire format. The implementation (`src/crypto/pq/*`, `src/qr/payload-v2.ts`,
+`src/qr/multipart/*`) and the golden fixtures in `tests/pq/*` follow this
+document. The v1 format remains specified in `docs/qr-protocol.md`
+(reusing v1 prefixes for ML purposes is forbidden). This document is the
+authoritative committed specification of this contract.
 
-## 1. プレフィックス表
+## 1. Prefix table
 
-| プレフィックス | artifactType / 種別 | 内容 |
+| Prefix | artifactType / kind | Contents |
 |---|---|---|
-| `OCM2:` | `pq-message` | ML-KEM メッセージエンベロープ |
-| `OCP2:` | `pq-kem-public-key` | ML-KEM 公開鍵(単鍵) |
-| `OCS2:` | `pq-dsa-public-key` | ML-DSA 署名検証公開鍵(単鍵) |
-| `OCI2:` | `pq-public-identity` | 公開鍵セット(KEM+DSA) |
-| `OCB2:` | `encrypted-seed-backup` | 予約(生成・受理とも不可) |
-| `OCF2:` | フレーム | 複数 QR フレーム |
+| `OCM2:` | `pq-message` | ML-KEM message envelope |
+| `OCP2:` | `pq-kem-public-key` | ML-KEM public key (single key) |
+| `OCS2:` | `pq-dsa-public-key` | ML-DSA signature-verification public key (single key) |
+| `OCI2:` | `pq-public-identity` | Public key set (KEM+DSA) |
+| `OCB2:` | `encrypted-seed-backup` | Reserved (neither produced nor accepted) |
+| `OCF2:` | frame | Multi-frame QR |
 
-- `OCM2/OCP2/OCS2/OCI2` は「単一ペイロード表現(貼付・ファイル取込)と論理型」。
-  **QR 表示は常に `OCF2`(frameCount≥1)経由**で行う。
-- 取込は (a) `OCF2` 組立 → 内側 artifact、(b) bare `OC?2` 単一貼付、の両対応。
-- `OCB2` は `VITE_ENABLE_ENCRYPTED_SEED_BACKUP=false` 固定のため、分類時点で
-  `UNSUPPORTED_ALGORITHM` として拒否する。
-- 管理された逸脱: spec2 §12 の artifactType 3 値に `pq-kem-public-key` /
-  `pq-dsa-public-key` を追加した(単鍵も常時フレーミングで運ぶため。README 逸脱表参照)。
+- `OCM2/OCP2/OCS2/OCI2` are "single-payload representations (paste / file
+  import) and logical types". **QR display always goes through `OCF2`
+  (frameCount≥1)**.
+- Import supports both (a) `OCF2` assembly → inner artifact, and
+  (b) a bare `OC?2` single paste.
+- `OCB2` is rejected as `UNSUPPORTED_ALGORITHM` at classification time,
+  because `VITE_ENABLE_ENCRYPTED_SEED_BACKUP=false` is fixed.
+- Managed deviation: `pq-kem-public-key` / `pq-dsa-public-key` were added to
+  the three artifactType values of the original draft specification
+  (single keys are also always carried via framing; see the deviation table
+  in the README).
 
-## 2. 正準 CBOR プロファイル(v2 全構造で共通)
+## 2. Canonical CBOR profile (shared by all v2 structures)
 
-RFC 8949 §4.2.1 core deterministic encoding のサブセット。実装は
-`src/crypto/pq/canonical-cbor.ts`(自前コーデック。ワイヤー契約を外部
-ライブラリの版依存挙動から切り離すため cbor-x は使用しない)。
+A subset of RFC 8949 §4.2.1 core deterministic encoding. Implemented in
+`src/crypto/pq/canonical-cbor.ts` (an in-house codec; cbor-x is not used, so
+the wire contract is decoupled from version-dependent behavior of external
+libraries).
 
-- 値は **map(text キーのみ)/ text string / byte string / 非負整数** に限定
-- すべて definite length。**タグ・浮動小数・負数・配列・null・bool・simple 禁止**
-- 整数・長さヘッダーは最小表現(preferred encoding)
-- map キーは「キー単体の符号化バイト列」の bytewise 辞書順・重複禁止
-- 復号側は最小表現・キー昇順・単一値を構造的に強制し、さらに再符号化
-  バイト一致を検査する(非正準入力は必ず `INVALID_QR_PAYLOAD`)
-- ネスト深さ上限 8
+- Values are restricted to **map (text keys only) / text string /
+  byte string / non-negative integer**
+- All definite length. **Tags, floats, negative integers, arrays, null,
+  bool, and simple values are forbidden**
+- Integers and length headers use the minimal representation
+  (preferred encoding)
+- Map keys are ordered bytewise-lexicographically by the encoded bytes of
+  the key alone; duplicates are forbidden
+- The decoder structurally enforces minimal representation, ascending key
+  order, and a single value, and additionally checks re-encoded byte
+  equality (non-canonical input always yields `INVALID_QR_PAYLOAD`)
+- Nesting depth limit: 8
 
-## 3. エンベロープ(OCM2)
+## 3. Envelope (OCM2)
 
 ```typescript
 MlKemMessageEnvelopeV2 = {
   version: 2
   type: "pq-message"
-  suite: WireSuite            // §4 の 4 リテラル
-  recipientKemKeyId: string   // base64url 22 文字(生 16 バイト)
-  kemCiphertext: bytes        // 768: 1088B / 1024: 1568B(suite で長さ検証)
-  hkdfSalt: bytes(32)         // 暗号化ごとの CSPRNG
+  suite: WireSuite            // the 4 literals of §4
+  recipientKemKeyId: string   // base64url, 22 characters (16 raw bytes)
+  kemCiphertext: bytes        // 768: 1088B / 1024: 1568B (length validated per suite)
+  hkdfSalt: bytes(32)         // fresh CSPRNG per encryption
   iv: bytes(12)               // CSPRNG
-  ciphertext: bytes(≥16)      // AES-256-GCM(タグ 128bit 末尾)
+  ciphertext: bytes(≥16)      // AES-256-GCM (128-bit tag at the end)
 }
 ```
 
-AAD(GCM の additionalData。ワイヤーへは載せず両側で再構築):
+AAD (GCM `additionalData`; not carried on the wire, reconstructed on both
+sides):
 
 ```typescript
 MlKemAadV2 = {
@@ -62,13 +74,13 @@ MlKemAadV2 = {
   type: "pq-message"
   suite: WireSuite
   recipientKemKeyId: string
-  kemCiphertextSha256: bytes(32)  // 受信側は受信 kemCiphertext から再計算し一致検証
+  kemCiphertextSha256: bytes(32)  // receiver recomputes from the received kemCiphertext and verifies equality
 }
 ```
 
-## 4. スイートと鍵導出
+## 4. Suites and key derivation
 
-`WireSuite`(spec2 §7):
+`WireSuite`:
 
 ```
 ML-KEM-768+HKDF-SHA256+A256GCM
@@ -77,7 +89,7 @@ ML-KEM-1024+HKDF-SHA256+A256GCM
 ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM
 ```
 
-`src/crypto/pq/profiles.ts` の固定サイズ(すべて byte):
+Fixed sizes in `src/crypto/pq/profiles.ts` (all in bytes):
 
 | profile | KEM | public key | expanded secret key | ciphertext | shared secret | seed |
 |---|---|---:|---:|---:|---:|---:|
@@ -89,57 +101,66 @@ ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM
 | balanced | ML-DSA-65 | 1952 | 4032 | 3309 | 32 |
 | maximum | ML-DSA-87 | 2592 | 4896 | 4627 | 32 |
 
-expanded secret key は実行時に seed から展開する値で、wire や永続ストレージへ
-保存しない(§7)。
+The expanded secret key is a value expanded from the seed at runtime; it is
+never stored on the wire or in persistent storage (§7).
 
-- 上記 4 suite は **wire/codec 契約として維持**する。`WireSuite`、
-  `resolveSuite`、`suiteComponents` は 768/65 と 1024/87 の双方を認識し、
-  正当な同一プロファイル対を往復できる。
-- suite は **選択済み鍵の実 algorithm の組から一意導出**(`resolveSuite`)。
-  署名付きは (768,65) / (1024,87) の同一プロファイル対のみ。混在は
-  `UNSUPPORTED_ALGORITHM`。
-- **active policy（2026-07-24）**は maximum（1024/87）の 2 suite
-  （署名なし・署名付き）のみを運用対象とする。balanced profile および 768 系
-  2 suite は「認識済みだが非対応」であり、構造不正にはせず、取込・鍵生成・
-  ローテーション・暗号化・復号・Worker RPC・QR 再出力などの運用境界で暗号処理前に
-  `UNSUPPORTED_ALGORITHM` として拒否する。
+- The 4 suites above are **maintained as the wire/codec contract**.
+  `WireSuite`, `resolveSuite`, and `suiteComponents` recognize both 768/65
+  and 1024/87 and can round-trip valid same-profile pairs.
+- The suite is **derived uniquely from the actual algorithm pair of the
+  selected keys** (`resolveSuite`). Signed suites allow only the
+  same-profile pairs (768,65) / (1024,87). Mixed pairs are
+  `UNSUPPORTED_ALGORITHM`.
+- The **active policy (2026-07-24)** operates only the 2 maximum (1024/87)
+  suites (unsigned and signed). The balanced profile and the 2 768-family
+  suites are "recognized but unsupported": they are not treated as
+  structurally invalid, but are rejected as `UNSUPPORTED_ALGORITHM` before
+  any cryptographic processing at operational boundaries — import, key
+  generation, rotation, encryption, decryption, Worker RPC, QR re-export,
+  and so on.
 
-HKDF-SHA-256(`hkdfInfoV2`、plan2.1 §C5 で凍結):
+HKDF-SHA-256 (`hkdfInfoV2`, frozen as part of this contract):
 
 ```
 info = UTF8("QRYPT-MESSAGE-V2") || 0x00 || UTF8(wireSuite) || 0x00
        || kemKeyIdRaw(16 bytes) || 0x02
-salt = 暗号化ごとの CSPRNG 32B / 導出鍵 = AES-256-GCM(non-extractable)
+salt = fresh CSPRNG 32B per encryption / derived key = AES-256-GCM (non-extractable)
 ```
 
-`kemKeyIdRaw` は keyId(base64url 22 文字)の**デコード前生 16 バイト**。
+`kemKeyIdRaw` is the **raw 16 bytes underlying** the keyId (22 base64url
+characters), i.e. before encoding.
 
-復号成功条件(順序固定): KEM 入力長検証 → Decaps(値が返るだけでは不成功)
-→ HKDF → **AES-GCM 認証成功** → 内側スキーマ検証 → (署名付きは)ML-DSA 検証。
-失敗は `DECRYPTION_FAILED`(署名のみ失敗は `SIGNATURE_INVALID`・本文非表示、
-署名鍵未登録は `signed-key-unknown` 状態で本文を構成しない)。
+Decryption success conditions (fixed order): KEM input length validation →
+Decaps (merely returning a value is not success) → HKDF → **AES-GCM
+authentication success** → inner schema validation → (for signed suites)
+ML-DSA verification. Failure is `DECRYPTION_FAILED` (signature-only failure
+is `SIGNATURE_INVALID` with the body withheld; an unregistered signing key
+yields the `signed-key-unknown` state and the body is not constructed).
 
-## 5. 内部メッセージ(Sign-then-Encrypt)
+## 5. Inner message (Sign-then-Encrypt)
 
-ワイヤー形状は **外側 suite が権威**(メモリー内判別子 `kind` は載せない):
+The wire shape is **governed by the outer suite** (the in-memory
+discriminator `kind` is not carried):
 
-- 非署名 suite → `UnsignedMessageBodyV2` の map 単体
-  (キー: `version, messageId(16B), createdAt, recipientKemKeyId, plaintext`。
-  `senderSigningKeyId` は**キーごと省略**)
-- 署名付き suite → `{ body: SignedMessageBodyV2, signature: { algorithm, value } }`
-  (body に `senderSigningKeyId` 必須。signature.value の長さは
-  65: 3309B / 87: 4627B)
+- Unsigned suite → the bare `UnsignedMessageBodyV2` map
+  (keys: `version, messageId(16B), createdAt, recipientKemKeyId, plaintext`.
+  `senderSigningKeyId` is **omitted per key**)
+- Signed suite → `{ body: SignedMessageBodyV2, signature: { algorithm, value } }`
+  (`senderSigningKeyId` is required in the body; the length of
+  signature.value is 65: 3309B / 87: 4627B)
 
-不一致は拒否: 非署名 suite に signature/senderSigningKeyId → `DECRYPTION_FAILED`
-(構造検証で `INVALID_QR_PAYLOAD` 相当)、署名付き suite の signature 欠落/検証失敗
-→ `SIGNATURE_INVALID`。
+Mismatches are rejected: signature/senderSigningKeyId on an unsigned suite →
+`DECRYPTION_FAILED` (equivalent to `INVALID_QR_PAYLOAD` in structural
+validation); a signed suite with the signature missing or failing
+verification → `SIGNATURE_INVALID`.
 
-- **署名対象 = `SignedMessageBodyV2` の map 単体の正準 CBOR**(`signingTargetBytes`)
-- ML-DSA コンテキスト = `UTF8("QRYPT-MESSAGE-V2")` 固定(≤255B)
-- `messageId` = CSPRNG 16B 固定長。**リプレイ防止機構ではない**。
-  `createdAt` は端末申告時刻(信頼時刻ではない)
+- **The signing target = the canonical CBOR of the bare
+  `SignedMessageBodyV2` map** (`signingTargetBytes`)
+- ML-DSA context = fixed `UTF8("QRYPT-MESSAGE-V2")` (≤255B)
+- `messageId` = fixed-length CSPRNG 16B. **It is not a replay-prevention
+  mechanism**. `createdAt` is the device-reported time (not trusted time)
 
-## 6. 複数 QR フレーム(OCF2)
+## 6. Multi-frame QR (OCF2)
 
 ```typescript
 QrFrameV2 = {
@@ -147,49 +168,67 @@ QrFrameV2 = {
   type: "qr-frame"
   transferId: bytes(16)       // CSPRNG
   artifactType: V2ArtifactType
-  frameIndex: uint            // 0 起点(0..frameCount-1)
+  frameIndex: uint            // 0-based (0..frameCount-1)
   frameCount: uint            // 1..64
-  totalByteLength: uint       // artifact 生バイト合計(≤ 64×900)
-  payloadSha256: bytes(32)    // artifact 生バイトへの SHA-256(転送整合性)
-  chunk: bytes(1..900)        // artifact CBOR 生バイトの分割片
+  totalByteLength: uint       // total raw artifact bytes (≤ 64×900)
+  payloadSha256: bytes(32)    // SHA-256 over the raw artifact bytes (transfer integrity)
+  chunk: bytes(1..900)        // slice of the raw artifact CBOR bytes
 }
 ```
 
-- **`chunk` は artifact CBOR の生バイトを直接分割**する(内側 `OC?2:` 文字列の
-  再 base64url は禁止 — 二重 base64url によるフレーム数膨張を避ける)
-- フレーム文字列 = `OCF2:<base64url(正準CBOR(frame))>`。EC レベルは **Q 固定**。
-  1 フレーム文字列はプレフィックス込み **≤1663 文字**(QR v40-Q)。
-  生成後に `payloadFits(…, "Q")` を確認し、収まらなければ `QR_TOO_LARGE`
-- message 系の既定は chunk 600B / 切替 1,000ms / 最大 64 フレーム。
-  chunk は 400–900B で設定できる。切替間隔の現行値は
-  **1,000 / 1,500 / 2,000 / 2,500 / 3,000ms** のみ(UI は 500ms 刻み)で、
-  grid 外の env 値と新規保存値は拒否する
-- OCI2 表示は
-  `clamp(ceil(artifactBytes / 200), 20, 25)` 枚を選ぶ count 均等分割とする。
-  実測 4,402B fixture は 23 枚(191/192B)となり、chunk 長の差は最大 1 byte。
-  選択枚数が `VITE_QR_MAX_FRAMES` を超える場合は `QR_TOO_LARGE` で fail-closed
-- OCP2/OCS2 単鍵表示は固定 chunk 280B
-  (`PQ_KEY_QR_FRAME_BYTES`、設定対象外)を維持する
-- boot 互換のため、保存済み legacy interval の safe integer 150–2,000ms と
-  現行 grid の和集合だけを読み取る。repository は保存済み legacy 値だけを
-  1,000–3,000ms へ clamp 後、最寄り 500ms(midpoint は上側)へ正規化する。
-  patch/env の grid 外値は正規化せず拒否する
-- UI 上のフレーム位置・欠損位置は wire の 0 起点 `frameIndex` を直接表示せず、
-  `frameIndex + 1` の「n枚目」として表示する
-- 組立の不変条件: first frame で immutable metadata
-  (transferId/artifactType/frameCount/totalByteLength/payloadSha256)を凍結。
-  同 index は完全一致のみ重複無視、1 byte でも差異・別 transferId 混入は
-  `FRAME_MISMATCH`。完成時に index coverage・合計長・SHA-256・artifactType
-  一致を検証してから内側を解釈する。未完成のうちは暗号処理を開始しない
-- `payloadSha256` は転送整合性であり**送信者 authenticity ではない**(UI 表示注意)
-- 読取状態はタイムアウト(既定 10 分)・明示破棄・完成・エラーで解放する
+- **`chunk` splits the raw artifact CBOR bytes directly** (re-base64url of
+  the inner `OC?2:` string is forbidden — this avoids frame-count inflation
+  from double base64url)
+- Frame string = `OCF2:<base64url(canonicalCBOR(frame))>`. EC level is
+  **fixed at Q**. A single frame string, prefix included, is **≤1663
+  characters** (QR v40-Q). After generation, check `payloadFits(…, "Q")`;
+  if it does not fit, `QR_TOO_LARGE`
+- A sender selects exactly one split mode: fixed `frameBytes`, or an explicit
+  balanced `frameCount`. Count mode rejects non-integers, counts above
+  `VITE_QR_MAX_FRAMES` or the artifact byte length, and any result whose
+  largest chunk exceeds 900B. Every chunk is non-empty and largest/smallest
+  lengths differ by at most one byte
+- Defaults: chunk 600B / 1,000ms interval / max 64 frames. Message chunks are
+  configurable from 400–900B. The current interval values are exactly
+  1,000/1,500/2,000/2,500/3,000ms (UI step 500ms); off-grid env values and
+  new preference writes are rejected
+- OCI2 display uses balanced count mode with
+  `clamp(ceil(artifactBytes / 200), 20, 25)`. The 4,402B measured fixture
+  therefore uses 23 chunks of 191/192B. A custom `VITE_QR_MAX_FRAMES` below
+  the selected count fails closed as `QR_TOO_LARGE`; the selection is not
+  silently reduced
+- OCP2/OCS2 single-key display retains the fixed 280B chunk
+  (`PQ_KEY_QR_FRAME_BYTES`, not user-configurable)
+- Assembly invariants: the first frame freezes the immutable metadata
+  (transferId/artifactType/frameCount/totalByteLength/payloadSha256).
+  A repeated index is ignored only on an exact match; even a 1-byte
+  difference or a frame from another transferId is `FRAME_MISMATCH`. On
+  completion, verify index coverage, total length, SHA-256, and
+  artifactType match before interpreting the inner payload. No
+  cryptographic processing starts while assembly is incomplete
+- `payloadSha256` is transfer integrity, **not sender authenticity**
+  (mind the UI wording)
+- Scan state is released on timeout (default 10 minutes), explicit discard,
+  completion, or error
 
-## 7. Vault(シード保管)
+For boot compatibility, persisted legacy interval integers from 150 through
+2,000ms remain readable; the repository normalizes only these persisted legacy
+values before a current patch is merged: clamp to the current 1,000–3,000ms
+range, then round to the nearest 500ms with midpoint ties upward. Off-grid
+patch/env values are rejected without normalization. Boot readability is
+exactly that legacy range union the current grid;
+for example 2,500/3,000 are readable, while stored 2,250 is not. Wire/state
+`frameIndex` and `missingIndexes` remain zero-based; user-facing frame
+positions are displayed one-based.
 
-- 保存するのは**シードのみ**(KEM 64B / DSA 32B)。展開済み秘密鍵は永続化しない
-- Vault 鍵 = 非抽出 AES-256-GCM `CryptoKey`(appMetadata `vault-key`。
-  作成は cross-tab lock + 存在確認 → add。上書き禁止)
-- `EncryptedSecret = { iv(12B), ciphertext }`、AAD = 正準 CBOR
+## 7. Vault (seed storage)
+
+- Only **seeds** are stored (KEM 64B / DSA 32B). Expanded secret keys are
+  never persisted
+- Vault key = non-extractable AES-256-GCM `CryptoKey` (appMetadata
+  `vault-key`. Creation uses a cross-tab lock + existence check → add;
+  overwriting is forbidden)
+- `EncryptedSecret = { iv(12B), ciphertext }`, AAD = canonical CBOR
   (`buildVaultAadV2`):
 
 ```typescript
@@ -197,13 +236,15 @@ QrFrameV2 = {
   algorithm, keyId, publicKeySha256(32B) }
 ```
 
-- シード復号後は keygen で公開鍵を再生成し、**保存公開鍵と完全一致してから**
-  sign/decaps に使う(レコード差替えの fail-closed)
+- After decrypting a seed, regenerate the public key via keygen and use it
+  for sign/decaps **only after it matches the stored public key exactly**
+  (fail-closed against record substitution)
 
-### 7.1 公開鍵 artifact と指紋
+### 7.1 Public key artifacts and fingerprints
 
-`OCI2` の map は次の形を取り、`name` だけが省略可能である。KEM/DSA は §4 の
-同一 profile 対だけを受理し、公開鍵長も同表と完全一致しなければならない。
+The `OCI2` map takes the following shape; only `name` may be omitted.
+KEM/DSA accept only the same-profile pairs of §4, and public key lengths
+must match that table exactly.
 
 ```typescript
 PublicIdentityBundleV2 = {
@@ -217,13 +258,15 @@ PublicIdentityBundleV2 = {
 }
 ```
 
-`OCP2` / `OCS2` はそれぞれ `type` が `pq-kem-public-key` /
-`pq-dsa-public-key` の単鍵 map で、共通キーは
-`version, type, identityId, name?, algorithm, keyId, publicKey, createdAt`。
-`identityId` と各 `keyId` は base64url 22 文字、`name` は存在する場合
-1–100 UTF-16 単位、`createdAt` は非負 safe integer とする。
+`OCP2` / `OCS2` are single-key maps whose `type` is `pq-kem-public-key` /
+`pq-dsa-public-key` respectively, with the common keys
+`version, type, identityId, name?, algorithm, keyId, publicKey, createdAt`.
+`identityId` and each `keyId` are 22 base64url characters, `name` (when
+present) is 1–100 UTF-16 units, and `createdAt` is a non-negative safe
+integer.
 
-個別鍵指紋と identity 指紋は次のバイト列への SHA-256:
+Individual key fingerprints and the identity fingerprint are the SHA-256 of
+the following byte strings:
 
 ```
 kem      = UTF8("QRYPT-FP-KEM-V2") || 0x00 || UTF8(algorithm) || 0x00 || publicKey
@@ -232,57 +275,60 @@ identity = UTF8("QRYPT-FP-ID-V2") || 0x00
            || canonicalCbor({ version, type, identityId, kem, signing, createdAt })
 ```
 
-identity 指紋は未認証・可変の `name` を除外する一方、`identityId` と
-`createdAt` は含める。
+The identity fingerprint excludes the unauthenticated, mutable `name`,
+while including `identityId` and `createdAt`.
 
-## 8. ゴールデンフィクスチャ(hex 凍結)
+## 8. Golden fixtures (frozen hex)
 
-`tests/pq/canonical-cbor.golden.test.ts` / `tests/pq/wire-bytes.golden.test.ts`
-および `tests/pq/composition-golden.test.ts` と一致すること。共通フィクスチャ:
+Must match `tests/pq/canonical-cbor.golden.test.ts` /
+`tests/pq/wire-bytes.golden.test.ts` and
+`tests/pq/composition-golden.test.ts`. Shared fixture:
 `KEY_ID = "AAECAwQFBgcICQoLDA0ODw"`
-(生バイト `000102030405060708090a0b0c0d0e0f`)。
-以下の 768 系 fixture は wire/codec 契約の互換性を固定するものであり、
-active policy で利用可能であることを意味しない。
+(raw bytes `000102030405060708090a0b0c0d0e0f`).
+The 768-family fixtures below freeze the compatibility of the wire/codec
+contract; they do not imply availability under the active policy.
 
-- HKDF info(unsigned 768):
+- HKDF info (unsigned 768):
   `51525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02`
-- HKDF info(signed 768):
+- HKDF info (signed 768):
   `51525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b4d4c2d4453412d36352b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02`
 - ML-DSA context: `51525950542d4d4553534147452d5632`
-- `MlKemAadV2`(suite=unsigned768, sha256=0x22×32):
+- `MlKemAadV2` (suite=unsigned768, sha256=0x22×32):
   `a564747970656a70712d6d657373616765657375697465781e4d4c2d4b454d2d3736382b484b44462d5348413235362b4132353647434d6776657273696f6e0271726563697069656e744b656d4b657949647641414543417751464267634943516f4c4441304f4477736b656d4369706865727465787453686132353658202222222222222222222222222222222222222222222222222222222222222222`
-- Vault AAD(kem-seed/768, pkSha=0x11×32): 先頭 `a764726f6c65…`
-  (全 hex はテスト参照)
-- 署名対象(createdAt=1700000000000 → **uint64 `1b0000018bcfe56800`**、
-  float64 `fb…` は不可): 全 hex はテスト参照
-- エンベロープ(kemCt=0x33×1088, salt=0x44×32, iv=0x55×12, ct=0x66×20):
-  1301B、SHA-256 `53b5af7642d5394156ef4eacfac829181a682e067d9c1fbc8297206117cea924`
-- bundle(名前「テスト」, 鍵 0x0a/0x0b 充填): 3377B、SHA-256
+- Vault AAD (kem-seed/768, pkSha=0x11×32): starts with `a764726f6c65…`
+  (full hex in the tests)
+- Signing target (createdAt=1700000000000 → **uint64 `1b0000018bcfe56800`**;
+  float64 `fb…` is invalid): full hex in the tests
+- Envelope (kemCt=0x33×1088, salt=0x44×32, iv=0x55×12, ct=0x66×20):
+  1301B, SHA-256 `53b5af7642d5394156ef4eacfac829181a682e067d9c1fbc8297206117cea924`
+- Bundle (name = the 3-character Japanese string "テスト", UTF-8 bytes
+  `e38386e382b9e38388`; keys filled with 0x0a/0x0b): 3377B, SHA-256
   `db7231d753096cc2847e87767040772ca7daef5f726104549d75f1359429925c`
-- 個別 KEM 鍵指紋(ML-KEM-768、公開鍵 0x0a×1184):
+- Individual KEM key fingerprint (ML-KEM-768, public key 0x0a×1184):
   `86cca89b088994ddd47493b21d6c2ff3e3d44621ab842d289ca92325b1425dc9`
-- 上記 bundle の identity 指紋(`name` 除外):
+- Identity fingerprint of the bundle above (`name` excluded):
   `803025820e019d89098a95ec449fb59aa6f0232c856d036172425e81a2716122`
-- maximum 署名付き end-to-end composition(固定 seed/randomness):
+- maximum signed end-to-end composition (fixed seed/randomness):
   - KEM ciphertext SHA-256:
     `7e7cc499f2d0f3bb0bb7aa61a3705c83bfc5cf2446b6bc81a1aa4badd2ea25ae`
-  - 正準 CBOR envelope SHA-256:
+  - Canonical CBOR envelope SHA-256:
     `5986a6b363df30bc95dfa668b03359315df88d3b7f67593dbe62bf61cc4b2f18`
   - ML-DSA-87 signature SHA-256:
     `e14ce55d6babde5635701fcf79566b8b064fc353ccbbdc7b8de50ade1385fcb2`
 
-## 9. エラー対応表(v2 追加分)
+## 9. Error mapping table (v2 additions)
 
-| 状況 | コード |
+| Situation | Code |
 |---|---|
-| v2 構造の非正準/形式不正 | `INVALID_QR_PAYLOAD` |
-| 署名検証失敗(本文非表示) | `SIGNATURE_INVALID` |
-| 送信者署名鍵が未取込(取込導線を提示) | `SIGNING_KEY_NOT_FOUND` |
-| 別 transferId 混入・フレーム不整合 | `FRAME_MISMATCH` |
-| frameCount>64 等の容量超過 | `QR_TOO_LARGE` |
-| OCB2(予約)・balanced/768 系の運用・旧 RSA 形式(OCM1-RSA) | `UNSUPPORTED_ALGORITHM`(廃止文言) |
-| Worker 不可(main thread へのフォールバック禁止) | `WORKER_UNAVAILABLE` |
-| ローカル初期化の部分失敗 | `RESET_FAILED` |
+| Non-canonical / malformed v2 structure | `INVALID_QR_PAYLOAD` |
+| Signature verification failure (body withheld) | `SIGNATURE_INVALID` |
+| Sender signing key not imported (import flow offered) | `SIGNING_KEY_NOT_FOUND` |
+| Frame from another transferId mixed in / frame inconsistency | `FRAME_MISMATCH` |
+| Capacity exceeded, e.g. frameCount>64 | `QR_TOO_LARGE` |
+| OCB2 (reserved) / balanced/768-family operation / legacy RSA format (OCM1-RSA) | `UNSUPPORTED_ALGORITHM` (deprecation wording) |
+| Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
+| Partial failure of local reset | `RESET_FAILED` |
 
-注: plan2.1 §H の暫定名 `WIPE_FAILED` は、§B4 の正直な命名方針
-(「wipe/secure erase」不使用)に合わせ `RESET_FAILED` として確定した。
+Note: an earlier draft used the provisional name `WIPE_FAILED`; in line with
+the honest-naming policy (no "wipe" / "secure erase" wording), it was
+finalized as `RESET_FAILED`.

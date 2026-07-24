@@ -1,72 +1,74 @@
 # Qrypt
 
-オフライン暗号化 QR PWA。端末上で平文を暗号化し、暗号文・鍵素材を QR として表示・読取する Progressive Web App です。アプリ管理下の IndexedDB/localStorage にはメッセージ暗号文を永続化しません。利用者が明示した PNG/SVG/ZIP ダウンロードとクリップボードは OS・ブラウザー・同期先に残り得て、wipe/purge の対象外です。
+日本語版: [README.ja.md](README.ja.md)
 
-**すること**: オフライン時の AES-256-GCM および v2 ポスト量子スイート（ML-KEM / ML-DSA）による暗号化、鍵生成・管理、QR 表示・読取、PWA としてのオフライン起動。
+Offline-encryption QR PWA. A Progressive Web App that encrypts plaintext on-device and displays/scans ciphertext and key material as QR codes. Message ciphertext is never persisted to app-managed IndexedDB/localStorage. PNG/SVG/ZIP downloads and clipboard copies explicitly initiated by the user may remain in the OS, browser, or sync targets, and are outside the scope of wipe/purge.
 
-**しないこと**: 平文や秘密鍵の外部送信、クラウド上の鍵保管、独自暗号アルゴリズム、CDN 依存のランタイム、オフライン表示を安全性の証明として扱うこと、メッセージ暗号文のアプリ内永続化（オーナー要件。セッション表示と利用者明示のエクスポートのみ）。
+**What it does**: offline encryption with AES-256-GCM and the v2 post-quantum suites (ML-KEM / ML-DSA), key generation and management, QR display and scanning, and offline startup as a PWA.
 
-## 他の暗号化アプリとの違い
+**What it does not do**: transmit plaintext or private keys off the device, store keys in the cloud, use custom cryptographic algorithms, depend on CDNs at runtime, treat an offline indicator as proof of safety, or persist message ciphertext inside the app (maintainer requirement; session display and user-initiated export only).
 
-単に「文字列を暗号化・復号する」だけのアプリは数多くあります。Qrypt が狙うのは暗号アルゴリズムの新しさではなく、**平文と鍵が端末の外へ出る経路そのものを設計段階で塞ぐこと**です。暗号化が正しくても、鍵や平文の取り扱い・配送経路・実行環境に穴があれば安全にはなりません。Qrypt はそこを主眼に置きます。
+## How Qrypt differs from other encryption apps
 
-* **データ流出経路をランタイムから排除** — アプリ機能としての通信を一切持ちません（`fetch`/Axios/GraphQL クライアント不使用）。外部フォント・CDN・アナリティクス・エラーレポート SDK・リモート設定を読み込みません。CSP（`connect-src 'self'` ほか）でブラウザーレベルでも外部送信を遮断します。一般的な「暗号化 Web アプリ」が CDN やフォント、計測タグを読み込む＝潜在的な持ち出し面を持つのに対し、Qrypt はその面をゼロにします。
-* **オフライン専用運用＋導入専用オンラインゲート** — オンライン中はインストール関連画面だけを表示し、暗号化・復号・鍵管理を含む全機能をブロックします。wipe-on-online（既定 ON）は network-confirmed（到達性 sentinel 本文一致）でのみ発火し、ローカルデータの論理削除を試行します（物理消去は未保証）。アプリが「ネットワークにつながっている間は動かない」ことを構造的に保証します。
-* **サーバーを介さないエアギャップ鍵交換** — 鍵・公開鍵・暗号文をすべて QR として扱い、クラウドの鍵預託やアカウント同期を用いません。鍵は端末内の IndexedDB のみに置き、平文で外部保存しません。アプリ管理下の IndexedDB/localStorage にはメッセージ暗号文を永続化せず、その場の表示と利用者明示の PNG/SVG/ZIP・クリップボード出力のみです（後者は OS・ブラウザー・同期先に残り得て wipe/purge の対象外）。
-* **認証付き暗号と厳格な失敗挙動** — AEAD（AES-GCM）と AAD による改竄検知を用い、認証に失敗した場合は部分的な平文を一切表示しません。復号の内部例外は利用者向けの定型メッセージへ正規化し、鍵素材やスタックを画面・ログへ出しません。単純な暗号アプリで起こりがちな「未認証モード」「失敗時の中途半端な出力」を排します。
-* **平文を残さない** — 平文・復号結果を永続化せず、React メモリー上のみで扱います。暗号化成功後の自動消去とバックグラウンド移行後の自動消去を既定で有効にします。QR 生成ライブラリへ平文を渡さず、暗号化完了後の暗号文のみを扱います。
-* **標準アルゴリズムのみ・独自暗号なし** — 乱数は CSPRNG（`crypto.getRandomValues`）、暗号処理は Web Crypto を基本とし、IV 再利用や固定 IV、独自の鍵結合を禁止します。暗号処理は専用モジュールへ隔離し、UI から直接呼びません。
-* **配送経路（サプライチェーン）まで含めた防御** — 依存はロックファイルをコミットし、CI は凍結ロックで導入、レジストリの脆弱性 advisory と provenance を確認して危険なパッケージを排除しています（実際に検出・処置した事例は [docs/threat-model.md](docs/threat-model.md) §5.1）。暗号コードを CDN から実行時に取得する構成を採りません。
-* **検証可能性と正直な脅威モデル** — ソースコード・QR プロトコル仕様・脅威モデルを公開し、往復・改竄・誤鍵・IV 一意性などをテストで担保します。そして **何を守らないかを明記します**（下記「セキュリティ上の前提と免責」）。過大な安全性の主張をしないこと自体を設計方針とします。
+There are plenty of apps that merely "encrypt and decrypt strings". What Qrypt aims for is not novelty in cryptographic algorithms but **closing off, at the design stage, the very paths by which plaintext and keys leave the device**. Even with correct encryption, holes in key and plaintext handling, delivery paths, or the execution environment make the result insecure. Qrypt puts its focus exactly there.
 
-これらは「アルゴリズムが強い」という主張ではありません。**運用モデル（オフライン・エアギャップ・無流出・正直な限界表示）が、平文を扱う実運用での現実的な安全性を左右する**、という考え方に基づく差別化です。限界については必ず次節を参照してください。
+* **Data-exfiltration paths eliminated from the runtime** — The app has no external networking as an application feature (no third-party or cross-origin clients). Its only runtime request is the same-origin `GET /reachability-sentinel.txt` probe that gates wipe-on-online; the probe carries no user data. It loads no external fonts, CDNs, analytics, error-reporting SDKs, or remote configuration. CSP (`connect-src 'self'` and more) blocks outbound traffic at the browser level as well. Where a typical "encryption web app" loads CDNs, fonts, and measurement tags — a latent exfiltration surface — Qrypt reduces that external surface to zero.
+* **Offline-only operation with an install-only online gate** — While online, the app shows only installation-related screens and blocks all functionality, including encryption, decryption, and key management. wipe-on-online (default ON) fires only when network-confirmed (reachability sentinel body match) and attempts best-effort logical deletion of local data (physical erasure is not guaranteed). The app blocks operation while the network is connected by design; residual risk is documented in the threat model ([docs/threat-model.md](docs/threat-model.md), T18: probe false-negative window).
+* **Air-gapped key exchange with no server in between** — Keys, public keys, and ciphertext are all handled as QR codes; there is no cloud key escrow and no account sync. Keys live only in the device's IndexedDB; the app itself never transmits or stores them externally, and the only way key material leaves the device is a deliberate, strongly-confirmed user export of a key QR (see threat model T3). Message ciphertext is never persisted to app-managed IndexedDB/localStorage — only transient on-screen display and user-initiated PNG/SVG/ZIP or clipboard export (the latter may remain in the OS, browser, or sync targets and are outside the scope of wipe/purge).
+* **Authenticated encryption with strict failure behavior** — AEAD (AES-GCM) with AAD provides tamper detection; on authentication failure, no partial plaintext is ever shown. Internal decryption exceptions are normalized into fixed user-facing messages; key material and stack traces never reach the screen or logs. This rules out the "unauthenticated mode" and "partial output on failure" common in naive crypto apps.
+* **No plaintext left behind** — Plaintext and decryption results are never persisted; they exist only in React memory. Auto-clear after successful encryption and auto-clear after the app moves to the background are enabled by default. Plaintext is never passed to the QR generation library; only post-encryption ciphertext is handled.
+* **Standard algorithms only, no custom crypto** — Randomness comes from a CSPRNG (`crypto.getRandomValues`), cryptographic operations are built on Web Crypto, and IV reuse, fixed IVs, and ad-hoc key combination are forbidden. Crypto code is isolated in dedicated modules (`src/crypto/*`); UI pages invoke those modules' high-level operations and never touch Web Crypto primitives or key material directly.
+* **Defense that extends to the delivery path (supply chain)** — Dependency lockfiles are committed, CI installs with a frozen lockfile, and registry vulnerability advisories and provenance are checked to keep dangerous packages out (for an incident actually detected and handled, see [docs/threat-model.md](docs/threat-model.md) §5.1). No configuration fetches crypto code from a CDN at runtime.
+* **Verifiability and an honest threat model** — The source code, the QR protocol specification, and the threat model are public, and round-trips, tampering, wrong keys, IV uniqueness, and more are covered by tests. And **what is not defended is stated explicitly** (see "Security assumptions and disclaimers" below). Not overclaiming safety is itself a design policy.
 
-## セキュリティ上の前提と免責
+None of this is a claim that "the algorithm is stronger". The differentiation rests on the view that **the operational model — offline, air-gapped, no exfiltration, honest about its limits — is what determines practical security when plaintext is handled in the real world**. Always consult the next section for the limitations.
 
-このアプリが保証するのは、アプリケーションが意図的に平文や秘密鍵を外部送信しないことまでとする。
+## Security assumptions and disclaimers
 
-以下は防御対象外であり、アプリ内の「セキュリティについて」画面に明記する。
+The only guarantee this app makes is that the application does not intentionally transmit plaintext or private keys off the device.
 
-* OS、ブラウザー、ファームウェアの侵害
-* キーロガー、画面録画、スクリーンショット
-* カメラフレームを取得するマルウェア
-* PWA初回取得時または再インストール時の供給網侵害
-* 端末の物理的な窃取
-* ユーザー自身による秘密QRの誤共有
-* ブラウザーデータ削除による鍵の消失
+The following are outside the scope of defense and are stated explicitly in the in-app "About security" screen:
 
-**オフライン表示は安全性の証明ではない。** 「オフライン表示」は安全性の証明として扱わず、単に現在のネットワーク状態を示す補助情報として扱う。
+* Compromise of the OS, browser, or firmware
+* Keyloggers, screen recording, screenshots
+* Malware that captures camera frames
+* Supply-chain compromise at first PWA fetch or reinstallation
+* Physical theft of the device
+* The user's own accidental sharing of a secret QR
+* Loss of keys through browser data deletion
 
-平文は既定で暗号化成功後に自動消去する。バックグラウンド移行後の自動消去も既定で有効とし、設定可能なのは ON/OFF のみ。遅延は `VITE_AUTO_CLEAR_SECONDS=300` の固定値（約5分）を使用する。
+**An offline indicator is not proof of safety.** The "offline" indicator is never treated as proof of safety; it is only auxiliary information showing the current network state.
 
-**オンライン状態は PWA の新規導入専用です。** オンライン中はインストール状態・オフライン準備状態・機内モードへの切替案内だけを表示し、暗号化・復号・鍵管理・保存・設定の全機能をブロックします。利用中にオンラインへ遷移した場合は、平文・復号結果・結果ペイロードを即時消去します。
+Plaintext is auto-cleared after successful encryption by default. Auto-clear after the app moves to the background is also enabled by default, and the only configurable choice is ON/OFF. The delay uses the fixed value `VITE_AUTO_CLEAR_SECONDS=300` (about 5 minutes).
 
-**wipe-on-online**（設定既定 ON）は表示用オンライン判定ではなく、network-confirmed（`/reachability-sentinel.txt` の本文一致）でのみ発火します。install ゲート経路（機微データ皆無）では発火しません。実行時の表現は「ローカルデータの論理削除を試行。物理消去は保証しない」（LevelDB 追記型・SSD ウェアレベリング）。確実な消去は端末の完全フォーマットが必要です。詳細は [docs/boot-and-reset-v2.md](docs/boot-and-reset-v2.md)。
+**The online state exists solely for fresh PWA installation.** While online, the app shows only installation status, offline-readiness status, and guidance for switching to airplane mode, and blocks all encryption, decryption, key-management, storage, and settings functionality. If the app transitions to online during use, plaintext, decryption results, and result payloads are cleared immediately.
 
-## ポスト量子暗号（v2・experimental）
+**wipe-on-online** (setting default ON) does not fire on the display-level online heuristic; it fires only when network-confirmed (the body of `/reachability-sentinel.txt` matches). It does not fire on the install-gate path (which holds no sensitive data). The runtime wording is "attempts best-effort logical deletion of local data; physical erasure is not guaranteed" (LevelDB is append-only; SSDs use wear leveling). Even a full device format does not guarantee erasure on flash/SSD media; when assurance matters, use a media-appropriate sanitization procedure (e.g. NIST SP 800-88) or destroy the media. Details: [docs/boot-and-reset-v2.md](docs/boot-and-reset-v2.md).
 
-v2 は **experimental** です。リポジトリ内の実装・テスト・文書が揃った状態を `implementation-complete`、独立第三者による選定バージョンとアプリ全体のレビュー記録後を `release-approved` と区分します（[docs/security-review.md](docs/security-review.md)）。現状は独立監査未了のため `release-approved` には到達しておらず、UI・README・CI は experimental・未独立監査の表示を維持します。FIPS 203/204 準拠実装の採用であり、「FIPS 認証済み」「完全に安全」とは主張しません。
+## Post-quantum cryptography (v2, experimental)
 
-### 提供スイート
+v2 is **experimental**. We distinguish `implementation-complete` — the implementation, tests, and documentation are all present in the repository — from `release-approved` — reached only after an independent third party has reviewed the pinned versions and the app as a whole and the review has been recorded ([docs/security-review.md](docs/security-review.md)). Because the project is not independently audited, `release-approved` has not been reached, and the UI, README, and CI keep the experimental / not-independently-audited labeling. Qrypt adopts implementations of the FIPS 203/204 algorithms; it does not claim to be "FIPS certified" or "perfectly secure".
 
-| スイート | 内容 | 備考 |
+### Available suites
+
+| Suite | Contents | Notes |
 | --- | --- | --- |
-| AES-256-GCM | 対称暗号のみ | 既存経路 |
-| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | ポスト量子 KEM ハイブリッド | **既定**（`MLKEM1024_A256GCM`） |
-| 上記 + ML-DSA-87 署名 | sign-then-encrypt | 署名付きメッセージ |
+| AES-256-GCM | Symmetric encryption only | Existing path |
+| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | Post-quantum KEM hybrid | **Default** (`MLKEM1024_A256GCM`) |
+| The above + ML-DSA-87 signature | sign-then-encrypt | Signed messages |
 
-現在の active policy は **maximum**（1024/87）のみです。wire 契約では 4 suite
-（768/65 と 1024/87、各々の署名なし・署名付き）を維持しますが、balanced
-（768/65）は型・suite コードの予約に降格しており、運用境界では
-`UNSUPPORTED_ALGORITHM` として拒否します。
+The current active policy is **maximum** (1024/87) only. The wire contract keeps 4 suites
+(768/65 and 1024/87, each with and without signatures), but balanced
+(768/65) has been demoted to reserved types and suite codes and is rejected at the
+operational boundary with `UNSUPPORTED_ALGORITHM`.
 
-### PQ ベンチ参考値
+### PQ benchmark reference values
 
-2026-07-24 に `aube bench:pq`（Vitest 4.1.10、Linux x86_64、
-Intel Core i7-10870H）を 1 回実行した値です。`hz` は 1 秒あたりの処理回数、
-mean は 1 処理あたりの平均ミリ秒です。
+Values from a single run of `aube bench:pq` on 2026-07-24 (Vitest 4.1.10, Linux x86_64,
+Intel Core i7-10870H). `hz` is operations per second;
+mean is the average milliseconds per operation.
 
-| 処理 | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
+| Operation | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
 | ML-KEM-1024 keygen | 1,053.52 | 0.9492 | 1,075.08 | 0.9302 |
 | ML-KEM-1024 encapsulate | 969.86 | 1.0311 | 959.56 | 1.0421 |
@@ -74,38 +76,38 @@ mean は 1 処理あたりの平均ミリ秒です。
 | ML-DSA-87 sign | 87.8268 | 11.3860 | 89.0098 | 11.2347 |
 | ML-DSA-87 verify | 274.85 | 3.6384 | 259.16 | 3.8587 |
 
-これは開発機上の参考値であり、実ブラウザー・低性能端末での実測や
-`release-approved` 判定の代替ではありません。
+These are reference values from a development machine; they are not a substitute for
+measurements in real browsers or on low-end devices, nor for the `release-approved` determination.
 
-### 複数 QR（OCF2）
+### Multi-QR (OCF2)
 
-大きなペイロードは `OCF2` フレームに分割して表示・読取します。
+Large payloads are split into `OCF2` frames for display and scanning.
 
-* 表示: 自動切替（既定間隔あり・一時停止/前後/速度調整可）
-* 読取: 順不同・重複無視。欠損フレームは UI で明示。別 transfer 混入は `FRAME_MISMATCH`
-* 出力: フレーム PNG 一括および store-only ZIP（無圧縮。依存追加なし）
+* Display: automatic cycling (with a default interval; pause / previous / next / speed adjustment available)
+* Scanning: any order, duplicates ignored. Missing frames are shown explicitly in the UI. Frames mixed in from a different transfer yield `FRAME_MISMATCH`
+* Export: all frame PNGs at once, and a store-only ZIP (uncompressed; no added dependency)
 
-詳細は [docs/qr-protocol-v2.md](docs/qr-protocol-v2.md)。
+Details: [docs/qr-protocol-v2.md](docs/qr-protocol-v2.md).
 
-### シード Vault
+### Seed vault
 
-ポスト量子 identity は展開済み秘密鍵を永続化せず、**シードのみ**（KEM 64B / DSA 32B）を Vault（非抽出 AES-256-GCM `CryptoKey`）で暗号化して保管します。利用時に復号→ keygen 再展開→操作→バッファ破棄の流れです。
+Post-quantum identities never persist expanded private keys; only the **seeds** (KEM 64B / DSA 32B) are stored, encrypted by the Vault (a non-extractable AES-256-GCM `CryptoKey`). On use, the flow is: decrypt → re-expand via keygen → operate → destroy the buffers.
 
-## 技術スタック
+## Tech stack
 
 * React / React DOM / React Router
 * Vite / TypeScript / Tailwind CSS v4
-* shadcn/ui（Radix UI）+ sonner
-* Web Crypto API / IndexedDB（idb）
-* Zod / cbor-x / qrcode / @zxing/browser・@zxing/library
+* shadcn/ui (Radix UI) + sonner
+* Web Crypto API / IndexedDB (idb)
+* Zod / cbor-x / qrcode / @zxing/browser and @zxing/library
 * vite-plugin-pwa / workbox-window
-* Vitest / Testing Library / Playwright（@playwright/test）
-* Aube（パッケージマネージャ）/ mise（ツールバージョン固定）
+* Vitest / Testing Library / Playwright (@playwright/test)
+* Aube (package manager) / mise (pinned tool versions)
 * Cloudflare Pages / GitHub Actions
 
-## 必要ツール
+## Required tools
 
-ツールバージョンは `mise.toml` で固定しています。
+Tool versions are pinned in `mise.toml`.
 
 * node `26.5.0`
 * aube `1.32.0`
@@ -114,31 +116,31 @@ mean は 1 処理あたりの平均ミリ秒です。
 mise install
 ```
 
-## 初期構築
+## Initial setup
 
 ```bash
 git clone <repository-url>
 cd qrypt
 mise install
-aube ci          # または初回のみ aube install
+aube ci          # or, first time only, aube install
 ```
 
-## 開発
+## Development
 
 ```bash
-aube dev         # 開発サーバー
-aube typecheck   # TypeScript 検査
+aube dev         # dev server
+aube typecheck   # TypeScript checks
 aube lint        # ESLint
-aube bench:pq    # ポスト量子ベンチ（参考値。実機計測の代替ではない）
+aube bench:pq    # post-quantum bench (reference values; not a substitute for on-device measurement)
 ```
 
-## テスト
+## Testing
 
 ```bash
-aube test              # unit / integration / ui（Vitest）
-aube test:pq-vectors   # ポスト量子 known-answer（KAT）
-aube test:pq           # ポスト量子 integration
-aube test:qr-multipart # 複数 QR（OCF2）組立・分割
+aube test              # unit / integration / ui (Vitest)
+aube test:pq-vectors   # post-quantum known-answer tests (KAT)
+aube test:pq           # post-quantum integration
+aube test:qr-multipart # multi-QR (OCF2) assembly and splitting
 ```
 
 E2E:
@@ -148,128 +150,134 @@ aube exec playwright install chromium
 aube test:e2e
 ```
 
-CI 上では `aube exec playwright install --with-deps chromium` を使用します。validate job でも `test:pq-vectors` / `test:pq` / `test:qr-multipart` を実行します。
+On CI, `aube exec playwright install --with-deps chromium` is used. The validate job also runs `test:pq-vectors` / `test:pq` / `test:qr-multipart`.
 
-## ビルド
+## Build
 
 ```bash
 aube build:prod
 ```
 
-`--mode prod` により `.env.prod` が読み込まれます。
+`--mode prod` loads `.env.prod`.
 
-## 環境変数
+## Environment variables
 
-| ファイル | 役割 |
+| File | Role |
 | --- | --- |
-| `.env.example` | Git 管理。テンプレート・非機密の既定値 |
-| `.env.prod` | Git 管理可。本番向け非機密設定 |
-| `.env.local` | Git 非管理。開発者ごとの非機密設定 |
+| `.env.example` | Tracked in Git. Template and non-secret defaults |
+| `.env.prod` | May be tracked in Git. Non-secret production settings |
+| `.env.local` | Not tracked in Git. Per-developer non-secret settings |
 
-重要:
+Important:
 
-* `.env.local` は任意。未配置でも `.env.example` / `.env.prod` の既定で全ゲート（`aube ci`〜`aube test:e2e`）が通る
-* `VITE_*` はビルド後のクライアントコードへ含まれるため、**秘密情報を入れてはならない**
-* 暗号鍵・秘密鍵・Cloudflare API Token・復号用情報を `.env` に置かない
-* feature flag をアクセス制御や秘密保護として使わない
-* `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` は**予約フラグ**（UI・モジュール分岐は未実装。選択肢にも出さない）
+* `.env.local` is optional. Without it, the defaults in `.env.example` / `.env.prod` pass all gates (`aube ci` through `aube test:e2e`)
+* `VITE_*` values are embedded in the built client code, so **they must never contain secrets**
+* Do not put encryption keys, private keys, Cloudflare API tokens, or decryption material in `.env`
+* Do not use feature flags as access control or secret protection
+* `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` are **reserved flags** (no UI or module branches are implemented; they are not shown as options)
 
-## デプロイ（Cloudflare Pages, Direct Upload）
+## Deployment (Cloudflare Pages, Direct Upload)
 
-GitHub の Cloudflare Git Integration とは二重運用しません。GitHub Actions から Wrangler で `dist` を Direct Upload します。
+This is not run in parallel with GitHub's Cloudflare Git Integration. GitHub Actions uploads `dist` via Wrangler (Direct Upload).
 
-### 事前準備
+### Prerequisites
 
-1. Cloudflare 側で Pages プロジェクトを作成する:
+1. Create the Pages project on the Cloudflare side:
 
    ```bash
    wrangler pages project create <name>
    ```
 
-2. GitHub Repository Secrets を登録する（Pages デプロイに必要な最小権限の API Token）:
+2. Register the GitHub Repository Secrets (an API token with the minimum permissions required for Pages deploys):
    * `CLOUDFLARE_ACCOUNT_ID`
    * `CLOUDFLARE_API_TOKEN`
-3. GitHub Repository Variable を登録する:
+3. Register the GitHub Repository Variable:
    * `CLOUDFLARE_PAGES_PROJECT`
 
-### CI の流れ
+### CI flow
 
-* `pull_request` / `push` to `main` で `.github/workflows/cloudflare-pages.yml` が検証を実行
-* `main` への `push` で検証成功後に Cloudflare Pages へデプロイ
-* 独立した `e2e` job も走るが、**デプロイをブロックしない**（C15）
+* `pull_request` / `push` to `main` runs validation via `.github/workflows/cloudflare-pages.yml`
+* A `push` to `main` deploys to Cloudflare Pages after validation succeeds
+* An independent `e2e` job also runs, but it **does not block deployment**
 
 ### `public/_headers` / `public/_redirects`
 
-* `_redirects`: SPA ルーティング（`/* /index.html 200`）
-* `_headers`: CSP 等のセキュリティヘッダー、および SW / manifest の `Cache-Control: no-cache`（後述の逸脱表）
+* `_redirects`: SPA routing (`/* /index.html 200`)
+* `_headers`: security headers such as CSP, plus `Cache-Control: no-cache` for the SW / manifest (see the managed-deviations table below)
 
-## オフライン端末への導入手順
+## Installing on an offline device
 
-1. **オンライン**の端末でアプリ URL を開く
-2. ブラウザーの手順に従い **PWA としてインストール**する
-3. オンライン導入画面で **「オフライン利用準備状態: 準備完了」** を確認する
-4. 機内モード（またはネットワーク切断）にする
-5. オフラインへ切り替わると表示される通常画面で全機能を利用する
+1. Open the app URL on an **online** device
+2. **Install it as a PWA** following the browser's instructions
+3. On the online install screen, confirm **"Offline readiness: ready"**
+4. Switch to airplane mode (or disconnect from the network)
+5. Use all features on the normal screens shown once the device is offline
 
-**本アプリに更新機能はありません。** 新バージョンを使う場合は、端末を完全フォーマットのうえ新規にオフライン導入します。導入済み端末を完全フォーマットなしにオンラインへ戻してはなりません。
+The installed app's metadata (PWA manifest name/description) is fixed in English, while the in-app UI language is switchable between English and Japanese.
 
-### v2 更新時の破壊的変更（注意）
+**This app has no update mechanism.** To use a new version, sanitize the device (a full format alone does not guarantee erasure on flash/SSD media — see the wipe note above) and perform a fresh offline installation. Never bring an installed device back online without sanitizing it first.
 
-* 既存 **OCM1-RSA** 暗号文は復元不能です。非抽出 RSA 秘密鍵は救済できません（復号互換は残しません）。
-* 保存済み QR 機能は廃止しました。暗号文・鍵系 QR はアプリ内に永続化せず、IndexedDB に `qrArtifacts` store はありません。QR は画面表示と利用者が明示したエクスポートだけで扱います。
+### Breaking changes in the v2 update (caution)
 
-## リリース前確認
+* Existing **OCM1-RSA** ciphertexts are unrecoverable. Non-extractable RSA private keys cannot be rescued (no decryption compatibility is retained).
+* The saved-QR feature has been removed. Ciphertext and key QR codes are not persisted inside the app, and there is no `qrArtifacts` store in IndexedDB. QR codes are handled only via on-screen display and user-initiated export.
 
-本番相当のリリース／`release-approved` 判定前に、次を毎回確認します（[docs/security-review.md](docs/security-review.md) §3）。
+## Pre-release checklist
 
-1. FIPS 203 / FIPS 204 の最新エラッタ確認（NIST CSRC の当該ページ）
-2. `@noble/post-quantum` の変更履歴・既知脆弱性・advisory 確認
-3. KAT（`aube test:pq-vectors`）全緑の確認
-4. バンドルへの外部ネットワーク参照が無いことの確認（e2e §30.5）
-5. `aube-lock.yaml` の差分レビュー（provenance 維持）
+Before any production-grade release or `release-approved` determination, confirm the following every time ([docs/security-review.md](docs/security-review.md) §3):
 
-2026-07-24 時点の blocker（[docs/security-review.md](docs/security-review.md) §1）:
-`@noble/post-quantum` 0.6.1 は独立監査未了、`sharp@0.34.5` の
-`GHSA-f88m-g3jw-g9cj` は OPEN（dev chain: wrangler → miniflare → sharp、
-修正は `sharp>=0.35.0`・override 承認待ち）。加えて
-[docs/browser-matrix.md](docs/browser-matrix.md) の v2 実機計測（少なくとも
-Android Chrome・iOS Safari）と独立監査記録が揃うまで `release-approved` としません。
+1. Check the latest FIPS 203 / FIPS 204 errata (the relevant NIST CSRC pages)
+2. Check the changelog, known vulnerabilities, and advisories for `@noble/post-quantum`
+3. Confirm the KATs (`aube test:pq-vectors`) are all green
+4. Confirm the bundle contains no external network references (covered by an e2e test)
+5. Review the `aube-lock.yaml` diff (provenance maintained)
 
-## ドキュメント
+Blockers as of 2026-07-25 ([docs/security-review.md](docs/security-review.md) §1):
+`@noble/post-quantum` 0.6.1 is not independently audited. All known dependency
+advisories are resolved (`sharp@0.35.2`, `react-router@8.3.0`,
+`brace-expansion@5.0.8` via override — see the security review §1), and
+`aube audit` succeeds. Regardless,
+`release-approved` will not be granted until the v2 on-device measurements in
+[docs/browser-matrix.md](docs/browser-matrix.md) (at least
+Android Chrome and iOS Safari) and an independent audit record are in place.
 
-* [docs/qr-protocol.md](docs/qr-protocol.md) — QR プロトコル仕様（v1）
-* [docs/qr-protocol-v2.md](docs/qr-protocol-v2.md) — QR プロトコル仕様（v2 ポスト量子）
-* [docs/threat-model.md](docs/threat-model.md) — 脅威モデル
-* [docs/security-review.md](docs/security-review.md) — セキュリティレビュー記録（v2・監査区分）
-* [docs/boot-and-reset-v2.md](docs/boot-and-reset-v2.md) — Boot / wipe-on-online 契約
-* [docs/browser-matrix.md](docs/browser-matrix.md) — ブラウザー検証マトリクス（v2 実機計測欄含む）
-* [design-system/](design-system/) — ui-ux-pro-max 由来のデザインシステム
+## Documentation
 
-## 仕様からの管理された逸脱
+* [docs/qr-protocol.md](docs/qr-protocol.md) — QR protocol specification (v1)
+* [docs/qr-protocol-v2.md](docs/qr-protocol-v2.md) — QR protocol specification (v2, post-quantum)
+* [docs/threat-model.md](docs/threat-model.md) — Threat model
+* [docs/security-review.md](docs/security-review.md) — Security review record (v2, audit classification)
+* [docs/boot-and-reset-v2.md](docs/boot-and-reset-v2.md) — Boot / wipe-on-online contract
+* [docs/browser-matrix.md](docs/browser-matrix.md) — Browser verification matrix (includes v2 on-device measurement columns)
+* [design-system/](design-system/) — Design system derived from ui-ux-pro-max
 
-| 逸脱 | 理由 / 根拠 |
+## Managed deviations from the specification
+
+| Deviation | Reason / basis |
 | --- | --- |
-| `toast` → `sonner` | shadcn v3 レジストリに `toast` が無い（廃止）ため、公式後継 `sonner` を使用 |
-| shadcn CLI 不使用・手動ベンダリング | CLI が npm 系 lock を生成するため不採用。公式レジストリ JSON から `src/components/ui/` へ手動配置（C24） |
-| `radix-ui` 傘パッケージ不採用 | `radix-ui@1.6.4` のみ provenance 欠落のため、スコープ付き `@radix-ui/react-*` を使用。供給網事象の詳細は [docs/threat-model.md](docs/threat-model.md) §5.1 |
-| `typescript@6` ピン | メジャー 6 を明示ピン（`package.json` の `"typescript": "6"`） |
-| `playwright` → `@playwright/test` | テストランナー実体は `@playwright/test`。ブラウザーは `aube exec playwright install chromium`（CI は `--with-deps`） |
-| テスト補助 dev deps（`fake-indexeddb` / `pngjs` / `@types/pngjs` / `@testing-library/jest-dom` 等）および Tailwind / Radix 系 | §3 推奨リスト外だがスタック上必須の追加（C11: `pngjs` で PNG 往復復号など） |
-| shadcn 追加コンポーネント `checkbox` / `radio-group` / `collapsible` | 強確認・読取対象選択・詳細折りたたみに必要（§12 改訂 11） |
-| `_headers` へ `/sw.js`・`/registerSW.js`・`/manifest.webmanifest` の `Cache-Control: no-cache` 追加 | SW / manifest の鮮度担保（C19）。§27 からの管理された追加 |
-| CI へ独立 `e2e` job 追加 | plan C15。`validate-and-deploy` はそのまま。e2e は deploy をブロックしない |
-| `@zxing/library` 追加 | DOM 非依存の unit テスト用。`@zxing/browser` は UI 層のみ |
-| `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` は予約のみ | env は残すが UI・モジュール分岐なし（§12 改訂 18） |
-| 供給網ピン・override（`react-hook-form@7.82.0` / `eslint-config-prettier@10.1.8` / `aube.overrides` で rollup OMT） | 初期構築時の advisory・trust-downgrade 対応。一覧は [docs/threat-model.md](docs/threat-model.md) §5.1 |
-| §17 更新通知の撤回 | オーナー決定によりアプリ内の更新機能を設けず、導入後はオフラインで恒久運用する。新バージョンは端末の完全フォーマット後に新規導入する |
-| §7.2 暗号化後の平文保持既定の撤回 | オーナー決定により「暗号化後に平文を自動消去」を既定 ON に変更。バックグラウンド自動消去も既定 ON とし、遅延は env の固定値（300秒）を使用する |
-| 通常オンライン利用の撤回 | オーナー決定によりオンライン状態を PWA 新規導入専用とし、全アプリ機能を OnlineGate でブロックする。offline→online 遷移時はメモリー内の一時データを即時消去する |
-| ML-KEM-512 / ML-DSA-44 未実装 | 相互運用テスト用も含め非対応。active policy の対象は maximum（1024/87）のみで、balanced（768/65）は型・suite コード予約のみ |
-| balanced 降格・maximum 本筋化 | balanced 降格・maximum 本筋化は spec2/plan2.1 §A 推奨初期範囲からのオーナー承認済み意図的逸脱(2026-07-23)。maximum（1024/87）のみを運用し、認識済みの balanced（768/65）は `UNSUPPORTED_ALGORITHM` で拒否する |
-| `QrFrameV2.artifactType` に `pq-kem-public-key` / `pq-dsa-public-key` を追加 | spec2 §12 の 3 値からの拡張（単鍵公開鍵フレーム用） |
-| エラーコード `RESET_FAILED`・`SIGNATURE_INVALID`・`SIGNING_KEY_NOT_FOUND`・`FRAME_MISMATCH`・`WORKER_UNAVAILABLE` の追加 | `RESET_FAILED` は plan 暫定名 `WIPE_FAILED` から、論理削除の正直な命名方針で確定。他は署名検証失敗・署名鍵欠落・フレーム不整合・Worker 利用不可 |
-| RSA-OAEP ハイブリッド削除・`VITE_ENABLE_RSA=false` | WP-14 完了。初期仕様の RSA 経路からの逸脱（反転済み） |
-| `VITE_DEFAULT_ALGORITHM=A256GCM`（既定を共通鍵 AES-256-GCM へ） | オーナー要件 2026-07-24。ポスト量子暗号方式は選択式のまま維持 |
-| QR のアプリ内保存機能なし | オーナー要件 2026-07-24。暗号文・鍵系 QR とも表示・PNG/SVG/ZIP エクスポート・クリップボードのみとし、保存済み QR 機能と `qrArtifacts` store は廃止 |
+| `toast` → `sonner` | The shadcn v3 registry has no `toast` (removed), so the official successor `sonner` is used |
+| No shadcn CLI; manual vendoring | The CLI generates an npm-style lockfile, so it is not used. Components are placed manually into `src/components/ui/` from the official registry JSON |
+| `radix-ui` umbrella package not adopted | Only `radix-ui@1.6.4` lacked provenance, so the scoped `@radix-ui/react-*` packages are used. Supply-chain incident details: [docs/threat-model.md](docs/threat-model.md) §5.1 |
+| `typescript@6` pin | Major version 6 is pinned explicitly (`"typescript": "6"` in `package.json`) |
+| `playwright` → `@playwright/test` | The actual test runner is `@playwright/test`. Browsers are installed via `aube exec playwright install chromium` (CI uses `--with-deps`) |
+| Test-support dev deps (`fake-indexeddb` / `pngjs` / `@types/pngjs` / `@testing-library/jest-dom`, etc.) and Tailwind / Radix packages | Outside the originally recommended dependency list but required by the stack (e.g. PNG round-trip decoding with `pngjs`) |
+| Additional shadcn components `checkbox` / `radio-group` / `collapsible` | Needed for strong confirmation, scan-target selection, and collapsible detail views |
+| `Cache-Control: no-cache` added to `_headers` for `/sw.js`, `/registerSW.js`, and `/manifest.webmanifest` | Keeps the SW / manifest fresh. A managed addition to the deployment headers |
+| Independent `e2e` job added to CI | `validate-and-deploy` is unchanged; e2e does not block deployment |
+| `@zxing/library` added | For DOM-independent unit tests. `@zxing/browser` is used in the UI layer only |
+| `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` reserved only | The env vars remain, but there are no UI or module branches |
+| Supply-chain pins and overrides (`react-hook-form@7.82.0` / `eslint-config-prettier@10.1.8` / rollup OMT via `aube.overrides`) | Responses to advisories and a trust downgrade during initial setup. Full list: [docs/threat-model.md](docs/threat-model.md) §5.1 |
+| Withdrawal of the originally planned in-app update notification | Maintainer decision: no in-app update mechanism; after installation the device runs offline permanently. New versions require a full device format followed by a fresh offline installation |
+| Withdrawal of the original keep-plaintext-after-encryption default | Maintainer decision: "auto-clear plaintext after encryption" is now default ON. Background auto-clear is also default ON, and the delay uses the fixed env value (300 seconds) |
+| Withdrawal of normal online use | Maintainer decision: the online state is reserved for fresh PWA installation, and all app functionality is blocked by the OnlineGate. On the offline→online transition, in-memory transient data is cleared immediately |
+| ML-KEM-512 / ML-DSA-44 not implemented | Not supported, including for interoperability testing. The active policy covers only maximum (1024/87); balanced (768/65) exists as reserved types and suite codes only |
+| balanced demoted, maximum mainlined | A deliberate, maintainer-approved deviation (2026-07-23) from the originally recommended initial suite range. Only maximum (1024/87) is operated; recognized balanced (768/65) input is rejected with `UNSUPPORTED_ALGORITHM` |
+| `pq-kem-public-key` / `pq-dsa-public-key` added to `QrFrameV2.artifactType` | An extension beyond the three originally specified values (for single-public-key frames) |
+| Error codes `RESET_FAILED`, `SIGNATURE_INVALID`, `SIGNING_KEY_NOT_FOUND`, `FRAME_MISMATCH`, `WORKER_UNAVAILABLE` added | `RESET_FAILED` was finalized from the provisional name `WIPE_FAILED` under the honest-naming policy for best-effort logical deletion. The others cover signature verification failure, missing signing key, frame mismatch, and Worker unavailability |
+| RSA-OAEP hybrid removed; `VITE_ENABLE_RSA=false` | The RSA path removal is complete — a reversal of the RSA hybrid path in the initial specification |
+| `VITE_DEFAULT_ALGORITHM=A256GCM` (default changed to symmetric AES-256-GCM) | Maintainer requirement, 2026-07-24. Post-quantum modes remain selectable |
+| No in-app QR storage | Maintainer requirement, 2026-07-24. Both ciphertext and key QR codes are limited to on-screen display, PNG/SVG/ZIP export, and clipboard; the saved-QR feature and the `qrArtifacts` store are removed |
 
-Action ピン（`actions/checkout@v6` / `jdx/mise-action@v3` / `cloudflare/wrangler-action@v3`）はいずれも該当リポジトリにメジャータグが存在することを確認済みです。変更不要のため、ここでの追加逸脱はありません（改訂 20）。
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE). The archival `design-system/` exports include MIT-licensed generator output; see [design-system/PROVENANCE.md](design-system/PROVENANCE.md).

@@ -1,35 +1,45 @@
-# セキュリティレビュー記録(v2 ポスト量子)
+# Security Review Record (v2 Post-Quantum)
 
-本書は spec2 §3/§21 の完了条件のうち「採用ライブラリの独立セキュリティレビュー」
-に関する**事実の記録**である。plan2.1 §A に従い、完了は次の 2 区分で判定する。
-現在の運用レビュー対象は maximum 本筋、すなわち ML-KEM-1024 と ML-DSA-87
-（署名なし・署名付き）である。4 種の `WireSuite` は wire/codec 契約として維持するが、
-balanced（768/65）は active policy の対象外であり、運用境界で
-`UNSUPPORTED_ALGORITHM` として拒否する。
+This document is the **factual record** for the release completion condition
+"independent security review of the adopted libraries". This document is the
+authoritative definition of that gate; completion is judged in the following
+two categories. The current operational review scope is the maximum mainline,
+i.e. ML-KEM-1024 and ML-DSA-87 (unsigned and signed). The four `WireSuite`
+values are retained as a wire/codec contract, but balanced (768/65) is outside
+the active policy and is rejected at the operational boundary as
+`UNSUPPORTED_ALGORITHM`.
 
-- **implementation-complete**: リポジトリ内の実装・テスト・文書が完了した状態。
-  次のリポジトリ内条件をすべて満たし、本書に「独立第三者監査 未実施」と
-  記録したまま到達できる。
-  - maximum の identity・Worker・暗号化・復号・保存・OCP2/OCS2/OCF2 経路が
-    composition/integration/UI テストで成功する。
-  - `tests/pq/maximum-policy-boundaries.test.ts`、Worker integration、取込の negative
-    test が balanced/768 系を暗号処理前に `UNSUPPORTED_ALGORITHM` で拒否する。
-  - 設定の negative/migration test が旧 algorithm・balanced の更新注入を拒否し、
-    旧 preferences は maximum へ読み取り正規化して `wipeOnOnline=false` を維持する。
-  - `tests/pq/maximum-artifact-size.golden.test.ts` が次表の正準 CBOR 生バイト数、
-    chunk 400/600/900B の OCF2 フレーム数、各フレームの実 EC-Q 生成、および
-    env 容量ガードとの境界一致を固定する。
-  - ML-KEM-1024 / ML-DSA-87 の KAT と `aube test` / `aube typecheck` が通り、
-    `aube bench:pq` の maximum 参考値および README・プロトコル文書が更新される。
-- **release-approved**: 独立第三者による選定バージョンとアプリ全体のレビューが
-  記録されるまで到達しない(**external blocker**)。それまで UI・README・CI は
-  experimental・未独立監査の表示を一貫して維持する。
+- **implementation-complete**: The state in which the in-repository
+  implementation, tests, and documentation are complete. It can be reached with
+  all of the following in-repository conditions satisfied while this document
+  still records "independent third-party audit: not performed".
+  - The maximum identity, Worker, encryption, decryption, storage, and
+    OCP2/OCS2/OCF2 paths pass composition/integration/UI tests.
+  - `tests/pq/maximum-policy-boundaries.test.ts`, the Worker integration tests,
+    and the import negative tests reject the balanced/768 family with
+    `UNSUPPORTED_ALGORITHM` before any cryptographic processing.
+  - The settings negative/migration tests reject update injection of legacy
+    algorithms and of balanced; legacy preferences are normalized on read to
+    maximum while preserving `wipeOnOnline=false`.
+  - `tests/pq/maximum-artifact-size.golden.test.ts` pins the canonical CBOR raw
+    byte counts in the table below, the OCF2 frame counts at chunk sizes
+    400/600/900B, real EC-Q generation for every frame, and boundary agreement
+    with the env capacity guard.
+  - The ML-KEM-1024 / ML-DSA-87 KATs and `aube test` / `aube typecheck` pass,
+    and the `aube bench:pq` maximum reference figures plus the README and
+    protocol documents are updated.
+- **release-approved**: Not reached until an independent third-party review of
+  the selected versions and the whole application is recorded
+  (**external blocker**). Until then, the UI, README, and CI consistently
+  display experimental / not independently audited.
 
-自己調査・自己文書(本書を含む)は独立レビューの代替にならず、blocker を閉じない。
+Self-investigation and self-authored documents (including this one) are no
+substitute for independent review and do not close the blocker.
 
-maximum の実測 fixture（`maxPlaintext=4,096B`、`name="テスト"`）:
+Measured maximum fixture (`maxPlaintext=4,096B`, `name="テスト"` — the literal
+fixture string):
 
-| artifact | 正準 CBOR (bytes) | OCF2 frames (400 / 600 / 900B) |
+| artifact | canonical CBOR (bytes) | OCF2 frames (400 / 600 / 900B) |
 |---|---:|---:|
 | unsigned empty / max | 1,887 / 5,986 | 5/4/3 / 15/10/7 |
 | signed empty / max | 6,613 / 10,711 | 17/12/8 / 27/18/12 |
@@ -37,77 +47,98 @@ maximum の実測 fixture（`maxPlaintext=4,096B`、`name="テスト"`）:
 | OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 5/3/2 / 7/5/4 |
 | OCB2 reserved sizing fixture | 4,637 | 12/8/6 |
 
-OCI2 表示は count 均等分割
-`clamp(ceil(artifactBytes / 200), 20, 25)` を使う。4,402B fixture は
-23 枚(191/192B)となる。短い名前から 80 文字の最大名まで、byte-exact 復元、
-非空かつ差 1 byte 以内の chunk、実 EC-Q 生成をテストする。
-`VITE_QR_MAX_FRAMES` が選択枚数未満なら `QR_TOO_LARGE` で fail-closed とする。
-OCP2/OCS2 は固定 chunk 280B(`PQ_KEY_QR_FRAME_BYTES`)を維持し、
-実測 fixture は 7/10 枚となる。上表の 400/600/900 は message 系の設定範囲。
+OCI2 display uses balanced count mode:
+`clamp(ceil(artifactBytes / 200), 20, 25)`. The 4,402B fixture selects 23
+frames whose chunks are 191/192B. Tests cover short names through the maximum
+80-character name, byte-exact reconstruction, non-empty chunks whose sizes
+differ by at most 1 byte, and real EC-Q generation. If `VITE_QR_MAX_FRAMES` is below the selected count,
+generation fails closed as `QR_TOO_LARGE`. OCP2/OCS2 retain the fixed 280B
+chunk (`PQ_KEY_QR_FRAME_BYTES`), producing 7/10 frames for the measured
+fixtures. The 400/600/900 figures above remain message-class measurements
+across the configurable range.
 
-現行の複数QR切替間隔は
-1,000 / 1,500 / 2,000 / 2,500 / 3,000ms のみで、既定は 1,000ms。
-grid 外の新規 preferences と env 値は拒否する。boot は legacy safe integer
-150–2,000ms と現行 grid の和集合だけを読み取り、repository は保存済み
-legacy 値だけを現行 grid の最寄り値(midpoint は上側)へ正規化してから
-現行 patch を merge する。これにより `wipeOnOnline=false` を含む legacy row を
-誤って unreadable とせず、保存済み／新規 2,250ms は拒否する。
+The current multipart transition interval is exactly
+1,000/1,500/2,000/2,500/3,000ms, defaulting to 1,000ms. New preferences and
+environment values off that grid are rejected. Boot reads the exact union of
+legacy safe integers 150–2,000ms and the current grid, then the preferences
+repository normalizes only persisted legacy values to the nearest
+current-grid value (midpoints round up) before merging a current patch. This keeps readable legacy rows (including `wipeOnOnline=false`) from
+being misclassified while still rejecting stored/new 2,250ms.
 
-## 1. 採用ライブラリの事実(2026-07-24 時点)
+## 1. Facts About the Adopted Libraries (as of 2026-07-25)
 
-### @noble/post-quantum 0.6.1(exact pin・範囲指定禁止)
+### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- リリース: 2026-04-12。npm provenance ✓(近傍版すべて attested)。**2026-07-24 再確認: 0.6.1 が最新、repo / GHSA / OSV に advisory なし**
-- 依存: noble 系のみ(@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
-- 実装: FIPS 203(ML-KEM)/ FIPS 204(ML-DSA)
-- FIPS エラッタ(§3-1・2026-07-24): NIST は prospective correction のみ(FIPS 204 sheet 更新 2026-02-27)。API / サイズ表への影響なし
-- **独立監査: 未了**。0.6.1 時点の監査状態は self-audit(scope: everything)のみ
-- **サイドチャネル: JS 実装として constant-time を保証しない**。特に ML-KEM
-  decaps の implicit-rejection 経路について JS/JIT の定時間性を明記のうえ非保証
-- active policy で採用する API(0.6.1 実ソースで確認):
-  `ml_kem1024.keygen(seed64?)` / `.encapsulate(pk)` / `.decapsulate(ct, sk)`、
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-24: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
+- Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
+- FIPS errata (§3 step 1, checked 2026-07-24): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
+- **Not independently audited.** The audit status as of 0.6.1 is self-audit only (scope: everything)
+- **Side channels: as a JS implementation, constant-time execution is not guaranteed.** In particular, for the ML-KEM decaps implicit-rejection path, constant-time behavior under JS/JIT is explicitly documented and not guaranteed
+- APIs used by the active policy (verified against the actual 0.6.1 source):
+  `ml_kem1024.keygen(seed64?)` / `.encapsulate(pk)` / `.decapsulate(ct, sk)`,
   `ml_dsa87.keygen(seed32?)` / `.sign(msg, sk, {context})` /
-  `.verify(sig, msg, pk, {context})`。同ライブラリには 768/65 実装も含まれるが、
-  active policy の暗号処理には使用しない
+  `.verify(sig, msg, pk, {context})`. The library also contains 768/65
+  implementations, but the active policy does not use them for cryptographic
+  processing
 
-### 供給網
+### Supply Chain
 
-- `aube-lock.yaml` にロック済み(コミット必須)。v1 期の供給網判断と 2026-07-24 再確認は
-  `docs/threat-model.md` §5.1 参照
-- ZIP 出力は依存追加せず自前 store-only 実装(`fflate` は provenance 無しのため不採用)
-- **OPEN(dev chain)**: `sharp@0.34.5` — `GHSA-f88m-g3jw-g9cj`
-  (CVE-2026-33327 / CVE-2026-33328 / CVE-2026-35590 / CVE-2026-35591、公開 2026-07-17)。
-  経路: `wrangler@4.113.0` → `miniflare@4.20260721.0` → sharp exact-pin。
-  修正は `sharp>=0.35.0`、in-range なし、override 承認待ち。`aube audit` は現状 exit 1(期待どおり)
-- 供給網ピン再確認クリーン: `react-hook-form@7.82.0`、`eslint-config-prettier@10.1.8`
+- Locked in `aube-lock.yaml` (must be committed). For the v1-era supply-chain
+  decisions and the 2026-07-24 re-verification, see `docs/threat-model.md` §5.1
+- ZIP output is an in-house store-only implementation with no added dependency (`fflate` was rejected for lacking provenance)
+- **RESOLVED (dev chain, re-verified 2026-07-25)**: `sharp` — `GHSA-f88m-g3jw-g9cj`
+  (CVE-2026-33327 / CVE-2026-33328 / CVE-2026-35590 / CVE-2026-35591,
+  published 2026-07-17; affected versions below 0.35.0). Former path:
+  `wrangler@4.113.0` → `miniflare@4.20260721.0` → `sharp@0.34.5` exact-pin.
+  Fixed by bumping wrangler to 4.114.0 (`miniflare@4.20260722.0` →
+  `sharp@0.35.2`).
+- **RESOLVED (runtime dep, 2026-07-25)**: `react-router` —
+  `GHSA-qwww-vcr4-c8h2` (published 2026-07-24, high): RSC Mode CSRF bypass;
+  vulnerable `>=7.12.0 <8.3.0`. The vulnerable path (React Server Components
+  mode with server-executed actions) was never used by this client-only PWA,
+  and the dependency was upgraded to `react-router@8.3.0` exact (the
+  `react-router-dom` wrapper, which ends at 7.x, was replaced by
+  `react-router` directly).
+- **RESOLVED (dev chain, 2026-07-25)**: `brace-expansion` —
+  `GHSA-mh99-v99m-4gvg` (high): DoS via unbounded expansion; vulnerable
+  `<=5.0.7`. Paths: `workbox-build` → `glob` → `minimatch` →
+  `brace-expansion@5.0.7` and `workbox-build` → … → `minimatch@5` →
+  `brace-expansion@2.1.2` (build tooling only; inputs are repo-controlled glob
+  patterns). No fixed 2.x release exists, so both major lines are forced to
+  `5.0.8` via `aube.overrides`; `aube build:prod` and the full test suite were
+  re-verified after the override. `aube audit` currently exits 0.
+- Supply-chain pins re-verified clean: `react-hook-form@7.82.0`, `eslint-config-prettier@10.1.8`
 
-## 2. 表示禁止事項(spec2 §20)
+## 2. Prohibited Claims (UI / README / CI)
 
-UI・README・CI 表示のいずれにも次を使用しない。
+None of the following may be used in UI, README, or CI displays.
 
-- 「FIPS 認証済み」(FIPS 203/204 準拠と FIPS 140 認証は別物)
-- 「完全に安全」(独立監査なしでの安全宣言)
-- 「secure erase / 完全消去」(docs/boot-and-reset-v2.md 参照)
+- "FIPS certified" (implementing FIPS 203/204 algorithms is distinct from FIPS 140 certification)
+- "completely secure" (a safety declaration without independent audit)
+- "secure erase" / "complete deletion" (see docs/boot-and-reset-v2.md)
 
-セキュリティ画面には次を明記する:
-noble 未独立監査・JS サイドチャネル非保証・JS メモリー消去の限界
-(GC・内部コピー・最適化により zeroize は完全でない)。
+The security screen must state explicitly:
+noble is not independently audited; JS side-channel resistance is not
+guaranteed; JS memory erasure has limits
+(zeroize is incomplete due to GC, internal copies, and optimizations).
 
-## 3. リリースごとの確認手順(README にも掲載)
+## 3. Per-Release Verification Checklist (also listed in the README)
 
-1. FIPS 203 / FIPS 204 の最新エラッタ確認(NIST CSRC の当該ページ)
-2. `@noble/post-quantum` の変更履歴・既知脆弱性・advisory 確認
-3. KAT(`aube test:pq-vectors`)全緑の確認
-4. バンドルへの外部ネットワーク参照が無いことの確認(e2e §30.5)
-5. `aube-lock.yaml` の差分レビュー(provenance 維持)
+1. Check the latest FIPS 203 / FIPS 204 errata (on the relevant NIST CSRC pages)
+2. Check the `@noble/post-quantum` changelog, known vulnerabilities, and advisories
+3. Confirm the KATs (`aube test:pq-vectors`) are all green
+4. Confirm the bundle makes no external network references (e2e: `tests/e2e/security.spec.ts` asserts all in-page requests are same-origin)
+5. Review the `aube-lock.yaml` diff (provenance maintained)
 
-## 4. 独立レビュー完了時に本書へ記録する項目(テンプレート)
+## 4. Items to Record Here When the Independent Review Completes (Template)
 
-- レビュー主体(独立性の根拠)/ 実施期間
-- 対象 commit hash・build hash・`@noble/post-quantum` バージョンと transitive lock
-- 対象範囲(maximum 本筋のライブラリ・プロトコル設計
-  docs/qr-protocol-v2.md・アプリ実装、および維持する 4-suite wire/codec 契約)
-- findings 一覧・修正 commit・再検証結果
-- FIPS エラッタ確認結果
+- Reviewing party (basis of independence) / review period
+- Target commit hash, build hash, `@noble/post-quantum` version, and transitive lock
+- Scope (the maximum-mainline libraries, the protocol design in
+  docs/qr-protocol-v2.md, the application implementation, and the retained
+  4-suite wire/codec contract)
+- List of findings, fix commits, and re-verification results
+- FIPS errata check result
 
-**現状: 上記は未記録(独立第三者監査 未実施)。release-approved には到達していない。**
+**Current status: none of the above is recorded (no independent third-party audit has been performed). release-approved has NOT been reached.**

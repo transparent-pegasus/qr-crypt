@@ -1,128 +1,159 @@
-# Boot 状態機械とローカル初期化の契約(v2)
+# Boot State Machine and Local Reset Contract (v2)
 
-出典: `.tmp/plan2.1.md` §B(C1/C2/C3/C4・U1/U2/U19 の解決)および
-`.tmp/plan2.4.1.md`。plan2.4.1 は plan2.3.1 の §C-6/§C-7、コールド免除、
-「boot 不変」を明示的に上書きする。
-実装: WP-BOOT(`src/app/boot/*`, `src/storage/best-effort-reset.ts`)。
-型と定数は `src/app/boot/boot-contract.ts` が凍結する。
+This document is the authoritative specification of this contract.
+Implementation: `src/app/boot/*` and `src/storage/best-effort-reset.ts`.
+Types and constants are frozen in `src/app/boot/boot-contract.ts`.
 
-## 1. 表示用オンラインと破壊用到達性の分離
+## 1. Separating Display Online State from Destructive Reachability
 
-| 用途                      | 根拠                                                                                                      | 使途                                                                                                         |
-| ------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 表示用                    | `navigator.onLine` + 既存 probe(`/manifest.webmanifest` HEAD)                                             | OnlineGate の表示切替と boot reconciliation の要求。**表示 edge 自体は破壊操作の根拠・直接トリガーにしない** |
-| 破壊用(network-confirmed) | `GET /reachability-sentinel.txt?n=<nonce>`(`cache:"no-store"`)で**本文 `QRYPT-REACHABLE` の一致まで確認** | wipe-on-online の唯一のトリガー                                                                              |
+| Purpose                        | Basis                                                                                                                       | Use                                                                                                                                              |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Display                        | `navigator.onLine` + the existing probe (HEAD of `/manifest.webmanifest`)                                                    | Switches the OnlineGate display and requests boot reconciliation. **The display edge itself is never the basis for, or a direct trigger of, destructive operations** |
+| Destructive (network-confirmed) | `GET /reachability-sentinel.txt?n=<nonce>` (`cache:"no-store"`), **confirmed only when the response body matches `QRYPT-REACHABLE`** | The sole trigger of wipe-on-online                                                                                                                |
 
-- sentinel は SW の precache 対象外 + `NetworkOnly` runtime route
-  (vite.config.ts)+ Cloudflare `_headers` で `Cache-Control: no-store`。
-  オフラインでは必ず失敗する
-- 偽陽性クラス(probe≠airgap): SW 介在・キャプティブポータル・応答遅延・
-  StrictMode 二重実行。これらは sentinel の本文一致・nonce・世代番号+
-  AbortSignal・同一遷移一度だけの規則で吸収する
-- 表示 probe の偽陰性中は InstallScreen がブロックし続けるとは限らない。これは
-  表示/破壊判定分離の残余リスクであり、次に表示が online を再コミットしたときの
-  対称 reconciliation で sentinel 検査を再開する
+- The sentinel is excluded from the SW precache, served via a `NetworkOnly`
+  runtime route (vite.config.ts), and delivered with
+  `Cache-Control: no-store` through the Cloudflare `_headers` file. Offline it
+  always fails.
+- False-positive classes (probe ≠ airgap): SW interference, captive portals,
+  delayed responses, StrictMode double invocation. These are absorbed by the
+  sentinel body match, the nonce, generation numbers + AbortSignal, and the
+  once-per-transition rule.
+- While the display probe sits in a false-negative window, the InstallScreen is
+  not guaranteed to keep blocking. This is a residual risk of separating the
+  display judgment from the destructive judgment; the next time the display
+  re-commits online, the symmetric reconciliation re-runs the sentinel check.
 
-## 2. Boot 状態機械(Router より前)
+## 2. Boot State Machine (Ahead of the Router)
 
 ```
 unknown → probing → offline-confirmed
                   → network-confirmed → wiping → wiped | partial-failure
                                       ↘ offline-confirmed (display offline nudge;
-                                         非破壊の確定後処理完了後だけ)
-offline-confirmed -- display online 再コミット --> probing (最大1回)
+                                         only after non-destructive post-commit
+                                         processing has completed)
+offline-confirmed -- display online re-commit --> probing (at most once)
 ```
 
-- `offline-confirmed` になるまで Router / `usePreferences` / 各 repository を
-  mount しない。**boot controller だけが最初に DB を開き**、wipe 設定と
-  機微データ存在を読む
-- 破壊トリガーは network-confirmed のみ。初期 `navigator.onLine=true` でも
-  sentinel 失敗なら wipe しない
-- 設定読取失敗は `preferencesReadFailed=true` として `wipeOnOnline=true` を
-  強制する。ただし破壊操作には keys / `pqIdentities` / Vault 鍵のいずれかの
-  存在を独立に確認できたことも必要で、DB open/count/lookup 失敗だけを機微データ
-  存在の証拠として初期化してはならない
-- 2026-07-24 時点の boot 読取互換 allowlist は algorithm
+- Until the state reaches `offline-confirmed`, the Router, `usePreferences`,
+  and the repositories are not mounted. **Only the boot controller opens the DB
+  first** and reads the wipe setting and the presence of sensitive data.
+- The only destructive trigger is network-confirmed. Even when the initial
+  `navigator.onLine` is `true`, no wipe happens if the sentinel fails.
+- A preferences read failure is recorded as `preferencesReadFailed=true` and
+  forces `wipeOnOnline=true`. However, the destructive operation additionally
+  requires independent confirmation that at least one of keys /
+  `pqIdentities` / the Vault key exists; a DB open/count/lookup failure alone
+  must never be taken as evidence of sensitive data and used to trigger a
+  reset.
+- As of 2026-07-24 the boot read-compatibility allowlist is algorithm
   (`A256GCM`, `RSA-HYBRID`, `MLKEM768_A256GCM`,
   `MLKEM768_MLDSA65_A256GCM`, `MLKEM1024_A256GCM`,
-  `MLKEM1024_MLDSA87_A256GCM`)と profile (`balanced`, `maximum`)。
-  保存済み設定を読取失敗へ変えて上記 fail-safe を誤発火させないため append-only とする
-- sentinel 本文一致後は破壊判断をラッチする。offline 要求は maintenance token
-  消費、transient reset、または条件を満たす wipe を取り消さない。世代番号と
-  AbortSignal が probe を失効できるのは sentinel 確定前だけである
+  `MLKEM1024_MLDSA87_A256GCM`) and profile (`balanced`, `maximum`).
+  The allowlist is append-only so that a stored preference can never turn into
+  a read failure and misfire the fail-safe above.
+- Once the sentinel body matches, the destructive decision is latched. A
+  subsequent offline request does not cancel maintenance-token consumption, a
+  transient reset, or a wipe whose conditions are met. Generation numbers and
+  AbortSignal can invalidate a probe only before the sentinel is confirmed.
 
-## 3. 発火条件(オーナー要件: 既定 ON の維持)
+## 3. Trigger Conditions (Owner Requirement: Keep the Default ON)
 
-`Preferences.wipeOnOnline` 既定 **true**。ただし:
+`Preferences.wipeOnOnline` defaults to **true**. However:
 
-1. install ゲート経路(機微データ皆無)では wipe しない
-2. network-confirmed(sentinel 本文一致)のみ発火
-3. **maintenance token**: オフライン中に強確認で設定する「次の一回だけ鍵を
-   保持して更新」。1 回の verified transition 後に必ず失効し ON へ復帰
-4. 永続 OFF は常時警告表示
+1. On the install-gate path (no sensitive data present at all) no wipe occurs.
+2. Only network-confirmed (sentinel body match) fires the wipe.
+3. **maintenance token**: set offline with strong confirmation, meaning "keep
+   the keys for the next single update only". It always expires after one
+   verified transition and reverts to ON.
+4. Turning the setting permanently OFF always shows a warning.
 
-## 4. WipeCoordinator の順序(単一・boot 層所有)
+## 4. WipeCoordinator Order (Single Instance, Owned by the Boot Layer)
 
-1. 新規 UI/crypto/storage 操作を fail-closed(以降の repository/worker 呼出は即エラー)
-2. Worker を cancel/terminate。app 所有の seed/plaintext/sharedSecret buffer と
-   Vault 鍵キャッシュ・promise 参照を drop(zeroize)
-3. transient/SensitiveSession を非表示・reset
-4. `navigator.locks`(fallback あり)+ `BroadcastChannel("qrypt-wipe")` で
-   全タブへ停止/close 要求
-5. **Vault 配下の `EncryptedSecret` を先に削除 → Vault 鍵レコードを削除**
-   (暗号シュレッディング。非抽出 `CryptoKey` の byte 上書きは不可能であり主張しない)
-6. 全 DB(`pqIdentities`/`pqPublicBundles` 含む)+ `oc-*` localStorage を削除。
-   `online-detected` の場合だけ、削除後かつ `wiped` publish 前に
-   `oc-offline-ack-pending="1"` を再設定する。`user-requested` では再設定しない
-7. DB 不在を再確認して barrier 維持。`deleteDB({blocked})`/`openDB({blocking,blocked})`
-   に timeout+UI。部分失敗は成功文言にせず `RESET_FAILED` として提示
+1. Fail-close all new UI/crypto/storage operations (subsequent
+   repository/worker calls error immediately).
+2. Cancel/terminate the Workers. Drop (zeroize) the app-owned
+   seed/plaintext/sharedSecret buffers, the Vault key cache, and the promise
+   references.
+3. Hide and reset transient/SensitiveSession state.
+4. Request stop/close in all tabs via `navigator.locks` (with a fallback) +
+   `BroadcastChannel("qrypt-wipe")`.
+5. **Delete the `EncryptedSecret` records under the Vault first → then delete
+   the Vault key record** (crypto-shredding; overwriting the bytes of a
+   non-extractable `CryptoKey` is impossible and is not claimed).
+6. Delete all DBs (including `pqIdentities`/`pqPublicBundles`) + all `oc-*`
+   localStorage keys. This includes the UI language preference (`oc-lang`);
+   after a wipe or full reset the app reverts to the English default.
+   Only in the `online-detected` case, re-set `oc-offline-ack-pending="1"`
+   after the deletion and before publishing `wiped`. In the `user-requested`
+   case it is not re-set.
+7. Re-verify DB absence and keep the barrier in place.
+   `deleteDB({blocked})`/`openDB({blocking,blocked})` carry a timeout + UI.
+   Partial failure is never presented with success wording; it is surfaced as
+   `RESET_FAILED`.
 
-## 5. 正直な命名と表現(禁止: secure erase / 完全消去)
+## 5. Honest Naming and Wording (Forbidden: "secure erase" / "permanent deletion")
 
-- モジュール名は `best-effort-reset`。UI/README/threat-model の表現は
-  「**ローカルデータの論理削除を試行。物理消去は保証しない**(LevelDB 追記型・
-  SSD ウェアレベリング)。確実な消去は端末の完全フォーマット」
-- churn(`resetChurnMb`)は**既定 0** の実験オプション(上書きは消去保証に
-  ならない)。idle/quota 上限/AbortSignal/失敗記録付き。完了表示は
-  「論理削除を試行しました(物理消去は未保証)」
-- SW キャッシュ(アプリ本体・非機密)は維持する
+- The module is named `best-effort-reset`. The UI/README/threat-model wording
+  is: "**Attempts best-effort logical deletion of local data. Physical erasure
+  is not guaranteed** (LevelDB is append-only; SSD wear leveling)." Even a
+  full device format does not guarantee erasure on flash/SSD media; when
+  assurance matters, use a media-appropriate sanitization procedure
+  (e.g. NIST SP 800-88) or destroy the media.
+- churn (`resetChurnMb`) is an experimental option with a **default of 0**
+  (overwriting is not an erasure guarantee). It comes with idle/quota
+  caps/AbortSignal/failure recording. The completion message states that
+  best-effort logical deletion was attempted and that physical erasure is not
+  guaranteed.
+- The SW cache (the app shell itself, non-sensitive) is kept.
 
-## 6. 防御境界(threat-model / UI に明記)
+## 6. Defensive Boundary (Stated in the threat-model / UI)
 
-本機能は「**接続後に現在の(信頼できる)コードが実行できた場合の残存データ低減**」
-であり、次を防がない: 同一オリジンの悪意あるコード・物理回収(ディスクイメージ)・
-更新で先に実行される侵害コード。theme(`oc-theme`)と承認保留マーカー
-(`oc-offline-ack-pending="1"`)は非機密だが `oc-*` 一括削除に含まれる。
-オンライン検出 wipe では後者だけを上記の順序で再設定する。
+This feature is "**reduction of residual data in the case where the current
+(trusted) code was able to run after connectivity**"; it does not defend
+against: malicious same-origin code, physical recovery (disk imaging), or
+compromised code that runs first through an update. The theme (`oc-theme`) and
+the pending-acknowledgement marker (`oc-offline-ack-pending="1"`) are
+non-sensitive but are included in the bulk `oc-*` deletion. In an
+online-detected wipe only the latter is re-set, in the order above.
 
-## 7. 表示専用のオフライン承認 phase と永続マーカー
+## 7. Display-Only Offline Acknowledgement Phase and the Persistent Marker
 
-BootState と §4 の one-way barrier の外側(AppProviders 配下)に display-only ack
-phase を一つだけ置く。初期 `navigator.onLine` は hint に留め、表示用 probe が online
-を commit した後の online→offline edge ごとに generation を進める。表示 online の
-state commit 前と boot の `network-confirmed` publish 前には、同期 API が origin 単位の
-`oc-offline-ack-pending="1"` を設定する。値はオンライン接触後の説明が未承認であること
-だけを表し、鍵・平文・暗号文を含まない非機密の制御状態である。
+Exactly one display-only ack phase sits outside the BootState and the one-way
+barrier of §4 (under AppProviders). The initial `navigator.onLine` remains a
+hint only; the generation advances on each online→offline edge after the
+display probe has committed online. Before the display-online state commit and
+before boot publishes `network-confirmed`, a synchronous API sets the
+origin-scoped `oc-offline-ack-pending="1"`. The value expresses only that the
+explanation shown after an online contact has not yet been acknowledged; it is
+a non-sensitive control state containing no keys, plaintext, or ciphertext.
 
-マーカーの読取は DisplayGate の lazy initializer で同期実施する。`"1"`、malformed
-値、読取例外、storage 利用不能はいずれも pending(fail-closed)であり、初期位相は
-`coldOffline:false, ackPending:true, offlineGeneration:1` となる。承認までは Router、
-子 effect、preferences/repository を mount しない。マーカー不在の真のコールド offline
-だけは従来どおり免除する。
+The marker is read synchronously in the DisplayGate's lazy initializer. `"1"`,
+malformed values, read exceptions, and unavailable storage are all treated as
+pending (fail-closed), and the initial phase is
+`coldOffline:false, ackPending:true, offlineGeneration:1`. Until
+acknowledgement, neither the Router, child effects, nor
+preferences/repositories are mounted. Only a true cold offline start with the
+marker absent is exempt, as before.
 
-承認時はマーカー削除を先に試行し、削除成否にかかわらず自タブの当該 generation の
-承認を成立させる。削除失敗は次回も pending 側となる。別タブの storage removal event
-は自タブの進行中 pending を解除しない。永続承認は origin 単位、タブ内 generation は
-従来どおりタブ単位であり、競合時の過剰な再承認は許すが承認省略は許さない。
+On acknowledgement, marker deletion is attempted first, and the
+acknowledgement for that generation in the current tab takes effect regardless
+of whether the deletion succeeds. A failed deletion keeps the next run on the
+pending side. A storage removal event from another tab does not clear the
+current tab's in-progress pending. Persistent acknowledgement is per origin,
+while the in-tab generation remains per tab as before; under contention,
+redundant re-acknowledgement is allowed but skipping acknowledgement is not.
 
-| boot / wipe 結果            | offline edge / reload 後の動作                                                                                            | マーカー                                                                                                  |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| wipe なし                   | generation ごとの承認後に初めて Router を mount                                                                           | 承認時に削除を試行                                                                                        |
-| `wiped` (`online-detected`) | 結果と承認を同じ全画面 shell に表示し、「再読み込みして続行」から full reload。現 JS lifetime では Router を mount しない | `oc-*` 削除後・`wiped` publish 前に再設定。未承認 reload でも shell、承認後 reload はマーカー不在コールド |
-| `partial-failure`           | `RESET_FAILED` とタブを閉じる／端末を完全フォーマットする案内だけを表示し、再開経路を設けない                             | online 接触の証拠として再設定を維持                                                                       |
-| `user-requested`            | 手動初期化後の通常フロー                                                                                                  | `oc-*` 削除後に再設定しない                                                                               |
+| boot / wipe outcome         | Behavior after an offline edge / reload                                                                                                                                  | Marker                                                                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| no wipe                     | The Router is mounted only after the per-generation acknowledgement                                                                                                       | Deletion attempted on acknowledgement                                                                                                                      |
+| `wiped` (`online-detected`) | The result and the acknowledgement are shown in the same full-screen shell; the "reload to continue" action performs a full reload. The Router is not mounted in the current JS lifetime | Re-set after the `oc-*` deletion and before publishing `wiped`. Reloading without acknowledging shows the shell again; reloading after acknowledging is a marker-absent cold start |
+| `partial-failure`           | Shows only `RESET_FAILED` plus guidance to close the tab / fully format the device; no resume path is provided                                                            | Kept re-set as evidence of online contact                                                                                                                  |
+| `user-requested`            | Normal flow after a manual reset                                                                                                                                          | Not re-set after the `oc-*` deletion                                                                                                                       |
 
-表示 offline コミットは sentinel を発行せず、boot が `network-confirmed` の場合だけ専用
-ナッジを一度要求する。表示 online 再コミット時に boot が `offline-confirmed` なら、
-BootGate が同一 controller の通常 sentinel probe を最大一度起動する。表示 edge が wipe
-を直接発火することはなく、承認表示・チェック自体も端末の安全性を検証・回復しない。
+A display offline commit issues no sentinel; only when boot is
+`network-confirmed` does it request the dedicated nudge, once. When the
+display re-commits online while boot is `offline-confirmed`, the BootGate
+starts at most one normal sentinel probe on the same controller. A display
+edge never directly fires a wipe, and neither the acknowledgement screen nor
+the checkbox itself verifies or restores the safety of the device.

@@ -1,104 +1,106 @@
-# Qrypt QR プロトコル仕様 v1
+# Qrypt QR Protocol Specification v1
 
-本書は QR コードで交換されるペイロードの正式仕様である。実装(`src/qr/payload.ts`, `src/crypto/*`)と単体テストは本書に従う。
+This document is the authoritative specification of the v1 payloads exchanged via QR codes. The implementation (`src/qr/payload.ts`, `src/crypto/*`) and the unit tests follow this document.
 
-## 1. ペイロード文字列
+> **Status (v2):** the AES-256-GCM message payload (`OCM1` with `alg: "A256GCM"`) remains produced and accepted. The RSA hybrid portions of this document are **historical**: the RSA path was removed in the v2 update, and schema validation rejects non-`A256GCM` `OCM1` messages. See [qr-protocol-v2.md](qr-protocol-v2.md) and the README's "Breaking changes" section.
+
+## 1. Payload String
 
 ```
 <PREFIX><base64url(CBOR(envelope))>
 ```
 
-- 文字集合: プレフィックス 5 文字(ASCII)+ base64url(`A-Z a-z 0-9 - _`、**パディング無し**)。ASCII のみのため QR はバイトモードで符号化され、文字数=バイト数。
-- 最大長: 8192 文字(パース前の入力上限。QR 実容量はこれより小さく、生成時に別途検証)。
+- Character set: a 5-character ASCII prefix + base64url (`A-Z a-z 0-9 - _`, **no padding**). Because the payload is ASCII-only, the QR code is encoded in byte mode and the character count equals the byte count.
+- Maximum length: 8192 characters (input limit before parsing; actual QR capacity is smaller and is validated separately at generation time).
 
-| プレフィックス | 種別 | エンベロープ型 |
+| Prefix | Kind | Envelope type |
 |---|---|---|
-| `OCM1:` | 暗号文メッセージ | `AesMessageEnvelopeV1` または `RsaHybridEnvelopeV1` |
-| `OCK1:` | 共通鍵 | `SymmetricKeyEnvelopeV1` |
-| `OCP1:` | 公開鍵 | `PublicKeyEnvelopeV1` |
-| `OCB1:` | 暗号化済み秘密鍵バックアップ | **v1 では予約のみ。生成・受理とも行わない**(受理時は UNSUPPORTED_ALGORITHM ではなく INVALID_QR_PAYLOAD「この種別は未対応です」相当で拒否) |
+| `OCM1:` | Ciphertext message | `AesMessageEnvelopeV1` or `RsaHybridEnvelopeV1` |
+| `OCK1:` | Symmetric key | `SymmetricKeyEnvelopeV1` |
+| `OCP1:` | Public key | `PublicKeyEnvelopeV1` |
+| `OCB1:` | Encrypted private-key backup | **Reserved only in v1; neither generated nor accepted** (on receipt it is rejected with `INVALID_QR_PAYLOAD` as an unsupported type, not with `UNSUPPORTED_ALGORITHM`) |
 
-## 2. CBOR 符号化
+## 2. CBOR Encoding
 
-- ライブラリ: cbor-x。`new Encoder({ useRecords: false, tagUint8Array: false })` / 対応する Decoder。
-- エンベロープは CBOR map(文字列キー)。バイナリは CBOR byte string(tag 無し)→ 復号時 Uint8Array。
-- 決定性: 本プロトコルはフィールド順序に意味を持たせない(AAD はエンベロープの CBOR 表現に依存しない。§4)。
+- Library: cbor-x. `new Encoder({ useRecords: false, tagUint8Array: false })` / the matching Decoder.
+- Envelopes are CBOR maps with text-string keys. Binary values are CBOR byte strings (untagged) → decoded as Uint8Array.
+- Determinism: this protocol assigns no meaning to field order (the AAD does not depend on the CBOR representation of the envelope; see §4).
 
-## 3. エンベロープ定義
+## 3. Envelope Definitions
 
-### 3.1 `AesMessageEnvelopeV1`(OCM1)
+### 3.1 `AesMessageEnvelopeV1` (OCM1)
 
-| キー | 型 | 制約 |
+| Key | Type | Constraint |
 |---|---|---|
-| `v` | int | `1` 固定 |
-| `type` | text | `"message"` 固定 |
+| `v` | int | fixed to `1` |
+| `type` | text | fixed to `"message"` |
 | `algorithm` | text | `"A256GCM"` |
-| `keyId` | text | `^[A-Za-z0-9_-]{22}$`(16 バイト乱数の base64url) |
-| `createdAt` | int | Unix ms。`0 < x < 2^53` |
-| `iv` | bytes | **12 バイト固定** |
-| `ciphertext` | bytes | 16〜4112 バイト(= 平文上限 4096 + GCM タグ 16。上限は `VITE_MAX_PLAINTEXT_BYTES + 16` から導出) |
-| `aad` | bytes | ≤128 バイト。§4 の再計算値と完全一致必須 |
+| `keyId` | text | `^[A-Za-z0-9_-]{22}$` (base64url of 16 random bytes) |
+| `createdAt` | int | Unix ms; `0 < x < 2^53` |
+| `iv` | bytes | **fixed 12 bytes** |
+| `ciphertext` | bytes | 16–4112 bytes (= plaintext limit 4096 + GCM tag 16; the upper bound is derived from `VITE_MAX_PLAINTEXT_BYTES + 16`) |
+| `aad` | bytes | ≤128 bytes; must byte-for-byte match the value recomputed per §4 |
 
-### 3.2 `RsaHybridEnvelopeV1`(OCM1)
+### 3.2 `RsaHybridEnvelopeV1` (OCM1)
 
-3.1 に対し `keyId` → `recipientKeyId`(同形式)、`algorithm` = `"RSA-OAEP-3072+A256GCM"`、追加 `wrappedKey`: bytes **384 バイト固定**(RSA-OAEP/SHA-256 で raw AES-256 鍵を wrap した値)。
+Same as 3.1 except: `keyId` → `recipientKeyId` (same format), `algorithm` = `"RSA-OAEP-3072+A256GCM"`, plus an additional `wrappedKey`: bytes, **fixed 384 bytes** (the raw AES-256 key wrapped with RSA-OAEP/SHA-256).
 
-### 3.3 `SymmetricKeyEnvelopeV1`(OCK1)
+### 3.3 `SymmetricKeyEnvelopeV1` (OCK1)
 
-`v:1, type:"symmetric-key", algorithm:"A256GCM", keyId, createdAt, key: bytes` — `key` は **32 バイト固定**(AES-256 raw)。
+`v:1, type:"symmetric-key", algorithm:"A256GCM", keyId, createdAt, key: bytes` — `key` is **fixed 32 bytes** (raw AES-256).
 
-### 3.4 `PublicKeyEnvelopeV1`(OCP1)
+### 3.4 `PublicKeyEnvelopeV1` (OCP1)
 
-`v:1, type:"public-key", algorithm:"RSA-OAEP-3072", keyId, createdAt, spki: bytes` — `spki` は SubjectPublicKeyInfo(DER)。350〜1200 バイトの範囲検証+`importKey` 成功で最終確認。
+`v:1, type:"public-key", algorithm:"RSA-OAEP-3072", keyId, createdAt, spki: bytes` — `spki` is a SubjectPublicKeyInfo (DER). Validated by a 350–1200 byte range check, with a successful `importKey` as the final confirmation.
 
-## 4. AAD(追加認証データ)
+## 4. AAD (Additional Authenticated Data)
 
 ```
 AAD = UTF-8( "OCAAD1|" + v + "|" + type + "|" + algorithm + "|" + keyId + "|" + createdAt )
 ```
 
-- `keyId` は AES では `keyId`、RSA ハイブリッドでは `recipientKeyId`。
-- 暗号化時: この値を `envelope.aad` に格納し、AES-GCM の `additionalData` に使用。
-- 復号時: エンベロープの平文フィールドから AAD を**再計算**し、`envelope.aad` とバイト一致しなければ復号を試みず失敗(DECRYPTION_FAILED)。一致した場合のみ `additionalData` として復号。これによりバージョン・種別・方式・鍵 ID・作成時刻の改竄は GCM タグ検証でも検出される。
+- The `keyId` component is `keyId` for AES and `recipientKeyId` for RSA hybrid.
+- On encryption: this value is stored in `envelope.aad` and used as the AES-GCM `additionalData`.
+- On decryption: the AAD is **recomputed** from the envelope's plaintext fields; if it does not byte-match `envelope.aad`, decryption is not attempted and the operation fails (DECRYPTION_FAILED). Only on a match is it passed as `additionalData` for decryption. As a result, tampering with the version, type, algorithm, key ID, or creation time is also detected by GCM tag verification.
 
-## 5. 暗号操作
+## 5. Cryptographic Operations
 
-- **AES-256-GCM**: 鍵 256bit・extractable(共通鍵 QR 生成のため)。IV は暗号化ごとに `crypto.getRandomValues(new Uint8Array(12))`。同一鍵での IV 再利用禁止(実装はテストで多重暗号化時の IV 非重複を検証)。タグ長 128bit(WebCrypto 既定)。
-- **RSA ハイブリッド**: メッセージごとに使い捨て AES-256-GCM 鍵を生成 → 本文を AES-GCM 暗号化 → AES 鍵を受信者 RSA-OAEP(3072/SHA-256)公開鍵で `wrapKey('raw')` → `wrappedKey`。RSA で本文を直接暗号化しない。復号は `unwrapKey`(復元鍵は non-extractable, `['decrypt']`)→ AES-GCM 復号。
-- 受信者鍵ペア: 公開鍵 `['encrypt','wrapKey']` extractable / 秘密鍵 `['decrypt','unwrapKey']` **non-extractable**。
+- **AES-256-GCM**: 256-bit key, extractable (required to generate symmetric-key QR codes). A fresh IV per encryption via `crypto.getRandomValues(new Uint8Array(12))`. IV reuse under the same key is forbidden (the implementation is covered by tests verifying IV uniqueness across repeated encryptions). Tag length 128 bits (the WebCrypto default).
+- **RSA hybrid**: generate a single-use AES-256-GCM key per message → encrypt the body with AES-GCM → wrap the AES key with the recipient's RSA-OAEP (3072/SHA-256) public key via `wrapKey('raw')` → `wrappedKey`. The body is never encrypted directly with RSA. Decryption uses `unwrapKey` (the unwrapped key is non-extractable, `['decrypt']`) → AES-GCM decryption.
+- Recipient key pair: public key `['encrypt','wrapKey']`, extractable / private key `['decrypt','unwrapKey']`, **non-extractable**.
 
-## 6. 検証順序とエラー対応
+## 6. Validation Order and Error Mapping
 
-| # | 検査 | 失敗時エラー |
+| # | Check | Error on failure |
 |---|---|---|
-| 1 | プレフィックスが 4 種のいずれか | `INVALID_QR_PREFIX` |
-| 2 | OCB1 | `INVALID_QR_PAYLOAD`(未対応種別) |
-| 3 | base64url 文字集合・長さ ≤8192 | `INVALID_QR_PAYLOAD` |
-| 4 | CBOR デコード成功・map である | `INVALID_QR_PAYLOAD` |
+| 1 | Prefix is one of the four defined values | `INVALID_QR_PREFIX` |
+| 2 | OCB1 | `INVALID_QR_PAYLOAD` (unsupported type) |
+| 3 | base64url character set; length ≤8192 | `INVALID_QR_PAYLOAD` |
+| 4 | CBOR decodes successfully and is a map | `INVALID_QR_PAYLOAD` |
 | 5 | `v === 1` | `UNSUPPORTED_PROTOCOL_VERSION` |
-| 6 | `type` がプレフィックスと整合 | `INVALID_QR_PAYLOAD` |
-| 7 | `algorithm` が当該 type の既知値 | `UNSUPPORTED_ALGORITHM` |
-| 8 | Zod strict 検証(未知キー拒否・型・バイト長・範囲) | `INVALID_QR_PAYLOAD` |
+| 6 | `type` is consistent with the prefix | `INVALID_QR_PAYLOAD` |
+| 7 | `algorithm` is a known value for that type | `UNSUPPORTED_ALGORITHM` |
+| 8 | Zod strict validation (unknown keys rejected; types, byte lengths, ranges) | `INVALID_QR_PAYLOAD` |
 
-復号時の失敗(AAD 不一致・タグ不一致・鍵不一致)はすべて「復号できませんでした。鍵、暗号方式、または暗号文が一致していません。」に正規化し、部分平文・内部例外を表示しない。
+All decryption-time failures (AAD mismatch, tag mismatch, wrong key) are normalized into the single message "Decryption failed. The key, cryptographic algorithm, or ciphertext does not match." (Japanese locale: 「復号できませんでした。鍵、暗号方式、または暗号文が一致していません。」); partial plaintext and internal exception details are never shown.
 
-## 7. QR 生成パラメーター(spec §13)
+## 7. QR Generation Parameters
 
-| 種別 | EC | quiet zone | サイズ |
+| Kind | EC | quiet zone | Size |
 |---|---|---|---|
-| 暗号文(OCM1) | Q(既定、設定で変更可) | 4 | 512px |
-| 鍵(OCK1/OCP1) | **H 固定** | 4 | 512px |
+| Ciphertext (OCM1) | Q (default; configurable in settings) | 4 | 512px |
+| Keys (OCK1/OCP1) | **H, fixed** | 4 | 512px |
 
-容量(QR v40 バイトモード): L=2953 / M=2331 / Q=1663 / H=1273 バイト。超過は `QR_TOO_LARGE`(生成前判定+生成例外の両方を捕捉)。予想サイズは `estimatePayloadChars(plaintextBytes, alg)`(実測 ±10% 以内をテストで担保)で事前表示する。
+Capacity (QR v40, byte mode): L=2953 / M=2331 / Q=1663 / H=1273 bytes. Oversize payloads fail with `QR_TOO_LARGE` (caught both by a pre-generation check and by trapping the generation exception). The expected size is shown to the user in advance via `estimatePayloadChars(plaintextBytes, alg)` (tests guarantee it stays within ±10% of measured values).
 
-## 8. 鍵 ID・指紋・ファイル名
+## 8. Key IDs, Fingerprints, and File Names
 
-- 鍵 ID / アーティファクト ID: 16 バイト乱数 → base64url 22 文字。短縮表示は先頭 8 文字。
-- 指紋: 鍵の正規化バイナリ(AES=raw 32B、公開鍵=SPKI DER)の SHA-256。内部識別は hex 64 文字全体。表示は先頭 8 バイトを 2 バイトごと big-endian uint16 % 10000 → 4 桁ゼロ埋め×4 グループ(例 `7392 1840 5521 9074`)。
-- 出力ファイル名: `<sanitized-name>-<shortId>.<png|svg|txt>`。sanitize は制御文字・`/\:*?"<>|` 除去+trim、空なら `qr`。秘密情報・平文・鍵素材を含めない。
+- Key ID / artifact ID: 16 random bytes → 22 base64url characters. The short display form is the first 8 characters.
+- Fingerprint: SHA-256 of the key's canonical binary form (AES = raw 32 B, public key = SPKI DER). Internal identification uses the full 64-character hex digest. The display form takes the first 8 bytes, 2 bytes at a time as big-endian uint16 % 10000 → four zero-padded 4-digit groups (e.g. `7392 1840 5521 9074`).
+- Output file names: `<sanitized-name>-<shortId>.<png|svg|txt>`. Sanitization removes control characters and `/\:*?"<>|`, then trims; if the result is empty, `qr` is used. File names never contain secrets, plaintext, or key material.
 
-## 9. 互換性ポリシー
+## 9. Compatibility Policy
 
-- 未知の `v` は将来バージョンとして拒否(UNSUPPORTED_PROTOCOL_VERSION、「新しいバージョンのアプリで作成されたQRです」)。
-- v1 実装は未知キーを受理しない(strict)。フィールド追加時は `v` を上げる。
-- 形式安定性は golden fixture テスト(固定鍵・固定 IV から生成した既知ペイロード文字列の完全一致+復号往復)で担保する。
+- Unknown `v` values are rejected as future versions (`UNSUPPORTED_PROTOCOL_VERSION`, surfaced to the user as "This QR code was created by a newer version of the app. Update the app." — Japanese locale: 「新しいバージョンのアプリで作成されたQRコードです。アプリを更新してください。」).
+- The v1 implementation does not accept unknown keys (strict). Adding a field requires bumping `v`.
+- Format stability is guaranteed by golden fixture tests (exact match of known payload strings generated from fixed keys and fixed IVs, plus a decryption round trip).
