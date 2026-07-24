@@ -26,7 +26,7 @@ describe("PWA offline readiness", () => {
     )
 
     expect(
-      await screen.findByText("オフライン利用の準備ができました"),
+      await screen.findByText("Offline use is ready"),
     ).toBeInTheDocument()
     expect(screen.queryByLabelText("アプリ更新通知")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "更新する" })).not.toBeInTheDocument()

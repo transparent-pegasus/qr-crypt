@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { QrScannerPanel } from "@/components/qr-scanner-panel"
-import { AppError, userMessageFor } from "@/crypto/errors"
+import { AppError, messageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import {
@@ -53,44 +53,46 @@ describe("QrScannerPanel multipart scan", () => {
     const view = render(scanner(session, onComplete))
     expect(startQrScan).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     expect(startQrScan.mock.calls[0]?.[3]).toMatchObject({ once: false })
     expect(
-      screen.queryByRole("button", { name: "カメラを停止" }),
+      screen.queryByRole("button", { name: "Stop camera" }),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole("button", { name: "読取状態を破棄" }),
+      screen.getByRole("button", { name: "Discard scan state" }),
     ).toHaveClass("w-full")
     expect(
       screen.getByText(
-        "カメラ画像は保存されません。閉じる・破棄ボタン・画面離脱で停止します。",
+        "Camera images are not stored. Scanning stops when you close the dialog, discard the scan state, or leave the screen.",
       ),
     ).toBeInTheDocument()
 
     await act(async () =>
       emitScannedPayload(multipartPayload("transfer-a", 2, 3)),
     )
-    expect(await screen.findByText("受信 1 / 3")).toBeInTheDocument()
-    expect(screen.getByText("未読取フレーム: 1枚目、2枚目")).toBeInTheDocument()
+    expect(await screen.findByText("Received 1 / 3")).toBeInTheDocument()
+    expect(
+      screen.getByText("Missing frames: frame 1, frame 2"),
+    ).toBeInTheDocument()
 
     await act(async () =>
       emitScannedPayload(multipartPayload("transfer-a", 2, 3)),
     )
-    expect(screen.getByText("受信 1 / 3")).toBeInTheDocument()
+    expect(screen.getByText("Received 1 / 3")).toBeInTheDocument()
     await act(async () =>
       emitScannedPayload(multipartPayload("transfer-a", 0, 3)),
     )
-    expect(await screen.findByText("受信 2 / 3")).toBeInTheDocument()
-    expect(screen.getByText("未読取フレーム: 2枚目")).toBeInTheDocument()
+    expect(await screen.findByText("Received 2 / 3")).toBeInTheDocument()
+    expect(screen.getByText("Missing frames: frame 2")).toBeInTheDocument()
 
     view.unmount()
     expect(scannerStop).toHaveBeenCalledOnce()
     render(scanner(session, onComplete))
-    expect(screen.getByText("受信 2 / 3")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    expect(screen.getByText("Received 2 / 3")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
-    expect(screen.getByText("受信 2 / 3")).toBeInTheDocument()
+    expect(screen.getByText("Received 2 / 3")).toBeInTheDocument()
 
     await act(async () =>
       emitScannedPayload(multipartPayload("transfer-a", 1, 3)),
@@ -101,9 +103,9 @@ describe("QrScannerPanel multipart scan", () => {
       artifactBytes: Uint8Array.of(3),
     })
     expect(
-      screen.getByText("全フレームのSHA-256整合性を確認しました。"),
+      screen.getByText("SHA-256 integrity was confirmed for all frames."),
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
 
     await act(async () =>
       emitScannedPayload(multipartPayload("transfer-a", 1, 3)),
@@ -123,7 +125,7 @@ describe("QrScannerPanel multipart scan", () => {
     const onComplete = vi.fn()
     render(scanner(session, onComplete))
 
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
 
     await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
     expect(onComplete).toHaveBeenCalledWith({
@@ -139,7 +141,7 @@ describe("QrScannerPanel multipart scan", () => {
     const session = new MultipartScanSession(5)
     const onSingleScan = vi.fn()
     render(scanner(session, vi.fn(), onSingleScan))
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
 
     act(() => emitScannedPayload(multipartPayload("transfer-a", 0, 2)))
@@ -147,11 +149,11 @@ describe("QrScannerPanel multipart scan", () => {
 
     expect(
       await screen.findByText(
-        "複数QR読取中です。単発QRは読取完了または破棄後に。",
+        "A multi-frame QR scan is in progress. Scan a single QR code after completion or after discarding the scan state.",
       ),
     ).toBeInTheDocument()
     expect(onSingleScan).not.toHaveBeenCalled()
-    expect(await screen.findByText("受信 1 / 2")).toBeInTheDocument()
+    expect(await screen.findByText("Received 1 / 2")).toBeInTheDocument()
     expect(scannerStop).not.toHaveBeenCalled()
   })
 
@@ -159,8 +161,8 @@ describe("QrScannerPanel multipart scan", () => {
     const user = userEvent.setup()
     const session = new MultipartScanSession(5)
     render(scanner(session))
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
-    await screen.findByText("QRコードを順不同で読み取れます")
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await screen.findByText("QR codes can be read in any order")
 
     await act(async () =>
       emitScannedPayload(multipartPayload("transfer-a", 0, 2)),
@@ -169,23 +171,25 @@ describe("QrScannerPanel multipart scan", () => {
       emitScannedPayload(multipartPayload("transfer-b", 1, 2)),
     )
     expect(
-      await screen.findByText(userMessageFor("FRAME_MISMATCH")),
+      await screen.findByText(messageFor("FRAME_MISMATCH", "en")),
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole("button", { name: "カメラを停止" }),
+      screen.queryByRole("button", { name: "Stop camera" }),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole("button", { name: "読取状態を破棄" }),
+      screen.getByRole("button", { name: "Discard scan state" }),
     ).toBeEnabled()
     expect(scannerStop).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole("button", { name: "読取状態を破棄" }))
+    await user.click(screen.getByRole("button", { name: "Discard scan state" }))
     expect(scannerStop).toHaveBeenCalledOnce()
-    expect(screen.queryByLabelText("複数QR読取進捗")).not.toBeInTheDocument()
+    expect(
+      screen.queryByLabelText("Multi-frame QR scan progress"),
+    ).not.toBeInTheDocument()
     expect(startQrScan).toHaveBeenCalledOnce()
-    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
 
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
   })
 
@@ -195,11 +199,11 @@ describe("QrScannerPanel multipart scan", () => {
     vi.spyOn(session, "add").mockReturnValueOnce(pending.promise)
     const onComplete = vi.fn()
     render(scanner(session, onComplete))
-    fireEvent.click(screen.getByRole("button", { name: "カメラを起動" }))
+    fireEvent.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
 
     act(() => emitScannedPayload("OCF2:pending"))
-    fireEvent.click(screen.getByRole("button", { name: "読取状態を破棄" }))
+    fireEvent.click(screen.getByRole("button", { name: "Discard scan state" }))
     await act(async () =>
       pending.resolve({
         kind: "complete",
@@ -211,7 +215,7 @@ describe("QrScannerPanel multipart scan", () => {
 
     expect(onComplete).not.toHaveBeenCalled()
     expect(
-      screen.queryByText("全フレームのSHA-256整合性を確認しました。"),
+      screen.queryByText("SHA-256 integrity was confirmed for all frames."),
     ).not.toBeInTheDocument()
   })
 
@@ -222,7 +226,7 @@ describe("QrScannerPanel multipart scan", () => {
       throw new AppError("UNSUPPORTED_ALGORITHM")
     })
     render(scanner(session, onComplete))
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
 
     await act(async () =>
@@ -231,12 +235,12 @@ describe("QrScannerPanel multipart scan", () => {
 
     expect(onComplete).toHaveBeenCalledOnce()
     expect(
-      await screen.findByText(userMessageFor("UNSUPPORTED_ALGORITHM")),
+      await screen.findByText(messageFor("UNSUPPORTED_ALGORITHM", "en")),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("全フレームのSHA-256整合性を確認しました。"),
+      screen.getByText("SHA-256 integrity was confirmed for all frames."),
     ).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
   })
 
   it("locks restart and discard while completion delivery is pending", async () => {
@@ -245,16 +249,16 @@ describe("QrScannerPanel multipart scan", () => {
     const session = new MultipartScanSession(5)
     const onComplete = vi.fn(() => delivery.promise)
     render(scanner(session, onComplete))
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
 
     act(() => emitScannedPayload(multipartPayload("transfer-a", 0, 1)))
-    expect(await screen.findByText("取り込み中です…")).toBeInTheDocument()
+    expect(await screen.findByText("Importing…")).toBeInTheDocument()
     expect(
-      screen.queryByRole("button", { name: "カメラを起動" }),
+      screen.queryByRole("button", { name: "Start camera" }),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole("button", { name: "読取状態を破棄" }),
+      screen.getByRole("button", { name: "Discard scan state" }),
     ).toBeDisabled()
 
     act(() => emitScannedPayload(multipartPayload("transfer-a", 0, 1)))
@@ -262,9 +266,9 @@ describe("QrScannerPanel multipart scan", () => {
     expect(startQrScan).toHaveBeenCalledOnce()
 
     await act(async () => delivery.resolve())
-    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
     expect(
-      screen.getByRole("button", { name: "読取状態を破棄" }),
+      screen.getByRole("button", { name: "Discard scan state" }),
     ).toBeEnabled()
   })
 
@@ -273,7 +277,7 @@ describe("QrScannerPanel multipart scan", () => {
     vi.setSystemTime(new Date("2026-01-02T03:04:05Z"))
     const session = new MultipartScanSession(1)
     render(scanner(session))
-    fireEvent.click(screen.getByRole("button", { name: "カメラを起動" }))
+    fireEvent.click(screen.getByRole("button", { name: "Start camera" }))
     await act(async () => {
       await Promise.resolve()
       await Promise.resolve()
@@ -283,15 +287,17 @@ describe("QrScannerPanel multipart scan", () => {
       await Promise.resolve()
       await Promise.resolve()
     })
-    expect(screen.getByText("受信 1 / 2")).toBeInTheDocument()
+    expect(screen.getByText("Received 1 / 2")).toBeInTheDocument()
 
     await act(async () => vi.advanceTimersByTimeAsync(61_000))
 
     expect(
-      screen.getByText("読取期限を過ぎたため、一時読取状態を破棄しました。"),
+      screen.getByText("The temporary scan state expired and was discarded."),
     ).toBeInTheDocument()
-    expect(screen.queryByLabelText("複数QR読取進捗")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(
+      screen.queryByLabelText("Multi-frame QR scan progress"),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
     expect(scannerStop).toHaveBeenCalled()
   })
 
@@ -299,7 +305,7 @@ describe("QrScannerPanel multipart scan", () => {
     vi.useFakeTimers()
     const session = new MultipartScanSession(5)
     render(scanner(session))
-    fireEvent.click(screen.getByRole("button", { name: "カメラを起動" }))
+    fireEvent.click(screen.getByRole("button", { name: "Start camera" }))
     await act(async () => {
       await Promise.resolve()
       await Promise.resolve()
@@ -309,13 +315,15 @@ describe("QrScannerPanel multipart scan", () => {
       await Promise.resolve()
       await Promise.resolve()
     })
-    expect(screen.getByText("受信 1 / 2")).toBeInTheDocument()
+    expect(screen.getByText("Received 1 / 2")).toBeInTheDocument()
 
     session.discard()
     await act(async () => vi.advanceTimersByTimeAsync(1_000))
 
-    expect(screen.queryByLabelText("複数QR読取進捗")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(
+      screen.queryByLabelText("Multi-frame QR scan progress"),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
     expect(scannerStop).toHaveBeenCalled()
   })
 })

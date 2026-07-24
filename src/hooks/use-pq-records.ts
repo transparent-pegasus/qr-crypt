@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import type { MessageKey } from "@/i18n"
 import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
 import { listBundles } from "@/storage/pq-bundle-repository"
 import { listIdentities } from "@/storage/pq-identity-repository"
@@ -7,7 +8,7 @@ export interface UsePqRecordsResult {
   identities: PostQuantumIdentity[]
   bundles: PqPublicBundleRecord[]
   loading: boolean
-  error: string | null
+  error: MessageKey | null
   refresh: () => Promise<void>
 }
 
@@ -15,7 +16,7 @@ export function usePqRecords(): UsePqRecordsResult {
   const [identities, setIdentities] = useState<PostQuantumIdentity[]>([])
   const [bundles, setBundles] = useState<PqPublicBundleRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<MessageKey | null>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -27,7 +28,7 @@ export function usePqRecords(): UsePqRecordsResult {
       setBundles(nextBundles)
       setError(null)
     } catch {
-      setError("ポスト量子IDと公開鍵を読み込めませんでした。")
+      setError("hooks.pqRecords.loadFailed")
     } finally {
       setLoading(false)
     }

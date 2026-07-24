@@ -1,4 +1,4 @@
-import { Navigate, Outlet, createBrowserRouter } from "react-router-dom"
+import { Navigate, Outlet, createBrowserRouter } from "react-router"
 import { env } from "@/schemas/env-schema"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { NetworkStatusBadge } from "@/components/network-status"

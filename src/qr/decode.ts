@@ -1,5 +1,5 @@
-// カメラ QR 読取(spec §16 / plan §12-10, §13 C10)。
-// @zxing/browser・@zxing/library の import は本モジュールに限定する。
+// Camera QR scanning.
+// Limit imports of @zxing/browser and @zxing/library to this module.
 import type { AppError } from "@/crypto/errors"
 import { BrowserQRCodeReader } from "@zxing/browser"
 import {
@@ -10,12 +10,13 @@ import {
 import { AppError as ConcreteAppError } from "@/crypto/errors"
 
 export interface QrScanHandle {
-  // 冪等。controls 停止と、この試行が所有する全 MediaStreamTrack 停止まで保証する
+  // Idempotent. Stop controls and every MediaStreamTrack owned by this attempt.
   stop(): void
 }
 
 export interface StartQrScanOptions {
-  // 既定 true: 初回成功で自動停止し、以後の検出を無視する(多重読取防止)
+  // Defaults to true: stop automatically after the first success and ignore later
+  // detections to prevent duplicate reads.
   once?: boolean
   signal?: AbortSignal
 }
@@ -83,10 +84,12 @@ class AttemptCancelled extends Error {}
 let nextAttemptId = 0
 let activeAttempt: CameraAttempt | null = null
 
-// getUserMedia 自体は中断できないため、未解決の取得を追い越さない直列キューにする。
+// getUserMedia itself cannot be aborted, so serialize acquisition to prevent overtaking
+// an unresolved request.
 let cameraAcquisitionQueue: Promise<void> = Promise.resolve()
 
-// true は自動再起動ではなく、UI を stopped（再起動ボタン表示）へ遷移させる指示。
+// true does not automatically restart; it directs the UI to transition to stopped
+// and display the restart button.
 export function shouldRestartQrScanOnVisibility(
   state: CameraScanState,
   visibilityState: DocumentVisibilityState,
@@ -160,7 +163,7 @@ function isTransientCameraAcquireError(error: unknown): boolean {
   return name === "NotReadableError" || name === "AbortError"
 }
 
-// zxing Exception の getKind() はクラス毎のリテラル文字列を返し、minify 後も保持される。
+// getKind() on a ZXing Exception returns a per-class string literal that survives minification.
 function zxingKind(error: unknown): string | null {
   if (typeof error !== "object" || error === null) return null
   const getKind = (error as { getKind?: unknown }).getKind
@@ -174,9 +177,10 @@ function zxingKind(error: unknown): string | null {
 }
 
 function isTransientDecodeError(error: unknown): boolean {
-  // minify でクラス名が短縮されるため name 判定は本番で不成立。
-  // instanceof(単一実体)→ getKind() 戻り値照合(二重バンドル保険)→ name(テスト・未バンドル環境)。
-  // zxing の scan ループは上記3種のみ再試行するため、3種以外は fatal のまま維持する。
+  // Minification shortens class names, so name checks do not work in production.
+  // Check instanceof (single module instance), then getKind() (defense against duplicate
+  // bundles), then name (tests and unbundled environments). ZXing's scan loop retries only
+  // the three types above, so preserve every other type as fatal.
   if (
     error instanceof NotFoundException ||
     error instanceof ChecksumException ||
@@ -212,7 +216,7 @@ function stopControlsOnce(attempt: CameraAttempt, controls: ScannerControls): vo
   try {
     controls.stop()
   } catch {
-    // controls が失敗しても、所有トラックの停止を継続する
+    // Continue stopping owned tracks even if stopping controls fails.
   }
 }
 
@@ -266,8 +270,9 @@ function acquireCamera(attempt: CameraAttempt): Promise<MediaStream> {
   const acquisition = cameraAcquisitionQueue.then(async () => {
     if (!isActiveAttempt(attempt)) throw new AttemptCancelled()
 
-    // 解像度未指定だと多くの端末が 640×480 を返し、鍵 QR(~100 モジュール)が
-    // 1 モジュール 2–3px となり静止でも復号不能になる。ideal は不一致でも拒否されない。
+    // Without a requested resolution, many devices return 640×480, reducing a key QR
+    // (~100 modules) to 2–3px per module and making it undecodable even when stationary.
+    // An unmet ideal constraint does not reject acquisition.
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: "environment",
@@ -282,7 +287,8 @@ function acquireCamera(attempt: CameraAttempt): Promise<MediaStream> {
     return stream
   })
 
-  // 失敗もキューを壊さない。取得 Promise が実際に settle するまでは次を開始しない。
+  // Failures do not break the queue. Do not start the next acquisition until the current
+  // acquisition promise actually settles.
   cameraAcquisitionQueue = acquisition.then(
     () => undefined,
     () => undefined,
@@ -329,7 +335,8 @@ function retryVideoPlayback(attempt: CameraAttempt): void {
   try {
     void attempt.video.play().catch(() => undefined)
   } catch {
-    // standalone PWA では同期例外になる実装もあるため、次のイベント/再試行を待つ。
+    // Some implementations throw synchronously in a standalone PWA, so wait for the
+    // next event/retry.
   }
 }
 
@@ -548,8 +555,9 @@ type AttemptOutcome =
   | { kind: "stopped" }
   | { kind: "timeout" }
 
-// NotFoundException(未検出)はスキャン継続。初回カメラ取得時の一時エラーだけ再試行。
-// 取得・再生・停止は世代 ID と試行所有ストリームで分離し、旧世代は UI 状態を触らない。
+// Continue scanning on NotFoundException (nothing detected). Retry only transient errors
+// from initial camera acquisition. Separate acquisition, playback, and stopping with a
+// generation ID and attempt-owned streams; stale generations must not touch UI state.
 async function startQrScanImplementation(
   video: HTMLVideoElement,
   onText: (text: string) => void,

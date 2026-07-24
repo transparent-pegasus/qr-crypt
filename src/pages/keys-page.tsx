@@ -64,6 +64,12 @@ import { useKeys } from "@/hooks/use-keys"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
+import {
+  messageKeyOrFallback,
+  useI18n,
+  useLocalizedMessage,
+  type LocalizedMessage,
+} from "@/i18n"
 import { cn } from "@/lib/utils"
 import { decodePayload } from "@/qr/payload"
 import type {
@@ -100,6 +106,7 @@ function assertUsableSingleKey(envelope: SingleKeyRead): void {
 }
 
 export function KeysPage() {
+  const { t } = useI18n()
   const { camera } = useFeatureSupport()
   const { setSensitiveSession } = useSensitiveSession()
   const { preferences } = usePreferences()
@@ -112,7 +119,7 @@ export function KeysPage() {
   } = usePqRecords()
   const getPqClient = usePqCryptoClient()
   const [tab, setTab] = useState<KeysTab>("create")
-  // 既定種類は設定のデフォルト暗号方式に従う(明示選択が最優先)
+  // Follow the configured default algorithm unless the user explicitly selects a kind.
   const [createKindOverride, setCreateKindOverride] = useState<CreateKeyKind | null>(
     null,
   )
@@ -122,7 +129,8 @@ export function KeysPage() {
   const [keyName, setKeyName] = useState("")
   const [importPayload, setImportPayload] = useState("")
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<LocalizedMessage | null>(null)
+  const localizedError = useLocalizedMessage(error ?? keysError ?? pqError)
   const [selection, setSelection] = useState<KeySelection | null>(null)
   const [pendingBundle, setPendingBundle] = useState<PqPublicBundleRecord | null>(null)
   const [fingerprintChecked, setFingerprintChecked] = useState(false)
@@ -187,7 +195,12 @@ export function KeysPage() {
   const createSymmetric = async () => {
     const parsed = keyNameSchema.safeParse(keyName)
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "鍵名を確認してください。")
+      setError(
+        messageKeyOrFallback(
+          parsed.error.issues[0]?.message,
+          "keys.validation.keyNameFallback",
+        ),
+      )
       return
     }
     setBusy(true)
@@ -198,9 +211,9 @@ export function KeysPage() {
       setKeyName("")
       await refreshKeys()
       setSelection({ kind: "symmetric", id: record.id })
-      toast.success("共通鍵を作成しました")
+      toast.success(t("keys.toast.symmetricCreated"))
     } catch (caught) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+      setError(toAppError(caught, "STORAGE_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -209,7 +222,12 @@ export function KeysPage() {
   const createPqIdentity = async () => {
     const parsed = keyNameSchema.safeParse(keyName)
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "ID名を確認してください。")
+      setError(
+        messageKeyOrFallback(
+          parsed.error.issues[0]?.message,
+          "keys.validation.idNameFallback",
+        ),
+      )
       return
     }
     setBusy(true)
@@ -226,9 +244,9 @@ export function KeysPage() {
       setKeyName("")
       await refreshPq()
       setSelection({ kind: "identity", id: identity.id })
-      toast.success("ポスト量子IDを作成しました")
+      toast.success(t("keys.toast.identityCreated"))
     } catch (caught) {
-      setError(toAppError(caught, "ENCRYPTION_FAILED").userMessage)
+      setError(toAppError(caught, "ENCRYPTION_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -240,9 +258,9 @@ export function KeysPage() {
     try {
       await Promise.all(legacyKeys.map((key) => deleteKeyRecord(key.id)))
       await refreshKeys()
-      toast.success("旧形式のRSA鍵を削除しました")
+      toast.success(t("keys.toast.legacyRemoved"))
     } catch (caught) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+      setError(toAppError(caught, "STORAGE_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -284,7 +302,9 @@ export function KeysPage() {
     switch (decoded.kind) {
       case "symmetric-key": {
         const record = await importSymmetricKeyRecord(
-          `取込共通鍵-${formatSuggestedDate(Date.now())}`,
+          t("keys.import.symmetricDefaultName", {
+            date: formatSuggestedDate(Date.now()),
+          }),
           decoded.envelope,
           Date.now(),
         )
@@ -312,7 +332,7 @@ export function KeysPage() {
       await importDecoded(decodePayload(importPayload.trim()))
       setImportPayload("")
     } catch (caught) {
-      setError(toAppError(caught, "INVALID_QR_PAYLOAD").userMessage)
+      setError(toAppError(caught, "INVALID_QR_PAYLOAD").code)
     } finally {
       setBusy(false)
     }
@@ -332,7 +352,12 @@ export function KeysPage() {
     if (!pendingSymmetricImport || !symmetricImportAcknowledged) return
     const parsedName = keyNameSchema.safeParse(symmetricImportName)
     if (!parsedName.success) {
-      setError(parsedName.error.issues[0]?.message ?? "鍵名を確認してください。")
+      setError(
+        messageKeyOrFallback(
+          parsedName.error.issues[0]?.message,
+          "keys.validation.keyNameFallback",
+        ),
+      )
       return
     }
     setBusy(true)
@@ -343,9 +368,9 @@ export function KeysPage() {
       setSymmetricImportName("")
       setSymmetricImportAcknowledged(false)
       await refreshKeys()
-      toast.success("共通鍵を取り込みました")
+      toast.success(t("keys.toast.symmetricImported"))
     } catch (caught) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+      setError(toAppError(caught, "STORAGE_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -363,9 +388,11 @@ export function KeysPage() {
       setPendingBundle(null)
       setFingerprintChecked(false)
       await refreshPq()
-      toast.success(confirmed ? "指紋確認済みで保存しました" : "未確認のまま保存しました")
+      toast.success(
+        t(confirmed ? "keys.toast.bundleConfirmed" : "keys.toast.bundleUnverified"),
+      )
     } catch (caught) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+      setError(toAppError(caught, "STORAGE_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -393,9 +420,14 @@ export function KeysPage() {
   return (
     <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={busy}>
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-[1.375rem] font-bold tracking-tight">鍵追加</h2>
+        <h2 className="text-[1.375rem] font-bold tracking-tight">
+          {t("keys.title")}
+        </h2>
         {(keysLoading || pqLoading || busy) && (
-          <LoaderCircle aria-label="処理中" className="size-5 animate-spin" />
+          <LoaderCircle
+            aria-label={t("common.processing")}
+            className="size-5 animate-spin"
+          />
         )}
       </div>
 
@@ -403,10 +435,10 @@ export function KeysPage() {
         <Alert variant="destructive" role="alert">
           <AlertCircle aria-hidden="true" className="size-4" />
           <AlertTitle>
-            旧形式のRSA鍵 {legacyKeys.length} 件は v2 で使用不可、復元できません
+            {t("keys.legacy.title", { count: legacyKeys.length })}
           </AlertTitle>
           <AlertDescription className="space-y-3">
-            <p>旧暗号文は復号できません。鍵は通常の一覧や選択肢には表示しません。</p>
+            <p>{t("keys.legacy.body")}</p>
             <Button
               type="button"
               variant="destructive"
@@ -414,7 +446,7 @@ export function KeysPage() {
               onClick={() => void removeLegacyKeys()}
             >
               <Trash2 aria-hidden="true" />
-              旧形式の鍵を削除
+              {t("keys.legacy.deleteButton")}
             </Button>
           </AlertDescription>
         </Alert>
@@ -422,18 +454,18 @@ export function KeysPage() {
 
       {(error || keysError || pqError) && (
         <Alert variant="destructive" role="alert">
-          <AlertTitle>操作を完了できません</AlertTitle>
-          <AlertDescription>{error ?? keysError ?? pqError}</AlertDescription>
+          <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+          <AlertDescription>{localizedError}</AlertDescription>
         </Alert>
       )}
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as KeysTab)}>
         <TabsList className="grid h-11 w-full grid-cols-2">
           <TabsTrigger value="create" className="h-9 cursor-pointer px-1 text-sm">
-            作成
+            {t("keys.tab.create")}
           </TabsTrigger>
           <TabsTrigger value="import" className="h-9 cursor-pointer px-1 text-sm">
-            読込
+            {t("keys.tab.import")}
           </TabsTrigger>
         </TabsList>
 
@@ -457,16 +489,16 @@ export function KeysPage() {
                 id="camera-import-title"
                 className="font-semibold leading-none tracking-tight"
               >
-                カメラで読み取る
+                {t("keys.import.cameraTitle")}
               </h3>
             </CardHeader>
             <CardContent className="space-y-4 p-4 pt-0">
               <DemoKeyQr />
               <QrScannerModal
-                triggerLabel="鍵QRを読み取る"
+                triggerLabel={t("keys.import.scanTrigger")}
                 singleTargets={["symmetric-key"]}
                 cameraAvailable={camera}
-                title="鍵QRを読み取る"
+                title={t("keys.import.scanTrigger")}
                 onSingleScan={(_target, payload) => importScannedPayload(payload)}
                 multipart={{
                   session: scanSession,
@@ -481,17 +513,19 @@ export function KeysPage() {
                 id="paste-import-title"
                 className="font-semibold leading-none tracking-tight"
               >
-                ペイロードを貼り付ける
+                {t("common.pastePayload")}
               </h3>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               <div className="space-y-2">
-                <Label htmlFor="key-payload">鍵ペイロード</Label>
+                <Label htmlFor="key-payload">
+                  {t("keys.import.payloadLabel")}
+                </Label>
                 <Textarea
                   id="key-payload"
                   value={importPayload}
                   onChange={(event) => setImportPayload(event.target.value)}
-                  placeholder="OCK1: / OCP2: / OCS2: / OCI2: を貼り付け"
+                  placeholder={t("keys.import.payloadPlaceholder")}
                   className="min-h-28 break-all font-mono"
                 />
                 <Button
@@ -501,7 +535,7 @@ export function KeysPage() {
                   onClick={() => void importPastedPayload()}
                 >
                   <KeyRound aria-hidden="true" />
-                  鍵を読み取る
+                  {t("keys.import.readButton")}
                 </Button>
               </div>
             </CardContent>
@@ -509,18 +543,19 @@ export function KeysPage() {
           {singleKeyRead && (
             <Alert>
               <CheckCircle2 aria-hidden="true" className="size-4" />
-              <AlertTitle>単鍵を読み取りました</AlertTitle>
+              <AlertTitle>{t("keys.singleKey.title")}</AlertTitle>
               <AlertDescription className="space-y-2">
                 <p>
                   {singleKeyRead.type === "pq-kem-public-key"
-                    ? "暗号化用公開鍵"
-                    : "署名検証用公開鍵"}{" "}
+                    ? t("keys.singleKey.kemLabel")
+                    : t("keys.singleKey.signingLabel")}{" "}
                   / {singleKeyRead.algorithm}
                 </p>
-                <Fingerprint label="単鍵指紋" value={singleKeyFingerprint} />
-                <p>
-                  人物との対応を確認して永続利用するには、OCI2公開鍵セットを取り込んでください。
-                </p>
+                <Fingerprint
+                  label={t("keys.singleKey.fingerprintLabel")}
+                  value={singleKeyFingerprint}
+                />
+                <p>{t("keys.singleKey.persistHint")}</p>
               </AlertDescription>
             </Alert>
           )}
@@ -534,24 +569,23 @@ export function KeysPage() {
           onPointerDownOutside={(event) => event.preventDefault()}
         >
           <DialogHeader>
-            <DialogTitle>別経路で指紋を比較してください</DialogTitle>
+            <DialogTitle>{t("keys.bundle.dialogTitle")}</DialogTitle>
             <DialogDescription>
-              取込を完了する前に、相手と通話・対面など別経路で full hex
-              を照合します。自己署名だけでは人物を証明しません。
+              {t("keys.bundle.dialogDesc")}
             </DialogDescription>
           </DialogHeader>
           {pendingBundle && (
             <div className="space-y-4">
               <Fingerprint
-                label="Identity fingerprint"
+                label={t("common.identityFingerprint")}
                 value={pendingBundle.identityFingerprint}
               />
               <Fingerprint
-                label="ML-KEM fingerprint"
+                label={t("keys.bundle.fingerprintKem")}
                 value={pendingBundle.kem.fingerprint}
               />
               <Fingerprint
-                label="ML-DSA fingerprint"
+                label={t("keys.bundle.fingerprintSigning")}
                 value={pendingBundle.signing.fingerprint}
               />
               <div className="flex items-start gap-2">
@@ -560,7 +594,9 @@ export function KeysPage() {
                   checked={fingerprintChecked}
                   onCheckedChange={(checked) => setFingerprintChecked(checked === true)}
                 />
-                <Label htmlFor="fingerprint-confirmed">別経路で一致を確認した</Label>
+                <Label htmlFor="fingerprint-confirmed">
+                  {t("keys.bundle.confirmLabel")}
+                </Label>
               </div>
             </div>
           )}
@@ -571,14 +607,14 @@ export function KeysPage() {
               disabled={busy}
               onClick={() => void savePendingBundle(false)}
             >
-              未確認のまま保存
+              {t("keys.bundle.saveUnverified")}
             </Button>
             <Button
               type="button"
               disabled={busy || !fingerprintChecked}
               onClick={() => void savePendingBundle(true)}
             >
-              確認して保存
+              {t("keys.bundle.saveConfirmed")}
             </Button>
           </DialogFooter>
         </NoAutofocusDialogContent>
@@ -596,19 +632,21 @@ export function KeysPage() {
       >
         <NoAutofocusDialogContent>
           <DialogHeader>
-            <DialogTitle>共通鍵を取り込みます</DialogTitle>
+            <DialogTitle>{t("keys.symmetricImport.dialogTitle")}</DialogTitle>
             <DialogDescription>
-              このペイロードには暗号化と復号に使える秘密鍵が含まれます。
+              {t("keys.symmetricImport.dialogDesc")}
             </DialogDescription>
           </DialogHeader>
           <Alert variant="destructive">
-            <AlertTitle>共有経路を確認してください</AlertTitle>
+            <AlertTitle>{t("keys.symmetricImport.warnTitle")}</AlertTitle>
             <AlertDescription>
-              第三者が同じ鍵を持つと、暗号文を復号されるおそれがあります。
+              {t("keys.symmetricImport.warnBody")}
             </AlertDescription>
           </Alert>
           <div className="space-y-2">
-            <Label htmlFor="symmetric-import-name">鍵名</Label>
+            <Label htmlFor="symmetric-import-name">
+              {t("keys.symmetricImport.nameLabel")}
+            </Label>
             <Input
               id="symmetric-import-name"
               value={symmetricImportName}
@@ -624,7 +662,9 @@ export function KeysPage() {
                 setSymmetricImportAcknowledged(checked === true)
               }
             />
-            <Label htmlFor="symmetric-import-ack">この鍵の共有経路を信頼しています</Label>
+            <Label htmlFor="symmetric-import-ack">
+              {t("keys.symmetricImport.ackLabel")}
+            </Label>
           </div>
           <DialogFooter>
             <Button
@@ -632,7 +672,7 @@ export function KeysPage() {
               disabled={busy || !symmetricImportAcknowledged}
               onClick={() => void savePendingSymmetricImport()}
             >
-              共通鍵を保存
+              {t("keys.symmetricImport.saveButton")}
             </Button>
           </DialogFooter>
         </NoAutofocusDialogContent>
@@ -657,15 +697,17 @@ export function KeysPage() {
 }
 
 function DemoKeyQr() {
+  const { t } = useI18n()
   return (
-    // アイコン上余白 = CardHeader pb-3(12px) + py-3(12px) = 24px。下も gap-6 で 24px に揃える
+    // The space above the icon is CardHeader pb-3 (12px) + py-3 (12px) = 24px;
+    // use gap-6 below it to match that 24px spacing.
     <div className="flex flex-col items-center gap-6 py-3">
       <ScanLine
         aria-hidden="true"
         className="size-32 text-muted-foreground"
       />
       <p className="text-sm text-muted-foreground">
-        相手の画面の輝度を上げてもらい、カメラを15〜20cmほど離してピントが合うまで静止すると読み取りやすくなります。
+        {t("keys.demo.hint")}
       </p>
     </div>
   )
@@ -686,14 +728,19 @@ function CreateField({
   busy: boolean
   onCreate: () => void
 }) {
+  const { language, t } = useI18n()
   const pq = kind === "pq-identity"
-  const nameLabel = pq ? "ポスト量子ID名" : "共通鍵名"
-  const buttonLabel = pq ? "ポスト量子IDを作成" : "共通鍵を作成"
+  const nameLabel = t(
+    pq ? "keys.create.nameLabel.pq" : "keys.create.nameLabel.symmetric",
+  )
+  const buttonLabel = t(
+    pq ? "keys.create.button.pq" : "keys.create.button.symmetric",
+  )
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
         <div className="space-y-2">
-          <Label htmlFor="create-key-kind">種類</Label>
+          <Label htmlFor="create-key-kind">{t("keys.create.kindLabel")}</Label>
           <Select
             value={kind}
             onValueChange={(value) => onKindChange(value as CreateKeyKind)}
@@ -703,9 +750,11 @@ function CreateField({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="pq-identity">
-                ポスト量子ID ML-KEM-1024 + ML-DSA-87
+                {t("keys.create.kind.pqIdentity")}
               </SelectItem>
-              <SelectItem value="symmetric">{ALGORITHM_LABELS.A256GCM}</SelectItem>
+              <SelectItem value="symmetric">
+                {ALGORITHM_LABELS[language].A256GCM}
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -725,7 +774,7 @@ function CreateField({
             )}
           >
             <ShieldCheck aria-hidden="true" />
-            experimental・未独立監査
+            {t("keys.create.experimentalNote")}
           </div>
         )}
         <Button
@@ -747,11 +796,14 @@ function CreateField({
 }
 
 function Fingerprint({ label, value }: { label: string; value: string }) {
+  const { t } = useI18n()
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="break-all font-mono text-xs">{value}</p>
-      <p className="font-mono text-sm">比較表示: {formatFingerprint(value)}</p>
+      <p className="font-mono text-sm">
+        {t("common.fingerprintCompare", { value: formatFingerprint(value) })}
+      </p>
     </div>
   )
 }

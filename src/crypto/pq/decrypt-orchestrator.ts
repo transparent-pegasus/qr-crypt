@@ -1,17 +1,20 @@
-// 署名付き復号 orchestrator(plan2.1 §C2 — WP-11)。
+// Signed-decryption orchestrator.
 //
-// フロー(凍結):
-//   openPqEnvelope(Worker: Decaps → HKDF → GCM 認証成功 → 内側 schema 検証)
+// Flow (frozen):
+//   openPqEnvelope (Worker: Decaps → HKDF → successful GCM authentication
+//   → inner-schema validation)
 //   → unsigned suite: {kind:"unsigned", plaintext}
-//   → signed suite: 内側 senderSigningKeyId で resolveSigningKey(repo lookup)
-//     → 未知鍵: {kind:"signed-key-unknown", senderSigningKeyId}
-//       (plaintext は構成しない・Worker 内 zeroize・署名鍵取込導線へ)
-//     → 既知鍵: verifySignedMessage → 成功時のみ {kind:"signed-valid", ...}
-//       失敗時 AppError("SIGNATURE_INVALID")(plaintext 非表示 spec2 §20)
+//   → signed suite: resolveSigningKey by the inner senderSigningKeyId (repository lookup)
+//     → unknown key: {kind:"signed-key-unknown", senderSigningKeyId}
+//       (do not construct plaintext; zeroize in the Worker; continue to the signing-key
+//       import path)
+//     → known key: verifySignedMessage → {kind:"signed-valid", ...} only on success
+//       failure: AppError("SIGNATURE_INVALID") (do not display plaintext)
 //
-// 相互拘束(plan2.1 §C4): outer suite / recipient identity の algorithm・keyId /
+// Cross-binding: compare the outer suite, the recipient identity's
+// algorithm and keyId,
 // inner body.recipientKemKeyId / signature.algorithm / body.senderSigningKeyId /
-// 解決済み公開鍵・鍵長 を全照合。不一致は DECRYPTION_FAILED。
+// the resolved public key, and key lengths. Any mismatch is DECRYPTION_FAILED.
 import type { PqCryptoClient } from "@/crypto/pq/worker-client"
 import type {
   MlDsaAlgorithm,
@@ -27,7 +30,8 @@ import { zeroize } from "@/crypto/pq/zeroize"
 export interface ResolvedSigningKey {
   algorithm: MlDsaAlgorithm
   publicKey: Uint8Array
-  // 取込済みレコードの失効状態(revoked は検証にも使わない → 未知鍵扱い)
+  // Revocation state of the imported record. Do not use revoked keys even for
+  // verification; treat them as unknown.
   revoked: boolean
 }
 

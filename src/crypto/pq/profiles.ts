@@ -1,6 +1,6 @@
-// プロファイル→アルゴリズム・サイズ定数表(spec2 §2、plan2.1 §H WP-A2 recon 値)。
-// 出典: @noble/post-quantum 0.6.1 実ソース + FIPS 203/204 のパラメーター表。
-// この表は v2 契約の一部であり、変更はプロトコル改版を意味する。
+// Profile-to-algorithm and size-constant table.
+// Sources: @noble/post-quantum 0.6.1 source and the FIPS 203/204 parameter tables.
+// This table is part of the v2 contract; changing it requires a protocol revision.
 import type { MlDsaAlgorithm, MlKemAlgorithm, PqProfileId } from "@/schemas/domain"
 import { DSA_SEED_BYTES, KEM_SEED_BYTES } from "@/lib/limits"
 
@@ -73,7 +73,9 @@ export const PQ_PROFILES: Record<PqProfileId, PqProfileSpec> = {
     symmetric: "AES-256-GCM",
     kdf: "HKDF-SHA-256",
   },
-  // maximum は型・定数のみ予約(plan2.1 §A: 初期リリースでは UI・ID 作成に露出しない)
+  // "maximum" is the active mainline profile. "balanced" remains available only as
+  // append-only wire/codec vocabulary and is rejected at operational boundaries with
+  // UNSUPPORTED_ALGORITHM.
   maximum: {
     id: "maximum",
     kem: KEM_SIZES["ML-KEM-1024"],

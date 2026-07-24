@@ -1,10 +1,11 @@
-// pqIdentities ストアの CRUD(plan2.1 §E1/§E2 — WP-13)。
-// keyPath: id / index: by-createdAt, by-kemKeyId, by-signingKeyId。
+// CRUD for the pqIdentities store.
+// keyPath: id / indexes: by-createdAt, by-kemKeyId, by-signingKeyId.
 //
-// 選択規則(plan2.1 §E1・凍結):
-//   - 復号: rotated 含む全 non-destroyed を kem.keyId で探索
-//   - 署名: status="active" の signing のみ(revoked/rotated は署名不可)
-//   - 展開済み秘密鍵は絶対に永続化しない(シードの EncryptedSecret のみ)
+// Frozen selection rules:
+//   - Decryption: search every non-destroyed identity, including rotated, by kem.keyId.
+//   - Signing: only signing material with status="active"; revoked/rotated identities
+//     cannot sign.
+//   - Never persist expanded secret keys; persist only the seed's EncryptedSecret.
 import type { PostQuantumIdentity } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { validatePostQuantumIdentity } from "@/schemas/key-schema"
@@ -86,7 +87,7 @@ export async function saveIdentity(identity: PostQuantumIdentity): Promise<void>
   }
 }
 
-// ローテーション(rotateIdentity の結果 2 行を単一 transaction で保存)
+// Rotation: store both rows returned by rotateIdentity in one transaction.
 export async function saveRotation(args: {
   next: PostQuantumIdentity
   previous: PostQuantumIdentity

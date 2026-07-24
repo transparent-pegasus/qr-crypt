@@ -1,6 +1,6 @@
-// Vault シード暗号化(spec2 §9、WP-11)。AES-256-GCM(IV 12B CSPRNG)。
-// AAD は buildVaultAadV2(plan2.1 §C8)— 用途ラベル単体は禁止。
-// 暗号化後、平文シードは呼出側の責務で zeroize する。
+// Vault seed encryption uses AES-256-GCM with a 12B CSPRNG IV.
+// AAD must come from buildVaultAadV2; a purpose label alone is prohibited.
+// After encryption, the caller is responsible for zeroizing the plaintext seed.
 import type { EncryptedSecret } from "@/schemas/domain"
 import type { VaultAadFieldsV2 } from "@/crypto/pq/wire-bytes"
 import { buildVaultAadV2, keyIdRawBytes } from "@/crypto/pq/wire-bytes"

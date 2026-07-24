@@ -1,5 +1,6 @@
-// OCF2 の表示間隔契約。env-schema.ts は limits.ts と相互依存するため、
-// 循環を作らず両方から参照できる依存ゼロのモジュールで所有する。
+// OCF2 display-interval contract. env-schema.ts and limits.ts depend on each other,
+// so this dependency-free module owns the contract and lets both reference it
+// without creating a cycle.
 export const FRAME_INTERVAL_MS_VALUES = [1_000, 1_500, 2_000, 2_500, 3_000] as const
 export type FrameIntervalMs = (typeof FRAME_INTERVAL_MS_VALUES)[number]
 
@@ -8,7 +9,8 @@ export const FRAME_INTERVAL_MS_MAX = FRAME_INTERVAL_MS_VALUES[4]
 export const FRAME_INTERVAL_MS_STEP = 500
 export const FRAME_INTERVAL_MS_DEFAULT = 1_000
 
-// 旧 PWA が保存し得た範囲。boot 読取では append-only とし、現行 grid とは分離する。
+// Range that an older PWA may have stored. Keep boot-time reading append-only
+// and separate it from the current grid.
 export const LEGACY_FRAME_INTERVAL_MS_MIN = 150
 export const LEGACY_FRAME_INTERVAL_MS_MAX = 2_000
 

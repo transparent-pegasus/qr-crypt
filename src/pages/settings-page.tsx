@@ -48,9 +48,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { ALGORITHM_LABELS } from "@/features/presentation"
 import { useKeys } from "@/hooks/use-keys"
 import { usePreferences } from "@/hooks/use-preferences"
+import {
+  DELETE_ALL_CONFIRMATION,
+  KEEP_KEYS_CONFIRMATION,
+  useI18n,
+  type MessageKey,
+} from "@/i18n"
 import type { Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
@@ -72,6 +77,7 @@ import { clearAllIdentities } from "@/storage/pq-identity-repository"
 type TypedDeleteAction = "keys" | "reset"
 
 export function SettingsPage() {
+  const { language, setLanguage, t } = useI18n()
   const features = useFeatureSupport()
   const { theme, setTheme } = useTheme()
   const { clearTransient } = useTransientClear()
@@ -83,7 +89,7 @@ export function SettingsPage() {
     updatePreferences,
   } = usePreferences()
   const pwa = usePwaOfflineReady()
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<MessageKey | null>(null)
   const [typedAction, setTypedAction] = useState<TypedDeleteAction | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
   const [securityOpen, setSecurityOpen] = useState(true)
@@ -107,25 +113,25 @@ export function SettingsPage() {
   const savePreference = async (patch: Partial<Preferences>) => {
     try {
       await updatePreferences(patch)
-      toast.success("設定を保存しました")
+      toast.success(t("settings.toast.saved"))
     } catch {
-      setError("設定を保存できませんでした。保存領域を確認してください。")
+      setError("settings.error.saveFailed")
     }
   }
 
   const clearTransientData = () => {
     clearTransient()
-    toast.success("すべての平文を消去しました")
+    toast.success(t("settings.toast.plaintextCleared"))
   }
 
   const performTypedDelete = async () => {
-    if (!typedAction || deleteConfirmation !== "全削除") return
+    if (!typedAction || deleteConfirmation !== DELETE_ALL_CONFIRMATION) return
     setWorking(true)
     try {
       if (typedAction === "keys") {
         await Promise.all([clearAllKeys(), clearAllIdentities()])
         await refreshKeys()
-        toast.success("すべての鍵を消去しました")
+        toast.success(t("settings.toast.keysCleared"))
       } else {
         await deleteEntireDatabase()
         const keysToRemove: string[] = []
@@ -136,12 +142,12 @@ export function SettingsPage() {
         for (const key of keysToRemove) window.localStorage.removeItem(key)
         clearTransient()
         await refreshKeys()
-        toast.success("論理削除を試行しました。物理消去は保証されません。")
+        toast.success(t("boot.wiped.body"))
       }
       setTypedAction(null)
       setDeleteConfirmation("")
     } catch {
-      setError("データを消去できませんでした。保存領域を確認してください。")
+      setError("settings.error.deleteFailed")
     } finally {
       setWorking(false)
     }
@@ -168,7 +174,7 @@ export function SettingsPage() {
   const armMaintenance = async () => {
     if (
       navigatorOnline ||
-      maintenanceConfirmation !== "鍵を保持して更新" ||
+      maintenanceConfirmation !== KEEP_KEYS_CONFIRMATION ||
       !maintenanceAcknowledged
     ) {
       return
@@ -180,11 +186,9 @@ export function SettingsPage() {
       setMaintenanceOpen(false)
       setMaintenanceConfirmation("")
       setMaintenanceAcknowledged(false)
-      toast.success("次の一回だけ鍵を保持する設定を arm しました")
+      toast.success(t("settings.toast.maintenanceArmed"))
     } catch {
-      setError(
-        "maintenance tokenを設定できませんでした。オフライン状態を確認してください。",
-      )
+      setError("settings.error.maintenanceFailed")
     } finally {
       setWorking(false)
     }
@@ -196,33 +200,54 @@ export function SettingsPage() {
 
   return (
     <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={working}>
-      <h2 className="text-[1.375rem] font-bold tracking-tight">設定</h2>
+      <h2 className="text-[1.375rem] font-bold tracking-tight">
+        {t("settings.title")}
+      </h2>
 
       {(error || preferencesError || pwa.error) && (
         <Alert variant="destructive" role="alert">
           <AlertCircle aria-hidden="true" className="size-4" />
-          <AlertTitle>操作を完了できません</AlertTitle>
-          <AlertDescription>{error ?? preferencesError ?? pwa.error}</AlertDescription>
+          <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+          <AlertDescription>
+            {t(error ?? preferencesError ?? pwa.error ?? "settings.error.saveFailed")}
+          </AlertDescription>
         </Alert>
       )}
 
-      <SettingsCard title="表示">
-        <SettingField label="テーマ" htmlFor="theme-select">
+      <SettingsCard title={t("settings.card.display")}>
+        <SettingField label={t("language.field")} htmlFor="language-select">
+          <Select
+            value={language}
+            onValueChange={(value) => setLanguage(value === "ja" ? "ja" : "en")}
+          >
+            <SelectTrigger id="language-select" className="h-11 text-base">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="en">{t("language.en")}</SelectItem>
+              <SelectItem value="ja">{t("language.ja")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingField>
+        <SettingField label={t("settings.field.theme")} htmlFor="theme-select">
           <Select value={theme} onValueChange={(value) => setTheme(value as Theme)}>
             <SelectTrigger id="theme-select" className="h-11 text-base">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="system">システム</SelectItem>
-              <SelectItem value="light">ライト</SelectItem>
-              <SelectItem value="dark">ダーク</SelectItem>
+              <SelectItem value="system">{t("settings.theme.system")}</SelectItem>
+              <SelectItem value="light">{t("settings.theme.light")}</SelectItem>
+              <SelectItem value="dark">{t("settings.theme.dark")}</SelectItem>
             </SelectContent>
           </Select>
         </SettingField>
       </SettingsCard>
 
-      <SettingsCard title="既定値">
-        <SettingField label="デフォルト暗号方式" htmlFor="default-algorithm">
+      <SettingsCard title={t("settings.card.defaults")}>
+        <SettingField
+          label={t("settings.field.defaultAlgorithm")}
+          htmlFor="default-algorithm"
+        >
           <Select
             value={preferences.defaultAlgorithm}
             disabled={preferencesLoading}
@@ -234,21 +259,21 @@ export function SettingsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="A256GCM">{ALGORITHM_LABELS.A256GCM}</SelectItem>
+              <SelectItem value="A256GCM">{t("algorithm.A256GCM")}</SelectItem>
               {env.enableMlKem && !preferences.requireSignature && (
                 <SelectItem value="MLKEM1024_A256GCM">
-                  {ALGORITHM_LABELS.MLKEM1024_A256GCM}
+                  {t("algorithm.MLKEM1024_A256GCM")}
                 </SelectItem>
               )}
               {env.enableMlKem && env.enableMlDsa && (
                 <SelectItem value="MLKEM1024_MLDSA87_A256GCM">
-                  {ALGORITHM_LABELS.MLKEM1024_MLDSA87_A256GCM}
+                  {t("algorithm.MLKEM1024_MLDSA87_A256GCM")}
                 </SelectItem>
               )}
             </SelectContent>
           </Select>
         </SettingField>
-        <SettingField label="デフォルトQR誤り訂正レベル" htmlFor="default-ec">
+        <SettingField label={t("settings.field.defaultEc")} htmlFor="default-ec">
           <Select
             value={preferences.qrErrorCorrection}
             disabled={preferencesLoading}
@@ -268,24 +293,26 @@ export function SettingsPage() {
             </SelectContent>
           </Select>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            高いほど読み取りに強く、入る量は減ります。鍵QRは設定にかかわらず常にHです。
+            {t("settings.ec.hint")}
           </p>
         </SettingField>
       </SettingsCard>
 
-      <SettingsCard title="ポスト量子メッセージ">
+      <SettingsCard title={t("settings.card.pqMessage")}>
         <div className="flex min-h-11 items-center justify-between gap-4">
           <div className="space-y-1">
-            <Label htmlFor="require-signature">署名を必須にする</Label>
+            <Label htmlFor="require-signature">
+              {t("settings.requireSignature.label")}
+            </Label>
             <p className="text-xs text-muted-foreground">
               {env.requireSignature
-                ? "環境設定で必須化されているため解除できません。"
-                : "有効時は非署名のポスト量子方式を選択肢から隠します。"}
+                ? t("settings.requireSignature.forced")
+                : t("settings.requireSignature.hint")}
             </p>
           </div>
           <Switch
             id="require-signature"
-            aria-label="署名を必須にする"
+            aria-label={t("settings.requireSignature.label")}
             checked={preferences.requireSignature}
             disabled={env.requireSignature || preferencesLoading}
             onCheckedChange={(checked) =>
@@ -299,7 +326,10 @@ export function SettingsPage() {
           />
         </div>
         <SettingField
-          label={`1フレームの生データ ${FRAME_BYTES_MIN}〜${FRAME_BYTES_MAX} bytes`}
+          label={t("settings.field.frameBytes", {
+            min: FRAME_BYTES_MIN,
+            max: FRAME_BYTES_MAX,
+          })}
           htmlFor="frame-bytes"
         >
           <Input
@@ -319,7 +349,10 @@ export function SettingsPage() {
           />
         </SettingField>
         <SettingField
-          label={`フレーム切替間隔 ${FRAME_INTERVAL_MS_MIN}〜${FRAME_INTERVAL_MS_MAX} ms`}
+          label={t("settings.field.frameInterval", {
+            min: FRAME_INTERVAL_MS_MIN,
+            max: FRAME_INTERVAL_MS_MAX,
+          })}
           htmlFor="frame-interval"
         >
           <Input
@@ -341,7 +374,10 @@ export function SettingsPage() {
           />
         </SettingField>
         <SettingField
-          label={`読取状態の期限 ${TRANSFER_TIMEOUT_MINUTES_MIN}〜${TRANSFER_TIMEOUT_MINUTES_MAX} 分`}
+          label={t("settings.field.transferTimeout", {
+            min: TRANSFER_TIMEOUT_MINUTES_MIN,
+            max: TRANSFER_TIMEOUT_MINUTES_MAX,
+          })}
           htmlFor="transfer-timeout"
         >
           <Input
@@ -360,15 +396,13 @@ export function SettingsPage() {
             }
           />
         </SettingField>
-        <p className="text-xs text-muted-foreground">
-          OCF2フレームの誤り訂正は常にQです。
-        </p>
+        <p className="text-xs text-muted-foreground">{t("settings.frameEc.hint")}</p>
       </SettingsCard>
 
-      <SettingsCard title="平文の扱い">
+      <SettingsCard title={t("settings.card.plaintext")}>
         <div className="flex min-h-11 items-center justify-between gap-4">
           <Label htmlFor="clear-after-encrypt" className="leading-relaxed">
-            暗号化後に平文を自動消去
+            {t("settings.autoClearAfterEncrypt.label")}
           </Label>
           <Switch
             id="clear-after-encrypt"
@@ -376,19 +410,19 @@ export function SettingsPage() {
             onCheckedChange={(checked) =>
               void savePreference({ autoClearPlaintextAfterEncrypt: checked })
             }
-            aria-label="暗号化後に平文を自動消去"
+            aria-label={t("settings.autoClearAfterEncrypt.label")}
           />
         </div>
         <div className="flex min-h-11 items-center justify-between gap-4">
           <div className="space-y-1">
             <Label htmlFor="background-clear" className="leading-relaxed">
-              バックグラウンド移行後に自動消去
+              {t("settings.backgroundClear.label")}
             </Label>
             <p
               id="background-clear-description"
               className="text-xs leading-relaxed text-muted-foreground"
             >
-              有効時はバックグラウンド移行から約5分後に平文を消去します。
+              {t("settings.backgroundClear.desc")}
             </p>
           </div>
           <Switch
@@ -397,7 +431,7 @@ export function SettingsPage() {
             onCheckedChange={(checked) =>
               void savePreference({ backgroundClearEnabled: checked })
             }
-            aria-label="バックグラウンド移行後に自動消去"
+            aria-label={t("settings.backgroundClear.label")}
             aria-describedby="background-clear-description"
           />
         </div>
@@ -408,23 +442,23 @@ export function SettingsPage() {
           onClick={clearTransientData}
         >
           <Eraser aria-hidden="true" />
-          すべての平文を消去
+          {t("settings.clearAllPlaintext")}
         </Button>
       </SettingsCard>
 
-      <SettingsCard title="オンライン検出時の保護">
+      <SettingsCard title={t("settings.card.onlineProtection")}>
         <div className="flex min-h-11 items-center justify-between gap-4">
           <div className="space-y-1">
             <Label htmlFor="wipe-on-online">
-              オンライン確定時にローカルデータを初期化
+              {t("settings.wipeOnOnline.label")}
             </Label>
             <p className="text-xs text-muted-foreground">
-              既定ON。専用sentinelの本文一致後だけ実行します。
+              {t("settings.wipeOnOnline.hint")}
             </p>
           </div>
           <Switch
             id="wipe-on-online"
-            aria-label="オンライン確定時にローカルデータを初期化"
+            aria-label={t("settings.wipeOnOnline.label")}
             checked={preferences.wipeOnOnline}
             onCheckedChange={(checked) => void savePreference({ wipeOnOnline: checked })}
           />
@@ -432,10 +466,8 @@ export function SettingsPage() {
         {!preferences.wipeOnOnline && (
           <Alert variant="destructive" role="alert">
             <TriangleAlert aria-hidden="true" className="size-4" />
-            <AlertTitle>ローカルデータが残り続けます</AlertTitle>
-            <AlertDescription>
-              永続OFFでは、接続を検出しても鍵とローカルデータを自動初期化しません。
-            </AlertDescription>
+            <AlertTitle>{t("settings.wipeOnOnline.offTitle")}</AlertTitle>
+            <AlertDescription>{t("settings.wipeOnOnline.offBody")}</AlertDescription>
           </Alert>
         )}
         <Button
@@ -449,14 +481,15 @@ export function SettingsPage() {
             setMaintenanceOpen(true)
           }}
         >
-          次の一回だけ鍵を保持して更新
+          {t("settings.maintenance.button")}
         </Button>
         <p className="text-xs text-muted-foreground">
-          オフライン中だけ arm できます。暗号文保存の救済経路ではなく、次の verified
-          transition 後に必ず失効します。
+          {t("settings.maintenance.hint")}
         </p>
         {navigatorOnline && (
-          <p className="text-xs text-destructive">オンライン中は設定できません。</p>
+          <p className="text-xs text-destructive">
+            {t("settings.maintenance.onlineDisabled")}
+          </p>
         )}
       </SettingsCard>
 
@@ -469,7 +502,7 @@ export function SettingsPage() {
                 variant="ghost"
                 className="h-11 w-full justify-between px-0"
               >
-                Advanced: reset churn
+                {t("settings.advanced.title")}
                 <ChevronDown
                   aria-hidden="true"
                   className={advancedOpen ? "rotate-180" : ""}
@@ -480,7 +513,10 @@ export function SettingsPage() {
           <CollapsibleContent>
             <CardContent className="space-y-3 p-4 pt-0">
               <SettingField
-                label={`reset churn (${RESET_CHURN_MB_MIN}–${RESET_CHURN_MB_MAX} MB)`}
+                label={t("settings.advanced.field", {
+                  min: RESET_CHURN_MB_MIN,
+                  max: RESET_CHURN_MB_MAX,
+                })}
                 htmlFor="reset-churn"
               >
                 <Input
@@ -501,7 +537,7 @@ export function SettingsPage() {
               </SettingField>
               <Alert variant="destructive">
                 <AlertDescription>
-                  既定は0です。churnは消去保証にならず、物理データの回収不能を保証しません。
+                  {t("settings.resetChurn.warning")}
                 </AlertDescription>
               </Alert>
             </CardContent>
@@ -513,7 +549,7 @@ export function SettingsPage() {
         <CardHeader className="p-4 pb-3">
           <CardTitle className="flex items-center gap-2 text-base text-destructive">
             <TriangleAlert aria-hidden="true" className="size-5" />
-            データの消去
+            {t("settings.dataDeletion.title")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 p-4 pt-0">
@@ -527,7 +563,7 @@ export function SettingsPage() {
             }}
           >
             <Trash2 aria-hidden="true" />
-            すべての鍵を消去
+            {t("settings.deleteAllKeys")}
           </Button>
           <Button
             type="button"
@@ -539,52 +575,56 @@ export function SettingsPage() {
             }}
           >
             <Database aria-hidden="true" />
-            全ローカルデータ初期化
+            {t("settings.resetAllData")}
           </Button>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            全初期化はIndexedDBの全ストア、oc-*のlocalStorage、メモリー内の一時データを消去します。オフライン起動を維持するためService
-            Workerのキャッシュは保持します。
+            {t("settings.dataDeletion.note")}
           </p>
         </CardContent>
       </Card>
 
-      <SettingsCard title="PWAアプリ情報">
+      <SettingsCard title={t("settings.card.pwaInfo")}>
         <InfoRow
-          label="PWAインストール状態"
-          value={standalone ? "インストール済み" : "ブラウザー表示中"}
+          label={t("pwa.installState.label")}
+          value={
+            standalone
+              ? t("pwa.installState.installed")
+              : t("settings.pwa.browserView")
+          }
         />
         <InfoRow
-          label="オフライン利用準備状態"
-          value={pwa.offlineReady ? "準備完了" : "準備中"}
+          label={t("pwa.offlineReady.label")}
+          value={
+            pwa.offlineReady
+              ? t("pwa.offlineReady.ready")
+              : t("pwa.offlineReady.preparing")
+          }
         />
         {!features.serviceWorker && (
           <Alert variant="destructive">
             <AlertCircle aria-hidden="true" className="size-4" />
-            <AlertDescription>
-              この機能は利用できません: Service Worker。オフライン起動を利用できません。
-            </AlertDescription>
+            <AlertDescription>{t("settings.sw.unavailable")}</AlertDescription>
           </Alert>
         )}
         <p className="text-sm leading-relaxed text-muted-foreground">
-          アプリの更新は行わない方針です。新しいバージョンの利用には端末の完全フォーマット後の再インストールが必要です。
+          {t("settings.pwa.noUpdatePolicy")}
         </p>
         <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
-          <InfoRow label="バージョン" value={__APP_VERSION__} mono />
-          <InfoRow label="ビルド" value={env.buildSha.slice(0, 7)} mono />
+          <InfoRow label={t("settings.info.version")} value={__APP_VERSION__} mono />
+          <InfoRow label={t("settings.info.build")} value={env.buildSha.slice(0, 7)} mono />
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">
-          オフライン利用準備状態は資産の保存状態を示します。安全性を示すものではありません。
+          {t("settings.pwa.offlineReadyNote")}
         </p>
       </SettingsCard>
 
-      <SettingsCard title="機能検出">
+      <SettingsCard title={t("settings.card.featureDetect")}>
         <FeatureRow label="Web Crypto" supported={features.webCrypto} />
         <FeatureRow label="IndexedDB" supported={features.indexedDb} />
-        <FeatureRow label="カメラ" supported={features.camera} />
+        <FeatureRow label={t("feature.camera")} supported={features.camera} />
         <FeatureRow label="Service Worker" supported={features.serviceWorker} />
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Web
-          CryptoまたはIndexedDBが利用できない場合はUNSUPPORTED_BROWSER画面で全機能を停止します。
+          {t("settings.featureDetect.note")}
         </p>
       </SettingsCard>
 
@@ -599,7 +639,7 @@ export function SettingsPage() {
               >
                 <span className="flex items-center gap-2">
                   <ShieldAlert aria-hidden="true" className="size-5" />
-                  セキュリティについて
+                  {t("settings.security.title")}
                 </span>
                 <ChevronDown
                   aria-hidden="true"
@@ -615,36 +655,30 @@ export function SettingsPage() {
           <CollapsibleContent>
             <CardContent className="space-y-4 p-4 pt-0 text-sm leading-relaxed">
               <p className="font-medium">
-                このアプリが保証するのは、アプリケーションが意図的に平文や秘密鍵を外部送信しないことまでです。
+                {t("settings.security.scope")}
               </p>
               <div>
-                <p className="font-medium">防御対象外:</p>
+                <p className="font-medium">
+                  {t("settings.security.outOfScope.heading")}
+                </p>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-                  <li>OS・ブラウザー・ファームウェアの侵害</li>
-                  <li>キーロガー・画面録画・スクリーンショット</li>
-                  <li>カメラフレームを取得するマルウェア</li>
-                  <li>PWA初回取得時・再インストール時の供給網侵害</li>
-                  <li>端末の物理的な窃取</li>
-                  <li>ユーザー自身による秘密QRの誤共有</li>
-                  <li>ブラウザーデータ削除による鍵の消失</li>
+                  <li>{t("settings.security.outOfScope.1")}</li>
+                  <li>{t("settings.security.outOfScope.2")}</li>
+                  <li>{t("settings.security.outOfScope.3")}</li>
+                  <li>{t("settings.security.outOfScope.4")}</li>
+                  <li>{t("settings.security.outOfScope.5")}</li>
+                  <li>{t("settings.security.outOfScope.6")}</li>
+                  <li>{t("settings.security.outOfScope.7")}</li>
                 </ul>
               </div>
-              <p>
-                オフライン表示は現在のネットワーク状態を示す補助情報であり、安全性の証明ではありません。
-              </p>
+              <p>{t("settings.security.offlineDisplayNote")}</p>
               <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                <li>採用している noble の本アプリ統合は独立監査を完了していません。</li>
-                <li>JavaScript実装はサイドチャネル耐性を保証しません。</li>
-                <li>
-                  JavaScriptとGCのため、メモリー上の秘密値を完全消去できる保証はありません。
-                </li>
-                <li>
-                  resetはローカルデータの論理削除を試行します。LevelDB・SSDウェアレベリングを含め、物理消去は保証しません。
-                </li>
+                <li>{t("settings.security.caveat.1")}</li>
+                <li>{t("settings.security.caveat.2")}</li>
+                <li>{t("settings.security.caveat.3")}</li>
+                <li>{t("settings.security.caveat.4")}</li>
               </ul>
-              <p>
-                wipe-on-onlineは、接続後に現在のコードが実行できた場合の残存データ低減です。同一オリジンの悪意あるコード、物理回収、更新前に実行される侵害コードを防ぎません。
-              </p>
+              <p>{t("settings.security.wipeOnOnlineNote")}</p>
             </CardContent>
           </CollapsibleContent>
         </Collapsible>
@@ -662,20 +696,22 @@ export function SettingsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>次の一回だけ鍵を保持して更新</AlertDialogTitle>
+            <AlertDialogTitle>{t("settings.maintenance.button")}</AlertDialogTitle>
             <AlertDialogDescription>
-              次のオンライン確定時にwipeを一度だけ抑止します。実行するには「鍵を保持して更新」と入力し、注意事項を確認してください。
+              {t("settings.maintenance.dialogDesc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor="maintenance-confirmation">確認文字列</Label>
+              <Label htmlFor="maintenance-confirmation">
+                {t("settings.confirmationLabel")}
+              </Label>
               <Input
                 id="maintenance-confirmation"
                 value={maintenanceConfirmation}
                 onChange={(event) => setMaintenanceConfirmation(event.target.value)}
                 autoComplete="off"
-                placeholder="鍵を保持して更新"
+                placeholder={KEEP_KEYS_CONFIRMATION}
               />
             </div>
             <div className="flex items-start gap-2">
@@ -687,22 +723,22 @@ export function SettingsPage() {
                 }
               />
               <Label htmlFor="maintenance-ack">
-                一回限りであり、更新後のコードや端末の安全性を保証しないことを理解しました
+                {t("settings.maintenance.ackLabel")}
               </Label>
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={
                 working ||
                 navigatorOnline ||
-                maintenanceConfirmation !== "鍵を保持して更新" ||
+                maintenanceConfirmation !== KEEP_KEYS_CONFIRMATION ||
                 !maintenanceAcknowledged
               }
               onClick={() => void armMaintenance()}
             >
-              maintenance tokenをarm
+              {t("settings.maintenance.armButton")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -720,33 +756,35 @@ export function SettingsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {typedAction === "keys" ? "すべての鍵を消去" : "全ローカルデータ初期化"}
+              {typedAction === "keys"
+                ? t("settings.deleteAllKeys")
+                : t("settings.resetAllData")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {typedAction === "keys"
-                ? "すべての暗号文が復号できなくなります。削除を実行するには「全削除」と入力してください。"
-                : "IndexedDBとoc-*設定、一時データを消去します。Service Workerキャッシュは保持します。実行するには「全削除」と入力してください。"}
+                ? t("settings.delete.desc.keys")
+                : t("settings.delete.desc.reset")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="delete-confirmation">確認文字列</Label>
+            <Label htmlFor="delete-confirmation">{t("settings.confirmationLabel")}</Label>
             <Input
               id="delete-confirmation"
               value={deleteConfirmation}
               onChange={(event) => setDeleteConfirmation(event.target.value)}
               className="h-11 text-base focus-visible:ring-2"
               autoComplete="off"
-              placeholder="全削除"
+              placeholder={DELETE_ALL_CONFIRMATION}
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={deleteConfirmation !== "全削除" || working}
+              disabled={deleteConfirmation !== DELETE_ALL_CONFIRMATION || working}
               onClick={() => void performTypedDelete()}
             >
-              {working ? "消去中…" : "論理削除を実行"}
+              {working ? t("settings.delete.working") : t("settings.delete.execute")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -801,6 +839,7 @@ function InfoRow({
 }
 
 function FeatureRow({ label, supported }: { label: string; supported: boolean }) {
+  const { t } = useI18n()
   return (
     <div className="flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm">
       {supported ? (
@@ -810,7 +849,9 @@ function FeatureRow({ label, supported }: { label: string; supported: boolean })
       )}
       <span>{label}</span>
       <span className="ml-auto text-muted-foreground">
-        {supported ? "利用できます" : `この機能は利用できません: ${label}`}
+        {supported
+          ? t("common.supported.yes")
+          : t("common.featureUnavailable", { feature: label })}
       </span>
     </div>
   )

@@ -1,11 +1,12 @@
-// 共有ドメイン型の単一所有元(plan §12-4/§12-9、v2: plan2.1 §H WP-A2)。依存ゼロ
-// (import の追加は禁止 — UI テストのモジュールモックが循環するため)。
-// UI 層の方式 ID とワイヤー(エンベロープ)の方式 ID は別物であり、
-// 相互変換は必ずこのモジュールの mapper を通す(文字列直接比較の禁止)。
-// v2 の suite 導出(resolveSuite/suiteComponents)は crypto/pq/suites.ts。
+// Sole owner of shared domain types.
+// This module is dependency-free; adding imports is prohibited because UI-test module
+// mocks would become cyclic. UI-layer algorithm IDs and wire (envelope) algorithm IDs
+// are distinct. Always convert between them through this module's mappers; direct string
+// comparison is prohibited. v2 suite derivation (resolveSuite/suiteComponents) lives in
+// crypto/pq/suites.ts.
 
 // ---------------------------------------------------------------------------
-// 方式 ID(v1 A256GCM + v2 PQ)
+// Algorithm IDs (v1 A256GCM + v2 PQ).
 // ---------------------------------------------------------------------------
 
 export type UiAlgorithm = "A256GCM" | "MLKEM1024_A256GCM" | "MLKEM1024_MLDSA87_A256GCM"
@@ -30,8 +31,8 @@ export interface StoredKeyRecord {
   symmetricKey?: CryptoKey
 }
 
-// v1 A256GCM ワイヤー専用 mapper。PQ 方式のワイヤー解決は crypto/pq/suites.ts の
-// resolveSuite を使う(本モジュールは依存ゼロのため AppError を投げられない)。
+// Mapper exclusively for the v1 A256GCM wire format. Resolve PQ wire algorithms with
+// resolveSuite in crypto/pq/suites.ts. This dependency-free module cannot throw AppError.
 export function toWireAlgorithm(algorithm: UiAlgorithm): WireAlgorithm {
   if (algorithm === "A256GCM") return "A256GCM"
   throw new TypeError("v2 algorithm requires resolveSuite (crypto/pq/suites)")
@@ -42,7 +43,7 @@ export function toUiAlgorithm(algorithm: WireAlgorithm): UiAlgorithm {
 }
 
 // ---------------------------------------------------------------------------
-// v2 ポスト量子 — アルゴリズム・スイート(spec2 §1/§2/§7、plan2.1 §C1)
+// v2 post-quantum algorithms and suites; see docs/qr-protocol-v2.md §4.
 // ---------------------------------------------------------------------------
 
 export const ML_KEM_ALGORITHMS = ["ML-KEM-768", "ML-KEM-1024"] as const
@@ -63,7 +64,7 @@ export const WIRE_SUITES = [
 export type WireSuite = (typeof WIRE_SUITES)[number]
 
 // ---------------------------------------------------------------------------
-// v2 Vault(spec2 §9、plan2.1 §C8)
+// v2 Vault; see docs/qr-protocol-v2.md §7.
 // ---------------------------------------------------------------------------
 
 export interface EncryptedSecret {
@@ -74,41 +75,41 @@ export interface EncryptedSecret {
 export type VaultSecretRole = "ml-kem-seed" | "ml-dsa-seed"
 
 // ---------------------------------------------------------------------------
-// v2 ポスト量子 ID(spec2 §8、plan2.1 §E1)
+// v2 post-quantum identities; see docs/qr-protocol-v2.md §7.1.
 // ---------------------------------------------------------------------------
 
-// active: 暗号化・署名に使用可 / rotated: 復号・検証専用(旧世代) /
-// revoked: この端末で利用停止(復号のみ許可。外部への失効伝播はしない)
+// active: may encrypt and sign / rotated: decryption and verification only (old generation) /
+// revoked: disabled on this device (decryption only; revocation is not propagated externally)
 export type PqKeyStatus = "active" | "rotated" | "revoked"
 
 export interface PqKemKeyMaterial {
   algorithm: MlKemAlgorithm
-  keyId: string // 16B 乱数の base64url 22 文字(KEY_ID_PATTERN)
+  keyId: string // 22-character base64url encoding of 16 random bytes (KEY_ID_PATTERN).
   publicKey: Uint8Array
-  encryptedSeed: EncryptedSecret // 64B シードの Vault 暗号化(AAD = buildVaultAadV2)
-  fingerprint: string // pqKeyFingerprint("kem", ...) の sha256 hex
+  encryptedSeed: EncryptedSecret // Vault encryption of a 64B seed (AAD = buildVaultAadV2).
+  fingerprint: string // sha256 hex from pqKeyFingerprint("kem", ...).
 }
 
 export interface PqSigningKeyMaterial {
   algorithm: MlDsaAlgorithm
   keyId: string
   publicKey: Uint8Array
-  encryptedSeed: EncryptedSecret // 32B シード。KEM シードとは独立の CSPRNG 呼出
+  encryptedSeed: EncryptedSecret // 32B seed from a CSPRNG call independent of the KEM seed.
   fingerprint: string
 }
 
-// pqIdentities ストアのレコード(keyPath: id)。
-// ローテーションは identity 単位: 新世代を新 id・新 keyId で作成し、
-// 旧世代 row は status="rotated"(復号/検証専用)として保持する。
+// Record in the pqIdentities store (keyPath: id).
+// Rotation occurs per identity: create the new generation with a new id and new keyId,
+// and retain the previous-generation row with status="rotated" for decryption/verification only.
 export interface PostQuantumIdentity {
   id: string
   name: string
   profile: PqProfileId
   kem: PqKemKeyMaterial
   signing: PqSigningKeyMaterial
-  identityFingerprint: string // name を除く公開タプルへの指紋(plan2.1 §E5)
+  identityFingerprint: string // Fingerprint of the public tuple excluding name.
   status: PqKeyStatus
-  rotatedFromId?: string // 旧世代 identity の id(lineage)
+  rotatedFromId?: string // ID of the previous-generation identity (lineage).
   rotatedAt?: number
   revokedAt?: number
   createdAt: number
@@ -116,7 +117,7 @@ export interface PostQuantumIdentity {
 }
 
 // ---------------------------------------------------------------------------
-// v2 公開鍵セット(spec2 §10)と取込レコード(plan2.1 §E2/§E5)
+// v2 public-key bundles and imported records; see docs/qr-protocol-v2.md §7.1.
 // ---------------------------------------------------------------------------
 
 export interface PublicIdentityBundleV2 {
@@ -139,12 +140,12 @@ export interface PublicIdentityBundleV2 {
 
 export type PqTrustLevel = "unverified" | "fingerprint-confirmed"
 
-// pqPublicBundles ストアのレコード(keyPath: recordId)。
-// identityId は送信者申告値のため unique にしない(by-identityId は non-unique)。
+// Record in the pqPublicBundles store (keyPath: recordId).
+// identityId is sender-asserted, so it is not unique; by-identityId is non-unique.
 export interface PqPublicBundleRecord {
   recordId: string
   identityId: string
-  name?: string // bundle 由来の未認証表示名。trusted 表示に単独で使わない
+  name?: string // Unauthenticated display name from the bundle; never use alone as trusted UI.
   kem: {
     algorithm: MlKemAlgorithm
     keyId: string
@@ -160,34 +161,35 @@ export interface PqPublicBundleRecord {
   identityFingerprint: string
   trust: PqTrustLevel
   trustConfirmedAt?: number
-  revokedAt?: number // ローカル利用停止(外部へ伝播しない)
-  bundleCreatedAt: number // wire の createdAt(端末申告時刻・信頼時刻ではない)
+  revokedAt?: number // Local disablement; not propagated externally.
+  bundleCreatedAt: number // Wire createdAt: device-asserted time, not trusted time.
   importedAt: number
   lastUsedAt?: number
 }
 
 // ---------------------------------------------------------------------------
-// v2 内部メッセージ(spec2 §6、plan2.1 §C3: strict discriminated union)
+// v2 inner messages as a strict discriminated union; see docs/qr-protocol-v2.md §5.
 // ---------------------------------------------------------------------------
 
 export interface MessageBodyCommonV2 {
   version: 2
-  messageId: Uint8Array // CSPRNG 16B 固定長。リプレイ防止機構ではない(§G)
-  createdAt: number // 端末申告時刻(信頼時刻ではない)
+  messageId: Uint8Array // Fixed 16B from the CSPRNG; not replay prevention (§G).
+  createdAt: number // Device-asserted time, not trusted time.
   recipientKemKeyId: string
   plaintext: Uint8Array
 }
 
-// unsigned では senderSigningKeyId を空文字ではなく「キーごと省略」する(U29)
+// For unsigned messages, omit the senderSigningKeyId key entirely rather than using
+// an empty string (U29).
 export type UnsignedMessageBodyV2 = MessageBodyCommonV2
 
 export interface SignedMessageBodyV2 extends MessageBodyCommonV2 {
   senderSigningKeyId: string
 }
 
-// kind はメモリー内判別子。ワイヤー CBOR には載せない(外側 suite が権威)。
-// ワイヤー形状: unsigned suite → UnsignedMessageBodyV2 の map 単体 /
-// signed suite → { body, signature } の map(docs/qr-protocol-v2.md §5)。
+// kind is an in-memory discriminator and is not included in wire CBOR; the outer suite
+// is authoritative. Wire shape: unsigned suite → a standalone UnsignedMessageBodyV2 map /
+// signed suite → a { body, signature } map (docs/qr-protocol-v2.md §5).
 export interface UnsignedMessageV2 {
   kind: "unsigned"
   body: UnsignedMessageBodyV2
@@ -205,7 +207,7 @@ export interface SignedMessageV2 {
 export type InnerMessageV2 = UnsignedMessageV2 | SignedMessageV2
 
 // ---------------------------------------------------------------------------
-// v2 外部エンベロープと AAD(spec2 §7)
+// v2 outer envelopes and AAD; see docs/qr-protocol-v2.md §3.
 // ---------------------------------------------------------------------------
 
 export interface MlKemMessageEnvelopeV2 {
@@ -224,12 +226,12 @@ export interface MlKemAadV2 {
   type: "pq-message"
   suite: WireSuite
   recipientKemKeyId: string
-  kemCiphertextSha256: Uint8Array // 受信側は受信 kemCiphertext から再計算し一致検証
+  kemCiphertextSha256: Uint8Array // Receiver recomputes it from kemCiphertext and compares.
 }
 
 // ---------------------------------------------------------------------------
-// v2 復号結果(plan2.1 §C2)。signed-key-unknown に plaintext プロパティは無い
-// (構築自体を型で禁止する)。senderSigningKeyId は署名鍵取込導線用。
+// v2 decryption result. signed-key-unknown has no plaintext property;
+// the type prevents constructing one. senderSigningKeyId supports the signing-key import path.
 // ---------------------------------------------------------------------------
 
 export type PqDecryptResult =
@@ -238,12 +240,12 @@ export type PqDecryptResult =
   | { kind: "signed-key-unknown"; senderSigningKeyId: string }
 
 // ---------------------------------------------------------------------------
-// v2 複数 QR フレーム(spec2 §12、plan2.1 §D)
+// v2 multipart QR frames; see docs/qr-protocol-v2.md §6.
 // ---------------------------------------------------------------------------
 
-// OCP2/OCS2(単鍵)もフレーミングして運ぶため、spec2 §12 の 3 値へ
-// pq-kem-public-key / pq-dsa-public-key を管理された追加として拡張する
-// (docs/qr-protocol-v2.md §6、README 逸脱表)。
+// OCP2/OCS2 single keys are also transported in frames, so the artifact vocabulary
+// includes pq-kem-public-key / pq-dsa-public-key as documented managed additions
+// (docs/qr-protocol-v2.md §6).
 export const V2_ARTIFACT_TYPES = [
   "pq-message",
   "pq-public-identity",
@@ -260,17 +262,17 @@ export type StorablePqArtifactKind = Exclude<
 export interface QrFrameV2 {
   version: 2
   type: "qr-frame"
-  transferId: Uint8Array // 16B 乱数
+  transferId: Uint8Array // 16 random bytes.
   artifactType: V2ArtifactType
-  frameIndex: number // 0 起点(0..frameCount-1)
+  frameIndex: number // Zero-based (0..frameCount-1).
   frameCount: number // 1..PROTOCOL_MAX_FRAMES(64)
-  totalByteLength: number // artifact CBOR 生バイト長の合計
-  payloadSha256: Uint8Array // artifact CBOR 生バイトへの SHA-256(転送整合性)
-  chunk: Uint8Array // artifact CBOR 生バイトの分割片(二重 base64url 禁止 §D1)
+  totalByteLength: number // Total raw artifact-CBOR byte length.
+  payloadSha256: Uint8Array // SHA-256 of raw artifact-CBOR bytes (transfer integrity).
+  chunk: Uint8Array // Slice of raw artifact-CBOR bytes; double base64url is prohibited (§D1).
 }
 
 // ---------------------------------------------------------------------------
-// v2 単鍵公開鍵エンベロープ(OCP2/OCS2。spec2 §11 の論理型を型として固定)
+// v2 single public-key envelopes (OCP2/OCS2); see docs/qr-protocol-v2.md §1 and §7.1.
 // ---------------------------------------------------------------------------
 
 export interface KemPublicKeyEnvelopeV2 {
@@ -296,26 +298,27 @@ export interface DsaPublicKeyEnvelopeV2 {
 }
 
 // ---------------------------------------------------------------------------
-// 設定(plan2.1 §I。theme は v1 同様 localStorage "oc-theme" 所有で DB 外)
+// Preferences. As in v1, theme is owned by localStorage "oc-theme",
+// outside the database.
 // ---------------------------------------------------------------------------
 
 export interface Preferences {
   defaultAlgorithm: UiAlgorithm
   defaultPqProfile: PqProfileId
-  // env の VITE_REQUIRE_SIGNATURE=true は floor(利用者は下げられない)
+  // VITE_REQUIRE_SIGNATURE=true from the environment is a floor the user cannot lower.
   requireSignature: boolean
   qrErrorCorrection: QrEcLevel
   autoClearPlaintextAfterEncrypt: boolean
   backgroundClearEnabled: boolean
-  frameBytes: number // 400–900(limits.ts が単一導出元)
-  frameIntervalMs: number // 1000–3000、500ms 刻み(limits.ts が単一導出元)
-  transferTimeoutMinutes: number // 既定 10
-  wipeOnOnline: boolean // 既定 true(オーナー要件。plan2.1 §B5)
-  resetChurnMb: number // 0–512・既定 0(実験オプション。plan2.1 §B4)
+  frameBytes: number // 400–900; limits.ts is the single derivation source.
+  frameIntervalMs: number // 1000–3000 in 500ms steps; limits.ts is the single derivation source.
+  transferTimeoutMinutes: number // Default 10.
+  wipeOnOnline: boolean // Default true.
+  resetChurnMb: number // 0–512, default 0 (experimental option).
 }
 
-// v2 追加フィールドの既定値。Preferences リテラルはこれを spread して構築する
-// (単一導出元。数値範囲の検証は preferences-repository / limits.ts)。
+// Defaults for v2 additions. Construct Preferences literals by spreading this value
+// as the single source; preferences-repository / limits.ts validate numeric ranges.
 export const PQ_PREFERENCE_DEFAULTS = {
   defaultPqProfile: "maximum",
   requireSignature: false,

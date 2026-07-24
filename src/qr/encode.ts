@@ -1,5 +1,5 @@
-// QR 生成(spec §13)。ペイロード文字列(ASCII)のみを受け取る —
-// 平文をこのモジュールへ渡してはならない(spec §13/plan C11)。
+// QR generation. Accept only ASCII payload strings; plaintext must never be passed
+// into this module.
 import type { Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import * as QRCode from "qrcode"
 import { buildAad } from "@/crypto/envelope"
@@ -9,7 +9,7 @@ import { encodeEnvelopeToPayload } from "@/qr/payload"
 
 export type { QrEcLevel } from "@/schemas/domain"
 
-// QR version 40・バイトモードの容量(docs/qr-protocol.md §7)
+// QR version 40 byte-mode capacities (docs/qr-protocol.md §7).
 const QR_BYTE_CAPACITY: Record<QrEcLevel, number> = {
   L: 2953,
   M: 2331,
@@ -21,13 +21,13 @@ export function qrByteCapacity(ecLevel: QrEcLevel): number {
   return QR_BYTE_CAPACITY[ecLevel]
 }
 
-// ペイロードは ASCII のみのため文字数 = バイト数
+// Payloads are ASCII-only, so character count equals byte count.
 export function payloadFits(payload: string, ecLevel: QrEcLevel): boolean {
   return payload.length <= QR_BYTE_CAPACITY[ecLevel]
 }
 
-// EC レベル政策(plan2.2.1 §E-10): v1 単枚メッセージだけ設定に従い、
-// 永続化する鍵 QR は H、OCF2 フレームは Q に固定する。
+// EC-level policy: only single-image v1 messages follow preferences.
+// Persisted key QRs are fixed at H, and OCF2 frames are fixed at Q.
 export type QrPayloadEcKind = "message" | "stored-key" | "multipart-frame"
 
 export function ecLevelFor(
@@ -43,7 +43,8 @@ export interface QrRenderOptions {
   size: number
 }
 
-// 白背景・黒セル固定、quiet zone(margin)= 4(ダークモードでも不変)
+// Fix the background to white, modules to black, and quiet zone (margin) to 4,
+// unchanged in dark mode.
 export async function renderQrDataUrl(
   payload: string,
   options: QrRenderOptions,
@@ -82,8 +83,8 @@ export async function renderQrSvgString(
   }
 }
 
-// 同寸ダミーエンベロープを実際に CBOR+base64url 化して長さを返す(plan §12-9)。
-// v1 経路専用。
+// Return the length after actually encoding an equal-size dummy envelope as CBOR+base64url.
+// This is only for the v1 path.
 export function estimatePayloadChars(
   plaintextBytes: number,
   algorithm: UiAlgorithm,

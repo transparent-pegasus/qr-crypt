@@ -1,11 +1,11 @@
-// ローカル Vault 鍵(spec2 §9、WP-11)。非抽出 AES-256-GCM CryptoKey を
-// appMetadata ストア(key: "vault-key")に保存する。
+// Local Vault key. Store a non-extractable AES-256-GCM CryptoKey
+// in the appMetadata store (key: "vault-key").
 //
-// 競合制約(plan2.1 §C8):
-//   - 作成は cross-tab lock(navigator.locks、fallback あり)+ 単一 readwrite
-//     transaction 内の「存在確認 → add」(put で上書きしない)
-//   - 競合に敗けた側は生成した鍵を破棄し、保存済みの鍵を再読込する
-//   - 上書きは回復不能な identity を作るため絶対に行わない
+// Concurrency constraints:
+//   - Creation uses a cross-tab lock (navigator.locks, with a fallback) plus
+//     "check for existence → add" in one readwrite transaction (never overwrite with put).
+//   - The side that loses the race discards its generated key and reloads the stored key.
+//   - Never overwrite the key, because doing so creates unrecoverable identities.
 import type { EncryptedSecret } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { getDb, STORE_APP_METADATA, type KeyValueRow } from "@/storage/database"
@@ -48,15 +48,16 @@ async function createOrReadVaultKey(): Promise<CryptoKey> {
     return cachedRow.value
   }
 
-  // 鍵生成は transaction の外で行う。WebCrypto 待機中に IDB transaction が
-  // auto-commit されるのを避け、存在確認→add 自体は一つの readwrite 内に置く。
+  // Generate the key outside the transaction. This avoids an IDB transaction
+  // auto-committing while WebCrypto is pending, while the existence check and add
+  // still remain within one readwrite transaction.
   const generated = await generateVaultKey()
   const transaction = database.transaction(STORE_APP_METADATA, "readwrite")
   const existing = await transaction.store.get(VAULT_KEY_METADATA_KEY)
   if (existing !== undefined) {
     await transaction.done
     if (!isVaultKey(existing.value)) throw new AppError("STORAGE_FAILED")
-    // 競合に敗れた生成鍵は保存せず、ここで最後の参照を捨てる。
+    // Do not store the generated key that lost the race; drop its final reference here.
     return existing.value
   }
   const row: KeyValueRow = { key: VAULT_KEY_METADATA_KEY, value: generated }
@@ -81,10 +82,10 @@ export function getOrCreateVaultKey(): Promise<CryptoKey> {
   return pending
 }
 
-// WipeCoordinator(plan2.1 §B3)用: メモリー上の Vault 鍵参照・promise を破棄する
+// For WipeCoordinator: discard in-memory Vault key references and promises.
 export function dropVaultKeyCache(): void {
   vaultKeyPromise = undefined
 }
 
-// 暗号シュレッディング参照用の再輸出(vault 配下の EncryptedSecret 型)
+// Re-export the EncryptedSecret type under vault for cryptographic-shredding references.
 export type { EncryptedSecret }

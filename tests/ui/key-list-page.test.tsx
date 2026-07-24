@@ -25,7 +25,7 @@ function rowFor(text: string): HTMLButtonElement {
 
 async function renderKeyList(): Promise<void> {
   await renderApp("/saved")
-  await screen.findByRole("heading", { name: "鍵一覧" })
+  await screen.findByRole("heading", { name: "Key list" })
 }
 
 describe("key list page", () => {
@@ -36,9 +36,9 @@ describe("key list page", () => {
     const user = userEvent.setup()
     await renderKeyList()
 
-    expect(screen.getByRole("heading", { name: "鍵一覧" })).toBeInTheDocument()
-    const ownTab = screen.getByRole("tab", { name: "自分の鍵" })
-    const peerTab = screen.getByRole("tab", { name: "相手の鍵" })
+    expect(screen.getByRole("heading", { name: "Key list" })).toBeInTheDocument()
+    const ownTab = screen.getByRole("tab", { name: "My keys" })
+    const peerTab = screen.getByRole("tab", { name: "Other parties' keys" })
     expect(ownTab).toHaveAttribute("aria-selected", "true")
     expect(peerTab).toHaveAttribute("aria-selected", "false")
     expect(screen.getByRole("tablist")).toHaveClass(
@@ -47,23 +47,23 @@ describe("key list page", () => {
       "w-full",
       "grid-cols-2",
     )
-    const kindFilter = screen.getByRole("combobox", { name: "種別" })
+    const kindFilter = screen.getByRole("combobox", { name: "Type" })
     expect(screen.getAllByRole("combobox")).toHaveLength(1)
     expect(kindFilter).toHaveClass("h-11")
-    expect(kindFilter).toHaveTextContent("すべて")
+    expect(kindFilter).toHaveTextContent("All")
 
     const rows = within(screen.getByRole("tabpanel")).getAllByRole("button")
     expect(rows).toHaveLength(2)
     expect(rows[0]).toHaveTextContent("自分のPQ ID")
     expect(rows[1]).toHaveTextContent("共通鍵A")
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
-    expect(screen.getByText(/ポスト量子ID ·/)).toBeInTheDocument()
+    expect(screen.getByText(/Post-quantum identity ·/)).toBeInTheDocument()
     expect(screen.getByText("active")).toBeInTheDocument()
     expect(screen.getByText("共通鍵A")).toBeInTheDocument()
-    expect(screen.getByText(/共通鍵 ·/)).toBeInTheDocument()
+    expect(screen.getByText(/Symmetric key ·/)).toBeInTheDocument()
     expect(screen.getByText("AES-256-GCM")).toBeInTheDocument()
-    expect(screen.queryByText("公開")).not.toBeInTheDocument()
-    expect(screen.queryByText("機密")).not.toBeInTheDocument()
+    expect(screen.queryByText("Public")).not.toBeInTheDocument()
+    expect(screen.queryByText("Secret")).not.toBeInTheDocument()
     expect(screen.queryByText("受信鍵B")).not.toBeInTheDocument()
     expect(screen.queryByText("確認済みの相手")).not.toBeInTheDocument()
 
@@ -76,11 +76,11 @@ describe("key list page", () => {
 
     await user.click(kindFilter)
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "すべて",
-      "ポスト量子ID",
-      "共通鍵",
+      "All",
+      "Post-quantum identity",
+      "Symmetric key",
     ])
-    await user.click(screen.getByRole("option", { name: "共通鍵" }))
+    await user.click(screen.getByRole("option", { name: "Symmetric key" }))
     expect(screen.getByText("共通鍵A")).toBeInTheDocument()
     expect(screen.queryByText("自分のPQ ID")).not.toBeInTheDocument()
 
@@ -96,18 +96,21 @@ describe("key list page", () => {
     await renderKeyList()
 
     expect(screen.queryByText("確認済みの相手")).not.toBeInTheDocument()
-    await user.click(screen.getByRole("tab", { name: "相手の鍵" }))
+    await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
     expect(screen.getByText("確認済みの相手")).toBeInTheDocument()
-    expect(screen.getByText("人物確認済み")).toBeInTheDocument()
+    expect(screen.getByText("Identity verified")).toBeInTheDocument()
     expect(screen.getByText("4".repeat(64))).toBeInTheDocument()
     expect(screen.getByText("5".repeat(64))).toBeInTheDocument()
     expect(screen.getByText("6".repeat(64))).toBeInTheDocument()
-    expect(screen.queryByRole("combobox", { name: "種別" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "Disable on this device" }),
+    ).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "削除" }))
+    await user.click(screen.getByRole("button", { name: "Delete" }))
     await waitFor(() => expect(deleteBundle).toHaveBeenCalledWith(recordId))
     expect(
-      await screen.findByText("取り込んだ公開鍵セットがありません。"),
+      await screen.findByText("There are no imported public-key bundles."),
     ).toBeInTheDocument()
   })
 
@@ -117,12 +120,12 @@ describe("key list page", () => {
 
     await user.click(rowFor("自分のPQ ID"))
     let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    await user.click(within(dialog).getByRole("button", { name: "公開鍵セットQR" }))
-    dialog = await screen.findByRole("dialog", { name: /公開鍵セット/ })
-    expect(within(dialog).getByText(/OCF2フレーム/)).toBeInTheDocument()
-    expect(within(dialog).getByRole("button", { name: "詳細に戻る" })).toBeInTheDocument()
-    expect(within(dialog).queryByRole("button", { name: "全画面表示" })).toBeNull()
-    expect(within(dialog).queryByText(/保存済み/)).toBeNull()
+    await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
+    dialog = await screen.findByRole("dialog", { name: /public-key bundle/ })
+    expect(within(dialog).getByText(/OCF2 frames/)).toBeInTheDocument()
+    expect(within(dialog).getByRole("button", { name: "Back to details" })).toBeInTheDocument()
+    expect(within(dialog).queryByRole("button", { name: "View full screen" })).toBeNull()
+    expect(within(dialog).queryByText(/Saved/)).toBeNull()
     expect(splitIntoFrames).toHaveBeenLastCalledWith(
       expect.objectContaining({
         artifactType: "pq-public-identity",
@@ -131,8 +134,8 @@ describe("key list page", () => {
     )
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameBytes")
 
-    await user.click(within(dialog).getByRole("button", { name: "詳細に戻る" }))
-    await user.click(within(dialog).getByRole("button", { name: "暗号化用単鍵QR" }))
+    await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
+    await user.click(within(dialog).getByRole("button", { name: "Encryption public-key QR" }))
     expect(splitIntoFrames).toHaveBeenLastCalledWith(
       expect.objectContaining({
         artifactType: "pq-kem-public-key",
@@ -141,8 +144,10 @@ describe("key list page", () => {
     )
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
 
-    await user.click(within(dialog).getByRole("button", { name: "詳細に戻る" }))
-    await user.click(within(dialog).getByRole("button", { name: "署名検証用単鍵QR" }))
+    await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
+    await user.click(
+      within(dialog).getByRole("button", { name: "Signature-verification public-key QR" }),
+    )
     expect(splitIntoFrames).toHaveBeenLastCalledWith(
       expect.objectContaining({
         artifactType: "pq-dsa-public-key",
@@ -154,21 +159,21 @@ describe("key list page", () => {
 
     await user.click(rowFor("共通鍵A"))
     dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
-    await user.click(within(dialog).getByRole("button", { name: "秘密鍵QRを表示" }))
-    dialog = await screen.findByRole("dialog", { name: "共通鍵QR" })
+    await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
+    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
     const png = within(dialog).getByRole("button", { name: "PNG" })
     const svg = within(dialog).getByRole("button", { name: "SVG" })
-    const copy = within(dialog).getByRole("button", { name: "コピー" })
+    const copy = within(dialog).getByRole("button", { name: "Copy" })
     expect(png).toBeDisabled()
     expect(svg).toBeDisabled()
     expect(copy).toBeDisabled()
     await user.click(
-      within(dialog).getByRole("checkbox", { name: "リスクを理解しました" }),
+      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
     )
     expect(png).toBeEnabled()
     expect(svg).toBeEnabled()
     expect(copy).toBeEnabled()
-    expect(within(dialog).queryByText(/保存済み/)).toBeNull()
+    expect(within(dialog).queryByText(/Saved/)).toBeNull()
   })
 
   it("retargets selection to the new head after rotate and re-derives after revoke", async () => {
@@ -178,23 +183,25 @@ describe("key list page", () => {
     await user.click(rowFor("自分のPQ ID"))
     let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
 
-    await user.click(within(dialog).getByRole("button", { name: "ローテーション" }))
+    await user.click(within(dialog).getByRole("button", { name: "Rotate" }))
     await waitFor(() => expect(saveRotation).toHaveBeenCalledOnce())
     expect(fakeIdentities[0]?.id).not.toBe(originalId)
     dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
     expect(
-      within(dialog).getByRole("button", { name: /旧世代 1 件、復号専用/ }),
+      within(dialog).getByRole("button", {
+        name: /1 previous generations, decryption only/,
+      }),
     ).toBeInTheDocument()
 
     const newId = fakeIdentities[0]!.id
-    await user.click(within(dialog).getByRole("button", { name: "この端末で失効" }))
+    await user.click(within(dialog).getByRole("button", { name: "Revoke on this device" }))
     await waitFor(() =>
       expect(revokeIdentity).toHaveBeenCalledWith(newId, expect.any(Number)),
     )
     dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
     expect(within(dialog).getByText("revoked")).toBeInTheDocument()
     expect(
-      within(dialog).queryByRole("button", { name: "ローテーション" }),
+      within(dialog).queryByRole("button", { name: "Rotate" }),
     ).not.toBeInTheDocument()
   })
 
@@ -203,11 +210,11 @@ describe("key list page", () => {
     await renderKeyList()
     await user.click(rowFor("共通鍵A"))
     const dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
-    await user.click(within(dialog).getByRole("button", { name: "共通鍵Aを削除" }))
+    await user.click(within(dialog).getByRole("button", { name: "Delete 共通鍵A" }))
     const confirmation = await screen.findByRole("alertdialog", {
-      name: "「共通鍵A」を削除しますか?",
+      name: 'Delete "共通鍵A"?',
     })
-    await user.click(within(confirmation).getByRole("button", { name: "削除する" }))
+    await user.click(within(confirmation).getByRole("button", { name: "Delete" }))
 
     await waitFor(() => expect(deleteKeyRecord).toHaveBeenCalledWith("sym-key-00000001"))
     await waitFor(() =>
@@ -222,11 +229,11 @@ describe("key list page", () => {
     await renderKeyList()
     await user.click(rowFor("自分のPQ ID"))
     const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    await user.click(within(dialog).getByRole("button", { name: "自分のPQ IDを削除" }))
+    await user.click(within(dialog).getByRole("button", { name: "Delete 自分のPQ ID" }))
     const confirmation = await screen.findByRole("alertdialog", {
-      name: "「自分のPQ ID」を削除しますか?",
+      name: 'Delete "自分のPQ ID"?',
     })
-    await user.click(within(confirmation).getByRole("button", { name: "削除する" }))
+    await user.click(within(confirmation).getByRole("button", { name: "Delete" }))
 
     await waitFor(() => expect(deleteIdentity).toHaveBeenCalledWith(identityId))
     await waitFor(() =>
@@ -250,18 +257,20 @@ describe("key list page", () => {
         }),
     )
     await renderKeyList()
-    expect(screen.queryByText("鍵がありません。鍵ページから作成できます。")).toBeNull()
+    expect(
+      screen.queryByText("There are no keys. Create one on the keys page."),
+    ).toBeNull()
 
     resolveIdentities?.([])
     expect(
-      await screen.findByText("鍵がありません。鍵ページから作成できます。"),
+      await screen.findByText("There are no keys. Create one on the keys page."),
     ).toBeInTheDocument()
-    expect(screen.getByText("自分の鍵がありません。")).toBeInTheDocument()
-    await user.click(screen.getByRole("tab", { name: "相手の鍵" }))
+    expect(screen.getByText("You have no keys.")).toBeInTheDocument()
+    await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
     expect(
-      screen.getByText("取り込んだ公開鍵セットがありません。"),
+      screen.getByText("There are no imported public-key bundles."),
     ).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "鍵ページを開く" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Open the keys page" })).toHaveAttribute(
       "href",
       "/keys",
     )
@@ -270,13 +279,15 @@ describe("key list page", () => {
   it("shows one source error while continuing to render the other source", async () => {
     listIdentities.mockRejectedValueOnce(new Error("identity read failed"))
     await renderKeyList()
-    expect(await screen.findByText("ポスト量子IDを読み込めません")).toBeInTheDocument()
+    expect(
+      await screen.findByText("Post-quantum identities could not be loaded"),
+    ).toBeInTheDocument()
     expect(await screen.findByText("共通鍵A")).toBeInTheDocument()
 
     resetUi()
     listKeyRecords.mockRejectedValueOnce(new Error("key read failed"))
     await renderKeyList()
-    expect(await screen.findByText("共通鍵を読み込めません")).toBeInTheDocument()
+    expect(await screen.findByText("Symmetric keys could not be loaded")).toBeInTheDocument()
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
   })
 
@@ -284,15 +295,19 @@ describe("key list page", () => {
     const user = userEvent.setup()
     fakeIdentities[0] = { ...fakeIdentities[0]!, profile: "balanced" }
     await renderKeyList()
-    expect(await screen.findByText("非対応（旧プロファイル）")).toBeInTheDocument()
+    expect(await screen.findByText("Unsupported (legacy profile)")).toBeInTheDocument()
     await user.click(rowFor("自分のPQ ID"))
     const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    expect(within(dialog).getByText(/暗号処理とQR再出力はできません/)).toBeInTheDocument()
-    expect(within(dialog).queryByRole("button", { name: "公開鍵セットQR" })).toBeNull()
-    expect(within(dialog).queryByRole("button", { name: "ローテーション" })).toBeNull()
-    expect(within(dialog).queryByRole("button", { name: "この端末で失効" })).toBeNull()
     expect(
-      within(dialog).getByRole("button", { name: "自分のPQ IDを削除" }),
+      within(dialog).getByText(/cryptographic operations and QR re-export are unavailable/),
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByRole("button", { name: "Public-key bundle QR" })).toBeNull()
+    expect(within(dialog).queryByRole("button", { name: "Rotate" })).toBeNull()
+    expect(
+      within(dialog).queryByRole("button", { name: "Revoke on this device" }),
+    ).toBeNull()
+    expect(
+      within(dialog).getByRole("button", { name: "Delete 自分のPQ ID" }),
     ).toBeInTheDocument()
   })
 })

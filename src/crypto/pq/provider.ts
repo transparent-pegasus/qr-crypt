@@ -1,9 +1,9 @@
-// PQ プロバイダーインターフェース(spec2 §3 — 同期契約を厳守)。
-// 実装は provider-noble.ts のみ(WP-11)。暗号処理を特定パッケージへ直接
-// 結合せず、必ず本インターフェース経由で呼び出す。
-// 注意: 同期プロバイダーを UI スレッドで実行してはならない(spec2 §4)。
-// ブラウザーでは Worker(pq-crypto.worker.ts)内でのみ保持し、
-// Node テストのみ直接 import を許可する(plan2.1 §F)。
+// PQ provider interface; strictly preserve the synchronous contract.
+// provider-noble.ts is the sole implementation. Do not couple cryptographic
+// operations directly to a package; always invoke them through this interface.
+// Caution: never run the synchronous provider on the UI thread.
+// In browsers, hold it only inside the Worker (pq-crypto.worker.ts); only Node tests
+// may import it directly.
 import type { MlDsaAlgorithm, MlKemAlgorithm } from "@/schemas/domain"
 import {
   createNobleDsa65,
@@ -53,7 +53,7 @@ export interface PqProviders {
   dsa87: MlDsaProvider
 }
 
-// env.pqProvider("noble" のみ。未知値は env-schema が起動時に拒否)から解決する。
+// Resolve from env.pqProvider ("noble" only; env-schema rejects unknown values at startup).
 export function resolveProviders(providerId: "noble"): PqProviders {
   if (providerId !== "noble") throw new TypeError("unsupported PQ provider")
   return Object.freeze({

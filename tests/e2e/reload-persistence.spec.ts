@@ -9,7 +9,7 @@ import {
   workerObservations,
 } from "./helpers"
 
-test("暗号化済み PQ シードを reload 後も Worker で展開して署名付き復号できる", async ({
+test("expands encrypted PQ seeds in the Worker after reload and decrypts a signed message", async ({
   context,
   page,
 }) => {
@@ -25,12 +25,12 @@ test("暗号化済み PQ シードを reload 後も Worker で展開して署名
   await page.reload({ waitUntil: "domcontentloaded" })
   expect(await rawStoreCount(page, "pqIdentities")).toBe(1)
   expect(await rawStoreCount(page, "pqPublicBundles")).toBe(1)
-  await page.getByRole("tab", { name: "復号", exact: true }).click()
-  await page.getByLabel("暗号文ペイロード").fill(payload)
-  const decrypt = page.getByRole("button", { name: "復号する", exact: true })
+  await page.getByRole("tab", { name: "Decrypt", exact: true }).click()
+  await page.getByLabel("Ciphertext payload").fill(payload)
+  const decrypt = page.getByRole("button", { name: "Decrypt", exact: true })
   await expect(decrypt).toBeEnabled()
   await decrypt.click()
-  await expect(page.getByText("署名はこの鍵に対して有効です")).toBeVisible({
+  await expect(page.getByText("The signature is valid for this key")).toBeVisible({
     timeout: 45_000,
   })
   await expect(page.getByText(plaintext, { exact: true })).toBeVisible()

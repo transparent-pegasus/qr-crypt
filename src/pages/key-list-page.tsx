@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link } from "react-router"
 import { LoaderCircle } from "lucide-react"
 import {
   isUsableIdentity,
@@ -24,6 +24,11 @@ import { assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
 import { formatDateTime, formatFingerprint } from "@/features/presentation"
 import { useKeys } from "@/hooks/use-keys"
 import { usePqRecords } from "@/hooks/use-pq-records"
+import {
+  useI18n,
+  useLocalizedMessage,
+  type LocalizedMessage,
+} from "@/i18n"
 import type {
   PostQuantumIdentity,
   PqPublicBundleRecord,
@@ -83,6 +88,7 @@ function isUsableBundle(bundle: PqPublicBundleRecord): boolean {
 }
 
 export function KeyListPage() {
+  const { language, t } = useI18n()
   const { keys, loading: keysLoading, error: keysError, refresh: refreshKeys } = useKeys()
   const {
     identities,
@@ -94,7 +100,10 @@ export function KeyListPage() {
   const [selection, setSelection] = useState<KeySelection | null>(null)
   const [ownKeyFilter, setOwnKeyFilter] = useState<OwnKeyFilter>("all")
   const [bundleBusy, setBundleBusy] = useState(false)
-  const [bundleError, setBundleError] = useState<string | null>(null)
+  const [bundleError, setBundleError] = useState<LocalizedMessage | null>(null)
+  const localizedPqError = useLocalizedMessage(pqError)
+  const localizedKeysError = useLocalizedMessage(keysError)
+  const localizedBundleError = useLocalizedMessage(bundleError)
   const symmetricKeys = useMemo(
     () => keys.filter((key) => key.kind === "symmetric"),
     [keys],
@@ -153,7 +162,7 @@ export function KeyListPage() {
       await operation()
       await refreshPq()
     } catch (caught) {
-      setBundleError(toAppError(caught, "STORAGE_FAILED").userMessage)
+      setBundleError(toAppError(caught, "STORAGE_FAILED").code)
     } finally {
       setBundleBusy(false)
     }
@@ -166,48 +175,53 @@ export function KeyListPage() {
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-[1.375rem] font-bold tracking-tight">鍵一覧</h2>
+          <h2 className="text-[1.375rem] font-bold tracking-tight">
+            {t("keyList.title")}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            メッセージ暗号文はアプリ内へ保存しません。
+            {t("keyList.subtitle")}
           </p>
         </div>
         {(!settled || bundleBusy) && (
-          <LoaderCircle aria-label="読込中" className="size-5 animate-spin" />
+          <LoaderCircle
+            aria-label={t("common.loading")}
+            className="size-5 animate-spin"
+          />
         )}
       </div>
 
       {pqError && (
         <Alert variant="destructive" role="alert">
-          <AlertTitle>ポスト量子IDを読み込めません</AlertTitle>
-          <AlertDescription>{pqError}</AlertDescription>
+          <AlertTitle>{t("keyList.error.identity")}</AlertTitle>
+          <AlertDescription>{localizedPqError}</AlertDescription>
         </Alert>
       )}
       {keysError && (
         <Alert variant="destructive" role="alert">
-          <AlertTitle>共通鍵を読み込めません</AlertTitle>
-          <AlertDescription>{keysError}</AlertDescription>
+          <AlertTitle>{t("keyList.error.symmetric")}</AlertTitle>
+          <AlertDescription>{localizedKeysError}</AlertDescription>
         </Alert>
       )}
       {bundleError && (
         <Alert variant="destructive" role="alert">
-          <AlertTitle>相手の鍵を更新できません</AlertTitle>
-          <AlertDescription>{bundleError}</AlertDescription>
+          <AlertTitle>{t("keyList.error.peer")}</AlertTitle>
+          <AlertDescription>{localizedBundleError}</AlertDescription>
         </Alert>
       )}
 
       <Tabs defaultValue="own">
         <TabsList className="grid h-11 w-full grid-cols-2">
           <TabsTrigger value="own" className="h-9 cursor-pointer">
-            自分の鍵
+            {t("keyList.tab.own")}
           </TabsTrigger>
           <TabsTrigger value="peer" className="h-9 cursor-pointer">
-            相手の鍵
+            {t("keyList.tab.peer")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="own" className="mt-6 space-y-3">
           <div className="space-y-2">
-            <Label htmlFor="own-key-kind-filter">種別</Label>
+            <Label htmlFor="own-key-kind-filter">{t("keyList.filter.label")}</Label>
             <Select
               value={ownKeyFilter}
               onValueChange={(value) => setOwnKeyFilter(value as OwnKeyFilter)}
@@ -216,9 +230,13 @@ export function KeyListPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">すべて</SelectItem>
-                <SelectItem value="pq-identity">ポスト量子ID</SelectItem>
-                <SelectItem value="symmetric">共通鍵</SelectItem>
+                <SelectItem value="all">{t("keyList.filter.all")}</SelectItem>
+                <SelectItem value="pq-identity">
+                  {t("keyList.filter.pqIdentity")}
+                </SelectItem>
+                <SelectItem value="symmetric">
+                  {t("keyList.filter.symmetric")}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -237,7 +255,9 @@ export function KeyListPage() {
                     <div className="min-w-0">
                       <p className="truncate font-medium">{head.name}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        ポスト量子ID · {formatDateTime(head.createdAt)}
+                        {t("keyList.item.identityMeta", {
+                          datetime: formatDateTime(head.createdAt, language),
+                        })}
                       </p>
                     </div>
                     <Badge
@@ -245,7 +265,9 @@ export function KeyListPage() {
                         head.status === "active" && supported ? "default" : "secondary"
                       }
                     >
-                      {supported ? head.status : "非対応（旧プロファイル）"}
+                      {supported
+                        ? head.status
+                        : t("keyDetail.badge.legacyProfile")}
                     </Badge>
                   </div>
                 </button>
@@ -264,7 +286,9 @@ export function KeyListPage() {
                   <div className="min-w-0">
                     <p className="truncate font-medium">{record.name}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      共通鍵 · {formatDateTime(record.createdAt)}
+                      {t("keyList.item.symmetricMeta", {
+                        datetime: formatDateTime(record.createdAt, language),
+                      })}
                     </p>
                   </div>
                   <Badge>AES-256-GCM</Badge>
@@ -279,8 +303,8 @@ export function KeyListPage() {
               <Empty
                 text={
                   ownKeyFilter === "all"
-                    ? "自分の鍵がありません。"
-                    : "選択した種別の鍵がありません。"
+                    ? t("keyList.empty.ownAll")
+                    : t("keyList.empty.ownFiltered")
                 }
               />
             )}
@@ -309,10 +333,10 @@ export function KeyListPage() {
           <Card>
             <CardContent className="space-y-4 p-6 text-center">
               <p className="text-sm text-muted-foreground">
-                鍵がありません。鍵ページから作成できます。
+                {t("keyList.empty.noKeys")}
               </p>
               <Button asChild className="h-11">
-                <Link to="/keys">鍵ページを開く</Link>
+                <Link to="/keys">{t("common.openKeysPage")}</Link>
               </Button>
             </CardContent>
           </Card>
@@ -337,11 +361,14 @@ export function KeyListPage() {
 }
 
 function Fingerprint({ label, value }: { label: string; value: string }) {
+  const { t } = useI18n()
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="break-all font-mono text-xs">{value}</p>
-      <p className="font-mono text-sm">比較表示: {formatFingerprint(value)}</p>
+      <p className="font-mono text-sm">
+        {t("common.fingerprintCompare", { value: formatFingerprint(value) })}
+      </p>
     </div>
   )
 }
@@ -357,8 +384,9 @@ function BundleList({
   onRevoke: (recordId: string) => Promise<void>
   onDelete: (recordId: string) => Promise<void>
 }) {
+  const { t } = useI18n()
   if (bundles.length === 0) {
-    return <Empty text="取り込んだ公開鍵セットがありません。" />
+    return <Empty text={t("keyList.bundle.empty")} />
   }
 
   return (
@@ -372,8 +400,8 @@ function BundleList({
                 <div>
                   <p className="font-medium">
                     {record.trust === "fingerprint-confirmed"
-                      ? (record.name ?? "確認済み公開鍵")
-                      : "未確認の公開鍵"}
+                      ? (record.name ?? t("keyList.bundle.nameConfirmed"))
+                      : t("keyList.bundle.nameUnverified")}
                   </p>
                   <p className="font-mono text-xs text-muted-foreground">
                     {record.identityId}
@@ -388,26 +416,30 @@ function BundleList({
                 >
                   {supported
                     ? record.trust === "fingerprint-confirmed"
-                      ? "人物確認済み"
-                      : "unverified"
-                    : "非対応（旧プロファイル）"}
+                      ? t("keyList.bundle.badge.confirmed")
+                      : t("keyList.bundle.badge.unverified")
+                    : t("keyDetail.badge.legacyProfile")}
                 </Badge>
               </div>
               <Fingerprint
-                label={`受信公開鍵 ${record.kem.algorithm}`}
+                label={t("keyList.bundle.fingerprintKem", {
+                  algorithm: record.kem.algorithm,
+                })}
                 value={record.kem.fingerprint}
               />
               <Fingerprint
-                label={`署名公開鍵 ${record.signing.algorithm}`}
+                label={t("keyList.bundle.fingerprintSigning", {
+                  algorithm: record.signing.algorithm,
+                })}
                 value={record.signing.fingerprint}
               />
               <Fingerprint
-                label="Identity fingerprint"
+                label={t("common.identityFingerprint")}
                 value={record.identityFingerprint}
               />
               {!supported && (
                 <p className="text-sm text-destructive">
-                  非対応（旧プロファイル）のため、削除以外の操作はできません。
+                  {t("keyList.bundle.legacyNote")}
                 </p>
               )}
               <div className={`grid gap-2 ${supported ? "grid-cols-2" : "grid-cols-1"}`}>
@@ -418,7 +450,7 @@ function BundleList({
                     disabled={busy}
                     onClick={() => void onRevoke(record.recordId)}
                   >
-                    利用停止
+                    {t("keyList.bundle.revoke")}
                   </Button>
                 )}
                 <Button
@@ -427,7 +459,7 @@ function BundleList({
                   disabled={busy}
                   onClick={() => void onDelete(record.recordId)}
                 >
-                  削除
+                  {t("common.delete")}
                 </Button>
               </div>
             </CardContent>

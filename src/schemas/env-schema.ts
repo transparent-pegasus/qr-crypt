@@ -1,6 +1,7 @@
-// 環境変数の実行時検証(plan §13 C14、v2: spec2 §15 / plan2.1 §I)。
-// boolean は "true"/"false" の列挙のみ受理し、z.coerce.boolean の罠を避ける。
-// 不正値は起動時に throw する(黙って既定値へフォールバックしない)。
+// Runtime validation for environment variables.
+// Accept only the explicit "true"/"false" enumeration for booleans to avoid the
+// z.coerce.boolean trap. Throw on invalid values at startup; never silently fall
+// back to defaults.
 import { z } from "zod"
 import {
   FRAME_INTERVAL_MS_DEFAULT,
@@ -16,7 +17,7 @@ export interface AppEnv {
   qrErrorCorrection: QrEcLevel
   qrRenderSize: number
   maxPlaintextBytes: number
-  // RSA は廃止済み。互換的にプロパティを公開するが常に false。
+  // RSA has been retired. Expose the property for compatibility, but it is always false.
   enableRsa: false
   enableEcdh: boolean
   enableMlKem: boolean
@@ -56,10 +57,11 @@ const frameIntervalMsFromString = z
     }),
   )
 
-// maximum 署名付き OCM2 の正準 CBOR 実測 fixture を式へ分解した固定部。
-// SignedMessageBody の plaintext byte string だけが可変で、ML-DSA-87 署名は
-// 4,627B、ML-KEM-1024 ciphertext は 1,568B、AES-GCM tag は 16B 固定。
-// tests/pq/maximum-artifact-size.golden.test.ts が生成物との境界一致を固定する。
+// Fixed portion obtained by decomposing the measured canonical-CBOR fixture for a
+// maximum signed OCM2 into an expression. Only the plaintext byte string in
+// SignedMessageBody varies; the ML-DSA-87 signature is fixed at 4,627B, the
+// ML-KEM-1024 ciphertext at 1,568B, and the AES-GCM tag at 16B.
+// tests/pq/maximum-artifact-size.golden.test.ts pins boundary equality with generated output.
 const MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES = 6_612
 
 function canonicalByteStringHeaderBytes(byteLength: number): number {
@@ -88,7 +90,7 @@ const rawSchema = z.object({
   VITE_QR_ERROR_CORRECTION: z.enum(["L", "M", "Q", "H"]).default("Q"),
   VITE_QR_RENDER_SIZE: intFromString(512, 128, 1024),
   VITE_MAX_PLAINTEXT_BYTES: intFromString(4096, 1, 16384),
-  // 廃止済みの互換変数。true も受理するが parse 後は常に false。
+  // Retired compatibility variable. Accept true, but always produce false after parsing.
   VITE_ENABLE_RSA: boolFromString("false"),
   VITE_ENABLE_ECDH: boolFromString("false"),
   VITE_ENABLE_ML_KEM: boolFromString("true"),
@@ -99,7 +101,7 @@ const rawSchema = z.object({
   VITE_QR_FRAME_BYTES: intFromString(600, 400, 900),
   VITE_QR_FRAME_INTERVAL_MS: frameIntervalMsFromString,
   VITE_QR_MAX_FRAMES: intFromString(64, 1, 64),
-  // 未知のプロバイダー名は起動時エラー(plan2 §1-3)
+  // Unknown provider names are startup errors.
   VITE_PQ_PROVIDER: z.enum(["noble"]).default("noble"),
   VITE_PQ_WORKER_ENABLED: boolFromString("true"),
   VITE_AUTO_CLEAR_SECONDS: intFromString(300, 0, 86_400),
@@ -110,27 +112,29 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
   const parsed = rawSchema.safeParse(raw)
   if (!parsed.success) {
     const paths = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")
-    throw new Error(`環境変数が不正です: ${paths}`)
+    throw new Error(`Invalid environment variables: ${paths}`)
   }
   const v = parsed.data
-  // 相関制約(fail-closed。黙った縮退はここに列挙した正規化のみ):
-  // 1) 署名必須なのに ML-DSA 無効は成立しない → 起動時エラー
+  // Cross-field constraints (fail closed; the only silent degradations are the
+  // normalizations listed here):
+  // 1) Requiring signatures while ML-DSA is disabled is invalid → startup error.
   if (v.VITE_REQUIRE_SIGNATURE && !v.VITE_ENABLE_ML_DSA) {
     throw new Error(
-      "環境変数が不正です: VITE_REQUIRE_SIGNATURE=true と VITE_ENABLE_ML_DSA=false は両立しません",
+      "Invalid environment variables: VITE_REQUIRE_SIGNATURE=true and VITE_ENABLE_ML_DSA=false cannot be used together",
     )
   }
-  // 2) maximum 署名付き最大平文の artifact 生バイトが、設定された OCF2
-  //    chunk 総容量へ収まらない組合せは起動前に拒否する。
+  // 2) Reject before startup any configuration where the raw artifact bytes for a
+  //    maximum signed message with maximum plaintext do not fit the configured total
+  //    OCF2 chunk capacity.
   const maximumSignedBytes = maximumSignedArtifactBytes(v.VITE_MAX_PLAINTEXT_BYTES)
   const configuredFrameCapacity = v.VITE_QR_MAX_FRAMES * v.VITE_QR_FRAME_BYTES
   if (maximumSignedBytes > configuredFrameCapacity) {
     throw new Error(
-      "環境変数が不正です: VITE_MAX_PLAINTEXT_BYTES の maximum 署名付き正準 CBOR が VITE_QR_MAX_FRAMES × VITE_QR_FRAME_BYTES に収まりません",
+      "Invalid environment variables: the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × VITE_QR_FRAME_BYTES",
     )
   }
   let defaultAlgorithm: UiAlgorithm = v.VITE_DEFAULT_ALGORITHM
-  // 3) ML-KEM 無効時に既定方式が PQ を指していたら A256GCM へ正規化
+  // 3) If ML-KEM is disabled and the default algorithm points to PQ, normalize to A256GCM.
   if (
     !v.VITE_ENABLE_ML_KEM &&
     (defaultAlgorithm === "MLKEM1024_A256GCM" ||
@@ -138,11 +142,12 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
   ) {
     defaultAlgorithm = "A256GCM"
   }
-  // 4) ML-DSA 無効時に既定方式が署名付き PQ なら非署名 PQ へ正規化
+  // 4) If ML-DSA is disabled and the default is signed PQ, normalize to unsigned PQ.
   if (!v.VITE_ENABLE_ML_DSA && defaultAlgorithm === "MLKEM1024_MLDSA87_A256GCM") {
     defaultAlgorithm = "MLKEM1024_A256GCM"
   }
-  // 5) 署名必須なら既定 PQ 方式を署名付きへ正規化(plan2.1 §I。A256GCM は対象外)
+  // 5) If signatures are required, normalize the default PQ algorithm to signed PQ.
+  //    A256GCM is excluded.
   if (v.VITE_REQUIRE_SIGNATURE && defaultAlgorithm === "MLKEM1024_A256GCM") {
     defaultAlgorithm = "MLKEM1024_MLDSA87_A256GCM"
   }
@@ -154,7 +159,7 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     qrErrorCorrection: v.VITE_QR_ERROR_CORRECTION,
     qrRenderSize: v.VITE_QR_RENDER_SIZE,
     maxPlaintextBytes: v.VITE_MAX_PLAINTEXT_BYTES,
-    // VITE_ENABLE_RSA=true は廃止互換として無視する(plan2.1 §E4)。
+    // Ignore VITE_ENABLE_RSA=true as retired compatibility behavior.
     enableRsa: false,
     enableEcdh: v.VITE_ENABLE_ECDH,
     enableMlKem: v.VITE_ENABLE_ML_KEM,

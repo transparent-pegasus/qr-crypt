@@ -40,11 +40,11 @@ describe("key management v2", () => {
   it("shows noun-form tabs and separated camera/paste import cards", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    for (const name of ["作成", "読込"]) {
+    for (const name of ["Create", "Import"]) {
       expect(await screen.findByRole("tab", { name })).toBeInTheDocument()
     }
     expect(screen.getAllByRole("tab")).toHaveLength(2)
-    expect(screen.getByRole("tab", { name: "作成" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Create" })).toHaveAttribute(
       "aria-selected",
       "true",
     )
@@ -59,9 +59,9 @@ describe("key management v2", () => {
       await user.click(tab)
       expect(screen.getByRole("tabpanel")).toHaveClass("mt-6")
     }
-    const cameraHeading = screen.getByRole("heading", { name: "カメラで読み取る" })
+    const cameraHeading = screen.getByRole("heading", { name: "Scan with the camera" })
     const pasteHeading = screen.getByRole("heading", {
-      name: "ペイロードを貼り付ける",
+      name: "Paste a payload",
     })
     const cameraCard = cameraHeading.parentElement?.parentElement
     const pasteCard = pasteHeading.parentElement?.parentElement
@@ -70,14 +70,14 @@ describe("key management v2", () => {
     expect(cameraCard).not.toBe(pasteCard)
     expect(
       within(cameraCard as HTMLDivElement).getByRole("button", {
-        name: "鍵QRを読み取る",
+        name: "Scan a key QR code",
       }),
     ).toBeInTheDocument()
     expect(
-      within(pasteCard as HTMLDivElement).getByLabelText("鍵ペイロード"),
+      within(pasteCard as HTMLDivElement).getByLabelText("Key payload"),
     ).toBeInTheDocument()
     const exampleCaption = screen.getByText(
-      "相手の画面の輝度を上げてもらい、カメラを15〜20cmほど離してピントが合うまで静止すると読み取りやすくなります。",
+      "Ask the other party to increase their screen brightness, hold the camera about 15–20 cm away, and keep it still until the image is in focus.",
     )
     const scanIcon = exampleCaption.parentElement!.querySelector(
       "svg.lucide-scan-line",
@@ -86,18 +86,18 @@ describe("key management v2", () => {
     expect(exampleCaption.parentElement!.querySelector("img")).toBeNull()
     expect(
       screen.queryByText(
-        "上のQR読取またはペイロード貼付から公開鍵セットを取り込めます。",
+        "Import a public-key bundle by scanning a QR code or pasting a payload above.",
       ),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByText("取り込んだ公開鍵セットがありません。"),
+      screen.queryByText("There are no imported public-key bundles."),
     ).not.toBeInTheDocument()
     expect(screen.queryByText("確認済みの相手")).not.toBeInTheDocument()
     expect(
-      screen.getByText(/旧形式のRSA鍵 2 件は v2 で使用不可、復元できません/),
+      screen.getByText(/2 legacy RSA keys cannot be used with v2 and cannot be recovered/),
     ).toBeInTheDocument()
     expect(screen.queryByText("受信鍵B")).not.toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "旧形式の鍵を削除" }))
+    await user.click(screen.getByRole("button", { name: "Delete legacy keys" }))
     await waitFor(() => expect(deleteKeyRecord).toHaveBeenCalledTimes(2))
     expect(fakeKeys.every((key) => key.kind === "symmetric")).toBe(true)
   })
@@ -108,12 +108,12 @@ describe("key management v2", () => {
     const symmetricCount = fakeKeys.filter((key) => key.kind === "symmetric").length
     await renderApp("/keys")
 
-    // defaultAlgorithm=A256GCM(fakes)なので既定種類は共通鍵
-    expect(await screen.findByLabelText("共通鍵名")).toBeInTheDocument()
-    expect(screen.queryByText("experimental・未独立監査")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "共通鍵を作成" })).toBeDisabled()
-    await user.type(screen.getByLabelText("共通鍵名"), "新しい共通鍵")
-    await user.click(screen.getByRole("button", { name: "共通鍵を作成" }))
+    // defaultAlgorithm=A256GCM in the fakes, so the default kind is symmetric key.
+    expect(await screen.findByLabelText("Symmetric-key name")).toBeInTheDocument()
+    expect(screen.queryByText("experimental · not independently audited")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Create a symmetric key" })).toBeDisabled()
+    await user.type(screen.getByLabelText("Symmetric-key name"), "新しい共通鍵")
+    await user.click(screen.getByRole("button", { name: "Create a symmetric key" }))
     await waitFor(() => expect(createSymmetricKeyRecord).toHaveBeenCalledOnce())
     expect(fakeKeys.filter((key) => key.kind === "symmetric")).toHaveLength(
       symmetricCount + 1,
@@ -122,11 +122,15 @@ describe("key management v2", () => {
     expect(within(dialog).getByText("AES-256-GCM")).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
-    await user.click(screen.getByRole("combobox", { name: "種類" }))
+    await user.click(screen.getByRole("combobox", { name: "Type" }))
     await user.click(
-      screen.getByRole("option", { name: "ポスト量子ID ML-KEM-1024 + ML-DSA-87" }),
+      screen.getByRole("option", {
+        name: "Post-quantum identity ML-KEM-1024 + ML-DSA-87",
+      }),
     )
-    expect(await screen.findByText("experimental・未独立監査")).toBeInTheDocument()
+    expect(
+      await screen.findByText("experimental · not independently audited"),
+    ).toBeInTheDocument()
     const auditNote = screen.getByRole("note")
     expect(auditNote).toHaveClass(
       "inline-flex",
@@ -137,37 +141,41 @@ describe("key management v2", () => {
       "gap-2",
     )
     expect(auditNote.tagName).toBe("DIV")
-    await user.type(screen.getByLabelText("ポスト量子ID名"), "新しいPQ ID")
-    await user.click(screen.getByRole("button", { name: "ポスト量子IDを作成" }))
+    await user.type(screen.getByLabelText("Post-quantum identity name"), "新しいPQ ID")
+    await user.click(
+      screen.getByRole("button", { name: "Create a post-quantum identity" }),
+    )
     await waitFor(() => expect(createIdentity).toHaveBeenCalledOnce())
     expect(fakeIdentities).toHaveLength(identityCount + 1)
     dialog = await screen.findByRole("dialog", { name: "新しいPQ ID" })
     expect(within(dialog).getByText("3".repeat(64))).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
-    expect(screen.queryByText(/maximum IDを作成/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Create a maximum ID/)).not.toBeInTheDocument()
   })
 
   it("blocks immediately on OCI2 fingerprint comparison and can save unverified", async () => {
     const user = userEvent.setup()
     const originalCount = fakeBundles.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "読込" }))
-    await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:fake")
-    await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
+    await user.click(await screen.findByRole("tab", { name: "Import" }))
+    await user.type(screen.getByLabelText("Key payload"), "OCI2:fake")
+    await user.click(screen.getByRole("button", { name: "Read the key" }))
 
     const dialog = await screen.findByRole("dialog", {
-      name: "別経路で指紋を比較してください",
+      name: "Compare the fingerprint through another channel",
     })
     expect(within(dialog).getByText("9".repeat(64))).toBeInTheDocument()
     expect(within(dialog).getByText("7".repeat(64))).toBeInTheDocument()
     expect(within(dialog).getByText("8".repeat(64))).toBeInTheDocument()
-    expect(within(dialog).getByRole("button", { name: "確認して保存" })).toBeDisabled()
+    expect(within(dialog).getByRole("button", { name: "Verify and save" })).toBeDisabled()
     await user.keyboard("{Escape}")
     expect(
-      screen.getByRole("dialog", { name: "別経路で指紋を比較してください" }),
+      screen.getByRole("dialog", {
+        name: "Compare the fingerprint through another channel",
+      }),
     ).toBeInTheDocument()
 
-    await user.click(within(dialog).getByRole("button", { name: "未確認のまま保存" }))
+    await user.click(within(dialog).getByRole("button", { name: "Save without verification" }))
     await waitFor(() => expect(saveBundle).toHaveBeenCalledTimes(1))
     expect(confirmBundleFingerprint).not.toHaveBeenCalled()
     expect(fakeBundles).toHaveLength(originalCount + 1)
@@ -177,16 +185,18 @@ describe("key management v2", () => {
   it("confers fingerprint-confirmed trust only after the explicit checkbox", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "読込" }))
-    await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:fake")
-    await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
+    await user.click(await screen.findByRole("tab", { name: "Import" }))
+    await user.type(screen.getByLabelText("Key payload"), "OCI2:fake")
+    await user.click(screen.getByRole("button", { name: "Read the key" }))
     const dialog = await screen.findByRole("dialog", {
-      name: "別経路で指紋を比較してください",
+      name: "Compare the fingerprint through another channel",
     })
     await user.click(
-      within(dialog).getByRole("checkbox", { name: "別経路で一致を確認した" }),
+      within(dialog).getByRole("checkbox", {
+        name: "I confirmed a match through another channel",
+      }),
     )
-    await user.click(within(dialog).getByRole("button", { name: "確認して保存" }))
+    await user.click(within(dialog).getByRole("button", { name: "Verify and save" }))
     await waitFor(() => expect(confirmBundleFingerprint).toHaveBeenCalledTimes(1))
     expect(fakeBundles[0]?.trust).toBe("fingerprint-confirmed")
   })
@@ -211,13 +221,17 @@ describe("key management v2", () => {
     encodePublicIdentityBundleV2(legacyBundle)
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "読込" }))
-    await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:legacy-balanced")
-    await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
+    await user.click(await screen.findByRole("tab", { name: "Import" }))
+    await user.type(screen.getByLabelText("Key payload"), "OCI2:legacy-balanced")
+    await user.click(screen.getByRole("button", { name: "Read the key" }))
 
-    expect(await screen.findByText("対応していない暗号方式です。")).toBeInTheDocument()
     expect(
-      screen.queryByRole("dialog", { name: "別経路で指紋を比較してください" }),
+      await screen.findByText("This cryptographic algorithm is not supported."),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", {
+        name: "Compare the fingerprint through another channel",
+      }),
     ).not.toBeInTheDocument()
     expect(saveBundle).not.toHaveBeenCalled()
   })
@@ -243,39 +257,43 @@ describe("key management v2", () => {
     }
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "読込" }))
-    const input = screen.getByLabelText("鍵ペイロード")
+    await user.click(await screen.findByRole("tab", { name: "Import" }))
+    const input = screen.getByLabelText("Key payload")
 
     encodeKemPublicKeyEnvelopeV2(legacyKem)
     await user.type(input, "OCP2:legacy-balanced")
-    await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
-    expect(await screen.findByText("対応していない暗号方式です。")).toBeInTheDocument()
-    expect(screen.queryByText("単鍵を読み取りました")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Read the key" }))
+    expect(
+      await screen.findByText("This cryptographic algorithm is not supported."),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("A single key was read")).not.toBeInTheDocument()
 
     await user.clear(input)
     encodeDsaPublicKeyEnvelopeV2(legacyDsa)
     await user.type(input, "OCS2:legacy-balanced")
-    await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
-    expect(await screen.findByText("対応していない暗号方式です。")).toBeInTheDocument()
-    expect(screen.queryByText("単鍵を読み取りました")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Read the key" }))
+    expect(
+      await screen.findByText("This cryptographic algorithm is not supported."),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("A single key was read")).not.toBeInTheDocument()
   })
 
   it("keeps single-frame OCK1 camera import behind a secret-key confirmation", async () => {
     const user = userEvent.setup()
     const originalCount = fakeKeys.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "読込" }))
+    await user.click(await screen.findByRole("tab", { name: "Import" }))
     expect(startQrScan).not.toHaveBeenCalled()
-    await user.click(screen.getByRole("button", { name: "鍵QRを読み取る" }))
+    await user.click(screen.getByRole("button", { name: "Scan a key QR code" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     await act(async () => emitScannedPayload("OCK1:imported-key-000001"))
 
-    const dialog = await screen.findByRole("dialog", { name: "共通鍵を取り込みます" })
-    const save = within(dialog).getByRole("button", { name: "共通鍵を保存" })
+    const dialog = await screen.findByRole("dialog", { name: "Import a symmetric key" })
+    const save = within(dialog).getByRole("button", { name: "Save the symmetric key" })
     expect(save).toBeDisabled()
     await user.click(
       within(dialog).getByRole("checkbox", {
-        name: "この鍵の共有経路を信頼しています",
+        name: "I trust the channel used to share this key",
       }),
     )
     await user.click(save)
@@ -293,9 +311,9 @@ describe("settings v2", () => {
   it("persists every numeric boundary and shows wipe/reset warnings", async () => {
     const user = userEvent.setup()
     await renderApp("/settings")
-    const frameBytes = await screen.findByLabelText(/1フレームの生データ/)
-    const frameInterval = screen.getByLabelText(/フレーム切替間隔/)
-    const transferTimeout = screen.getByLabelText(/読取状態の期限/)
+    const frameBytes = await screen.findByLabelText(/Raw data per frame/)
+    const frameInterval = screen.getByLabelText(/Frame interval/)
+    const transferTimeout = screen.getByLabelText(/Scan-state lifetime/)
     expect(frameBytes).toHaveAttribute("min", "400")
     expect(frameBytes).toHaveAttribute("max", "900")
     expect(frameInterval).toHaveAttribute("min", "1000")
@@ -315,11 +333,11 @@ describe("settings v2", () => {
     })
 
     const wipe = screen.getByRole("switch", {
-      name: "オンライン確定時にローカルデータを初期化",
+      name: "Reset local data after confirmed online connectivity",
     })
     expect(wipe).toBeChecked()
     await user.click(wipe)
-    expect(await screen.findByText("ローカルデータが残り続けます")).toBeInTheDocument()
+    expect(await screen.findByText("Local data will remain")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /Advanced: reset churn/ }))
     const resetChurn = screen.getByLabelText(/reset churn/)
@@ -329,44 +347,64 @@ describe("settings v2", () => {
     await waitFor(() =>
       expect(updatePreferences).toHaveBeenCalledWith({ resetChurnMb: 512 }),
     )
-    expect(screen.getByText(/churnは消去保証にならず/)).toBeInTheDocument()
+    expect(screen.getByText(/Churn does not guarantee erasure/)).toBeInTheDocument()
     expect(
-      screen.getByText(/JavaScript実装はサイドチャネル耐性を保証しません/),
+      screen.getByText(/JavaScript implementation does not guarantee resistance to side channels/),
     ).toBeInTheDocument()
-    expect(screen.getByText(/物理消去は保証しません/)).toBeInTheDocument()
+    expect(screen.getByText(/Physical erasure is not guaranteed/)).toBeInTheDocument()
   })
 
   it("enforces the environment signature floor", async () => {
     env.requireSignature = true
     fakePreferences.requireSignature = true
     await renderApp("/settings")
-    const signature = await screen.findByRole("switch", { name: "署名を必須にする" })
+    const signature = await screen.findByRole("switch", { name: "Require a signature" })
     expect(signature).toBeChecked()
     expect(signature).toBeDisabled()
     expect(
-      screen.getByText(/環境設定で必須化されているため解除できません/),
+      screen.getByText(/cannot be disabled because it is required by the environment configuration/),
     ).toBeInTheDocument()
-    await userEvent.setup().click(screen.getByLabelText("デフォルト暗号方式"))
+    await userEvent.setup().click(screen.getByLabelText("Default cryptographic algorithm"))
     expect(
-      screen.queryByRole("option", { name: /^ポスト量子 ML-KEM/ }),
+      screen.queryByRole("option", { name: /^Post-quantum ML-KEM/ }),
     ).not.toBeInTheDocument()
+  })
+
+  it("switches the settings language and persists the selection", async () => {
+    const user = userEvent.setup()
+    await renderApp("/settings")
+
+    expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument()
+    await user.click(screen.getByLabelText("Language"))
+    await user.click(screen.getByRole("option", { name: "日本語" }))
+
+    expect(screen.getByRole("heading", { name: "設定" })).toBeInTheDocument()
+    expect(window.localStorage.getItem("oc-lang")).toBe("ja")
+    expect(document.documentElement.lang).toBe("ja")
+
+    await user.click(screen.getByLabelText("言語"))
+    await user.click(screen.getByRole("option", { name: "English" }))
+
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument()
+    expect(window.localStorage.getItem("oc-lang")).toBe("en")
+    expect(document.documentElement.lang).toBe("en")
   })
 
   it("arms the one-shot maintenance token only after strong offline confirmation", async () => {
     const user = userEvent.setup()
     await renderApp("/settings")
     const button = await screen.findByRole("button", {
-      name: "次の一回だけ鍵を保持して更新",
+      name: "Keep keys for the next update only",
     })
     expect(button).toBeEnabled()
     await user.click(button)
     const dialog = await screen.findByRole("alertdialog", {
-      name: "次の一回だけ鍵を保持して更新",
+      name: "Keep keys for the next update only",
     })
-    const action = within(dialog).getByRole("button", { name: "maintenance tokenをarm" })
+    const action = within(dialog).getByRole("button", { name: "Arm maintenance token" })
     expect(action).toBeDisabled()
-    await user.type(within(dialog).getByLabelText("確認文字列"), "鍵を保持して更新")
-    await user.click(within(dialog).getByRole("checkbox", { name: /一回限り/ }))
+    await user.type(within(dialog).getByLabelText("Confirmation text"), "KEEP KEYS")
+    await user.click(within(dialog).getByRole("checkbox", { name: /applies once/ }))
     expect(action).toBeEnabled()
     await user.click(action)
     await waitFor(() => expect(armMaintenanceToken).toHaveBeenCalledTimes(1))
@@ -378,13 +416,13 @@ describe("settings v2", () => {
     expect(fakeKeys.length).toBeGreaterThan(0)
     expect(fakeIdentities.length).toBeGreaterThan(0)
 
-    await user.click(await screen.findByRole("button", { name: "すべての鍵を消去" }))
+    await user.click(await screen.findByRole("button", { name: "Delete all keys" }))
     const dialog = await screen.findByRole("alertdialog", {
-      name: "すべての鍵を消去",
+      name: "Delete all keys",
     })
-    const action = within(dialog).getByRole("button", { name: "論理削除を実行" })
+    const action = within(dialog).getByRole("button", { name: "Run logical deletion" })
     expect(action).toBeDisabled()
-    await user.type(within(dialog).getByLabelText("確認文字列"), "全削除")
+    await user.type(within(dialog).getByLabelText("Confirmation text"), "DELETE ALL")
     await user.click(action)
 
     await waitFor(() => {

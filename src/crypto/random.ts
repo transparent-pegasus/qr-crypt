@@ -1,4 +1,4 @@
-// CSPRNG ユーティリティ。Math.random の使用は全域で禁止(spec §33)。
+// CSPRNG utilities. Math.random is prohibited throughout the application.
 import { AppError } from "@/crypto/errors"
 import { toBase64Url } from "@/lib/base64url"
 
@@ -13,7 +13,7 @@ export function randomBytes(length: number): Uint8Array {
   }
 }
 
-// 16 バイト乱数 → base64url 22 文字(docs/qr-protocol.md §8)
+// 16 random bytes → 22 base64url characters (docs/qr-protocol.md §8).
 export function generateKeyId(): string {
   return toBase64Url(randomBytes(16))
 }
@@ -22,7 +22,7 @@ export function generateArtifactId(): string {
   return toBase64Url(randomBytes(16))
 }
 
-// ファイル名などに使う短縮 ID(先頭 8 文字)
+// Abbreviated ID for filenames and similar uses (first 8 characters).
 export function shortId(id: string): string {
   return id.slice(0, 8)
 }

@@ -6,7 +6,7 @@ import {
   ScanLine,
   Trash2,
 } from "lucide-react"
-import { AppError, userMessageFor } from "@/crypto/errors"
+import { AppError, errorMessageKey, type ErrorCode } from "@/crypto/errors"
 import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import { formatFramePositions } from "@/features/presentation"
 import {
@@ -27,6 +27,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
+import { useI18n, type MessageKey, type Translate } from "@/i18n"
+import type { InterpolationValues } from "@/i18n/messages"
 import { cn } from "@/lib/utils"
 
 export type ScannerTarget = "message" | "symmetric-key" | "public-key"
@@ -37,10 +39,10 @@ const TARGET_PREFIX: Record<ScannerTarget, string> = {
   "public-key": "OCP1:",
 }
 
-const TARGET_LABEL: Record<ScannerTarget, string> = {
-  message: "暗号文",
-  "symmetric-key": "共通鍵",
-  "public-key": "公開鍵",
+const TARGET_LABEL_KEY: Record<ScannerTarget, MessageKey> = {
+  message: "scanner.targetLabel.message",
+  "symmetric-key": "scanner.targetLabel.symmetricKey",
+  "public-key": "scanner.targetLabel.publicKey",
 }
 
 export interface MultipartScanCompletion {
@@ -88,12 +90,22 @@ interface ScannerRun {
 }
 
 const IDLE_TRANSFER_STATE: TransferState = { kind: "idle" }
-const DEFAULT_STOP_HINT =
-  "カメラ画像は保存されません。停止ボタンまたは画面離脱で停止します。"
-const MODAL_STOP_HINT =
-  "カメラ画像は保存されません。閉じる・停止ボタン・画面離脱で停止します。"
-const MULTIPART_STOP_HINT =
-  "カメラ画像は保存されません。閉じる・破棄ボタン・画面離脱で停止します。"
+
+interface LocalizedText {
+  key: MessageKey
+  values?: InterpolationValues
+}
+
+function localized(
+  key: MessageKey,
+  values?: InterpolationValues,
+): LocalizedText {
+  return values === undefined ? { key } : { key, values }
+}
+
+function localizedErrorCode(code: ErrorCode): LocalizedText {
+  return localized(errorMessageKey(code))
+}
 
 function targetForPayload(payload: string): ScannerTarget | null {
   for (const target of Object.keys(TARGET_PREFIX) as ScannerTarget[]) {
@@ -102,26 +114,24 @@ function targetForPayload(payload: string): ScannerTarget | null {
   return null
 }
 
-function actualPayloadLabel(payload: string): string {
+function actualPayloadLabel(payload: string, t: Translate): string {
   const target = targetForPayload(payload)
-  return target === null ? "本アプリ以外" : TARGET_LABEL[target]
+  return target === null
+    ? t("scanner.payloadLabel.foreign")
+    : t(TARGET_LABEL_KEY[target])
 }
 
 function acceptedPayloadLabel(
   singleTargets: ScannerTarget[],
   acceptsMultipart: boolean,
+  t: Translate,
 ): string {
-  const labels = singleTargets.map((target) => TARGET_LABEL[target])
-  if (acceptsMultipart) labels.push("複数QR")
-  return labels.join("・") || "設定されたQR"
-}
-
-function mismatchMessage(
-  payload: string,
-  singleTargets: ScannerTarget[],
-  acceptsMultipart: boolean,
-): string {
-  return `受理対象外のQRです(${actualPayloadLabel(payload)})。この画面では${acceptedPayloadLabel(singleTargets, acceptsMultipart)}を読み取れます。`
+  const labels = singleTargets.map((target) => t(TARGET_LABEL_KEY[target]))
+  if (acceptsMultipart) labels.push(t("scanner.acceptedLabel.multipart"))
+  return (
+    labels.join(t("scanner.acceptedLabel.separator")) ||
+    t("scanner.acceptedLabel.fallback")
+  )
 }
 
 function deliveryError(error: unknown): AppError {
@@ -129,18 +139,21 @@ function deliveryError(error: unknown): AppError {
 }
 
 export function QrScannerPanel(props: QrScannerPanelProps) {
+  const { language, t } = useI18n()
   const {
     singleTargets,
     onSingleScan,
     cameraAvailable = true,
-    title = "QRコードを読み取る",
+    title: titleProp,
     autoStart = false,
-    stopHint = DEFAULT_STOP_HINT,
+    stopHint: stopHintProp,
   } = props
+  const title = titleProp ?? t("scanner.defaultTitle")
+  const stopHint = stopHintProp ?? t("scanner.stopHint.default")
   const multipart = props.multipart
   const multipartSession = multipart?.session
   const resolvedStopHint =
-    multipart === undefined ? stopHint : MULTIPART_STOP_HINT
+    multipart === undefined ? stopHint : t("scanner.stopHint.multipart")
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const mountedRef = useRef(true)
@@ -161,14 +174,16 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   )
 
   const [cameraMode, setCameraMode] = useState<ScannerMode>("idle")
-  const [cameraStatus, setCameraStatus] = useState(
-    "起動ボタンを押すとカメラを開始します",
+  const [cameraStatus, setCameraStatus] = useState<LocalizedText>(
+    () => localized("scanner.status.idlePrompt"),
   )
-  const [error, setError] = useState<string | null>(() =>
+  const [error, setError] = useState<LocalizedText | null>(() =>
     transferState.kind === "error"
-      ? userMessageFor(transferState.code)
+      ? localizedErrorCode(transferState.code)
       : null,
   )
+  const localizedError =
+    error === null ? null : t(error.key, error.values)
   const [diagnostic, setDiagnostic] = useState<CameraDiagnostic | null>(null)
   const [integrityConfirmed, setIntegrityConfirmed] = useState(
     transferState.kind === "complete",
@@ -217,7 +232,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       run: ScannerRun,
       succeeded: boolean,
       caught: unknown,
-      successStatus: string,
+      successStatus: LocalizedText,
     ) => {
       if (
         !mountedRef.current ||
@@ -231,8 +246,8 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         setCameraStatus(successStatus)
         return
       }
-      setError(deliveryError(caught).userMessage)
-      setCameraStatus("取り込みを完了できませんでした")
+      setError(localizedErrorCode(deliveryError(caught).code))
+      setCameraStatus(localized("scanner.status.deliverFailed"))
     },
     [publishCameraMode],
   )
@@ -253,7 +268,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     const sessionState = session?.state() ?? IDLE_TRANSFER_STATE
     if (sessionState.kind === "error") {
       publishTransferState(sessionState)
-      setError(userMessageFor(sessionState.code))
+      setError(localizedErrorCode(sessionState.code))
       return
     }
 
@@ -270,14 +285,14 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
 
     const deliver = (
       operation: () => void | Promise<void>,
-      successStatus: string,
+      successStatus: LocalizedText,
     ) => {
       run.emitted = true
       cancelRun(run, "idle")
       publishCameraMode("delivering")
       setError(null)
       setDiagnostic(null)
-      setCameraStatus("取り込み中です…")
+      setCameraStatus(localized("scanner.status.delivering"))
       void (async () => {
         try {
           await operation()
@@ -297,7 +312,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         run.emitted = true
         cancelRun(run, "idle")
         publishCameraMode("idle")
-        setCameraStatus("全フレームを読み取りました")
+        setCameraStatus(localized("scanner.status.allFramesRead"))
         return
       }
       deliver(
@@ -306,7 +321,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             artifactType: sessionState.artifactType,
             artifactBytes: sessionState.artifactBytes,
           }),
-        "全フレームを読み取りました",
+        localized("scanner.status.allFramesRead"),
       )
       return
     }
@@ -315,9 +330,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     if (video === null) {
       cameraStateRef.current = "failed"
       publishCameraMode("stopped")
-      setError("カメラ画面を準備できませんでした。ページを開き直してください。")
+      setError(localized("scanner.error.videoNotReady"))
       setDiagnostic(null)
-      setCameraStatus("カメラ画面を準備できませんでした")
+      setCameraStatus(localized("scanner.status.videoNotReady"))
       return
     }
 
@@ -327,7 +342,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     publishCameraMode("running")
     setError(null)
     setDiagnostic(null)
-    setCameraStatus("カメラを準備しています…")
+    setCameraStatus(localized("scanner.status.preparing"))
 
     const finishSingleScan = (target: ScannerTarget, payload: string) => {
       if (
@@ -339,7 +354,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       }
       deliver(
         () => onSingleScanRef.current(target, payload),
-        "QRコードを読み取りました",
+        localized("scanner.status.qrRead"),
       )
     }
 
@@ -353,7 +368,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         run.emitted = true
         cancelRun(run, "idle")
         publishCameraMode("idle")
-        setCameraStatus("全フレームを読み取りました")
+        setCameraStatus(localized("scanner.status.allFramesRead"))
         return
       }
       deliver(
@@ -362,7 +377,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             artifactType: next.artifactType,
             artifactBytes: next.artifactBytes,
           }),
-        "全フレームを読み取りました",
+        localized("scanner.status.allFramesRead"),
       )
     }
 
@@ -377,54 +392,56 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
 
       if (payload.startsWith("OCF2:")) {
         if (run.session === undefined) {
-          setError("この画面では複数QRを受理しません。")
-          setCameraStatus("複数QRを拒否しました")
+          setError(localized("scanner.error.multipartNotAccepted"))
+          setCameraStatus(localized("scanner.status.multipartRejected"))
           return
         }
 
-        // add() の Promise が settle する前から単発配送との競合を閉じる。
+        // Exclude races with single-payload delivery even before the add() promise settles.
         run.multipartLocked = true
         setError(null)
         setIntegrityConfirmed(false)
-        setCameraStatus("複数QRを読み取り中です")
+        setCameraStatus(localized("scanner.status.multipartReading"))
         void run.session
           .add(payload)
           .then((next) => {
             if (run.cancelled || activeRunRef.current !== run) return
             publishTransferState(next)
             if (next.kind === "error") {
-              setError(userMessageFor(next.code))
-              setCameraStatus("複数QRの読取状態にエラーがあります")
+              setError(localizedErrorCode(next.code))
+              setCameraStatus(localized("scanner.status.multipartError"))
               return
             }
             if (next.kind === "idle") {
               run.multipartLocked = false
               cancelRun(run, "idle")
               publishCameraMode("idle")
-              setError("読取期限を過ぎたため、一時読取状態を破棄しました。")
-              setCameraStatus("読取状態を破棄しました")
+              setError(localized("scanner.error.expiredDiscarded"))
+              setCameraStatus(localized("scanner.status.stateDiscarded"))
               return
             }
             if (next.kind === "collecting") {
-              setCameraStatus("複数QRを順不同で読み取り中です")
+              setCameraStatus(
+                localized("scanner.status.multipartReadingUnordered"),
+              )
               return
             }
             finishMultipartScan(run.session!, next)
           })
           .catch((caught: unknown) => {
             if (run.cancelled || activeRunRef.current !== run) return
-            setError(deliveryError(caught).userMessage)
-            setCameraStatus("複数QRの読取状態にエラーがあります")
+            setError(localizedErrorCode(deliveryError(caught).code))
+            setCameraStatus(localized("scanner.status.multipartError"))
           })
         return
       }
 
       const target = targetForPayload(payload)
       if (target !== null && run.multipartLocked) {
-        setError(
-          "複数QR読取中です。単発QRは読取完了または破棄後に。",
+        setError(localized("scanner.error.singleWhileMultipart"))
+        setCameraStatus(
+          localized("scanner.status.singleRejectedDuringMultipart"),
         )
-        setCameraStatus("複数QR読取中の単発QRを拒否しました")
         return
       }
       if (
@@ -432,13 +449,16 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         !singleTargetsRef.current.includes(target)
       ) {
         setError(
-          mismatchMessage(
-            payload,
-            singleTargetsRef.current,
-            run.session !== undefined,
-          ),
+          localized("scanner.mismatch", {
+            actual: actualPayloadLabel(payload, t),
+            accepted: acceptedPayloadLabel(
+              singleTargetsRef.current,
+              run.session !== undefined,
+              t,
+            ),
+          }),
         )
-        setCameraStatus("受理対象外のQRを拒否しました")
+        setCameraStatus(localized("scanner.status.unacceptedRejected"))
         return
       }
 
@@ -455,19 +475,20 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         cameraDiagnostic.phase === "track-ended" ? "track-ended" : "failed"
       cancelRun(run, failedState)
       publishCameraMode("stopped")
-      setError(scanError.userMessage)
+      setError(localizedErrorCode(scanError.code))
       setDiagnostic(
         scanError.code === "CAMERA_PERMISSION_DENIED" ||
           scanError.code === "CAMERA_NOT_AVAILABLE"
           ? cameraDiagnostic
           : null,
       )
-      setCameraStatus("カメラでエラーが発生しました")
+      setCameraStatus(localized("scanner.status.cameraError"))
     }
 
     let startPromise: Promise<QrScanHandle>
     try {
-      // decode.ts の取得キューで getUserMedia が遅延し得るため、厳密な user activation までは UI 層で保証できない。
+      // The acquisition queue in decode.ts can delay getUserMedia, so the UI layer cannot
+      // guarantee strict user activation timing.
       startPromise = startQrScan(video, onText, onCameraError, {
         once: false,
         signal: run.abortController.signal,
@@ -477,9 +498,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       run.errorReported = true
       cancelRun(run, "failed")
       publishCameraMode("stopped")
-      setError(appError.userMessage)
+      setError(localizedErrorCode(appError.code))
       setDiagnostic(null)
-      setCameraStatus("カメラを起動できませんでした")
+      setCameraStatus(localized("scanner.status.startFailed"))
       return
     }
 
@@ -498,8 +519,8 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         cameraStateRef.current = "playing"
         setCameraStatus(
           run.session === undefined
-            ? "QRコードを枠内に合わせてください"
-            : "QRコードを順不同で読み取れます",
+            ? localized("scanner.status.alignInFrame")
+            : localized("scanner.status.readUnordered"),
         )
       })
       .catch((caught: unknown) => {
@@ -516,15 +537,16 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             : new AppError("CAMERA_NOT_AVAILABLE")
         cancelRun(run, "failed")
         publishCameraMode("stopped")
-        setError(appError.userMessage)
+        setError(localizedErrorCode(appError.code))
         setDiagnostic(null)
-        setCameraStatus("カメラを起動できませんでした")
+        setCameraStatus(localized("scanner.status.startFailed"))
       })
   }, [
     cancelRun,
     publishCameraMode,
     publishTransferState,
     settleDelivery,
+    t,
   ])
 
   const stopCamera = useCallback(() => {
@@ -532,9 +554,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     if (run === null) return
     cancelRun(run, "idle")
     publishCameraMode("stopped")
-    setError("カメラを停止しました。再起動ボタンで再開できます。")
+    setError(localized("scanner.error.stopped"))
     setDiagnostic(null)
-    setCameraStatus("カメラを停止しました")
+    setCameraStatus(localized("scanner.status.stopped"))
   }, [cancelRun, publishCameraMode])
 
   const discardTransfer = useCallback(() => {
@@ -548,7 +570,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     setIntegrityConfirmed(false)
     setError(null)
     setDiagnostic(null)
-    setCameraStatus("読取状態を破棄しました。起動ボタンでカメラを開始できます")
+    setCameraStatus(localized("scanner.status.discardedCanStart"))
   }, [cancelRun, publishCameraMode, publishTransferState])
 
   useEffect(() => {
@@ -572,11 +594,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         if (run === null) return
         cancelRun(run, "track-ended")
         publishCameraMode("stopped")
-        setError(
-          "画面が非表示になったためカメラを停止しました。再起動ボタンで再開できます。",
-        )
+        setError(localized("scanner.error.hiddenStopped"))
         setDiagnostic(null)
-        setCameraStatus("画面離脱によりカメラを停止しました")
+        setCameraStatus(localized("scanner.status.leftScreenStopped"))
         return
       }
 
@@ -599,11 +619,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     if (cameraAvailable || activeRunRef.current === null) return
     cancelRun(activeRunRef.current, "failed")
     publishCameraMode("stopped")
-    setError(
-      "この端末ではカメラを利用できません。ペイロードを貼り付けてください。",
-    )
+    setError(localized("scanner.error.cameraUnavailable"))
     setDiagnostic(null)
-    setCameraStatus("カメラを利用できません")
+    setCameraStatus(localized("scanner.status.cameraUnavailable"))
   }, [cameraAvailable, cancelRun, publishCameraMode])
 
   const previousSessionRef = useRef(multipartSession)
@@ -617,9 +635,11 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     publishTransferState(next)
     publishCameraMode("idle")
     setIntegrityConfirmed(next.kind === "complete")
-    setError(next.kind === "error" ? userMessageFor(next.code) : null)
+    setError(
+      next.kind === "error" ? localizedErrorCode(next.code) : null,
+    )
     setDiagnostic(null)
-    setCameraStatus("起動ボタンを押すとカメラを開始します")
+    setCameraStatus(localized("scanner.status.idlePrompt"))
   }, [
     cancelRun,
     multipartSession,
@@ -635,7 +655,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       previousTransferKindRef.current = next.kind
       if (!mountedRef.current) return
       setTransferState(next)
-      if (next.kind === "error") setError(userMessageFor(next.code))
+      if (next.kind === "error") setError(localizedErrorCode(next.code))
       if (previousKind === "idle" || next.kind !== "idle") return
 
       nextRunIdRef.current += 1
@@ -646,10 +666,10 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       setDiagnostic(null)
       setError(
         previousKind === "collecting"
-          ? "読取期限を過ぎたため、一時読取状態を破棄しました。"
-          : "読取状態が破棄されました。",
+          ? localized("scanner.error.expiredDiscarded")
+          : localized("scanner.error.stateDiscardedGeneric"),
       )
-      setCameraStatus("読取状態を破棄しました")
+      setCameraStatus(localized("scanner.status.stateDiscarded"))
     }, 1_000)
     return () => window.clearInterval(timer)
   }, [
@@ -683,7 +703,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             autoPlay
             muted
             playsInline
-            aria-label="QRコード読取用カメラ映像"
+            aria-label={t("scanner.video.ariaLabel")}
             className="h-full w-full object-cover"
           />
           <div className="pointer-events-none absolute inset-[12%] rounded-xl border-2 border-white">
@@ -706,8 +726,8 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
                   <Camera aria-hidden="true" />
                 )}
                 {cameraMode === "stopped"
-                  ? "カメラを再起動"
-                  : "カメラを起動"}
+                  ? t("scanner.button.restart")
+                  : t("scanner.button.start")}
               </Button>
             </div>
           )}
@@ -715,7 +735,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
 
         {!cameraAvailable && (
           <p className="text-sm text-muted-foreground">
-            この端末ではカメラを利用できません。ペイロードを貼り付けてください。
+            {t("scanner.error.cameraUnavailable")}
           </p>
         )}
 
@@ -723,51 +743,70 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           aria-live="polite"
           className="text-center text-sm text-muted-foreground"
         >
-          {cameraStatus}
+          {t(cameraStatus.key, cameraStatus.values)}
         </p>
 
         {collecting && (
-          <div className="space-y-2" aria-label="複数QR読取進捗">
+          <div
+            className="space-y-2"
+            aria-label={t("scanner.progress.ariaLabel")}
+          >
             <div className="flex justify-between font-mono text-sm tabular-nums">
               <span>
-                受信 {received} / {frameCount}
+                {t("scanner.progress.received", {
+                  received,
+                  total: frameCount,
+                })}
               </span>
               <span>{Math.round((received / frameCount) * 100)}%</span>
             </div>
             <Progress value={(received / frameCount) * 100} />
             <p className="text-xs text-muted-foreground">
-              未読取フレーム: {formatFramePositions(collecting.missingIndexes)}
+              {t("scanner.progress.missingIndex", {
+                indexes: formatFramePositions(
+                  collecting.missingIndexes,
+                  language,
+                ),
+              })}
             </p>
             <p className="text-xs text-muted-foreground">
-              読取期限: {new Date(collecting.expiresAt).toLocaleTimeString("ja-JP")}
+              {t("scanner.progress.expiresAt", {
+                time: new Date(collecting.expiresAt).toLocaleTimeString(
+                  language === "ja" ? "ja-JP" : "en-US",
+                ),
+              })}
             </p>
           </div>
         )}
 
         {integrityConfirmed && (
           <p role="status" className="text-sm text-success">
-            全フレームのSHA-256整合性を確認しました。
+            {t("scanner.integrityConfirmed")}
           </p>
         )}
 
         {multipart !== undefined && (
           <p className="text-xs leading-relaxed text-muted-foreground">
-            SHA-256は転送中の欠損・混在検出用であり、送信者の真正性を証明しません。
+            {t("scanner.sha256Notice")}
           </p>
         )}
 
         {error && (
           <Alert variant="destructive" role="alert">
-            <AlertTitle>読み取りを完了できません</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
+            <AlertTitle>{t("scanner.error.title")}</AlertTitle>
+            <AlertDescription>{localizedError}</AlertDescription>
           </Alert>
         )}
         {diagnostic && (
           <p
-            aria-label="カメラ診断"
+            aria-label={t("scanner.diagnostic.ariaLabel")}
             className="font-mono text-xs text-muted-foreground"
           >
-            {`診断: ${diagnostic.name ?? "unknown"} @${diagnostic.phase} [${diagnostic.detail}]`}
+            {t("scanner.diagnostic", {
+              name: diagnostic.name ?? "unknown",
+              phase: diagnostic.phase,
+              detail: diagnostic.detail,
+            })}
           </p>
         )}
 
@@ -780,7 +819,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             onClick={discardTransfer}
           >
             <Trash2 aria-hidden="true" />
-            読取状態を破棄
+            {t("scanner.button.discard")}
           </Button>
         ) : (
           cameraMode === "running" && (
@@ -791,7 +830,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
               onClick={stopCamera}
             >
               <CameraOff aria-hidden="true" />
-              カメラを停止
+              {t("scanner.button.stopCamera")}
             </Button>
           )
         )}
@@ -806,13 +845,16 @@ export type QrScannerModalProps = QrScannerPanelProps & {
 }
 
 export function QrScannerModal(props: QrScannerModalProps) {
+  const { t } = useI18n()
   const {
     triggerLabel,
     cameraAvailable = true,
-    title = "QRコードを読み取る",
-    stopHint = MODAL_STOP_HINT,
+    title: titleProp,
+    stopHint: stopHintProp,
     className,
   } = props
+  const title = titleProp ?? t("scanner.defaultTitle")
+  const stopHint = stopHintProp ?? t("scanner.stopHint.modal")
   const multipartSession = props.multipart?.session
   const multipartRef = useRef(props.multipart)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -826,7 +868,11 @@ export function QrScannerModal(props: QrScannerModalProps) {
   )
   const [open, setOpen] = useState(false)
   const [deliveryBusy, setDeliveryBusy] = useState(false)
-  const [closedNotice, setClosedNotice] = useState<string | null>(null)
+  const [closedNotice, setClosedNotice] = useState<LocalizedText | null>(null)
+  const localizedClosedNotice =
+    closedNotice === null
+      ? null
+      : t(closedNotice.key, closedNotice.values)
 
   const beginDelivery = useCallback((): boolean => {
     if (deliveryBusyRef.current) return false
@@ -881,21 +927,22 @@ export function QrScannerModal(props: QrScannerModalProps) {
       if (next.kind === "collecting") {
         if (canPublish()) {
           setClosedNotice(
-            `複数QR読取中: 受信 ${next.receivedIndexes.size} / ${next.frameCount}`,
+            localized("scanner.closed.multipartProgress", {
+              received: next.receivedIndexes.size,
+              total: next.frameCount,
+            }),
           )
         }
         return
       }
       if (next.kind === "idle") {
         if (previousKind === "collecting" && canPublish()) {
-          setClosedNotice(
-            "読取期限を過ぎたため、一時読取状態を破棄しました。",
-          )
+          setClosedNotice(localized("scanner.error.expiredDiscarded"))
         }
         return
       }
       if (next.kind === "error") {
-        if (canPublish()) setClosedNotice(userMessageFor(next.code))
+        if (canPublish()) setClosedNotice(localizedErrorCode(next.code))
         return
       }
       if (!beginDelivery()) return
@@ -907,12 +954,12 @@ export function QrScannerModal(props: QrScannerModalProps) {
         })
         if (canPublish()) {
           setClosedNotice(
-            "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+            localized("scanner.closed.integrityImported"),
           )
         }
       } catch (caught) {
         if (canPublish()) {
-          setClosedNotice(deliveryError(caught).userMessage)
+          setClosedNotice(localizedErrorCode(deliveryError(caught).code))
         }
       } finally {
         endDelivery()
@@ -946,7 +993,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
   const deliverFromPanel = async (
     generation: number,
     operation: () => void | Promise<void>,
-    successNotice?: string,
+    successNotice?: LocalizedText,
   ) => {
     if (!beginDelivery()) throw new AppError("INVALID_QR_PAYLOAD")
     try {
@@ -973,7 +1020,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
         mountedRef.current &&
         openGenerationRef.current === generation
       ) {
-        setClosedNotice(deliveryError(caught).userMessage)
+        setClosedNotice(localizedErrorCode(deliveryError(caught).code))
       }
     } finally {
       endDelivery()
@@ -1012,7 +1059,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
             deliverFromPanel(
               panelGeneration,
               () => props.multipart?.onComplete(completion),
-              "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+              localized("scanner.closed.integrityImported"),
             ),
         }}
       />
@@ -1059,7 +1106,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
       </Dialog>
       {!cameraAvailable && (
         <p className="text-sm text-muted-foreground">
-          この端末ではカメラを利用できません。ペイロードを貼り付けてください。
+          {t("scanner.error.cameraUnavailable")}
         </p>
       )}
       {closedNotice && (
@@ -1067,7 +1114,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
           aria-live="polite"
           className="whitespace-pre-line text-sm text-muted-foreground"
         >
-          {closedNotice}
+          {localizedClosedNotice}
         </p>
       )}
     </div>

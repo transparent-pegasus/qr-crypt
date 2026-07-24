@@ -1,11 +1,11 @@
-// バイト列ユーティリティ。暗号境界へ渡す値は toOwnedArrayBuffer で
-// owned ArrayBuffer を保証する(plan §13 C25)。
+// Byte-array utilities. Use toOwnedArrayBuffer to ensure values crossing a
+// cryptographic boundary have an owned ArrayBuffer.
 
 export function utf8ToBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text)
 }
 
-// TextDecoder(fatal: true)— 不正 UTF-8 は throw
+// TextDecoder(fatal: true) throws on invalid UTF-8.
 export function bytesToUtf8(bytes: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes)
 }
@@ -40,8 +40,8 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return difference === 0
 }
 
-// subtle / Blob へ渡す直前に呼び、必要ならコピーして
-// SharedArrayBuffer 非依存の owned バッファへ正規化する
+// Call immediately before passing data to subtle or Blob. Copy when necessary
+// to normalize it to an owned buffer independent of SharedArrayBuffer.
 export function toOwnedArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return Uint8Array.from(bytes).buffer
 }

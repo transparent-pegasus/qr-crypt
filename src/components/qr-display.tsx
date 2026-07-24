@@ -14,6 +14,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  useI18n,
+  useLocalizedMessage,
+  type LocalizedMessage,
+} from "@/i18n"
 
 export interface QrDisplayProps {
   payload: string
@@ -28,15 +33,17 @@ export function QrDisplay({
   payload,
   ecLevel,
   size = 512,
-  title = "QRコード",
+  title: titleProp,
   onRendered,
   fullscreenEnabled = true,
 }: QrDisplayProps) {
+  const { t } = useI18n()
+  const title = titleProp ?? t("qrDisplay.defaultTitle")
   const identity = `${payload}\u0000${ecLevel}\u0000${size}`
   const [rendered, setRendered] = useState<{
     identity: string
     dataUrl: string | null
-    error: string | null
+    error: LocalizedMessage | null
   }>({ identity: "", dataUrl: null, error: null })
   const [fullscreen, setFullscreen] = useState(false)
   const renderedCallbackRef = useRef(onRendered)
@@ -52,7 +59,7 @@ export function QrDisplay({
           setRendered({
             identity,
             dataUrl: null,
-            error: "本アプリのペイロードではないためQRコードを生成できません。",
+            error: "qrDisplay.notQryptPayload",
           })
         }
       })
@@ -71,7 +78,7 @@ export function QrDisplay({
           setRendered({
             identity,
             dataUrl: null,
-            error: toAppError(caught, "QR_TOO_LARGE").userMessage,
+            error: toAppError(caught, "QR_TOO_LARGE").code,
           })
         }
       })
@@ -82,13 +89,14 @@ export function QrDisplay({
 
   const dataUrl = rendered.identity === identity ? rendered.dataUrl : null
   const error = rendered.identity === identity ? rendered.error : null
+  const localizedError = useLocalizedMessage(error)
 
   if (error) {
     return (
       <Alert variant="destructive" role="alert">
         <AlertCircle aria-hidden="true" className="size-4" />
-        <AlertTitle>QRコードを生成できません</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
+        <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>
+        <AlertDescription>{localizedError}</AlertDescription>
       </Alert>
     )
   }
@@ -99,7 +107,7 @@ export function QrDisplay({
         {dataUrl ? (
           <img
             src={dataUrl}
-            alt={`${title}の画像`}
+            alt={t("qrDisplay.image.alt", { title })}
             width={size}
             height={size}
             className="mx-auto h-auto w-full max-w-[512px] bg-white"
@@ -109,14 +117,16 @@ export function QrDisplay({
             aria-live="polite"
             className="grid aspect-square w-full place-items-center text-sm text-slate-600"
           >
-            QRコードを生成しています…
+            {t("qrDisplay.generating")}
           </div>
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span className="font-mono tabular-nums">
-          データサイズ: {new TextEncoder().encode(payload).byteLength} bytes / EC=
-          {ecLevel}
+          {t("qrDisplay.dataSize", {
+            bytes: new TextEncoder().encode(payload).byteLength,
+            ecLevel,
+          })}
         </span>
         {fullscreenEnabled && (
           <Button
@@ -127,7 +137,7 @@ export function QrDisplay({
             onClick={() => setFullscreen(true)}
           >
             <Expand aria-hidden="true" />
-            全画面表示
+            {t("qrDisplay.fullscreen.button")}
           </Button>
         )}
       </div>
@@ -136,23 +146,25 @@ export function QrDisplay({
         <Dialog open={fullscreen} onOpenChange={setFullscreen}>
           <DialogContent className="h-dvh max-w-none border-0 bg-white p-4 text-slate-950 sm:rounded-none [&>button.absolute]:hidden">
             <DialogHeader className="sr-only">
-              <DialogTitle>{title}を全画面表示</DialogTitle>
+              <DialogTitle>
+                {t("qrDisplay.fullscreen.title", { title })}
+              </DialogTitle>
               <DialogDescription>
-                白い背景にQRコードを全画面で表示します。
+                {t("qrDisplay.fullscreen.desc")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
               {dataUrl && (
                 <img
                   src={dataUrl}
-                  alt={`${title}の全画面画像`}
+                  alt={t("qrDisplay.fullscreen.imageAlt", { title })}
                   width={size}
                   height={size}
                   className="h-auto w-[min(90vw,512px)] bg-white"
                 />
               )}
               <p className="text-center text-sm text-slate-700">
-                画面の輝度を上げると読み取りやすくなります
+                {t("qrDisplay.fullscreen.brightnessHint")}
               </p>
               <DialogClose asChild>
                 <Button
@@ -161,7 +173,7 @@ export function QrDisplay({
                   className="h-11 min-w-32 cursor-pointer border-slate-300 bg-white text-slate-950 focus-visible:ring-2"
                 >
                   <X aria-hidden="true" />
-                  閉じる
+                  {t("common.close")}
                 </Button>
               </DialogClose>
             </div>

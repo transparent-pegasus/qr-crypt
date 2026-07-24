@@ -33,6 +33,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  useI18n,
+  useLocalizedMessage,
+  type LocalizedMessage,
+} from "@/i18n"
 
 export interface AnimatedQrFramesProps {
   frames: readonly QrFrameV2[]
@@ -58,10 +63,12 @@ export function AnimatedQrFrames({
   frameIntervalMs,
   outputName,
   size = env.qrRenderSize,
-  title = "複数QR",
+  title: titleProp,
   onFirstRendered,
   fullscreenEnabled = true,
 }: AnimatedQrFramesProps) {
+  const { language, t } = useI18n()
+  const title = titleProp ?? t("animatedQr.defaultTitle")
   const { slots, missingIndexes, frameCount } = useMemo(() => {
     const expected = Math.max(0, ...frames.map((frame) => frame.frameCount))
     const nextSlots = new Map<number, FrameSlot>()
@@ -84,7 +91,8 @@ export function AnimatedQrFrames({
   const [paused, setPaused] = useState(false)
   const [speed, setSpeed] = useState(() => currentFrameInterval(frameIntervalMs))
   const [exporting, setExporting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<LocalizedMessage | null>(null)
+  const localizedError = useLocalizedMessage(error)
   const firstRenderedRef = useRef(false)
 
   const handleRendered = () => {
@@ -139,7 +147,7 @@ export function AnimatedQrFrames({
         )
       }
     } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+        setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
       setExporting(false)
     }
@@ -161,7 +169,7 @@ export function AnimatedQrFrames({
       )
       triggerDownload(storeOnlyZip(entries), `${safeName}-frames.zip`)
     } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+      setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
       setExporting(false)
     }
@@ -178,7 +186,7 @@ export function AnimatedQrFrames({
         `${safeName}-frame-${String(currentIndex + 1).padStart(2, "0")}.svg`,
       )
     } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+      setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
       setExporting(false)
     }
@@ -187,24 +195,25 @@ export function AnimatedQrFrames({
   if (!current || frameCount === 0) {
     return (
       <Alert variant="destructive" role="alert">
-        <AlertTitle>表示できるフレームがありません</AlertTitle>
-        <AlertDescription>複数QRを作り直してください。</AlertDescription>
+        <AlertTitle>{t("animatedQr.empty.title")}</AlertTitle>
+        <AlertDescription>{t("animatedQr.empty.body")}</AlertDescription>
       </Alert>
     )
   }
 
   return (
     <section
-      aria-label={`${title}フレーム表示`}
+      aria-label={t("animatedQr.section.ariaLabel", { title })}
       className="space-y-4"
       aria-busy={exporting}
     >
       {missingIndexes.length > 0 && (
         <Alert variant="destructive" role="alert">
-          <AlertTitle>フレームが欠損しています</AlertTitle>
+          <AlertTitle>{t("animatedQr.missing.title")}</AlertTitle>
           <AlertDescription>
-            欠損フレーム: {formatFramePositions(missingIndexes)}
-            。欠損したままでは復元できません。
+            {t("animatedQr.missing.body", {
+              indexes: formatFramePositions(missingIndexes, language),
+            })}
           </AlertDescription>
         </Alert>
       )}
@@ -213,7 +222,11 @@ export function AnimatedQrFrames({
         payload={current.payload}
         ecLevel="Q"
         size={size}
-        title={`${title} ${currentIndex! + 1} / ${frameCount}`}
+        title={t("animatedQr.frameTitle", {
+          title,
+          current: currentIndex! + 1,
+          total: frameCount,
+        })}
         onRendered={handleRendered}
         fullscreenEnabled={fullscreenEnabled}
       />
@@ -228,10 +241,10 @@ export function AnimatedQrFrames({
               (value) => (value - 1 + availableIndexes.length) % availableIndexes.length,
             )
           }
-          aria-label="前のフレーム"
+          aria-label={t("animatedQr.prev.ariaLabel")}
         >
           <ChevronLeft aria-hidden="true" />
-          前へ
+          {t("animatedQr.prev")}
         </Button>
         <Button
           type="button"
@@ -240,16 +253,16 @@ export function AnimatedQrFrames({
           onClick={() => setPaused((value) => !value)}
         >
           {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-          {paused ? "再生" : "一時停止"}
+          {t(paused ? "animatedQr.play" : "animatedQr.pause")}
         </Button>
         <Button
           type="button"
           variant="outline"
           className="h-11 cursor-pointer focus-visible:ring-2"
           onClick={() => setPosition((value) => (value + 1) % availableIndexes.length)}
-          aria-label="次のフレーム"
+          aria-label={t("animatedQr.next.ariaLabel")}
         >
-          次へ
+          {t("animatedQr.next")}
           <ChevronRight aria-hidden="true" />
         </Button>
       </div>
@@ -260,12 +273,12 @@ export function AnimatedQrFrames({
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="frame-speed">表示速度</Label>
+          <Label htmlFor="frame-speed">{t("animatedQr.speed.label")}</Label>
           <span className="font-mono text-xs tabular-nums">{speed} ms</span>
         </div>
         <Input
           id="frame-speed"
-          aria-label="表示速度"
+          aria-label={t("animatedQr.speed.label")}
           type="range"
           min={FRAME_INTERVAL_MS_MIN}
           max={FRAME_INTERVAL_MS_MAX}
@@ -280,7 +293,7 @@ export function AnimatedQrFrames({
 
       <p className="flex items-start gap-2 text-sm text-muted-foreground">
         <Sun aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-        画面の輝度を上げ、端末を動かさずに読み取ると安定します。
+        {t("animatedQr.brightnessHint")}
       </p>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -292,7 +305,7 @@ export function AnimatedQrFrames({
           onClick={() => void exportAllPng()}
         >
           <Download aria-hidden="true" />
-          PNGを一括出力
+          {t("animatedQr.export.allPng")}
         </Button>
         <Button
           type="button"
@@ -302,7 +315,7 @@ export function AnimatedQrFrames({
           onClick={() => void exportZip()}
         >
           <FileArchive aria-hidden="true" />
-          ZIPで出力
+          {t("animatedQr.export.zip")}
         </Button>
         <Button
           type="button"
@@ -312,14 +325,14 @@ export function AnimatedQrFrames({
           onClick={() => void exportSvg()}
         >
           <FileCode2 aria-hidden="true" />
-          現在のSVG
+          {t("animatedQr.export.currentSvg")}
         </Button>
       </div>
 
       {error && (
         <Alert variant="destructive" role="alert">
-          <AlertTitle>フレームを出力できません</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertTitle>{t("animatedQr.export.error.title")}</AlertTitle>
+          <AlertDescription>{localizedError}</AlertDescription>
         </Alert>
       )}
     </section>

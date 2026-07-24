@@ -1,16 +1,17 @@
-// OCF2 フレーム組立(spec2 §12、plan2.1 §D4 — WP-12)。
+// OCF2 frame assembly; see docs/qr-protocol-v2.md §6.
 //
-// 不変条件(凍結):
-//   - index は 0..frameCount-1。first frame で immutable metadata
-//     (transferId/artifactType/frameCount/totalByteLength/payloadSha256)を凍結
-//   - 同 index は「完全一致」のみ idempotent duplicate として無視。
-//     1 byte でも差異 → FRAME_MISMATCH(session 汚染扱い)
-//   - 別 transferId 混入 → FRAME_MISMATCH
-//   - 完成時: index coverage・合計長 = totalByteLength・
-//     SHA-256(artifact 生バイト) = payloadSha256・artifactType と復元 artifact
-//     の type 一致 を検証してから complete へ遷移
-//   - SHA-256 は転送整合性であり送信者 authenticity ではない(UI 表示注意)
-//   - タイムアウト(expiresAt)/明示破棄/完成/エラーで chunk state を解放
+// Invariants (frozen):
+//   - index is 0..frameCount-1. Freeze immutable metadata from the first frame:
+//     transferId, artifactType, frameCount, totalByteLength, and payloadSha256.
+//   - For the same index, ignore only an exact match as an idempotent duplicate.
+//     A difference of even one byte yields FRAME_MISMATCH and treats the session as tainted.
+//   - Mixing in another transferId yields FRAME_MISMATCH.
+//   - At completion, verify index coverage, total length = totalByteLength,
+//     SHA-256(raw artifact bytes) = payloadSha256, and that artifactType matches the
+//     restored artifact's type before transitioning to complete.
+//   - SHA-256 provides transfer integrity, not sender authenticity; the UI must make
+//     that distinction clear.
+//   - Release chunk state on timeout (expiresAt), explicit discard, completion, or error.
 import type { ErrorCode } from "@/crypto/errors"
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
@@ -29,7 +30,7 @@ import { V2_ARTIFACT_TYPES } from "@/schemas/domain"
 
 export interface TransferAssemblerOptions {
   transferTimeoutMinutes: number
-  now?: () => number // テスト用 seam(既定 Date.now)
+  now?: () => number // Test seam; defaults to Date.now.
 }
 
 interface TransferMetadata {
@@ -98,7 +99,7 @@ export class TransferAssembler {
     this.#now = options.now ?? Date.now
   }
 
-  // フレーム文字列(OCF2:…)を 1 枚受け取り、遷移後の状態を返す
+  // Accept one frame string (OCF2:…) and return the state after transition.
   async add(frameText: string): Promise<TransferState> {
     if (this.#expireIfNeeded()) return { kind: "idle" }
     if (this.#terminal !== undefined) return this.state()
@@ -185,7 +186,8 @@ export class TransferAssembler {
       if (this.#active !== active) return this.state()
       return this.#fail("INVALID_QR_PAYLOAD")
     }
-    // discard/error/別の完了検証が digest 待ち中に状態を変えた場合、復活させない。
+    // Do not resurrect this transfer if discard, error, or another completion check
+    // changed state while the digest was pending.
     if (this.#active !== active) return this.state()
     if (!bytesEqual(actualHash, active.metadata.payloadSha256)) {
       return this.#fail("INVALID_QR_PAYLOAD")
@@ -242,7 +244,7 @@ export class TransferAssembler {
     }
   }
 
-  // 明示破棄(読取 UI の「破棄」ボタン・unmount・タイムアウト処理から)
+  // Explicit discard, called by the scanner UI's discard button, unmount, or timeout handling.
   discard(): void {
     this.#releaseActive()
     this.#terminal = undefined

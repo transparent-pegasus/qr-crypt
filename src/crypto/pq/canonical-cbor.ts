@@ -1,17 +1,20 @@
-// v2 決定的 CBOR(plan2.1 §C9 — WP-A2 が実装・凍結。変更はプロトコル改版)。
+// v2 deterministic CBOR; changes require a protocol revision.
+// See docs/qr-protocol-v2.md §2 and §8.
 //
-// プロファイル: RFC 8949 §4.2.1 core deterministic encoding のサブセット。
-//   - 値は map(text key のみ)/ text string / byte string / 非負整数 に限定
-//   - すべて definite length。タグ・浮動小数・負数・配列・null・bool は禁止
-//   - 整数・長さヘッダーは preferred encoding(最小表現)
-//   - map キーは「キー単体の符号化バイト列」の bytewise 辞書順・重複禁止
-//   - 未知キー・後続データ・非正準入力は拒否
+// Profile: a subset of RFC 8949 §4.2.1 core deterministic encoding.
+//   - Values are restricted to maps (text keys only), text strings, byte strings,
+//     and nonnegative integers.
+//   - All lengths are definite; tags, floats, negative integers, arrays, null, and
+//     booleans are prohibited.
+//   - Integers and length headers use preferred encoding (the shortest representation).
+//   - Map keys are sorted bytewise by each key's encoded bytes; duplicates are prohibited.
+//   - Unknown keys, trailing data, and non-canonical input are rejected.
 //
-// 実装方式: ワイヤー契約を外部エンコーダーの版依存挙動から切り離すため、
-// 本プロファイル専用の符号化・復号を自前実装する(cbor-x は v1 経路専用。
-// cbor-x の既定は map 長 2 バイト固定・2^32 超の整数を float64 化するため
-// 本プロファイルには使用できない)。復号は最小表現・キー昇順・単一値を構造的に
-// 強制した上で、防御として再符号化バイト一致も検査する。
+// Implementation: encode and decode this profile directly so the wire contract is isolated
+// from version-dependent behavior in external encoders (cbor-x is only for the v1 path.
+// Its defaults use a fixed two-byte map length and convert integers above 2^32 to float64,
+// so it cannot implement this profile). Decoding structurally enforces shortest forms,
+// ascending keys, and a single value, then defensively checks re-encoded byte equality.
 import type {
   DsaPublicKeyEnvelopeV2,
   KemPublicKeyEnvelopeV2,
@@ -58,7 +61,7 @@ const utf8Encoder = new TextEncoder()
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true })
 
 // ---------------------------------------------------------------------------
-// 符号化
+// Encoding
 // ---------------------------------------------------------------------------
 
 function headerBytes(major: number, value: number): Uint8Array {
@@ -155,7 +158,8 @@ export function encodeCanonicalCbor(value: CanonicalCborValue): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
-// 復号(strict: 最小表現・definite length・キー昇順・単一値を構造的に強制)
+// Decoding (strict: structurally enforce shortest forms, definite lengths,
+// ascending keys, and a single value)
 // ---------------------------------------------------------------------------
 
 interface CborReader {
@@ -170,7 +174,7 @@ function readU8(reader: CborReader): number {
   return byte
 }
 
-// additional info から長さ/値を最小表現強制付きで読む
+// Read a length/value from additional info while enforcing the shortest representation.
 function readLength(reader: CborReader, additional: number): number {
   if (additional < 24) return additional
   if (additional === 24) {
@@ -200,7 +204,7 @@ function readLength(reader: CborReader, additional: number): number {
     }
     return value
   }
-  // 28–30(予約)と 31(不定長)は禁止
+  // Additional-info values 28–30 (reserved) and 31 (indefinite length) are prohibited.
   throw new AppError("INVALID_QR_PAYLOAD")
 }
 
@@ -208,7 +212,7 @@ function readSlice(reader: CborReader, length: number): Uint8Array {
   if (reader.offset + length > reader.bytes.byteLength) {
     throw new AppError("INVALID_QR_PAYLOAD")
   }
-  // 呼出側での保持・zeroize 所有を単純化するためコピーを返す
+  // Return a copy to simplify caller ownership for retention and zeroization.
   const slice = reader.bytes.slice(reader.offset, reader.offset + length)
   reader.offset += length
   return slice
@@ -240,7 +244,7 @@ function readValue(reader: CborReader, depth: number): CanonicalCborValue {
       const key = readValue(reader, depth + 1)
       if (typeof key !== "string") throw new AppError("INVALID_QR_PAYLOAD")
       const keyBytes = reader.bytes.slice(keyStart, reader.offset)
-      // 重複キーを含む非昇順は拒否(strict ascending)
+      // Reject non-ascending keys, including duplicates (strictly ascending).
       if (previousKeyBytes !== undefined && compareBytes(previousKeyBytes, keyBytes) >= 0) {
         throw new AppError("INVALID_QR_PAYLOAD")
       }
@@ -249,12 +253,14 @@ function readValue(reader: CborReader, depth: number): CanonicalCborValue {
     }
     return result
   }
-  // 負数(1)・配列(4)・タグ(6)・float/simple(7)は本プロファイル外
+  // Negative integers (1), arrays (4), tags (6), and float/simple values (7)
+  // are outside this profile.
   throw new AppError("INVALID_QR_PAYLOAD")
 }
 
-// 単一の正準 CBOR 値のみ受理する。非正準(キー順・重複キー・不定長・
-// 非最小整数・タグ等)は構造検査で拒否し、防御として再符号化一致も確認する。
+// Accept exactly one canonical CBOR value. Structural checks reject non-canonical input
+// (key order, duplicate keys, indefinite lengths, non-minimal integers, tags, and so on);
+// re-encoded equality is also checked defensively.
 export function decodeCanonicalCbor(bytes: Uint8Array): unknown {
   if (bytes.byteLength === 0) throw new AppError("INVALID_QR_PAYLOAD")
   const reader: CborReader = { bytes, offset: 0 }
@@ -266,8 +272,8 @@ export function decodeCanonicalCbor(bytes: Uint8Array): unknown {
 }
 
 // ---------------------------------------------------------------------------
-// 構造ガード(プロトコル定数レベルの検証。zod strict の完全検証は
-// validation.ts(WP-13)がこの上へ重ねる)
+// Structural guards validate protocol-level constants. validation.ts
+// layers complete strict Zod validation on top.
 // ---------------------------------------------------------------------------
 
 function guardKeys(
@@ -318,7 +324,8 @@ function guardEnum<T extends string>(value: unknown, allowed: readonly T[]): T {
   return value as T
 }
 
-// 表示名: 未認証入力のため構造層で resource 上限を張る(1–100 UTF-16 単位)
+// Display name: because this is untrusted input, enforce a resource bound at the
+// structural layer (1–100 UTF-16 code units).
 function guardOptionalName(value: unknown): string | undefined {
   if (value === undefined) return undefined
   if (typeof value !== "string" || value.length < 1 || value.length > 100) {
@@ -333,7 +340,7 @@ function guardLiteral<T extends string | number>(value: unknown, literal: T): T 
 }
 
 // ---------------------------------------------------------------------------
-// MlKemAadV2(encode のみ — AAD はワイヤーへ載せず両側で再構築する)
+// MlKemAadV2 (encode only — AAD is not carried on the wire; both sides reconstruct it).
 // ---------------------------------------------------------------------------
 
 export function guardMlKemAadV2(value: unknown): MlKemAadV2 {
@@ -377,7 +384,7 @@ export function guardMlKemEnvelopeV2(value: unknown): MlKemMessageEnvelopeV2 {
   const suite = guardEnum(record["suite"], WIRE_SUITES)
   const kemCiphertextBytes = KEM_SIZES[suiteComponents(suite).kem].ciphertextBytes
   const ciphertext = guardBytes(record["ciphertext"])
-  // AES-GCM は 128bit タグを末尾付加するため 16B 未満はあり得ない
+  // AES-GCM appends a 128-bit tag, so fewer than 16 bytes is impossible.
   if (ciphertext.byteLength < 16) throw new AppError("INVALID_QR_PAYLOAD")
   return {
     version: guardLiteral(record["version"], 2),
@@ -402,10 +409,10 @@ export function decodeMlKemEnvelopeV2(bytes: Uint8Array): MlKemMessageEnvelopeV2
 }
 
 // ---------------------------------------------------------------------------
-// 内部メッセージ(plan2.1 §C3)。ワイヤー形状は suite が権威:
-//   unsigned suite → UnsignedMessageBodyV2 の map 単体
-//   signed suite   → { body: SignedMessageBodyV2, signature } の map
-// 平文サイズ上限(env 依存)は validation.ts(WP-13)が検証する。
+// Inner message. The suite is authoritative for the wire shape:
+//   unsigned suite → a standalone UnsignedMessageBodyV2 map
+//   signed suite   → a { body: SignedMessageBodyV2, signature } map
+// validation.ts enforces the environment-dependent plaintext size limit.
 // ---------------------------------------------------------------------------
 
 function guardBodyCommon(record: Record<string, unknown>): {
@@ -473,7 +480,8 @@ export function decodeUnsignedMessageBodyV2(bytes: Uint8Array): UnsignedMessageB
   return guardUnsignedMessageBodyV2(decodeCanonicalCbor(bytes))
 }
 
-// 署名対象 = SignedMessageBodyV2 の map 単体の正準 CBOR(docs/qr-protocol-v2.md §5)
+// Signing target = canonical CBOR of the standalone SignedMessageBodyV2 map
+// (docs/qr-protocol-v2.md §5).
 export function signingTargetBytes(body: SignedMessageBodyV2): Uint8Array {
   return encodeCanonicalCbor(
     guardSignedMessageBodyV2(body) as unknown as CanonicalCborValue,
@@ -493,7 +501,7 @@ export function decodeSignedMessageV2(bytes: Uint8Array): Omit<SignedMessageV2, 
 }
 
 // ---------------------------------------------------------------------------
-// PublicIdentityBundleV2(spec2 §10)
+// PublicIdentityBundleV2; see docs/qr-protocol-v2.md §7.1.
 // ---------------------------------------------------------------------------
 
 export function guardPublicIdentityBundleV2(value: unknown): PublicIdentityBundleV2 {
@@ -506,7 +514,7 @@ export function guardPublicIdentityBundleV2(value: unknown): PublicIdentityBundl
   const signingRecord = guardKeys(record["signing"], ["algorithm", "keyId", "publicKey"])
   const kemAlgorithm = guardEnum(kemRecord["algorithm"], ML_KEM_ALGORITHMS)
   const dsaAlgorithm = guardEnum(signingRecord["algorithm"], ML_DSA_ALGORITHMS)
-  // 同一プロファイル対のみ受理(plan2.1 §C1: 768+87 等の混在禁止)
+  // Accept only same-profile pairs; reject combinations such as 768+87.
   const pairValid =
     (kemAlgorithm === "ML-KEM-768" && dsaAlgorithm === "ML-DSA-65") ||
     (kemAlgorithm === "ML-KEM-1024" && dsaAlgorithm === "ML-DSA-87")
@@ -551,7 +559,7 @@ export function decodePublicIdentityBundleV2(bytes: Uint8Array): PublicIdentityB
 }
 
 // ---------------------------------------------------------------------------
-// 単鍵公開鍵エンベロープ(OCP2/OCS2)
+// Single public-key envelopes (OCP2/OCS2).
 // ---------------------------------------------------------------------------
 
 export function guardKemPublicKeyEnvelopeV2(value: unknown): KemPublicKeyEnvelopeV2 {
@@ -621,7 +629,7 @@ export function decodeDsaPublicKeyEnvelopeV2(bytes: Uint8Array): DsaPublicKeyEnv
 }
 
 // ---------------------------------------------------------------------------
-// QrFrameV2(spec2 §12、plan2.1 §D4 のプロトコル定数検査を含む)
+// QrFrameV2, including the protocol-constant validation in docs/qr-protocol-v2.md §6.
 // ---------------------------------------------------------------------------
 
 export function guardQrFrameV2(value: unknown): QrFrameV2 {

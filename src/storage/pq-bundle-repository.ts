@@ -1,11 +1,12 @@
-// pqPublicBundles ストアの CRUD(plan2.1 §E2/§E5 — WP-13)。
-// keyPath: recordId / index: by-identityId(non-unique)。
+// CRUD for the pqPublicBundles store.
+// keyPath: recordId / index: by-identityId (non-unique).
 //
-// 規則(凍結):
-//   - 暗号化の受信者選択は revokedAt 無しのレコードのみ
-//   - 署名検証鍵の解決は signing.keyId で全レコード探索(revoked は未知鍵扱い)
-//   - trust("unverified" | "fingerprint-confirmed")の遷移は
-//     指紋比較画面の確認操作のみが行う(取込時は必ず unverified)
+// Rules (frozen):
+//   - Encryption recipient selection uses only records without revokedAt.
+//   - Resolve signature-verification keys by searching every record by signing.keyId;
+//     treat revoked keys as unknown.
+//   - Only the confirmation action on the fingerprint-comparison screen may transition
+//     trust ("unverified" | "fingerprint-confirmed"); imports are always unverified.
 import type { PqPublicBundleRecord } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { validatePqPublicBundleRecord } from "@/schemas/key-schema"

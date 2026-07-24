@@ -54,7 +54,7 @@ async function downloadBuffer(download: Download): Promise<Buffer> {
   return readFile(path)
 }
 
-test("PNG と SVG のダウンロード内容が画面のペイロードと一致する", async ({
+test("PNG and SVG download contents match the on-screen payload", async ({
   context,
   page,
 }) => {
@@ -66,8 +66,8 @@ test("PNG と SVG のダウンロード内容が画面のペイロードと一�
     plaintext: "ダウンロードしたQRを再読取する日本語平文",
   })
 
-  const result = page.getByRole("region", { name: "暗号結果" })
-  await result.getByLabel("出力名", { exact: true }).fill("ダウンロード確認")
+  const result = page.getByRole("region", { name: "Encryption result" })
+  await result.getByLabel("Output name", { exact: true }).fill("ダウンロード確認")
 
   const pngDownloadPromise = page.waitForEvent("download")
   await result.getByRole("button", { name: "PNG", exact: true }).click()
@@ -125,7 +125,7 @@ test("PNG と SVG のダウンロード内容が画面のペイロードと一�
   })
 })
 
-test("鍵一覧モーダルから秘密鍵QRと公開鍵セットQRを出力する", async ({
+test("exports a secret-key QR and public-key-bundle QR from the key-list modal", async ({
   context,
   page,
 }) => {
@@ -139,11 +139,11 @@ test("鍵一覧モーダルから秘密鍵QRと公開鍵セットQRを出力す�
   await page.getByRole("button", { name: new RegExp(symmetricName) }).click()
   let dialog = page.getByRole("dialog", { name: symmetricName })
   await dialog
-    .getByRole("button", { name: "秘密鍵QRを表示", exact: true })
+    .getByRole("button", { name: "Show secret-key QR", exact: true })
     .click()
-  dialog = page.getByRole("dialog", { name: "共通鍵QR" })
+  dialog = page.getByRole("dialog", { name: "Symmetric-key QR" })
   await dialog
-    .getByRole("checkbox", { name: "リスクを理解しました" })
+    .getByRole("checkbox", { name: "I understand the risk" })
     .check()
 
   const secretPngPromise = page.waitForEvent("download")
@@ -162,7 +162,7 @@ test("鍵一覧モーダルから秘密鍵QRと公開鍵セットQRを出力す�
   )
   expect((await downloadBuffer(secretSvg)).toString("utf8")).toContain("<svg")
 
-  await dialog.getByRole("button", { name: "詳細に戻る" }).click()
+  await dialog.getByRole("button", { name: "Back to details" }).click()
   await page
     .getByRole("dialog", { name: symmetricName })
     .getByRole("button", { name: "Close", exact: true })
@@ -174,28 +174,28 @@ test("鍵一覧モーダルから秘密鍵QRと公開鍵セットQRを出力す�
   await page.getByRole("button", { name: new RegExp(identityName) }).click()
   dialog = page.getByRole("dialog", { name: identityName })
   await dialog
-    .getByRole("button", { name: "公開鍵セットQR", exact: true })
+    .getByRole("button", { name: "Public-key bundle QR", exact: true })
     .click()
   dialog = page.getByRole("dialog", {
-    name: `${identityName} 公開鍵セット`,
+    name: `${identityName} public-key bundle`,
   })
   const frames = dialog.getByRole("region", {
-    name: `${identityName} 公開鍵セットフレーム表示`,
+    name: `${identityName} public-key bundle frame display`,
   })
   const payloads = await collectAnimatedFramePayloads(frames)
   expect(payloads.length).toBeGreaterThan(0)
   expect(payloads.every((payload) => payload.startsWith("OCF2:"))).toBe(true)
 
   const publicSvgPromise = page.waitForEvent("download")
-  await frames.getByRole("button", { name: "現在のSVG" }).click()
+  await frames.getByRole("button", { name: "Current SVG" }).click()
   const publicSvg = await publicSvgPromise
   expect(publicSvg.suggestedFilename()).toMatch(
-    /公開鍵セット-.+-frame-\d{2}\.svg$/,
+    /public-key bundle-.+-frame-\d{2}\.svg$/,
   )
   expect((await downloadBuffer(publicSvg)).toString("utf8")).toContain("<svg")
 })
 
-test("署名付き複数フレームを操作し ZIP と全 PNG を実ファイルとして出力する", async ({
+test("controls signed multipart frames and exports the ZIP and every PNG as real files", async ({
   context,
   page,
 }) => {
@@ -205,41 +205,44 @@ test("署名付き複数フレームを操作し ZIP と全 PNG を実ファイ�
   await openOfflineApp(page, context, "/keys")
   await createPqIdentity(page, identityName)
   await seedSelfPublicBundle(page, identityName)
-  // Chromium は単一操作からの多数の個別 download を 10 件で抑止する。
-  // maximum の署名付き fixture も全 PNG 検証が可能なフレーム数に保つ。
+  // Chromium suppresses individual downloads beyond 10 from one user action.
+  // Keep the maximum signed fixture within a frame count that allows every PNG
+  // to be verified.
   await goToOfflinePage(page, "/settings")
-  const frameBytes = page.getByLabel(/1フレームの生データ/)
+  const frameBytes = page.getByLabel(/Raw data per frame/)
   await frameBytes.fill("900")
   await expect(frameBytes).toHaveValue("900")
   const { result } = await encryptSignedPq(page, { identityName, plaintext })
-  const frameCount = Number.parseInt(await detailValue(result, "QRフレーム数"), 10)
+  const frameCount = Number.parseInt(await detailValue(result, "QR frame count"), 10)
   expect(frameCount).toBeGreaterThan(1)
 
-  const frames = result.getByRole("region", { name: "暗号文フレーム表示" })
+  const frames = result.getByRole("region", { name: "Ciphertext frame display" })
   const counter = frames.getByText(/^\d+ \/ \d+$/).last()
-  await frames.getByRole("button", { name: "一時停止" }).click()
+  await frames.getByRole("button", { name: "Pause" }).click()
   const initialCounter = await counter.innerText()
-  await frames.getByRole("button", { name: "次のフレーム" }).click()
+  await frames.getByRole("button", { name: "Next frame" }).click()
   await expect(counter).not.toHaveText(initialCounter)
-  await frames.getByRole("button", { name: "前のフレーム" }).click()
+  await frames.getByRole("button", { name: "Previous frame" }).click()
   await expect(counter).toHaveText(initialCounter)
-  await frames.getByLabel("表示速度").fill("2500")
+  await frames.getByLabel("Display speed").fill("2500")
   await expect(frames.getByText("2500 ms", { exact: true })).toBeVisible()
 
-  await frames.getByRole("button", { name: "全画面表示" }).click()
-  const fullscreen = page.getByRole("dialog", { name: /暗号文 \d+ \/ \d+を全画面表示/ })
-  await expect(fullscreen.getByRole("img", { name: /全画面画像/ })).toBeVisible()
-  await fullscreen.getByRole("button", { name: "閉じる" }).click()
+  await frames.getByRole("button", { name: "View full screen" }).click()
+  const fullscreen = page.getByRole("dialog", {
+    name: /View Ciphertext \d+ \/ \d+ full screen/,
+  })
+  await expect(fullscreen.getByRole("img", { name: /Full-screen .* image/ })).toBeVisible()
+  await fullscreen.getByRole("button", { name: "Close" }).first().click()
 
   const framePayloads = await collectAnimatedFramePayloads(frames)
   expect(framePayloads).toHaveLength(frameCount)
   expect(framePayloads.every((payload) => payload.startsWith("OCF2:"))).toBe(true)
-  await result.getByLabel("出力名", { exact: true }).fill("署名付き複数フレーム")
+  await result.getByLabel("Output name", { exact: true }).fill("署名付き複数フレーム")
 
   const pngDownloads: Download[] = []
   const capturePng = (download: Download) => pngDownloads.push(download)
   page.on("download", capturePng)
-  await frames.getByRole("button", { name: "PNGを一括出力" }).click()
+  await frames.getByRole("button", { name: "Export all PNGs" }).click()
   await expect.poll(() => pngDownloads.length, { timeout: 60_000 }).toBe(frameCount)
   page.off("download", capturePng)
 
@@ -253,7 +256,7 @@ test("署名付き複数フレームを操作し ZIP と全 PNG を実ファイ�
   expect(new Set(downloadedPayloads)).toEqual(new Set(framePayloads))
 
   const zipPromise = page.waitForEvent("download")
-  await frames.getByRole("button", { name: "ZIPで出力" }).click()
+  await frames.getByRole("button", { name: "Export ZIP" }).click()
   const zipDownload = await zipPromise
   expect(zipDownload.suggestedFilename()).toMatch(/-frames\.zip$/)
   const zip = parseStoreOnlyZip(await downloadBuffer(zipDownload))

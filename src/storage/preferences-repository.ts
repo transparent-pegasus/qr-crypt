@@ -1,8 +1,9 @@
-// 設定の永続化(spec §28、v2: plan2.1 §I)。
-// defaultAlgorithm/qrErrorCorrection/defaultPqProfile/requireSignature は env が
-// 既定を与え、VITE_REQUIRE_SIGNATURE=true は floor(利用者は下げられない)。
-// 遅延は設定として保存せず env.autoClearSeconds の固定値を使う。
-// theme は v1 同様 localStorage("oc-theme")所有で本ストアの対象外。
+// Preferences persistence.
+// The environment supplies defaults for defaultAlgorithm, qrErrorCorrection,
+// defaultPqProfile, and requireSignature. VITE_REQUIRE_SIGNATURE=true is a floor
+// the user cannot lower. Do not persist delay as a preference; use the fixed
+// env.autoClearSeconds value. As in v1, theme belongs to localStorage("oc-theme")
+// and is outside this store.
 import type { PqProfileId, Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
@@ -142,7 +143,7 @@ function validatePreferences(value: unknown): Preferences {
   return {
     defaultAlgorithm: defaultAlgorithm as UiAlgorithm,
     defaultPqProfile: candidate.defaultPqProfile as PqProfileId,
-    // env の署名必須は floor(plan2.1 §I)
+    // The environment's signature requirement is a floor.
     requireSignature: signatureRequired,
     qrErrorCorrection: candidate.qrErrorCorrection as QrEcLevel,
     autoClearPlaintextAfterEncrypt: candidate.autoClearPlaintextAfterEncrypt,

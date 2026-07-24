@@ -4,6 +4,7 @@ import { useDisplayGate } from "@/app/display-gate"
 import { NetworkStatusBadge } from "@/components/network-status"
 import { usePwaOfflineReady } from "@/components/pwa-offline-ready"
 import { Button } from "@/components/ui/button"
+import { LanguageToggle, useI18n, type MessageKey } from "@/i18n"
 import { env } from "@/schemas/env-schema"
 
 interface BeforeInstallPromptEvent extends Event {
@@ -31,13 +32,14 @@ export function OnlineGate({ children }: { children: ReactNode }) {
 }
 
 export function OnlineInstallScreen() {
+  const { t } = useI18n()
   const { offlineReady, error: registrationError } = usePwaOfflineReady()
   const [installed, setInstalled] = useState(isStandalone)
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(
     null,
   )
   const [installing, setInstalling] = useState(false)
-  const [installError, setInstallError] = useState<string | null>(null)
+  const [installError, setInstallError] = useState<MessageKey | null>(null)
 
   useEffect(() => {
     const capturePrompt = (event: Event) => {
@@ -66,9 +68,7 @@ export function OnlineInstallScreen() {
       setInstallPrompt(null)
       if (choice.outcome === "accepted") setInstalled(true)
     } catch {
-      setInstallError(
-        "インストールを開始できませんでした。ブラウザーのメニューから操作してください。",
-      )
+      setInstallError("gate.install.error")
     } finally {
       setInstalling(false)
     }
@@ -80,17 +80,20 @@ export function OnlineInstallScreen() {
       className="min-h-dvh bg-background px-4 py-6 text-foreground"
     >
       <section className="mx-auto w-full max-w-md space-y-6">
+        <div className="flex justify-end">
+          <LanguageToggle />
+        </div>
         <header className="flex items-center gap-3">
           <img
             src="/icons/icon-192.png"
-            alt={`${env.appName}のアプリアイコン`}
+            alt={t("gate.appIcon.alt", { appName: env.appName })}
             width={56}
             height={56}
             className="size-14 rounded-xl"
           />
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-muted-foreground">
-              オンライン導入モード
+              {t("gate.mode.label")}
             </p>
             <h1 id="online-gate-title" className="truncate text-2xl font-bold">
               {env.appName}
@@ -103,23 +106,29 @@ export function OnlineInstallScreen() {
           <div className="flex items-start gap-3">
             <Download aria-hidden="true" className="mt-0.5 size-6 shrink-0" />
             <div className="space-y-1">
-              <h2 className="text-lg font-semibold">
-                オンラインではPWAの導入のみ利用できます
-              </h2>
+              <h2 className="text-lg font-semibold">{t("gate.heading")}</h2>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                暗号・復号、鍵追加、鍵一覧、設定はオフライン時だけ表示します。
+                {t("gate.description")}
               </p>
             </div>
           </div>
 
           <StatusRow
-            label="PWAインストール状態"
-            value={installed ? "インストール済み" : "未インストール"}
+            label={t("pwa.installState.label")}
+            value={
+              installed
+                ? t("pwa.installState.installed")
+                : t("pwa.installState.notInstalled")
+            }
             ready={installed}
           />
           <StatusRow
-            label="オフライン利用準備状態"
-            value={offlineReady ? "準備完了" : "準備中"}
+            label={t("pwa.offlineReady.label")}
+            value={
+              offlineReady
+                ? t("pwa.offlineReady.ready")
+                : t("pwa.offlineReady.preparing")
+            }
             ready={offlineReady}
           />
 
@@ -131,24 +140,24 @@ export function OnlineInstallScreen() {
               onClick={() => void requestInstall()}
             >
               <Download aria-hidden="true" />
-              {installing ? "インストール中…" : "PWAをインストール"}
+              {installing ? t("gate.install.progress") : t("gate.install.button")}
             </Button>
           )}
 
           {!installed && !installPrompt && isIosSafari() && (
             <p className="flex gap-2 text-sm leading-relaxed text-muted-foreground">
               <Share2 aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-              Safariの共有メニューから「ホーム画面に追加」を選んでください。
+              {t("gate.install.iosHint")}
             </p>
           )}
           {!installed && !installPrompt && !isIosSafari() && (
             <p className="text-sm leading-relaxed text-muted-foreground">
-              ブラウザーのメニューから「アプリをインストール」または「ホーム画面に追加」を選んでください。
+              {t("gate.install.otherHint")}
             </p>
           )}
           {(registrationError || installError) && (
             <p role="alert" className="text-sm text-destructive">
-              {registrationError ?? installError}
+              {t(registrationError ?? installError ?? "gate.install.error")}
             </p>
           )}
         </div>
@@ -156,9 +165,9 @@ export function OnlineInstallScreen() {
         <div className="flex items-start gap-3 rounded-xl border border-primary/40 bg-primary/5 p-5">
           <WifiOff aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-primary" />
           <div className="space-y-1">
-            <h2 className="font-semibold">オフラインに切り替えてください</h2>
+            <h2 className="font-semibold">{t("gate.switchOffline.title")}</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。
+              {t("gate.switchOffline.body")}
             </p>
           </div>
         </div>

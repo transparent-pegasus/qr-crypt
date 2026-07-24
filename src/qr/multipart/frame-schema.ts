@@ -1,6 +1,6 @@
-// QrFrameV2 の zod strict 検証(WP-12)。canonical-cbor.guardQrFrameV2 の
-// プロトコル定数検査に加え、schema としての再検証面を提供する
-// (二重検証は意図的 — QR 由来入力は hostile 前提)。
+// Strict Zod validation for QrFrameV2. In addition to the protocol-constant
+// checks in canonical-cbor.guardQrFrameV2, provide a schema-level revalidation surface.
+// This duplicate validation is intentional because QR-derived input is assumed hostile.
 import type { QrFrameV2 } from "@/schemas/domain"
 import { z } from "zod"
 import { AppError } from "@/crypto/errors"

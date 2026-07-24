@@ -28,8 +28,8 @@ describe("OnlineGate", () => {
       )
 
       await waitFor(() =>
-        expect(screen.getByText("オフライン利用準備状態").parentElement).toHaveTextContent(
-          "準備完了",
+        expect(screen.getByText("Offline-use readiness").parentElement).toHaveTextContent(
+          "Ready",
         ),
       )
     } finally {
@@ -57,23 +57,23 @@ describe("OnlineGate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("オンラインではPWAの導入のみ利用できます"),
+      await screen.findByText("Only PWA installation is available while online"),
     ).toBeInTheDocument()
-    expect(screen.getByRole("img", { name: /アプリアイコン/ })).toBeInTheDocument()
-    expect(screen.getByText("PWAインストール状態").parentElement).toHaveTextContent(
-      "未インストール",
+    expect(screen.getByRole("img", { name: /app icon/ })).toBeInTheDocument()
+    expect(screen.getByText("PWA installation status").parentElement).toHaveTextContent(
+      "Not installed",
     )
-    expect(screen.getByText("オフライン利用準備状態")).toBeInTheDocument()
+    expect(screen.getByText("Offline-use readiness")).toBeInTheDocument()
     expect(
       screen.getByText(
-        "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。",
+        "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
       ),
     ).toBeInTheDocument()
     expect(
-      screen.queryByText("オフライン（機内モード）に切り替えると全機能が利用できます。"),
+      screen.queryByText("Switching to offline mode makes every feature available."),
     ).not.toBeInTheDocument()
-    expect(screen.getByText("オンライン", { exact: true })).toBeInTheDocument()
-    expect(screen.queryByLabelText("平文")).not.toBeInTheDocument()
+    expect(screen.getByText("Online", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByLabelText("Plaintext")).not.toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
 
     const prompt = vi.fn(async () => undefined)
@@ -90,11 +90,11 @@ describe("OnlineGate", () => {
       },
     })
     act(() => window.dispatchEvent(installEvent))
-    await user.click(await screen.findByRole("button", { name: "PWAをインストール" }))
+    await user.click(await screen.findByRole("button", { name: "Install the PWA" }))
     await waitFor(() => expect(prompt).toHaveBeenCalledTimes(1))
     await waitFor(() =>
-      expect(screen.getByText("PWAインストール状態").parentElement).toHaveTextContent(
-        "インストール済み",
+      expect(screen.getByText("PWA installation status").parentElement).toHaveTextContent(
+        "Installed",
       ),
     )
     controller.stop()
@@ -106,7 +106,7 @@ describe("OnlineGate", () => {
 
     function NonceProbe() {
       const { nonce } = useTransientClear()
-      return <p>通常機能 nonce={nonce}</p>
+      return <p>Regular feature nonce={nonce}</p>
     }
 
     render(
@@ -116,18 +116,18 @@ describe("OnlineGate", () => {
         </OnlineGate>
       </AppProviders>,
     )
-    expect(screen.getByText("通常機能 nonce=0")).toBeInTheDocument()
+    expect(screen.getByText("Regular feature nonce=0")).toBeInTheDocument()
 
     act(() => setTestOnlineStatus(true, { emit: true }))
     expect(
-      await screen.findByText("オンラインではPWAの導入のみ利用できます"),
+      await screen.findByText("Only PWA installation is available while online"),
     ).toBeInTheDocument()
-    expect(screen.queryByText(/通常機能 nonce=/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Regular feature nonce=/)).not.toBeInTheDocument()
 
     act(() => setTestOnlineStatus(false, { emit: true }))
-    expect(await screen.findByText("通常機能 nonce=1")).toBeInTheDocument()
+    expect(await screen.findByText("Regular feature nonce=1")).toBeInTheDocument()
     expect(
-      screen.queryByText("オンラインではPWAの導入のみ利用できます"),
+      screen.queryByText("Only PWA installation is available while online"),
     ).not.toBeInTheDocument()
   })
 })

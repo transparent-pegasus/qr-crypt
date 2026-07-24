@@ -1,7 +1,7 @@
-// Vault シード復号(spec2 §9、WP-11)。AAD 不一致(レコード差替え・用途違い)は
-// fail-closed(DECRYPTION_FAILED)。復号後の利用手順は必ず
-// 「keygen で公開鍵再生成 → 保存公開鍵と完全一致 → sign/decaps → zeroize」
-// (plan2.1 §C8)。
+// Vault seed decryption. Fail closed (DECRYPTION_FAILED) on an
+// AAD mismatch caused by record substitution or purpose confusion. After decryption,
+// the required sequence is always:
+// "regenerate public key with keygen → exact match with stored public key → sign/decaps → zeroize".
 import type { EncryptedSecret } from "@/schemas/domain"
 import type { VaultAadFieldsV2 } from "@/crypto/pq/wire-bytes"
 import { buildVaultAadV2, keyIdRawBytes } from "@/crypto/pq/wire-bytes"

@@ -2,17 +2,14 @@ import { readFileSync } from "node:fs"
 import { fileURLToPath, URL } from "node:url"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig, loadEnv } from "vite"
+import { defineConfig } from "vite"
 import { VitePWA } from "vite-plugin-pwa"
 
 const pkg = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
 ) as { version: string }
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "")
-  const appName = env.VITE_APP_NAME ?? "Qrypt"
-  const shortName = env.VITE_APP_SHORT_NAME ?? "Qrypt"
+export default defineConfig(() => {
   return {
     plugins: [
       react(),
@@ -21,10 +18,10 @@ export default defineConfig(({ mode }) => {
         registerType: "prompt",
         includeAssets: ["favicon.svg", "icons/apple-touch-icon-180.png"],
         manifest: {
-          name: appName,
-          short_name: shortName,
-          description: "オフラインで完結する暗号化QRツール",
-          lang: "ja",
+          name: "Qrypt",
+          short_name: "Qrypt",
+          description: "Offline-only encrypted QR code tool for on-device use.",
+          lang: "en",
           start_url: "/",
           scope: "/",
           display: "standalone",
@@ -45,8 +42,9 @@ export default defineConfig(({ mode }) => {
           globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
           navigateFallback: "/index.html",
           cleanupOutdatedCaches: true,
-          // 破壊操作(wipe-on-online)の到達性 sentinel は SW を必ず素通しする
-          // (plan2.1 §B1: precache 対象外 + NetworkOnly。オフラインでは必ず失敗)
+          // The reachability sentinel gating the destructive wipe-on-online path
+          // must always bypass the service worker: excluded from precache and
+          // served NetworkOnly, so it always fails while offline.
           runtimeCaching: [
             {
               urlPattern: /\/reachability-sentinel\.txt/,

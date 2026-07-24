@@ -1,7 +1,8 @@
-// artifact 生バイト → OCF2 フレーム列(spec2 §12、plan2.1 §D1/§D3 — WP-12)。
-// chunk は artifact CBOR の生バイトを直接分割する(inner 文字列の再 base64url 禁止)。
-// transferId は 16B CSPRNG。生成後は各フレーム文字列が EC-Q に収まることを
-// payloadFits(…, "Q") で確認し、収まらなければ QR_TOO_LARGE(plan2.1 §D3)。
+// Raw artifact bytes → OCF2 frame sequence; see docs/qr-protocol-v2.md §6.
+// Split raw artifact-CBOR bytes directly into chunks; re-encoding an inner string as
+// base64url is prohibited. transferId is 16B from the CSPRNG. After generation, verify
+// with payloadFits(…, "Q") that every frame string fits EC-Q; otherwise fail with
+// QR_TOO_LARGE.
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { randomBytes } from "@/crypto/random"
@@ -23,12 +24,14 @@ interface SplitIntoFramesBaseArgs {
 export type SplitIntoFramesArgs = SplitIntoFramesBaseArgs &
   (
     | {
-        // FRAME_CHUNK_MIN_BYTES..FRAME_BYTES_MAX(Preferences 由来、または単鍵 QR 固定 chunk)
+        // FRAME_CHUNK_MIN_BYTES..FRAME_BYTES_MAX (from Preferences or the fixed
+        // single-key QR chunk size).
         frameBytes: number
         frameCount?: never
       }
     | {
-        // 指定枚数へ非空・均等分割する。frameBytes mode とは排他的。
+        // Split evenly into the requested number of non-empty frames.
+        // This is mutually exclusive with frameBytes mode.
         frameCount: number
         frameBytes?: never
       }
@@ -80,8 +83,8 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
   }
   if (frameCount > env.qrMaxFrames) throw new AppError("QR_TOO_LARGE")
 
-  // digest の await 中に caller が入力 view を変更しても、hash と chunk が
-  // 異なる snapshot を参照しないよう先に所有コピーへ固定する。
+  // Pin an owned copy first so the hash and chunks cannot observe different snapshots
+  // if the caller mutates the input view while the digest is pending.
   const stableArtifactBytes = Uint8Array.from(artifactBytes)
   const transferId = randomBytes(16)
   const payloadSha256 = await sha256(stableArtifactBytes)

@@ -1,7 +1,7 @@
-// ML-DSA 署名(spec2 §6、WP-11)。署名対象は SignedMessageBodyV2 の正準 CBOR
-// (canonical-cbor.signingTargetBytes)。コンテキストは mlDsaContextV2() 固定。
-// 本モジュールは同期プロバイダーを直接使うため Worker / Node テスト専用
-// (plan2.1 §F — ブラウザー main thread から import してはならない)。
+// ML-DSA signatures. The signing target is canonical CBOR for
+// SignedMessageBodyV2 (canonical-cbor.signingTargetBytes), with context fixed to
+// mlDsaContextV2(). This module calls the synchronous provider directly and is therefore
+// limited to the Worker and Node tests; never import it on the browser main thread.
 import type { MlDsaProvider } from "@/crypto/pq/provider"
 import type { MlDsaAlgorithm, SignedMessageBodyV2 } from "@/schemas/domain"
 import { signingTargetBytes } from "@/crypto/pq/canonical-cbor"
@@ -11,7 +11,7 @@ import { zeroize } from "@/crypto/pq/zeroize"
 export interface SignBodyArgs {
   provider: MlDsaProvider
   body: SignedMessageBodyV2
-  secretKey: Uint8Array // 呼出側がシードから再展開し、呼出後に zeroize する
+  secretKey: Uint8Array // Caller re-expands it from the seed and zeroizes it after the call.
 }
 
 export interface SignedBodyResult {
@@ -38,8 +38,8 @@ export interface VerifySignedBodyArgs {
   senderPublicKey: Uint8Array
 }
 
-// 検証結果のみを返す。false のとき呼出側は plaintext を表示してはならない
-// (SIGNATURE_INVALID。spec2 §20)。
+// Return only the verification result. When false, the caller must not display plaintext.
+// A false result maps to SIGNATURE_INVALID.
 export function verifySignedBody(args: VerifySignedBodyArgs): boolean {
   if (args.signature.algorithm !== args.provider.algorithm) return false
   const target = signingTargetBytes(args.body)

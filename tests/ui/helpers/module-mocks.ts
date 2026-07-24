@@ -17,8 +17,8 @@ vi.mock("@/lib/bytes", () => ({
   sha256Hex: fakes.sha256Hex,
 }))
 
-// @/crypto/errors は純粋(依存ゼロ)のためモックしない。
-// モックすると factory → fakes → errors(モック中)の循環初期化になる。
+// @/crypto/errors is pure (dependency-free), so do not mock it.
+// Mocking it creates a circular factory → fakes → errors (while mocked) initialization.
 vi.mock("@/crypto/random", () => ({
   generateArtifactId: fakes.generateArtifactId,
   generateKeyId: fakes.generateKeyId,

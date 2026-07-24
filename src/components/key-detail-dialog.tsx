@@ -57,6 +57,11 @@ import {
 } from "@/features/presentation"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePreferences } from "@/hooks/use-preferences"
+import {
+  useI18n,
+  useLocalizedMessage,
+  type LocalizedMessage,
+} from "@/i18n"
 import { PQ_KEY_QR_FRAME_BYTES, pqIdentityQrFrameCount } from "@/lib/limits"
 import { ecLevelFor } from "@/qr/encode"
 import {
@@ -87,8 +92,9 @@ export type KeySelection =
 
 interface IdentityQrView {
   kind: "identity-qr"
-  title: string
-  outputName: string
+  qrKind: "bundle" | "kem" | "signing"
+  targetName: string
+  generatedAt: number
   frames: QrFrameV2[]
 }
 
@@ -137,13 +143,15 @@ export function KeyDetailDialog({
   onOpenChange,
   onChanged,
 }: KeyDetailDialogProps) {
+  const { t } = useI18n()
   const { preferences } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const { setSensitiveSession } = useSensitiveSession()
   const [view, setView] = useState<DetailView>({ kind: "detail" })
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<LocalizedMessage | null>(null)
+  const localizedError = useLocalizedMessage(error)
   const record =
     selection?.kind === "identity"
       ? identity
@@ -184,11 +192,9 @@ export function KeyDetailDialog({
       assertUsableIdentity(target)
       let artifactType: StorablePqArtifactKind
       let artifactBytes: Uint8Array
-      let title: string
       if (kind === "bundle") {
         artifactType = "pq-public-identity"
         artifactBytes = encodePublicIdentityBundleV2(buildPublicBundle(target))
-        title = `${target.name} 公開鍵セット`
       } else if (kind === "kem") {
         artifactType = "pq-kem-public-key"
         artifactBytes = encodeKemPublicKeyEnvelopeV2({
@@ -201,7 +207,6 @@ export function KeyDetailDialog({
           publicKey: target.kem.publicKey,
           createdAt: target.createdAt,
         })
-        title = `${target.name} 暗号化用公開鍵`
       } else {
         artifactType = "pq-dsa-public-key"
         artifactBytes = encodeDsaPublicKeyEnvelopeV2({
@@ -214,12 +219,12 @@ export function KeyDetailDialog({
           publicKey: target.signing.publicKey,
           createdAt: target.createdAt,
         })
-        title = `${target.name} 署名検証用公開鍵`
       }
       setView({
         kind: "identity-qr",
-        title,
-        outputName: `${title}-${formatSuggestedDate(Date.now())}`,
+        qrKind: kind,
+        targetName: target.name,
+        generatedAt: Date.now(),
         frames:
           artifactType === "pq-public-identity"
             ? await splitIntoFrames({
@@ -234,7 +239,7 @@ export function KeyDetailDialog({
               }),
       })
     } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+      setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
       setBusy(false)
     }
@@ -251,7 +256,7 @@ export function KeyDetailDialog({
         acknowledged: false,
       })
     } catch (caught) {
-      setError(toAppError(caught, "KEY_TYPE_MISMATCH").userMessage)
+      setError(toAppError(caught, "KEY_TYPE_MISMATCH").code)
     } finally {
       setBusy(false)
     }
@@ -269,9 +274,9 @@ export function KeyDetailDialog({
       })
       await saveRotation(rotated)
       await onChanged({ kind: "identity", id: rotated.next.id })
-      toast.success("IDをローテーションしました")
+      toast.success(t("keyDetail.toast.rotated"))
     } catch (caught) {
-      setError(toAppError(caught, "ENCRYPTION_FAILED").userMessage)
+      setError(toAppError(caught, "ENCRYPTION_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -284,9 +289,9 @@ export function KeyDetailDialog({
     try {
       await revokeIdentity(target.id, Date.now())
       await onChanged(selection)
-      toast.success("この端末でIDを失効しました")
+      toast.success(t("keyDetail.toast.revoked"))
     } catch (caught) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+      setError(toAppError(caught, "STORAGE_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -300,15 +305,15 @@ export function KeyDetailDialog({
     try {
       if (target.kind === "symmetric") {
         await deleteKeyRecord(target.id)
-        toast.success("共通鍵を削除しました")
+        toast.success(t("keyDetail.toast.symmetricDeleted"))
       } else {
         await deleteIdentity(target.id)
-        toast.success("ポスト量子IDを削除しました")
+        toast.success(t("keyDetail.toast.identityDeleted"))
       }
       setPendingDelete(null)
       await onChanged(selection)
     } catch (caught) {
-      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+      setError(toAppError(caught, "STORAGE_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -328,7 +333,7 @@ export function KeyDetailDialog({
           : await qrSvgBlob(view.payload, { ecLevel })
       triggerDownload(blob, buildExportFileName(symmetric.name, symmetric.id, format))
     } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+      setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
       setBusy(false)
     }
@@ -338,11 +343,16 @@ export function KeyDetailDialog({
     if (view.kind !== "symmetric-qr" || !view.acknowledged) return
     try {
       await copyTextToClipboard(view.payload)
-      toast.success("コピーしました。クリップボード同期に注意してください。")
+      toast.success(t("keyDetail.toast.copied"))
     } catch {
-      setError("コピーできませんでした。ブラウザーの権限を確認してください。")
+      setError("common.copyFailed")
     }
   }
+
+  const identityQrTitle =
+    view.kind === "identity-qr"
+      ? t(`keyDetail.qr.${view.qrKind}Title`, { name: view.targetName })
+      : null
 
   return (
     <>
@@ -354,27 +364,27 @@ export function KeyDetailDialog({
           <DialogHeader>
             <DialogTitle>
               {view.kind === "identity-qr"
-                ? view.title
+                ? identityQrTitle
                 : view.kind === "symmetric-qr"
-                  ? "共通鍵QR"
+                  ? t("keyDetail.symmetricQr.title")
                   : record?.name}
             </DialogTitle>
             {view.kind === "identity-qr" && (
               <DialogDescription>
-                すべてOCF2フレーム・誤り訂正Qで表示します。
+                {t("keyDetail.identityQr.desc")}
               </DialogDescription>
             )}
             {view.kind === "symmetric-qr" && (
               <DialogDescription>
-                このQRには暗号化と復号に使える秘密鍵が含まれます。
+                {t("keyDetail.symmetricQr.desc")}
               </DialogDescription>
             )}
           </DialogHeader>
 
           {error && (
             <Alert variant="destructive" role="alert">
-              <AlertTitle>操作を完了できません</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+              <AlertDescription>{localizedError}</AlertDescription>
             </Alert>
           )}
 
@@ -390,7 +400,7 @@ export function KeyDetailDialog({
               }}
             >
               <ArrowLeft aria-hidden="true" />
-              詳細に戻る
+              {t("keyDetail.backToDetail")}
             </Button>
           )}
 
@@ -431,8 +441,11 @@ export function KeyDetailDialog({
             <AnimatedQrFrames
               frames={view.frames}
               frameIntervalMs={preferences.frameIntervalMs}
-              outputName={view.outputName}
-              title={view.title}
+              outputName={t("keyDetail.qr.outputName", {
+                title: identityQrTitle ?? "",
+                date: formatSuggestedDate(view.generatedAt),
+              })}
+              title={identityQrTitle ?? ""}
               fullscreenEnabled={false}
             />
           )}
@@ -443,13 +456,13 @@ export function KeyDetailDialog({
                 payload={view.payload}
                 ecLevel={ecLevelFor("stored-key", preferences)}
                 size={env.qrRenderSize}
-                title="共通鍵QR"
+                title={t("keyDetail.symmetricQr.title")}
                 fullscreenEnabled={false}
               />
               <Alert variant="destructive">
-                <AlertTitle>機密情報</AlertTitle>
+                <AlertTitle>{t("keyDetail.symmetricQr.secretTitle")}</AlertTitle>
                 <AlertDescription>
-                  第三者に見せると、過去と将来の暗号文を復号されるおそれがあります。
+                  {t("keyDetail.symmetricQr.secretBody")}
                 </AlertDescription>
               </Alert>
               <div className="flex items-start gap-2">
@@ -460,7 +473,7 @@ export function KeyDetailDialog({
                     setView({ ...view, acknowledged: checked === true })
                   }
                 />
-                <Label htmlFor="secret-ack">リスクを理解しました</Label>
+                <Label htmlFor="secret-ack">{t("common.riskUnderstood")}</Label>
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <Button
@@ -491,7 +504,7 @@ export function KeyDetailDialog({
                   onClick={() => void copySymmetricQr()}
                 >
                   <Clipboard aria-hidden="true" />
-                  コピー
+                  {t("common.copy")}
                 </Button>
               </div>
             </div>
@@ -509,23 +522,23 @@ export function KeyDetailDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>
               {pendingDelete
-                ? `「${pendingDelete.name}」を削除しますか?`
-                : "鍵を削除しますか?"}
+                ? t("keyDetail.delete.titleNamed", { name: pendingDelete.name })
+                : t("keyDetail.delete.titleGeneric")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDelete?.kind === "identity"
-                ? "このID宛の暗号文は復号できなくなります。失効と異なり元に戻せません。"
-                : "この鍵で暗号化した暗号文は復号できなくなります。元に戻せません。"}
+                ? t("keyDetail.delete.body.identity")
+                : t("keyDetail.delete.body.symmetric")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={busy}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => void remove()}
             >
-              削除する
+              {t("keyDetail.delete.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -554,6 +567,7 @@ function IdentityDetails({
   onRevoke: (identity: PostQuantumIdentity) => Promise<void>
   onDelete: (identity: PostQuantumIdentity) => void
 }) {
+  const { language, t } = useI18n()
   const supported = isUsableIdentity(identity)
   const old = identity.status !== "active"
   return (
@@ -561,27 +575,36 @@ function IdentityDetails({
       <div className="flex items-start justify-between gap-3">
         <p className="font-mono text-xs text-muted-foreground">{identity.id}</p>
         <Badge variant={old || !supported ? "secondary" : "default"}>
-          {supported ? identity.status : "非対応（旧プロファイル）"}
+          {supported ? identity.status : t("keyDetail.badge.legacyProfile")}
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground">
         {!supported
-          ? "非対応（旧プロファイル）: 暗号処理とQR再出力はできません。"
+          ? t("keyDetail.identity.legacyNote")
           : old
-            ? "旧世代: 復号/検証専用"
-            : "暗号化・署名に使用可能"}
+            ? t("keyDetail.identity.oldNote")
+            : t("keyDetail.identity.activeNote")}
       </p>
-      <Fingerprint label="ID fingerprint" value={identity.identityFingerprint} />
       <Fingerprint
-        label={`KEM ${identity.kem.algorithm}`}
+        label={t("common.identityFingerprint")}
+        value={identity.identityFingerprint}
+      />
+      <Fingerprint
+        label={t("keyDetail.identity.kemFingerprintLabel", {
+          algorithm: identity.kem.algorithm,
+        })}
         value={identity.kem.fingerprint}
       />
       <Fingerprint
-        label={`Signing ${identity.signing.algorithm}`}
+        label={t("keyDetail.identity.signingFingerprintLabel", {
+          algorithm: identity.signing.algorithm,
+        })}
         value={identity.signing.fingerprint}
       />
       <p className="text-xs text-muted-foreground">
-        作成: {formatDateTime(identity.createdAt)}
+        {t("common.created", {
+          datetime: formatDateTime(identity.createdAt, language),
+        })}
       </p>
       <div className="grid grid-cols-1 gap-2">
         {supported && !old && (
@@ -594,7 +617,7 @@ function IdentityDetails({
               onClick={() => void onShow(identity, "bundle")}
             >
               <QrCode aria-hidden="true" />
-              公開鍵セットQR
+              {t("keyDetail.button.bundleQr")}
             </Button>
             <Button
               type="button"
@@ -604,7 +627,7 @@ function IdentityDetails({
               onClick={() => void onShow(identity, "kem")}
             >
               <QrCode aria-hidden="true" />
-              暗号化用単鍵QR
+              {t("keyDetail.button.kemQr")}
             </Button>
           </>
         )}
@@ -617,7 +640,7 @@ function IdentityDetails({
             onClick={() => void onShow(identity, "signing")}
           >
             <QrCode aria-hidden="true" />
-            署名検証用単鍵QR
+            {t("keyDetail.button.signingQr")}
           </Button>
         )}
         {supported && identity.status === "active" && (
@@ -630,7 +653,7 @@ function IdentityDetails({
               onClick={() => void onRotate(identity)}
             >
               <RefreshCw aria-hidden="true" />
-              ローテーション
+              {t("keyDetail.button.rotate")}
             </Button>
             <Button
               type="button"
@@ -640,7 +663,7 @@ function IdentityDetails({
               onClick={() => void onRevoke(identity)}
             >
               <Trash2 aria-hidden="true" />
-              この端末で失効
+              {t("keyDetail.button.revoke")}
             </Button>
           </>
         )}
@@ -649,15 +672,15 @@ function IdentityDetails({
           variant="destructive"
           className="h-11"
           disabled={busy}
-          aria-label={`${identity.name}を削除`}
+          aria-label={t("common.deleteAriaLabel", { name: identity.name })}
           onClick={() => onDelete(identity)}
         >
           <Trash2 aria-hidden="true" />
-          削除
+          {t("common.delete")}
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        失効はこの端末での利用停止であり、外部の相手には伝播しません。
+        {t("keyDetail.revokeNote")}
       </p>
       {previous.length > 0 && (
         <Collapsible>
@@ -667,7 +690,7 @@ function IdentityDetails({
               variant="ghost"
               className="group h-9 w-full justify-between px-2 text-xs text-muted-foreground"
             >
-              旧世代 {previous.length} 件、復号専用
+              {t("keyDetail.previous.toggle", { count: previous.length })}
               <ChevronDown
                 aria-hidden="true"
                 className="size-4 transition-transform group-data-[state=open]:rotate-180"
@@ -681,16 +704,20 @@ function IdentityDetails({
                 <div key={generation.id} className="space-y-2 rounded-md border p-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs text-muted-foreground">
-                      作成: {formatDateTime(generation.createdAt)}
+                      {t("common.created", {
+                        datetime: formatDateTime(generation.createdAt, language),
+                      })}
                     </p>
                     <Badge variant="secondary">
                       {generationSupported
                         ? generation.status
-                        : "非対応（旧プロファイル）"}
+                        : t("keyDetail.badge.legacyProfile")}
                     </Badge>
                   </div>
                   <p className="font-mono text-sm">
-                    比較表示: {formatFingerprint(generation.identityFingerprint)}
+                    {t("common.fingerprintCompare", {
+                      value: formatFingerprint(generation.identityFingerprint),
+                    })}
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {generationSupported && (
@@ -702,7 +729,7 @@ function IdentityDetails({
                         onClick={() => void onShow(generation, "signing")}
                       >
                         <QrCode aria-hidden="true" />
-                        署名検証用単鍵QR
+                        {t("keyDetail.button.signingQr")}
                       </Button>
                     )}
                     <Button
@@ -710,11 +737,13 @@ function IdentityDetails({
                       variant="destructive"
                       size="sm"
                       disabled={busy}
-                      aria-label={`${generation.name}を削除`}
+                      aria-label={t("common.deleteAriaLabel", {
+                        name: generation.name,
+                      })}
                       onClick={() => onDelete(generation)}
                     >
                       <Trash2 aria-hidden="true" />
-                      削除
+                      {t("common.delete")}
                     </Button>
                   </div>
                 </div>
@@ -738,15 +767,21 @@ function SymmetricDetails({
   onShow: () => void
   onDelete: () => void
 }) {
+  const { language, t } = useI18n()
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <p className="break-all font-mono text-xs text-muted-foreground">{record.id}</p>
         <Badge>AES-256-GCM</Badge>
       </div>
-      <Fingerprint label="鍵指紋" value={record.fingerprint} />
+      <Fingerprint
+        label={t("keyDetail.symmetric.fingerprintLabel")}
+        value={record.fingerprint}
+      />
       <p className="text-xs text-muted-foreground">
-        作成: {formatDateTime(record.createdAt)}
+        {t("common.created", {
+          datetime: formatDateTime(record.createdAt, language),
+        })}
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <Button
@@ -757,18 +792,18 @@ function SymmetricDetails({
           onClick={onShow}
         >
           <QrCode aria-hidden="true" />
-          秘密鍵QRを表示
+          {t("keyDetail.button.showSecretQr")}
         </Button>
         <Button
           type="button"
           variant="destructive"
           className="h-11"
           disabled={busy}
-          aria-label={`${record.name}を削除`}
+          aria-label={t("common.deleteAriaLabel", { name: record.name })}
           onClick={onDelete}
         >
           <Trash2 aria-hidden="true" />
-          削除
+          {t("common.delete")}
         </Button>
       </div>
     </div>
@@ -776,11 +811,14 @@ function SymmetricDetails({
 }
 
 function Fingerprint({ label, value }: { label: string; value: string }) {
+  const { t } = useI18n()
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="break-all font-mono text-xs">{value}</p>
-      <p className="font-mono text-sm">比較表示: {formatFingerprint(value)}</p>
+      <p className="font-mono text-sm">
+        {t("common.fingerprintCompare", { value: formatFingerprint(value) })}
+      </p>
     </div>
   )
 }

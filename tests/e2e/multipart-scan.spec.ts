@@ -13,7 +13,7 @@ import {
 
 const expect = baseExpect.configure({ timeout: 30_000 })
 
-test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も順不同・重複から完成して公開鍵セットを取り込む", async ({
+test("routes an injected decoder stream through the UI handler and imports a shuffled duplicate-containing public-key bundle after rejecting a mixed transfer", async ({
   context,
   page,
 }) => {
@@ -29,58 +29,60 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
   await page.getByRole("button", { name: new RegExp(identityName) }).click()
   let identityDialog = page.getByRole("dialog", { name: identityName })
   await identityDialog
-    .getByRole("button", { name: "公開鍵セットQR", exact: true })
+    .getByRole("button", { name: "Public-key bundle QR", exact: true })
     .click()
   let frameDialog = page.getByRole("dialog", {
-    name: `${identityName} 公開鍵セット`,
+    name: `${identityName} public-key bundle`,
   })
   let frameRegion = frameDialog.getByRole("region", {
-    name: `${identityName} 公開鍵セットフレーム表示`,
+    name: `${identityName} public-key bundle frame display`,
   })
   const frames = await collectAnimatedFramePayloads(frameRegion)
   expect(frames.length).toBeGreaterThan(1)
 
   await frameDialog
-    .getByRole("button", { name: "詳細に戻る", exact: true })
+    .getByRole("button", { name: "Back to details", exact: true })
     .click()
   identityDialog = page.getByRole("dialog", { name: identityName })
   await identityDialog
-    .getByRole("button", { name: "公開鍵セットQR", exact: true })
+    .getByRole("button", { name: "Public-key bundle QR", exact: true })
     .click()
   frameDialog = page.getByRole("dialog", {
-    name: `${identityName} 公開鍵セット`,
+    name: `${identityName} public-key bundle`,
   })
   frameRegion = frameDialog.getByRole("region", {
-    name: `${identityName} 公開鍵セットフレーム表示`,
+    name: `${identityName} public-key bundle frame display`,
   })
   const otherFrames = await collectAnimatedFramePayloads(frameRegion)
   expect(otherFrames[0]).not.toBe(frames[0])
   await frameDialog.getByRole("button", { name: "Close", exact: true }).click()
 
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "読込", exact: true }).click()
+  await page.getByRole("tab", { name: "Import", exact: true }).click()
   const scanTrigger = page.getByRole("button", {
-    name: "鍵QRを読み取る",
+    name: "Scan a key QR code",
     exact: true,
   })
   await expect(scanTrigger).toBeEnabled()
   await scanTrigger.click()
-  const scanDialog = page.getByRole("dialog", { name: "鍵QRを読み取る" })
+  const scanDialog = page.getByRole("dialog", { name: "Scan a key QR code" })
   await expect(scanDialog).toBeVisible()
-  await expect(page.getByText("QRコードを順不同で読み取れます")).toBeVisible()
+  await expect(page.getByText("QR codes can be read in any order")).toBeVisible()
   await expect(
-    scanDialog.getByRole("button", { name: "カメラを停止", exact: true }),
+    scanDialog.getByRole("button", { name: "Stop camera", exact: true }),
   ).toHaveCount(0)
   await expect(
-    scanDialog.getByRole("button", { name: "読取状態を破棄", exact: true }),
+    scanDialog.getByRole("button", { name: "Discard scan state", exact: true }),
   ).toBeVisible()
 
   // The first multipart frame locks this run; an otherwise valid single QR is rejected.
   await emitInjectedQr(page, frames[0]!)
-  await expect(page.getByText(`受信 1 / ${frames.length}`, { exact: true })).toBeVisible()
+  await expect(page.getByText(`Received 1 / ${frames.length}`, { exact: true })).toBeVisible()
   await emitInjectedQr(page, "OCM1:competing-single")
   await expect(
-    page.getByText("複数QR読取中です。単発QRは読取完了または破棄後に。"),
+    page.getByText(
+      "A multi-frame QR scan is in progress. Scan a single QR code after completion or after discarding the scan state.",
+    ),
   ).toBeVisible()
   let snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)).toMatchObject({ active: true, once: false, emissions: 2 })
@@ -89,26 +91,26 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
   await emitInjectedQr(page, otherFrames[0]!)
   await expect(
     page.getByText(
-      "異なる転送のQRコードが混在しています。読み取り状態を破棄してやり直してください。",
+      "QR codes from different transfers are mixed together. Discard the scan state and start again.",
     ),
   ).toBeVisible()
 
-  await page.getByRole("button", { name: "読取状態を破棄" }).click()
-  await expect(page.getByRole("button", { name: "カメラを起動" })).toBeVisible()
+  await page.getByRole("button", { name: "Discard scan state" }).click()
+  await expect(page.getByRole("button", { name: "Start camera" })).toBeVisible()
   snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)?.active).toBe(false)
-  await page.getByRole("button", { name: "カメラを起動" }).click()
-  await expect(page.getByText("QRコードを順不同で読み取れます")).toBeVisible()
+  await page.getByRole("button", { name: "Start camera" }).click()
+  await expect(page.getByText("QR codes can be read in any order")).toBeVisible()
 
   // Restart with the last frame, repeat it, then finish in reverse order.
   const lastIndex = frames.length - 1
   await emitInjectedQr(page, frames[lastIndex]!)
-  await expect(page.getByText(`受信 1 / ${frames.length}`, { exact: true })).toBeVisible()
+  await expect(page.getByText(`Received 1 / ${frames.length}`, { exact: true })).toBeVisible()
   snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)).toMatchObject({ active: true, once: false, emissions: 1 })
 
   await emitInjectedQr(page, frames[lastIndex]!)
-  await expect(page.getByText(`受信 1 / ${frames.length}`, { exact: true })).toBeVisible()
+  await expect(page.getByText(`Received 1 / ${frames.length}`, { exact: true })).toBeVisible()
   snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)).toMatchObject({ active: true, once: false, emissions: 2 })
 
@@ -118,7 +120,7 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
     received += 1
     if (received < frames.length) {
       await expect(
-        page.getByText(`受信 ${received} / ${frames.length}`, { exact: true }),
+        page.getByText(`Received ${received} / ${frames.length}`, { exact: true }),
       ).toBeVisible()
     }
   }
@@ -126,19 +128,19 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
   await expect(scanDialog).not.toBeVisible({ timeout: 30_000 })
   await expect(
     page.getByText(
-      "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+      "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
     ),
   ).toBeVisible()
   snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)?.active).toBe(false)
 
   const fingerprintDialog = page.getByRole("dialog", {
-    name: "別経路で指紋を比較してください",
+    name: "Compare the fingerprint through another channel",
   })
   await expect(fingerprintDialog).toBeVisible()
   await fingerprintDialog
-    .getByRole("button", { name: "未確認のまま保存", exact: true })
+    .getByRole("button", { name: "Save without verification", exact: true })
     .click()
   await expect(fingerprintDialog).not.toBeVisible()
-  await expect(page.getByText("未確認のまま保存しました")).toBeVisible()
+  await expect(page.getByText("Saved without verification")).toBeVisible()
 })

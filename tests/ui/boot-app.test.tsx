@@ -46,11 +46,11 @@ describe("App boot gate", () => {
     await act(async () => resolveFetch?.(response("offline", 503)))
 
     expect(
-      await screen.findByRole("navigation", { name: "メインナビゲーション" }),
+      await screen.findByRole("navigation", { name: "Main navigation" }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole("heading", {
-        name: "続行前の確認",
+        name: "Confirm before continuing",
       }),
     ).not.toBeInTheDocument()
     await waitFor(() => expect(getPreferences).toHaveBeenCalled())
@@ -68,7 +68,7 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("オンラインではPWAの導入のみ利用できます"),
+      await screen.findByText("Only PWA installation is available while online"),
     ).toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(performWipe).not.toHaveBeenCalled()
@@ -84,10 +84,12 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("オンラインを検出したため、ローカルデータを初期化しました"),
+      await screen.findByText("Local data was reset after an online connection was detected"),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("論理削除を試行しました。物理消去は保証されません。"),
+      screen.getByText(
+        "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
+      ),
     ).toBeInTheDocument()
     controller.stop()
   })
@@ -105,10 +107,12 @@ describe("App boot gate", () => {
 
     expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
     expect(
-      screen.getByText("ローカルデータの初期化中に一部の操作が完了しませんでした。"),
+      screen.getByText("Some operations did not finish while resetting local data."),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("論理削除を試行しました。物理消去は保証されません。"),
+      screen.getByText(
+        "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
+      ),
     ).toBeInTheDocument()
     controller.stop()
   })

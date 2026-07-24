@@ -66,7 +66,7 @@ function messageArtifact(signed: boolean, plaintextBytes: number): Uint8Array {
     kemCiphertext: new Uint8Array(1568).fill(0x44),
     hkdfSalt: new Uint8Array(32).fill(0x55),
     iv: new Uint8Array(12).fill(0x66),
-    // WebCrypto AES-GCM の出力長は、正準 inner CBOR + 128-bit tag。
+    // WebCrypto AES-GCM output length is canonical inner CBOR plus a 128-bit tag.
     ciphertext: new Uint8Array(innerBytes.byteLength + 16).fill(0x77),
   })
 }
@@ -112,8 +112,9 @@ function artifactFixtures(): ArtifactFixture[] {
     publicKey: new Uint8Array(2592).fill(0x99),
     createdAt: CREATED_AT,
   }
-  // OCB2 は予約中で wire schema をまだ持たない。将来の有効化契約ではなく、
-  // 現在保存する maximum 公開鍵 + encrypted seed の容量 fixture として固定する。
+  // OCB2 is reserved and does not yet have a wire schema. Pin this as a capacity fixture
+  // for the maximum public keys + encrypted seeds currently stored, not as a contract
+  // for future enablement.
   const encryptedSeedBackup = encodeCanonicalCbor({
     version: 2,
     type: "encrypted-seed-backup",
@@ -280,15 +281,19 @@ describe("maximum canonical CBOR artifact sizing", () => {
             VITE_QR_MAX_FRAMES: String(requiredFrames - 1),
           }),
         ).toThrow(
-          "VITE_MAX_PLAINTEXT_BYTES の maximum 署名付き正準 CBOR が VITE_QR_MAX_FRAMES × VITE_QR_FRAME_BYTES に収まりません",
+          "the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × VITE_QR_FRAME_BYTES",
         )
       }
     }
   })
 
-  it.each(["短", "A".repeat(80), "鍵".repeat(80)])(
-    "balances OCI2 names through the 80-character limit with real EC-Q fit: %s",
-    async (name) => {
+  it.each([
+    { caseName: "short non-ASCII name", name: "短" },
+    { caseName: "maximum-length ASCII name", name: "A".repeat(80) },
+    { caseName: "maximum-length non-ASCII name", name: "鍵".repeat(80) },
+  ])(
+    "balances OCI2 names through the 80-character limit with real EC-Q fit: $caseName",
+    async ({ name }) => {
       const artifactBytes = publicIdentityArtifact(name)
       const frameCount = pqIdentityQrFrameCount(artifactBytes.byteLength)
       const frames = await splitIntoFrames({

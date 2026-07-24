@@ -1,8 +1,8 @@
-// @noble/post-quantum 0.6.1 アダプター(WP-11)。exact pin(範囲指定禁止 spec2 §20)。
+// @noble/post-quantum 0.6.1 adapter. The dependency must remain exactly pinned.
 // noble API(0.6.1): ml_kem768/1024.keygen(seed64?) / .encapsulate(pk) /
-// .decapsulate(ct, sk)、ml_dsa65/87.keygen(seed32?) / .sign(msg, sk, { context })
-// / .verify(sig, msg, pk, { context })。context は opts へマップする。
-// 入出力長は profiles.ts の定数表と一致すること(アダプター側で検証する)。
+// .decapsulate(ct, sk), ml_dsa65/87.keygen(seed32?) / .sign(msg, sk, { context })
+// / .verify(sig, msg, pk, { context }). Map context into opts.
+// Input and output lengths must match the constant table in profiles.ts; the adapter verifies them.
 import type { MlDsaProvider, MlKemProvider } from "@/crypto/pq/provider"
 import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
 import type { MlDsaAlgorithm, MlKemAlgorithm } from "@/schemas/domain"

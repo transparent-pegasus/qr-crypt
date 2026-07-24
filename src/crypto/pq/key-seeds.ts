@@ -1,6 +1,6 @@
-// 鍵生成シード(spec2 §8)。KEM 64B / DSA 32B。
-// KEM と DSA で同じシード・同じ CSPRNG 呼出結果を共用してはならない(spec2 §20 —
-// 生成経路が別 randomBytes 呼出であることをテストで固定する)。
+// Key-generation seeds: KEM 64B / DSA 32B, following FIPS 203/204 KeyGen.
+// KEM and DSA must not share either a seed or the result of one CSPRNG call
+// (tests pin that the generation paths make separate randomBytes calls).
 import { randomBytes } from "@/crypto/random"
 import { AppError } from "@/crypto/errors"
 import { DSA_SEED_BYTES, KEM_SEED_BYTES } from "@/lib/limits"

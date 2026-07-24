@@ -1,5 +1,5 @@
-// エンベロープ型定義(docs/qr-protocol.md §3)と AAD 構築(同 §4)。
-// フィールドの追加・削除はプロトコル v2 を意味する — v1 では不可。
+// Envelope type definitions (docs/qr-protocol.md §3) and AAD construction (§4).
+// Adding or removing fields implies protocol v2 and is not permitted in v1.
 import { utf8ToBytes } from "@/lib/bytes"
 
 export interface AesMessageEnvelopeV1 {

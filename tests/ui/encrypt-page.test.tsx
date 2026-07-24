@@ -2,7 +2,7 @@ import "./helpers/module-mocks"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { AppError, userMessageFor } from "@/crypto/errors"
+import { AppError, messageFor } from "@/crypto/errors"
 import type { MlKemMessageEnvelopeV2 } from "@/schemas/domain"
 import {
   emitScannedPayload,
@@ -32,16 +32,16 @@ describe("encrypt page v2", () => {
   it("offers the three active suites and never exposes RSA", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
-    await user.click(await screen.findByLabelText("暗号化方式"))
+    await user.click(await screen.findByLabelText("Cryptographic algorithm"))
     expect(
-      await screen.findByRole("option", { name: /共通鍵.*AES-256-GCM/ }),
+      await screen.findByRole("option", { name: /Symmetric-key.*AES-256-GCM/ }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole("option", {
-        name: /^ポスト量子 ML-KEM-1024 \+ AES-256-GCM$/,
+        name: /^Post-quantum ML-KEM-1024 \+ AES-256-GCM$/,
       }),
     ).toBeInTheDocument()
-    expect(screen.getByRole("option", { name: /署名付きポスト量子/ })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: /Signed post-quantum/ })).toBeInTheDocument()
     expect(screen.queryByText(/RSA/)).not.toBeInTheDocument()
   })
 
@@ -55,15 +55,15 @@ describe("encrypt page v2", () => {
         }),
     )
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "暗号化方式", /署名付きポスト量子/)
-    await chooseSelectOption(user, "受信者のML-KEM公開鍵", /確認済みの相手/)
-    await chooseSelectOption(user, "自分のML-DSA署名ID", "自分のPQ ID")
-    await user.type(screen.getByLabelText("平文"), "署名付き短文")
-    await user.click(screen.getByRole("button", { name: "暗号化する" }))
+    await chooseSelectOption(user, "Cryptographic algorithm", /Signed post-quantum/)
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await chooseSelectOption(user, "My ML-DSA signing identity", "自分のPQ ID")
+    await user.type(screen.getByLabelText("Plaintext"), "署名付き短文")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
-    expect(screen.getByRole("button", { name: "暗号化中…" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Encrypting…" })).toBeDisabled()
     expect(
-      screen.getByRole("button", { name: "暗号化中…" }).closest("section"),
+      screen.getByRole("button", { name: "Encrypting…" }).closest("section"),
     ).toHaveAttribute("aria-busy", "true")
 
     await act(async () => {
@@ -79,99 +79,102 @@ describe("encrypt page v2", () => {
       })
     })
 
-    const result = await screen.findByRole("region", { name: "暗号結果" })
-    expect(within(result).getByText("暗号化が完了しました")).toBeInTheDocument()
-    expect(within(result).getByLabelText("出力名")).toBeInTheDocument()
+    const result = await screen.findByRole("region", { name: "Encryption result" })
+    expect(within(result).getByText("Encryption is complete")).toBeInTheDocument()
+    expect(within(result).getByLabelText("Output name")).toBeInTheDocument()
     for (const label of [
-      "使用暗号スイート",
-      "受信者鍵ID",
-      "送信者署名鍵ID",
-      "総データ量",
-      "QRフレーム数",
-      "暗号化日時",
-      "署名",
-      "ポスト量子プロファイル",
-      "全体SHA-256",
+      "Cryptographic suite",
+      "Recipient key ID",
+      "Sender signing key ID",
+      "Total data size",
+      "QR frame count",
+      "Encrypted at",
+      "Signature",
+      "Post-quantum profile",
+      "Whole-message SHA-256",
     ]) {
       expect(within(result).getByText(label)).toBeInTheDocument()
     }
     expect(within(result).getByText("maximum")).toBeInTheDocument()
-    expect(within(result).getByRole("button", { name: "一時停止" })).toBeInTheDocument()
+    expect(within(result).getByRole("button", { name: "Pause" })).toBeInTheDocument()
     expect(
-      within(result).getByRole("button", { name: "次のフレーム" }),
+      within(result).getByRole("button", { name: "Next frame" }),
     ).toBeInTheDocument()
-    expect(within(result).getByLabelText("表示速度")).toBeInTheDocument()
+    expect(within(result).getByLabelText("Display speed")).toBeInTheDocument()
     expect(
-      within(result).getByRole("button", { name: /PNGを一括出力/ }),
+      within(result).getByRole("button", { name: /Export all PNGs/ }),
     ).toBeInTheDocument()
-    expect(within(result).getByRole("button", { name: /ZIPで出力/ })).toBeInTheDocument()
-    expect(within(result).getByRole("button", { name: "全画面表示" })).toBeInTheDocument()
-    await user.click(within(result).getByRole("button", { name: "次のフレーム" }))
+    expect(within(result).getByRole("button", { name: /Export ZIP/ })).toBeInTheDocument()
+    expect(within(result).getByRole("button", { name: "View full screen" })).toBeInTheDocument()
+    await user.click(within(result).getByRole("button", { name: "Next frame" }))
     expect(within(result).getByText(/^2 \/ /)).toBeInTheDocument()
-    await user.click(within(result).getByRole("button", { name: "一時停止" }))
-    expect(within(result).getByRole("button", { name: "再生" })).toBeInTheDocument()
-    fireEvent.change(within(result).getByLabelText("表示速度"), {
+    await user.click(within(result).getByRole("button", { name: "Pause" }))
+    expect(within(result).getByRole("button", { name: "Play" })).toBeInTheDocument()
+    fireEvent.change(within(result).getByLabelText("Display speed"), {
       target: { value: "2500" },
     })
     expect(within(result).getByText("2500 ms")).toBeInTheDocument()
     await waitFor(() => expect(renderQrDataUrl).toHaveBeenCalled())
     expect(renderQrDataUrl.mock.calls.at(-1)?.[0]).toMatch(/^OCF2:/)
-    const fullscreen = within(result).getByRole("button", { name: "全画面表示" })
+    const fullscreen = within(result).getByRole("button", { name: "View full screen" })
     await waitFor(() => expect(fullscreen).toBeEnabled())
     await user.click(fullscreen)
-    expect(
-      screen.getByRole("dialog", { name: /暗号文 2 \/ .*を全画面表示/ }),
-    ).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "閉じる" }))
+    const fullscreenDialog = screen.getByRole("dialog", {
+      name: /View Ciphertext 2 \/ .* full screen/,
+    })
+    expect(fullscreenDialog).toBeInTheDocument()
+    await user.click(
+      within(fullscreenDialog).getAllByRole("button", { name: "Close" })[0]!,
+    )
 
-    expect(within(result).queryByRole("button", { name: "保存" })).not.toBeInTheDocument()
+    expect(within(result).queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
     expect(
-      within(result).queryByText(/保存済み|重複して保存|鍵QRを保存/),
+      within(result).queryByText(/Saved|Duplicate|Save key QR/),
     ).not.toBeInTheDocument()
   })
 
   it("does not persist during scan decryption success", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
-    await user.click(await screen.findByRole("tab", { name: "復号" }))
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
     expect(
-      screen.getByRole("heading", { name: "カメラで読み取る" }),
+      screen.getByRole("heading", { name: "Scan with the camera" }),
     ).toBeInTheDocument()
     expect(startQrScan).not.toHaveBeenCalled()
     await user.click(
-      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
     )
     await waitFor(() => expect(startQrScan).toHaveBeenCalled())
     await act(async () => emitScannedPayload("OCM1:sym-key-00000001"))
     await waitFor(() =>
       expect(
-        screen.queryByRole("dialog", { name: "暗号文QRを読み取る" }),
+        screen.queryByRole("dialog", { name: "Scan a ciphertext QR code" }),
       ).not.toBeInTheDocument(),
     )
-    await user.click(await screen.findByRole("button", { name: "復号する" }))
+    await user.click(await screen.findByRole("button", { name: "Decrypt" }))
     expect(await screen.findByText("復号済み平文")).toBeInTheDocument()
-    expect(screen.getByText(/メモリー内だけに保持し、保存しません/)).toBeInTheDocument()
+    expect(screen.getByText(/held only in memory and is not stored/)).toBeInTheDocument()
     expect(
-      screen.queryByText(/保存済み鍵QR|鍵QRを保存/),
+      screen.queryByText(/Saved key QR|Save key QR/),
     ).not.toBeInTheDocument()
   })
 
   it("distinguishes signature validity from person trust and hides unknown-signer plaintext", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
-    await user.click(await screen.findByRole("tab", { name: "復号" }))
-    fireEvent.change(screen.getByLabelText("暗号文ペイロード"), {
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
       target: { value: "OCM2:fake" },
     })
-    const decryptButton = screen.getByRole("button", { name: "復号する" })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
     await waitFor(() => expect(decryptButton).toBeEnabled())
     await user.click(decryptButton)
     await waitFor(() => expect(decryptPqMessage).toHaveBeenCalledOnce())
-    expect(await screen.findByText("署名はこの鍵に対して有効です")).toBeInTheDocument()
-    expect(screen.getByText(/人物確認済み/)).toBeInTheDocument()
+    expect(await screen.findByText("The signature is valid for this key")).toBeInTheDocument()
+    expect(screen.getByText(/Identity verified/)).toBeInTheDocument()
 
     fakePqDecrypt.kind = "signed-key-unknown"
-    await user.click(screen.getByRole("button", { name: "復号する" }))
+    await user.click(screen.getByRole("button", { name: "Decrypt" }))
     expect(await screen.findByText("SIGNING_KEY_NOT_FOUND")).toBeInTheDocument()
     expect(screen.queryByText("署名済みPQ復号結果")).not.toBeInTheDocument()
   })
@@ -180,20 +183,20 @@ describe("encrypt page v2", () => {
     const user = userEvent.setup()
     fakePqDecrypt.kind = "unsigned"
     await renderApp("/encrypt")
-    await user.click(await screen.findByRole("tab", { name: "復号" }))
-    fireEvent.change(screen.getByLabelText("暗号文ペイロード"), {
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
       target: { value: "OCM2:fake" },
     })
-    const decryptButton = screen.getByRole("button", { name: "復号する" })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
     await waitFor(() => expect(decryptButton).toBeEnabled())
     await user.click(decryptButton)
-    expect(await screen.findByText("署名なし")).toBeInTheDocument()
+    expect(await screen.findByText("Unsigned")).toBeInTheDocument()
     expect(screen.getByText("PQ復号済み平文")).toBeInTheDocument()
 
     decryptPqMessage.mockRejectedValueOnce(new AppError("SIGNATURE_INVALID"))
     await user.click(decryptButton)
     expect(
-      await screen.findByText(userMessageFor("SIGNATURE_INVALID")),
+      await screen.findByText(messageFor("SIGNATURE_INVALID", "en")),
     ).toBeInTheDocument()
     expect(screen.queryByText("PQ復号済み平文")).not.toBeInTheDocument()
   })
@@ -202,29 +205,29 @@ describe("encrypt page v2", () => {
     const user = userEvent.setup()
     encryptPq.mockRejectedValueOnce(new AppError("WORKER_UNAVAILABLE"))
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "暗号化方式", /ポスト量子 ML-KEM-1024 \+ AES/)
-    await chooseSelectOption(user, "受信者のML-KEM公開鍵", /確認済みの相手/)
-    await user.type(screen.getByLabelText("平文"), "worker failure")
-    await user.click(screen.getByRole("button", { name: "暗号化する" }))
+    await chooseSelectOption(user, "Cryptographic algorithm", /Post-quantum ML-KEM-1024 \+ AES/)
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "worker failure")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
     expect(
-      await screen.findByText(userMessageFor("WORKER_UNAVAILABLE")),
+      await screen.findByText(messageFor("WORKER_UNAVAILABLE", "en")),
     ).toBeInTheDocument()
     expect(encryptPq).toHaveBeenCalledOnce()
-    expect(screen.queryByText("暗号化が完了しました")).not.toBeInTheDocument()
+    expect(screen.queryByText("Encryption is complete")).not.toBeInTheDocument()
   })
 
   it("keeps UTF-8 limits and clears plaintext after success", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "使用鍵", "共通鍵A")
-    const plaintext = screen.getByLabelText("平文")
+    await chooseSelectOption(user, "Key", "共通鍵A")
+    const plaintext = screen.getByLabelText("Plaintext")
     fireEvent.change(plaintext, { target: { value: "a".repeat(4097) } })
-    expect(screen.getByText("平文の上限を超えています")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "暗号化する" })).toBeDisabled()
+    expect(screen.getByText("The plaintext limit has been exceeded")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Encrypt" })).toBeDisabled()
     fireEvent.change(plaintext, { target: { value: "既定で消去される平文" } })
-    await user.click(screen.getByRole("button", { name: "暗号化する" }))
-    expect(await screen.findByText("暗号化が完了しました")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    expect(await screen.findByText("Encryption is complete")).toBeInTheDocument()
     expect(plaintext).toHaveValue("")
     expect(fakeIdentities).toHaveLength(1)
   })

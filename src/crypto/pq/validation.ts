@@ -1,6 +1,7 @@
-// v2 構造の zod strict 検証(WP-13)。canonical-cbor の構造ガード
-// (プロトコル定数)の上へ、env 依存の上限(MAX_PLAINTEXT_BYTES 等)と
-// 相互制約を重ねる。長さ表は profiles.ts / limits.ts を参照し再定義しない。
+// Strict Zod validation for v2 structures. Layer environment-dependent limits
+// (such as MAX_PLAINTEXT_BYTES) and cross-field constraints over canonical-cbor's
+// protocol-constant structural guards. Reference the size tables in profiles.ts and
+// limits.ts; do not redefine them.
 import type {
   MlKemMessageEnvelopeV2,
   PublicIdentityBundleV2,

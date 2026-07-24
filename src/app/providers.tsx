@@ -204,7 +204,7 @@ export function AppProviders({
               <Toaster
                 position="bottom-center"
                 richColors
-                // 下部ナビ(h-16 + safe-area)に被せず、その上へ 1rem の余白で表示
+                // Leave 1rem above the bottom navigation (h-16 + safe area) without overlapping it.
                 offset={{ bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)" }}
                 mobileOffset={{
                   bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)",

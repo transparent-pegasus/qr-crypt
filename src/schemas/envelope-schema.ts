@@ -1,6 +1,6 @@
-// エンベロープの Zod strict 検証(docs/qr-protocol.md §3/§6)。
-// 未知キー拒否・バイト長固定・prefix と type の整合まで担う。
-// 実装は WP-2(qr/payload.ts の decodePayload から使用される)。
+// Strict Zod validation for envelopes (docs/qr-protocol.md §3/§6).
+// Reject unknown keys, enforce fixed byte lengths, and ensure prefix/type agreement.
+// decodePayload in qr/payload.ts uses this validation boundary.
 import { z } from "zod"
 import { AppError } from "@/crypto/errors"
 import type { AnyEnvelopeV1 } from "@/crypto/envelope"
@@ -69,10 +69,10 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null
 }
 
-// CBOR デコード済みの unknown 値を検証し、型付きエンベロープを返す。
-// 検証順序: v → type(プレフィックス整合)→ algorithm → strict 形状/長さ。
-// 失敗は AppError(UNSUPPORTED_PROTOCOL_VERSION / UNSUPPORTED_ALGORITHM /
-// INVALID_QR_PAYLOAD)へ変換して throw。
+// Validate a CBOR-decoded unknown value and return a typed envelope.
+// Validation order: v → type (prefix agreement) → algorithm → strict shape/length.
+// Convert failures to AppError(UNSUPPORTED_PROTOCOL_VERSION / UNSUPPORTED_ALGORITHM /
+// INVALID_QR_PAYLOAD) and throw.
 export function validateDecodedEnvelope(
   value: unknown,
   expectedPrefixKind: string,

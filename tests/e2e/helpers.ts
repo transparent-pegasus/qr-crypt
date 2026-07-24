@@ -14,14 +14,14 @@ import {
   RGBLuminanceSource,
 } from "@zxing/library"
 
-export const AES_ALGORITHM_LABEL = "共通鍵 AES-256-GCM"
-export const PQ_ALGORITHM_LABEL = /^ポスト量子 ML-KEM-1024 \+ AES-256-GCM$/
-export const SIGNED_PQ_ALGORITHM_LABEL = /署名付きポスト量子/
+export const AES_ALGORITHM_LABEL = "Symmetric-key AES-256-GCM"
+export const PQ_ALGORITHM_LABEL = /^Post-quantum ML-KEM-1024 \+ AES-256-GCM$/
+export const SIGNED_PQ_ALGORITHM_LABEL = /Signed post-quantum/
 const ONLINE_GATE_TIMEOUT_MS = 30_000
 const expectOnline = expect.configure({ timeout: ONLINE_GATE_TIMEOUT_MS })
 const SECOND_WORKER_WAVE_DELAY_MS = 10_000
 
-// eslint-disable-next-line no-empty-pattern -- Playwright はフィクスチャ引数に destructuring パターンを要求する
+// eslint-disable-next-line no-empty-pattern -- Playwright requires a destructuring pattern for fixture arguments.
 test.beforeAll(async ({}, testInfo) => {
   if (testInfo.parallelIndex < 4) return
   await new Promise<void>((resolve) => {
@@ -36,61 +36,61 @@ function escapeRegex(value: string): string {
 export async function expectOnlineGate(page: Page): Promise<void> {
   await Promise.all([
     expectOnline(
-      page.getByText("オンラインではPWAの導入のみ利用できます"),
+      page.getByText("Only PWA installation is available while online"),
     ).toBeVisible(),
     expectOnline(
-      page.getByRole("img", { name: /アプリアイコン/ }),
+      page.getByRole("img", { name: /app icon/ }),
     ).toBeVisible(),
-    expectOnline(page.getByText("PWAインストール状態")).toBeVisible(),
-    expectOnline(page.getByText("オフライン利用準備状態")).toBeVisible(),
+    expectOnline(page.getByText("PWA installation status")).toBeVisible(),
+    expectOnline(page.getByText("Offline-use readiness")).toBeVisible(),
     expectOnline(
       page.getByText(
-        "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。",
+        "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
       ),
     ).toBeVisible(),
-    expectOnline(page.getByText("オンライン", { exact: true })).toBeVisible(),
+    expectOnline(page.getByText("Online", { exact: true })).toBeVisible(),
     expectOnline(page.getByRole("navigation")).toBeHidden(),
   ])
 }
 
 export async function expectOfflineAcknowledgement(page: Page): Promise<void> {
   const shell = page.getByRole("main", {
-    name: "続行前の確認",
+    name: "Confirm before continuing",
   })
   await expect(shell).toBeVisible()
   await expect(
-    shell.getByText(/完全に安全にメッセージの暗号化を行う方法はありません/),
+    shell.getByText(/no way to encrypt messages with complete safety/),
   ).toBeVisible()
   await expect(
-    shell.getByText(/完全な安全を本アプリが保証するものではありません/),
+    shell.getByText(/does not guarantee complete safety/),
   ).toBeVisible()
   await expect(
-    shell.getByText(/端末の安全性を検証・回復するものではありません/),
+    shell.getByText(/does not verify or restore the security of the device/),
   ).toBeVisible()
-  await expect(shell.getByText(/完全に安全です/)).toHaveCount(0)
+  await expect(shell.getByText(/This is completely safe/)).toHaveCount(0)
   await expect(
     shell.getByRole("checkbox", {
-      name: "上記を理解した上で、リスクを受け入れてこの端末で続行します",
+      name: "I understand the statements above, accept the risk, and want to continue on this device",
     }),
   ).not.toBeChecked()
   await expect(
     shell.getByRole("button", {
-      name: "リスクを理解してオフライン機能を表示",
+      name: "Accept the risk and show offline features",
     }),
   ).toBeDisabled()
   await expect(mainNavigation(page)).toBeHidden()
-  await expect(page.getByLabel("平文", { exact: true })).toBeHidden()
+  await expect(page.getByLabel("Plaintext", { exact: true })).toBeHidden()
 }
 
 export async function acknowledgeOfflineRisk(page: Page): Promise<void> {
   await page
     .getByRole("checkbox", {
-      name: "上記を理解した上で、リスクを受け入れてこの端末で続行します",
+      name: "I understand the statements above, accept the risk, and want to continue on this device",
     })
     .check()
   await page
     .getByRole("button", {
-      name: "リスクを理解してオフライン機能を表示",
+      name: "Accept the risk and show offline features",
     })
     .click()
 }
@@ -133,7 +133,9 @@ export async function switchToOfflineApp(
   await waitForServiceWorkerControl(page)
   await context.setOffline(true)
   await page.reload({ waitUntil: "domcontentloaded" })
-  await expect(page.getByText("オンラインではPWAの導入のみ利用できます")).toBeHidden()
+  await expect(
+    page.getByText("Only PWA installation is available while online"),
+  ).toBeHidden()
   await expectOfflineAcknowledgement(page)
   await acknowledgeOfflineRisk(page)
   await expect(mainNavigation(page)).toBeVisible()
@@ -154,7 +156,7 @@ export async function switchToColdOfflineApp(
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
     page.getByRole("heading", {
-      name: "続行前の確認",
+      name: "Confirm before continuing",
     }),
   ).toBeHidden()
   await expect(mainNavigation(page)).toBeVisible()
@@ -186,15 +188,15 @@ export async function goToOfflinePage(
 ): Promise<void> {
   if (new URL(page.url()).pathname === path) return
   const labels = {
-    "/encrypt": "暗号・復号",
-    "/keys": "鍵追加",
-    "/saved": "鍵一覧",
-    "/settings": "設定",
+    "/encrypt": "Encrypt / decrypt",
+    "/keys": "Add keys",
+    "/saved": "Key list",
+    "/settings": "Settings",
   } as const
   await mainNavigation(page)
     .getByRole("link", {
       name: new RegExp(
-        `^${escapeRegex(labels[path])}(?: 現在のページ)?$`,
+        `^${escapeRegex(labels[path])}(?: current page)?$`,
       ),
     })
     .click()
@@ -203,10 +205,10 @@ export async function goToOfflinePage(
 
 export async function createSymmetricKey(page: Page, name: string): Promise<void> {
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "作成", exact: true }).click()
-  await chooseOption(page, "種類", "共通鍵")
-  await page.getByLabel("共通鍵名", { exact: true }).fill(name)
-  await page.getByRole("button", { name: "共通鍵を作成", exact: true }).click()
+  await page.getByRole("tab", { name: "Create", exact: true }).click()
+  await chooseOption(page, "Type", AES_ALGORITHM_LABEL)
+  await page.getByLabel("Symmetric-key name", { exact: true }).fill(name)
+  await page.getByRole("button", { name: "Create a symmetric key", exact: true }).click()
   const dialog = page.getByRole("dialog", { name, exact: true })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText("AES-256-GCM", { exact: true })).toBeVisible()
@@ -216,10 +218,12 @@ export async function createSymmetricKey(page: Page, name: string): Promise<void
 
 export async function createPqIdentity(page: Page, name: string): Promise<void> {
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "作成", exact: true }).click()
-  await chooseOption(page, "種類", "ポスト量子ID")
-  await page.getByLabel("ポスト量子ID名", { exact: true }).fill(name)
-  await page.getByRole("button", { name: "ポスト量子IDを作成", exact: true }).click()
+  await page.getByRole("tab", { name: "Create", exact: true }).click()
+  await chooseOption(page, "Type", "Post-quantum identity")
+  await page.getByLabel("Post-quantum identity name", { exact: true }).fill(name)
+  await page
+    .getByRole("button", { name: "Create a post-quantum identity", exact: true })
+    .click()
   const dialog = page.getByRole("dialog", { name, exact: true })
   await expect(dialog).toBeVisible({
     timeout: 45_000,
@@ -328,14 +332,14 @@ export async function encryptWithStoredKey(
   },
 ): Promise<{ payload: string }> {
   await goToOfflinePage(page, "/encrypt")
-  await chooseOption(page, "暗号化方式", args.algorithmLabel ?? AES_ALGORITHM_LABEL)
-  await chooseOption(page, "使用鍵", args.keyName)
-  await page.getByLabel("平文", { exact: true }).fill(args.plaintext)
-  await page.getByRole("button", { name: "暗号化する", exact: true }).click()
+  await chooseOption(page, "Cryptographic algorithm", args.algorithmLabel ?? AES_ALGORITHM_LABEL)
+  await chooseOption(page, "Key", args.keyName)
+  await page.getByLabel("Plaintext", { exact: true }).fill(args.plaintext)
+  await page.getByRole("button", { name: "Encrypt", exact: true }).click()
 
-  const result = page.getByRole("region", { name: "暗号結果" })
+  const result = page.getByRole("region", { name: "Encryption result" })
   await expect(result).toBeVisible()
-  await expect(result.getByRole("img", { name: "暗号文QRの画像" })).toBeVisible()
+  await expect(result.getByRole("img", { name: "Ciphertext QR image" })).toBeVisible()
   const payload = (await result.locator("p").first().innerText()).trim()
   expect(payload).toMatch(/^OCM1:/)
   return { payload }
@@ -346,13 +350,13 @@ export async function encryptSignedPq(
   args: { identityName: string; plaintext: string },
 ): Promise<{ payload: string; result: Locator }> {
   await goToOfflinePage(page, "/encrypt")
-  await chooseOption(page, "暗号化方式", SIGNED_PQ_ALGORITHM_LABEL)
-  await chooseOption(page, "受信者のML-KEM公開鍵", /^(確認済み|未確認): /)
-  await chooseOption(page, "自分のML-DSA署名ID", args.identityName)
-  await page.getByLabel("平文", { exact: true }).fill(args.plaintext)
-  await page.getByRole("button", { name: "暗号化する", exact: true }).click()
-  const result = page.getByRole("region", { name: "暗号結果" })
-  await expect(result.getByText("暗号化が完了しました")).toBeVisible({
+  await chooseOption(page, "Cryptographic algorithm", SIGNED_PQ_ALGORITHM_LABEL)
+  await chooseOption(page, "Recipient ML-KEM public key", /^(Verified|Unverified): /)
+  await chooseOption(page, "My ML-DSA signing identity", args.identityName)
+  await page.getByLabel("Plaintext", { exact: true }).fill(args.plaintext)
+  await page.getByRole("button", { name: "Encrypt", exact: true }).click()
+  const result = page.getByRole("region", { name: "Encryption result" })
+  await expect(result.getByText("Encryption is complete")).toBeVisible({
     timeout: 45_000,
   })
   const payload = (await result.locator("p").first().innerText()).trim()
@@ -692,7 +696,7 @@ export function decodePng(buffer: Buffer): string {
 }
 
 export async function collectAnimatedFramePayloads(scope: Locator): Promise<string[]> {
-  const pause = scope.getByRole("button", { name: "一時停止" })
+  const pause = scope.getByRole("button", { name: "Pause" })
   if (await pause.isVisible()) await pause.click()
   const counter = scope.getByText(/^\d+ \/ \d+$/).last()
   await expect(counter).toBeVisible()
@@ -700,7 +704,7 @@ export async function collectAnimatedFramePayloads(scope: Locator): Promise<stri
   if (initial === null) throw new Error("Animated QR frame counter is invalid")
   const total = Number(initial[2])
   const payloads = new Map<number, string>()
-  const image = scope.locator('img[alt$="の画像"]').first()
+  const image = scope.locator('img[alt$=" image"]').first()
 
   for (let attempt = 0; attempt < total; attempt += 1) {
     const match = (await counter.innerText()).match(/^(\d+) \/ (\d+)$/)
@@ -714,7 +718,7 @@ export async function collectAnimatedFramePayloads(scope: Locator): Promise<stri
     if (payloads.size === total) break
     const before = await counter.innerText()
     const beforeSource = source
-    await scope.getByRole("button", { name: "次のフレーム" }).click()
+    await scope.getByRole("button", { name: "Next frame" }).click()
     await expect(counter).not.toHaveText(before)
     await expect(image).not.toHaveAttribute("src", beforeSource)
   }
@@ -731,5 +735,5 @@ export async function detailValue(scope: Locator, label: string): Promise<string
 }
 
 export function mainNavigation(page: Page) {
-  return page.getByRole("navigation", { name: "メインナビゲーション" })
+  return page.getByRole("navigation", { name: "Main navigation" })
 }

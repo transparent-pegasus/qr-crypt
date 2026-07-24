@@ -51,7 +51,7 @@ async function databaseDeleteCalls(page: Page): Promise<string[]> {
   )
 }
 
-test("install 経路は sentinel 成功でもデータが無ければ wipe せず導入画面に留まる", async ({
+test("the install path stays on installation without resetting when the sentinel succeeds but no data exists", async ({
   page,
 }) => {
   const sentinel: SentinelControl = { reachable: true, hits: 0 }
@@ -62,13 +62,13 @@ test("install 経路は sentinel 成功でもデータが無ければ wipe せ�
   await expectOnlineGate(page)
   await expect(
     page.getByRole("heading", {
-      name: "オンラインを検出したため、ローカルデータを初期化しました",
+      name: "Local data was reset after an online connection was detected",
     }),
   ).toHaveCount(0)
   expect(await databaseDeleteCalls(page)).toEqual([])
 })
 
-test("鍵作成後に sentinel 到達可能な online へ戻ると wipe し、承認後の reload だけを許す", async ({
+test("returning online to a reachable sentinel after key creation resets data and permits only a post-acknowledgement reload", async ({
   context,
   page,
 }) => {
@@ -86,7 +86,7 @@ test("鍵作成後に sentinel 到達可能な online へ戻ると wipe し、�
   sentinel.reachable = true
   await context.setOffline(false)
   const wipedHeading = page.getByRole("heading", {
-    name: "オンラインを検出したため、ローカルデータを初期化しました",
+    name: "Local data was reset after an online connection was detected",
   })
   await expect(wipedHeading).toBeVisible({ timeout: 45_000 })
   expect(await databaseDeleteCalls(page)).toContain("qrypt")
@@ -95,11 +95,11 @@ test("鍵作成後に sentinel 到達可能な online へ戻ると wipe し、�
   sentinel.reachable = false
   await context.setOffline(true)
   const shell = page.getByRole("main", {
-    name: "続行前の確認",
+    name: "Confirm before continuing",
   })
   await expect(shell).toBeVisible()
   await expect(
-    shell.getByText("オンラインを検出したため、ローカルデータを初期化しました"),
+    shell.getByText("Local data was reset after an online connection was detected"),
   ).toBeVisible()
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("oc-offline-ack-pending")))
@@ -114,12 +114,12 @@ test("鍵作成後に sentinel 到達可能な online へ戻ると wipe し、�
     .toBe("1")
 
   const continueButton = shell.getByRole("button", {
-    name: "リスクを理解してオフライン機能を表示",
+    name: "Accept the risk and show offline features",
   })
   await expect(continueButton).toBeDisabled()
   await shell
     .getByRole("checkbox", {
-      name: "上記を理解した上で、リスクを受け入れてこの端末で続行します",
+      name: "I understand the statements above, accept the risk, and want to continue on this device",
     })
     .check()
   await continueButton.click()
@@ -136,7 +136,7 @@ test("鍵作成後に sentinel 到達可能な online へ戻ると wipe し、�
   expect(await rawQrArtifacts(page)).toEqual([])
 })
 
-test("2タブ wipe broadcast と peer の online marker 書込が競合しても pending を保持する", async ({
+test("preserves pending when a two-tab reset broadcast races a peer online-marker write", async ({
   context,
   page,
 }) => {
@@ -165,7 +165,7 @@ test("2タブ wipe broadcast と peer の online marker 書込が競合しても
     await switchToOfflineApp(page, context)
     await expect(
       peer.getByRole("heading", {
-        name: "続行前の確認",
+        name: "Confirm before continuing",
       }),
     ).toBeVisible()
     await createSymmetricKey(page, "broadcast競合確認鍵")
@@ -185,7 +185,7 @@ test("2タブ wipe broadcast と peer の online marker 書込が競合しても
     await context.setOffline(false)
     await expect(
       page.getByRole("heading", {
-        name: "オンラインを検出したため、ローカルデータを初期化しました",
+        name: "Local data was reset after an online connection was detected",
       }),
     ).toBeVisible({ timeout: 45_000 })
 

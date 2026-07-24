@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link } from "react-router"
 import {
   AlertCircle,
   CheckCircle2,
@@ -12,7 +12,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
-import { AppError, toAppError, userMessageFor } from "@/crypto/errors"
+import { AppError, toAppError } from "@/crypto/errors"
 import type { AesMessageEnvelopeV1 } from "@/crypto/envelope"
 import { decodeMlKemEnvelopeV2, encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
@@ -58,6 +58,12 @@ import { useKeys } from "@/hooks/use-keys"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
+import {
+  messageKeyOrFallback,
+  useI18n,
+  useLocalizedMessage,
+  type LocalizedMessage,
+} from "@/i18n"
 import { bytesToUtf8, sha256Hex, utf8ToBytes } from "@/lib/bytes"
 import { ecLevelFor, payloadFits } from "@/qr/encode"
 import {
@@ -162,6 +168,7 @@ function isActiveWireSuite(suite: WireSuite): boolean {
 }
 
 export function EncryptPage() {
+  const { language, t } = useI18n()
   const { keys, loading: keysLoading, error: keysError } = useKeys()
   const {
     identities,
@@ -182,12 +189,17 @@ export function EncryptPage() {
   const [senderIdentityId, setSenderIdentityId] = useState("")
   const [plaintext, setPlaintext] = useState("")
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<LocalizedMessage | null>(null)
+  const localizedError = useLocalizedMessage(
+    error ?? keysError ?? pqError ?? preferencesError,
+  )
   const [result, setResult] = useState<EncryptionResult | null>(null)
   const [outputName, setOutputName] = useState("")
   const [decryptInput, setDecryptInput] = useState("")
   const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
-  const [clearStatus, setClearStatus] = useState("")
+  const [clearStatus, setClearStatus] = useState<
+    "encrypt.toast.autoCleared" | null
+  >(null)
 
   const algorithms = useMemo(
     () => algorithmOptions(preferences.requireSignature),
@@ -302,9 +314,9 @@ export function EncryptPage() {
     setOutputName("")
     setError(null)
     multipartSession.discard()
-    setClearStatus("自動消去しました")
-    toast.info("自動消去しました")
-  }, [multipartSession])
+    setClearStatus("encrypt.toast.autoCleared")
+    toast.info(t("encrypt.toast.autoCleared"))
+  }, [multipartSession, t])
 
   useAutoClear({
     enabled: preferences.backgroundClearEnabled,
@@ -372,14 +384,18 @@ export function EncryptPage() {
         await markBundleUsed(selectedRecipient.recordId, now).catch(() => undefined)
         if (sender) await markIdentityUsed(sender.id, now).catch(() => undefined)
       }
-      setOutputName(`暗号結果-${formatSuggestedDate(now)}`)
+      setOutputName(
+        t("encrypt.output.suggestedName", {
+          date: formatSuggestedDate(now),
+        }),
+      )
       if (preferences.autoClearPlaintextAfterEncrypt) {
         setPlaintext("")
-        toast.info("設定に従って平文を消去しました")
+        toast.info(t("encrypt.toast.plaintextClearedByPref"))
       }
       await refreshPq()
     } catch (caught) {
-      setError(toAppError(caught, "ENCRYPTION_FAILED").userMessage)
+      setError(toAppError(caught, "ENCRYPTION_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -437,7 +453,7 @@ export function EncryptPage() {
       }
     } catch (caught) {
       setDecrypted(null)
-      setError(toAppError(caught, "DECRYPTION_FAILED").userMessage)
+      setError(toAppError(caught, "DECRYPTION_FAILED").code)
     } finally {
       setBusy(false)
     }
@@ -447,9 +463,9 @@ export function EncryptPage() {
     if (!result) return
     try {
       await copyTextToClipboard(result.payload)
-      toast.success("ペイロードをコピーしました")
+      toast.success(t("encrypt.toast.payloadCopied"))
     } catch {
-      setError("コピーできませんでした。ブラウザーの権限を確認してください。")
+      setError("common.copyFailed")
     }
   }
 
@@ -457,7 +473,12 @@ export function EncryptPage() {
     if (result?.kind !== "aes") return
     const parsedName = qrNameSchema.safeParse(outputName)
     if (!parsedName.success) {
-      setError(parsedName.error.issues[0]?.message ?? "出力名を確認してください。")
+      setError(
+        messageKeyOrFallback(
+          parsedName.error.issues[0]?.message,
+          "encrypt.validation.outputNameFallback",
+        ),
+      )
       return
     }
     try {
@@ -469,7 +490,7 @@ export function EncryptPage() {
           : await qrSvgBlob(result.payload, { ecLevel })
       triggerDownload(blob, buildExportFileName(parsedName.data, id, format))
     } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").userMessage)
+      setError(toAppError(caught, "QR_TOO_LARGE").code)
     }
   }
 
@@ -478,7 +499,7 @@ export function EncryptPage() {
 
   return (
     <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={busy}>
-      <h2 className="sr-only">暗号化と復号</h2>
+      <h2 className="sr-only">{t("encrypt.srHeading")}</h2>
       <Tabs
         value={mode}
         onValueChange={(value) => {
@@ -488,10 +509,10 @@ export function EncryptPage() {
       >
         <TabsList className="grid h-11 w-full grid-cols-2">
           <TabsTrigger value="encrypt" className="h-9 cursor-pointer">
-            暗号化
+            {t("encrypt.tab.encrypt")}
           </TabsTrigger>
           <TabsTrigger value="decrypt" className="h-9 cursor-pointer">
-            復号
+            {t("encrypt.tab.decrypt")}
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -499,7 +520,9 @@ export function EncryptPage() {
       {mode === "encrypt" ? (
         <>
           <div className="space-y-2">
-            <Label htmlFor="algorithm-select">暗号化方式</Label>
+            <Label htmlFor="algorithm-select">
+              {t("encrypt.algorithmLabel")}
+            </Label>
             <Select
               value={algorithm}
               onValueChange={(value) => {
@@ -514,7 +537,7 @@ export function EncryptPage() {
               <SelectContent>
                 {algorithms.map((option) => (
                   <SelectItem key={option} value={option}>
-                    {ALGORITHM_LABELS[option]}
+                    {ALGORITHM_LABELS[language][option]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -524,7 +547,7 @@ export function EncryptPage() {
           {algorithm === "A256GCM" ? (
             <RecordSelect
               id="key-select"
-              label="使用鍵"
+              label={t("encrypt.keyLabel")}
               value={selectedKeyId}
               onChange={setSelectedKeyId}
               loading={keysLoading}
@@ -534,19 +557,27 @@ export function EncryptPage() {
             <>
               <RecordSelect
                 id="recipient-select"
-                label="受信者のML-KEM公開鍵"
+                label={t("encrypt.recipientLabel")}
                 value={recipientRecordId}
                 onChange={setRecipientRecordId}
                 loading={pqLoading}
                 items={recipients.map((record) => ({
                   value: record.recordId,
-                  label: `${record.trust === "fingerprint-confirmed" ? "確認済み" : "未確認"}: ${record.trust === "fingerprint-confirmed" ? (record.name ?? record.kem.keyId) : record.kem.keyId}`,
+                  label: `${t(
+                    record.trust === "fingerprint-confirmed"
+                      ? "encrypt.recipient.confirmed"
+                      : "encrypt.recipient.unverified",
+                  )}: ${
+                    record.trust === "fingerprint-confirmed"
+                      ? (record.name ?? record.kem.keyId)
+                      : record.kem.keyId
+                  }`,
                 }))}
               />
               {signed && (
                 <RecordSelect
                   id="sender-select"
-                  label="自分のML-DSA署名ID"
+                  label={t("encrypt.senderLabel")}
                   value={senderIdentityId}
                   onChange={setSenderIdentityId}
                   loading={pqLoading}
@@ -561,7 +592,7 @@ export function EncryptPage() {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <Label htmlFor="plaintext">平文</Label>
+              <Label htmlFor="plaintext">{t("encrypt.plaintextLabel")}</Label>
               <Button
                 type="button"
                 variant="ghost"
@@ -570,7 +601,7 @@ export function EncryptPage() {
                 onClick={() => setPlaintext("")}
               >
                 <Eraser aria-hidden="true" />
-                平文を消去
+                {t("encrypt.clearPlaintext")}
               </Button>
             </div>
             <Textarea
@@ -578,7 +609,7 @@ export function EncryptPage() {
               value={plaintext}
               onChange={(event) => setPlaintext(event.target.value)}
               className="min-h-32 resize-y text-base focus-visible:ring-2"
-              placeholder="暗号化する文章を入力してください"
+              placeholder={t("encrypt.plaintextPlaceholder")}
               autoComplete="off"
               spellCheck={false}
               disabled={busy}
@@ -586,7 +617,7 @@ export function EncryptPage() {
             <p
               className={`flex justify-between font-mono text-xs ${overPlaintextLimit ? "text-destructive" : "text-muted-foreground"}`}
             >
-              <span>{plaintext.length} 文字</span>
+              <span>{t("encrypt.charCount", { count: plaintext.length })}</span>
               <span>
                 {plaintextBytes.byteLength} / {env.maxPlaintextBytes} bytes
               </span>
@@ -594,9 +625,11 @@ export function EncryptPage() {
             {overPlaintextLimit && (
               <Alert variant="destructive" role="alert">
                 <AlertCircle aria-hidden="true" className="size-4" />
-                <AlertTitle>平文の上限を超えています</AlertTitle>
+                <AlertTitle>{t("encrypt.overLimit.title")}</AlertTitle>
                 <AlertDescription>
-                  UTF-8で{env.maxPlaintextBytes}バイト以内に短くしてください。
+                  {t("encrypt.overLimit.body", {
+                    max: env.maxPlaintextBytes,
+                  })}
                 </AlertDescription>
               </Alert>
             )}
@@ -613,7 +646,11 @@ export function EncryptPage() {
             ) : (
               <Lock aria-hidden="true" />
             )}
-            {busy ? "暗号化中…" : "暗号化する"}
+            {t(
+              busy
+                ? "encrypt.encryptButton.busy"
+                : "encrypt.encryptButton.idle",
+            )}
           </Button>
         </>
       ) : (
@@ -624,16 +661,16 @@ export function EncryptPage() {
                 id="decrypt-camera-title"
                 className="font-semibold leading-none tracking-tight"
               >
-                カメラで読み取る
+                {t("encrypt.decrypt.cameraTitle")}
               </h3>
             </CardHeader>
             <CardContent className="space-y-4 p-4 pt-0">
               <QrScannerModal
-                triggerLabel="暗号文QRを読み取る"
+                triggerLabel={t("encrypt.decrypt.scanTrigger")}
                 className="space-y-6"
                 singleTargets={["message"]}
                 cameraAvailable={camera}
-                title="暗号文QRを読み取る"
+                title={t("encrypt.decrypt.scanTrigger")}
                 onSingleScan={(_target, payload) => {
                   setDecryptInput(payload)
                   setDecrypted(null)
@@ -662,12 +699,14 @@ export function EncryptPage() {
                 id="decrypt-paste-title"
                 className="font-semibold leading-none tracking-tight"
               >
-                ペイロードを貼り付ける
+                {t("common.pastePayload")}
               </h3>
             </CardHeader>
             <CardContent className="space-y-4 p-4 pt-0">
               <div className="space-y-2">
-                <Label htmlFor="decrypt-payload">暗号文ペイロード</Label>
+                <Label htmlFor="decrypt-payload">
+                  {t("encrypt.decrypt.payloadLabel")}
+                </Label>
                 <Textarea
                   id="decrypt-payload"
                   value={decryptInput}
@@ -677,7 +716,7 @@ export function EncryptPage() {
                     setError(null)
                   }}
                   className="min-h-28 break-all font-mono text-base focus-visible:ring-2"
-                  placeholder="OCM1: または OCM2: ペイロードを貼り付けてください"
+                  placeholder={t("encrypt.decrypt.payloadPlaceholder")}
                   autoComplete="off"
                   spellCheck={false}
                   disabled={busy}
@@ -685,16 +724,16 @@ export function EncryptPage() {
               </div>
               {decryptInputInvalid && (
                 <Alert variant="destructive" role="alert">
-                  <AlertTitle>暗号文を確認できません</AlertTitle>
+                  <AlertTitle>{t("encrypt.decrypt.invalidTitle")}</AlertTitle>
                   <AlertDescription>
-                    対応するOCM1/OCM2暗号文を入力してください。
+                    {t("encrypt.decrypt.invalidBody")}
                   </AlertDescription>
                 </Alert>
               )}
               {parsedDecrypt && (
                 <div className="space-y-2 text-sm">
                   <DetailRow
-                    label="方式"
+                    label={t("encrypt.detail.method")}
                     value={
                       parsedDecrypt.kind === "message"
                         ? "A256GCM"
@@ -702,7 +741,7 @@ export function EncryptPage() {
                     }
                   />
                   <DetailRow
-                    label="受信者鍵ID"
+                    label={t("encrypt.detail.recipientKeyId")}
                     value={
                       parsedDecrypt.kind === "message"
                         ? parsedDecrypt.envelope.keyId
@@ -714,16 +753,16 @@ export function EncryptPage() {
               )}
               {parsedPqUnsupported && (
                 <Alert variant="destructive" role="alert">
-                  <AlertTitle>非対応（旧プロファイル）</AlertTitle>
+                  <AlertTitle>{t("keyDetail.badge.legacyProfile")}</AlertTitle>
                   <AlertDescription>
-                    この暗号文は現在利用できない旧ポスト量子プロファイルです。
+                    {t("encrypt.pqUnsupported.body")}
                   </AlertDescription>
                 </Alert>
               )}
               {parsedDecrypt && !parsedPqUnsupported && !canDecrypt && (
                 <Alert variant="destructive" role="alert">
                   <AlertTitle>KEY_NOT_FOUND</AlertTitle>
-                  <AlertDescription>{userMessageFor("KEY_NOT_FOUND")}</AlertDescription>
+                  <AlertDescription>{t("errors.KEY_NOT_FOUND")}</AlertDescription>
                 </Alert>
               )}
               <Button
@@ -733,7 +772,11 @@ export function EncryptPage() {
                 onClick={() => void handleDecrypt()}
               >
                 {busy && <LoaderCircle aria-hidden="true" className="animate-spin" />}
-                {busy ? "復号中…" : "復号する"}
+                {t(
+                  busy
+                    ? "encrypt.decryptButton.busy"
+                    : "encrypt.decryptButton.idle",
+                )}
               </Button>
             </CardContent>
           </Card>
@@ -742,11 +785,13 @@ export function EncryptPage() {
             <Alert variant="destructive" role="alert">
               <AlertTitle>SIGNING_KEY_NOT_FOUND</AlertTitle>
               <AlertDescription>
-                {userMessageFor("SIGNING_KEY_NOT_FOUND")} 鍵ID:{" "}
-                {decrypted.senderSigningKeyId}
+                {t("errors.SIGNING_KEY_NOT_FOUND")}
+                {t("encrypt.signingKeyId", {
+                  id: decrypted.senderSigningKeyId,
+                })}
                 <br />
                 <Link to="/keys" className="font-medium underline">
-                  署名鍵を取り込む
+                  {t("encrypt.importSigningKey")}
                 </Link>
               </AlertDescription>
             </Alert>
@@ -756,29 +801,35 @@ export function EncryptPage() {
               <CardHeader className="p-4 pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
-                  復号結果
+                  {t("encrypt.result.decryptedTitle")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 p-4 pt-0">
                 {decrypted.kind === "unsigned" && (
-                  <p className="text-sm font-medium">署名なし</p>
+                  <p className="text-sm font-medium">
+                    {t("encrypt.result.unsigned")}
+                  </p>
                 )}
                 {decrypted.kind === "aes" && (
-                  <p className="text-sm font-medium">共通鍵メッセージ、署名なし</p>
+                  <p className="text-sm font-medium">
+                    {t("encrypt.result.aesUnsigned")}
+                  </p>
                 )}
                 {decrypted.kind === "signed-valid" && (
                   <div className="space-y-1 text-sm">
                     <p className="font-medium text-success">
-                      署名はこの鍵に対して有効です
+                      {t("encrypt.result.signatureValid")}
                     </p>
                     <p className="font-mono text-xs break-all">
-                      送信者署名鍵ID: {decrypted.senderSigningKeyId}
+                      {t("encrypt.result.senderSigningKeyId", {
+                        id: decrypted.senderSigningKeyId,
+                      })}
                     </p>
                     <p>
-                      人物確認:{" "}
+                      {t("encrypt.result.identityCheck.label")}{" "}
                       {decrypted.sender?.trust === "fingerprint-confirmed"
-                        ? "人物確認済み"
-                        : "未確認。鍵の有効性と人物確認は別です。"}
+                        ? t("encrypt.result.identityCheck.confirmed")
+                        : t("encrypt.result.identityCheck.unverified")}
                     </p>
                   </div>
                 )}
@@ -786,7 +837,7 @@ export function EncryptPage() {
                   {decrypted.text}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  復号結果はメモリー内だけに保持し、保存しません。
+                  {t("encrypt.result.memoryOnly")}
                 </p>
                 <Button
                   type="button"
@@ -795,7 +846,7 @@ export function EncryptPage() {
                   onClick={() => setDecrypted(null)}
                 >
                   <Eraser aria-hidden="true" />
-                  平文を消去
+                  {t("encrypt.clearPlaintext")}
                 </Button>
               </CardContent>
             </Card>
@@ -806,23 +857,24 @@ export function EncryptPage() {
       {(keysError || pqError || preferencesError || error) && (
         <Alert variant="destructive" role="alert">
           <AlertCircle aria-hidden="true" className="size-4" />
-          <AlertTitle>操作を完了できません</AlertTitle>
-          <AlertDescription>
-            {error ?? keysError ?? pqError ?? preferencesError}
-          </AlertDescription>
+          <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+          <AlertDescription>{localizedError}</AlertDescription>
         </Alert>
       )}
       <p aria-live="polite" className="sr-only">
-        {clearStatus}
+        {clearStatus === null ? "" : t(clearStatus)}
       </p>
 
       {result && mode === "encrypt" && (
-        <section aria-label="暗号結果" className="space-y-5">
+        <section
+          aria-label={t("encrypt.result.sectionAria")}
+          className="space-y-5"
+        >
           <Card>
             <CardHeader className="p-4 pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
                 <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
-                暗号化が完了しました
+                {t("encrypt.result.encryptDone")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 p-4 pt-0">
@@ -836,7 +888,7 @@ export function EncryptPage() {
                 onClick={() => void copyPayload()}
               >
                 <Clipboard aria-hidden="true" />
-                ペイロードをコピー
+                {t("encrypt.result.copyPayload")}
               </Button>
             </CardContent>
           </Card>
@@ -846,19 +898,21 @@ export function EncryptPage() {
               payload={result.payload}
               ecLevel={ecLevelFor("message", preferences)}
               size={env.qrRenderSize}
-              title="暗号文QR"
+              title={t("encrypt.result.qrTitle")}
             />
           ) : (
             <AnimatedQrFrames
               frames={result.frames}
               frameIntervalMs={preferences.frameIntervalMs}
               outputName={outputName || "pq-message"}
-              title="暗号文"
+              title={t("encrypt.result.pqTitle")}
             />
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="output-name">出力名</Label>
+            <Label htmlFor="output-name">
+              {t("encrypt.result.outputNameLabel")}
+            </Label>
             <Input
               id="output-name"
               value={outputName}
@@ -891,14 +945,19 @@ export function EncryptPage() {
             </div>
           )}
 
-          <Card aria-label="暗号結果詳細">
+          <Card aria-label={t("encrypt.result.detailAria")}>
             <CardHeader className="p-4 pb-3">
-              <CardTitle className="text-base">結果詳細</CardTitle>
+              <CardTitle className="text-base">
+                {t("encrypt.result.detailTitle")}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 p-4 pt-0 text-sm">
-              <DetailRow label="使用暗号スイート" value={resultSuite ?? "なし"} />
               <DetailRow
-                label="受信者鍵ID"
+                label={t("encrypt.detail.suite")}
+                value={resultSuite ?? t("common.na")}
+              />
+              <DetailRow
+                label={t("encrypt.detail.recipientKeyId")}
                 value={
                   result.kind === "aes"
                     ? result.envelope.keyId
@@ -907,28 +966,51 @@ export function EncryptPage() {
                 mono
               />
               <DetailRow
-                label="送信者署名鍵ID"
+                label={t("encrypt.detail.senderSigningKeyId")}
                 value={
-                  result.kind === "pq" ? (result.sender?.signing.keyId ?? "なし") : "なし"
+                  result.kind === "pq"
+                    ? (result.sender?.signing.keyId ?? t("common.na"))
+                    : t("common.na")
                 }
                 mono
               />
-              <DetailRow label="総データ量" value={`${result.totalBytes} bytes`} mono />
               <DetailRow
-                label="QRフレーム数"
-                value={`${result.kind === "pq" ? result.frames.length : 1} 枚`}
+                label={t("encrypt.detail.totalBytes")}
+                value={`${result.totalBytes} bytes`}
                 mono
               />
-              <DetailRow label="暗号化日時" value={formatDateTime(result.createdAt)} />
               <DetailRow
-                label="署名"
-                value={result.kind === "pq" && result.sender ? "あり" : "なし"}
+                label={t("encrypt.detail.frameCount")}
+                value={t("encrypt.detail.frameCountValue", {
+                  count: result.kind === "pq" ? result.frames.length : 1,
+                })}
+                mono
               />
               <DetailRow
-                label="ポスト量子プロファイル"
-                value={result.kind === "pq" ? ACTIVE_PROFILE : "対象外"}
+                label={t("encrypt.detail.encryptedAt")}
+                value={formatDateTime(result.createdAt, language)}
               />
-              <DetailRow label="全体SHA-256" value={result.sha256} mono />
+              <DetailRow
+                label={t("encrypt.detail.signature")}
+                value={
+                  result.kind === "pq" && result.sender
+                    ? t("common.yes")
+                    : t("common.na")
+                }
+              />
+              <DetailRow
+                label={t("encrypt.detail.pqProfile")}
+                value={
+                  result.kind === "pq"
+                    ? ACTIVE_PROFILE
+                    : t("encrypt.detail.notApplicable")
+                }
+              />
+              <DetailRow
+                label={t("encrypt.detail.wholeSha256")}
+                value={result.sha256}
+                mono
+              />
             </CardContent>
           </Card>
         </section>
@@ -953,13 +1035,20 @@ function RecordSelect({
   loading: boolean
   items: { value: string; label: string }[]
 }) {
+  const { t } = useI18n()
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
       {items.length > 0 ? (
         <Select value={value} onValueChange={onChange}>
           <SelectTrigger id={id} className="h-11 text-base">
-            <SelectValue placeholder={loading ? "読み込み中…" : "選択してください"} />
+            <SelectValue
+              placeholder={t(
+                loading
+                  ? "encrypt.recordSelect.loading"
+                  : "encrypt.recordSelect.placeholder",
+              )}
+            />
           </SelectTrigger>
           <SelectContent>
             {items.map((item) => (
@@ -971,9 +1060,9 @@ function RecordSelect({
         </Select>
       ) : (
         <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-          使用できる鍵がありません。{" "}
+          {t("encrypt.recordSelect.noKeys")}{" "}
           <Link to="/keys" className="font-medium text-primary underline">
-            鍵ページを開く
+            {t("common.openKeysPage")}
           </Link>
         </div>
       )}

@@ -1,5 +1,4 @@
-// 鍵レコードの永続化(spec §10/§15)。
-// 書込境界で kind 別不変条件を検証する(plan §13 C13)。
+// Key-record persistence. Validate per-kind invariants at the write boundary.
 import type { StoredKeyRecord } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { keyNameSchema, validateStoredKeyRecord } from "@/schemas/key-schema"
@@ -21,7 +20,7 @@ function safeRecord(value: unknown): StoredKeyRecord | undefined {
   }
 }
 
-// 指紋(sha256Hex)一致が既存にあれば AppError("DUPLICATE_KEY")
+// Throw AppError("DUPLICATE_KEY") if an existing fingerprint (sha256Hex) matches.
 export async function saveKeyRecord(record: StoredKeyRecord): Promise<void> {
   const checked = checkedRecord(record)
   try {
@@ -42,7 +41,7 @@ export async function saveKeyRecord(record: StoredKeyRecord): Promise<void> {
   }
 }
 
-// createdAt 降順
+// Descending createdAt order.
 export async function listKeyRecords(): Promise<StoredKeyRecord[]> {
   try {
     const records = await (await getDb()).getAll(STORE_KEYS)
@@ -100,7 +99,8 @@ export async function deleteKeyRecord(id: string): Promise<void> {
   }
 }
 
-// 暗号化/復号の成功後のみ呼ぶ。単一 readwrite tx の get→put(plan §13 C21)
+// Call only after successful encryption/decryption. Perform get → put in one
+// readwrite transaction.
 export async function markKeyUsed(id: string, when: number): Promise<void> {
   try {
     const database = await getDb()

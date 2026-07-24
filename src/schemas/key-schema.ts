@@ -1,5 +1,6 @@
-// 鍵・ポスト量子レコード関連の実行時検証。
-// ドメイン型そのものは domain.ts が単一所有(ここは zod スキーマのみ)。
+// Runtime validation for keys and post-quantum records.
+// domain.ts has sole ownership of the domain types themselves; this file contains
+// only Zod schemas.
 import { z } from "zod"
 import { DSA_SEED_BYTES, IV_BYTES, KEM_SEED_BYTES, KEY_ID_PATTERN } from "@/lib/limits"
 import type {
@@ -9,8 +10,8 @@ import type {
 } from "@/schemas/domain"
 import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
 
-// 制御文字(C0 領域と DEL)を含むか。正規表現リテラルに制御文字を
-// 埋め込まないため、コードポイント判定で実装する。
+// Detect control characters in the C0 range or DEL. Use code-point checks to avoid
+// embedding control characters in a regular-expression literal.
 export function hasControlChars(value: string): boolean {
   for (const ch of value) {
     const code = ch.codePointAt(0) ?? 0
@@ -19,21 +20,21 @@ export function hasControlChars(value: string): boolean {
   return false
 }
 
-// 表示・出力名: trim 後 1〜80 文字、制御文字禁止。
+// Display/output names: 1–80 characters after trimming; control characters prohibited.
 export const qrNameSchema = z
   .string()
   .transform((value) => value.trim())
   .pipe(
     z
       .string()
-      .min(1, "名前を入力してください")
-      .max(80, "名前は80文字以内にしてください")
+      .min(1, "validation.name.required")
+      .max(80, "validation.name.maxLength")
       .refine((value) => !hasControlChars(value), {
-        message: "使用できない文字が含まれています",
+        message: "validation.name.invalidChars",
       }),
   )
 
-// 鍵名も同一規則を適用する
+// Apply the same rules to key names.
 export const keyNameSchema = qrNameSchema
 
 export const keyIdSchema = z.string().regex(KEY_ID_PATTERN)

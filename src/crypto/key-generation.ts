@@ -1,5 +1,5 @@
-// 鍵の生成・取込を StoredKeyRecord へ束ねる高レベル API(永続化はしない —
-// 保存は storage/key-repository の責務)。
+// High-level API that packages key generation and import into StoredKeyRecord.
+// It does not persist records; storage/key-repository owns persistence.
 import type { SymmetricKeyEnvelopeV1 } from "@/crypto/envelope"
 import type { StoredKeyRecord } from "@/schemas/domain"
 import { generateAesKey } from "@/crypto/aes-gcm"

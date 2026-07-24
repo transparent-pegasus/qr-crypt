@@ -3,7 +3,7 @@ import { openOfflineApp } from "./helpers"
 
 const expect = baseExpect.configure({ timeout: 30_000 })
 
-test("fake camera を破棄・再起動し、閉じると全 track を停止する", async ({
+test("discards and restarts the fake camera, then stops every track when closed", async ({
   context,
   page,
 }) => {
@@ -25,10 +25,10 @@ test("fake camera を破棄・再起動し、閉じると全 track を停止す�
     }
     HTMLMediaElement.prototype.play = function () {
       const playing = originalPlay.call(this)
-      if (this.getAttribute("aria-label") !== "QRコード読取用カメラ映像") {
+      if (this.getAttribute("aria-label") !== "Camera video for QR scanning") {
         return playing
       }
-      // stream 取得済み・scanner 起動待ちを保ち、UI の abort を検証する。
+      // Keep the stream acquired and scanner startup pending to verify the UI abort.
       return playing.then(() => new Promise<void>(() => undefined))
     }
     document.addEventListener(
@@ -36,7 +36,7 @@ test("fake camera を破棄・再起動し、閉じると全 track を停止す�
       (event) => {
         const video = event.target
         if (!(video instanceof HTMLVideoElement)) return
-        if (video.getAttribute("aria-label") !== "QRコード読取用カメラ映像") return
+        if (video.getAttribute("aria-label") !== "Camera video for QR scanning") return
         const stream = video.srcObject
         if (!(stream instanceof MediaStream)) return
         const probe = probeWindow.__cameraProbe!
@@ -46,33 +46,33 @@ test("fake camera を破棄・再起動し、閉じると全 track を停止す�
     )
   })
   const bundleTab = page.getByRole("tab", {
-    name: "読込",
+    name: "Import",
     exact: true,
   })
   await bundleTab.click()
   await expect(bundleTab).toHaveAttribute("data-state", "active")
   await expect(
-    page.getByRole("heading", { name: "カメラで読み取る", exact: true }),
+    page.getByRole("heading", { name: "Scan with the camera", exact: true }),
   ).toBeVisible()
   await expect(
     page.getByRole("heading", {
-      name: "ペイロードを貼り付ける",
+      name: "Paste a payload",
       exact: true,
     }),
   ).toBeVisible()
   await expect(
-    page.getByText("相手の画面の輝度を上げてもらい、カメラを15〜20cmほど離して"),
+    page.getByText("Ask the other party to increase their screen brightness"),
   ).toBeVisible()
   const scanTrigger = page.getByRole("button", {
-    name: "鍵QRを読み取る",
+    name: "Scan a key QR code",
     exact: true,
   })
   await expect(scanTrigger).toBeEnabled()
   await scanTrigger.click()
 
-  const dialog = page.getByRole("dialog", { name: "鍵QRを読み取る" })
+  const dialog = page.getByRole("dialog", { name: "Scan a key QR code" })
   await expect(dialog).toBeVisible()
-  const video = dialog.getByLabel("QRコード読取用カメラ映像")
+  const video = dialog.getByLabel("Camera video for QR scanning")
   await expect(video).toBeVisible()
   await expect
     .poll(() =>
@@ -92,10 +92,10 @@ test("fake camera を破棄・再起動し、閉じると全 track を停止す�
     .toBe(true)
 
   await page
-    .getByRole("button", { name: "読取状態を破棄", exact: true })
+    .getByRole("button", { name: "Discard scan state", exact: true })
     .click()
   await expect(
-    page.getByRole("button", { name: "カメラを起動", exact: true }),
+    page.getByRole("button", { name: "Start camera", exact: true }),
   ).toBeVisible()
   await expect
     .poll(() =>
@@ -115,7 +115,7 @@ test("fake camera を破棄・再起動し、閉じると全 track を停止す�
     .toBe(true)
 
   await page
-    .getByRole("button", { name: "カメラを起動", exact: true })
+    .getByRole("button", { name: "Start camera", exact: true })
     .click()
   await expect
     .poll(() =>

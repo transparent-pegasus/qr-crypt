@@ -15,13 +15,13 @@ describe("app shell and feature gate", () => {
     await waitFor(() => expect(window.location.pathname).toBe("/encrypt"))
 
     const navigation = screen.getByRole("navigation", {
-      name: "メインナビゲーション",
+      name: "Main navigation",
     })
     expect(navigation).toHaveClass("fixed", "bottom-0", "pb-safe")
     const links = within(navigation).getAllByRole("link")
     expect(links).toHaveLength(4)
     await waitFor(() => expect(links[0]).toHaveAttribute("aria-current", "page"))
-    for (const name of ["暗号・復号", "鍵追加", "鍵一覧", "設定"]) {
+    for (const name of ["Encrypt / decrypt", "Add keys", "Key list", "Settings"]) {
       expect(within(navigation).getByRole("link", { name })).toHaveAttribute(
         "aria-label",
         name,
@@ -35,15 +35,15 @@ describe("app shell and feature gate", () => {
 
   it("reports offline as neutral communication state without a safety claim", async () => {
     await renderApp("/encrypt")
-    expect(await screen.findByText("オフライン")).toBeInTheDocument()
-    expect(document.body).not.toHaveTextContent("オフラインなので安全")
+    expect(await screen.findByText("Offline")).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent("Offline means safe")
   })
 
   it("supports keyboard navigation with visible-focus classes and Space activation", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
     const navigation = await screen.findByRole("navigation", {
-      name: "メインナビゲーション",
+      name: "Main navigation",
     })
     const links = within(navigation).getAllByRole("link")
     for (const link of links) expect(link).toHaveClass("focus-visible:ring-2")
@@ -61,19 +61,19 @@ describe("app shell and feature gate", () => {
 
   it("reaches navigation items by Tab in their visual order", async () => {
     const { BottomNavigation } = await import("@/components/bottom-navigation")
-    const { MemoryRouter } = await import("react-router-dom")
+    const { MemoryRouter } = await import("react-router")
     const user = userEvent.setup()
     render(
       <MemoryRouter initialEntries={["/encrypt"]}>
-        <button type="button">開始位置</button>
+        <button type="button">Start</button>
         <BottomNavigation />
       </MemoryRouter>,
     )
     await user.tab()
-    expect(screen.getByRole("button", { name: "開始位置" })).toHaveFocus()
+    expect(screen.getByRole("button", { name: "Start" })).toHaveFocus()
     const links = screen
       .getByRole("navigation", {
-        name: "メインナビゲーション",
+        name: "Main navigation",
       })
       .querySelectorAll("a")
     for (const link of links) {
@@ -93,10 +93,10 @@ describe("app shell and feature gate", () => {
       }),
     })
     expect(await screen.findByText("UNSUPPORTED_BROWSER")).toBeInTheDocument()
-    expect(screen.getByText("このブラウザーでは利用できません")).toBeInTheDocument()
+    expect(screen.getByText("This browser is not supported")).toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(
-      screen.queryByText("オンラインではPWAの導入のみ利用できます"),
+      screen.queryByText("Only PWA installation is available while online"),
     ).not.toBeInTheDocument()
   })
 
@@ -106,14 +106,14 @@ describe("app shell and feature gate", () => {
     await renderApp("/encrypt", {
       detectFeatures: () => ({ ...fakeFeatures }),
     })
-    await user.click(await screen.findByRole("tab", { name: "復号" }))
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
     expect(
-      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
     ).toBeDisabled()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(
       screen.getByText(
-        "この端末ではカメラを利用できません。ペイロードを貼り付けてください。",
+        "The camera is unavailable on this device. Paste the payload instead.",
       ),
     ).toBeInTheDocument()
   })

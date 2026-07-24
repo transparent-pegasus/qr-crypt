@@ -7,7 +7,7 @@ import {
   switchToOfflineApp,
 } from "./helpers"
 
-test("暗号フローは外部送信せず、秘密・message artifact を残さず CSP を維持する", async ({
+test("the cryptographic flow sends nothing externally, leaves no secrets or message artifacts, and preserves CSP", async ({
   context,
   page,
 }) => {
@@ -83,13 +83,27 @@ test("暗号フローは外部送信せず、秘密・message artifact を残さ
   for (const secret of [plaintext, payload, keyMaterial.hex, keyMaterial.base64]) {
     expect(output).not.toContain(secret)
   }
-  const localStorageKeys = await page.evaluate(() =>
-    Object.keys(window.localStorage).sort(),
+  const localStorageEntries = await page.evaluate(() =>
+    Object.entries(window.localStorage).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
   )
-  expect(localStorageKeys.every((key) => key === "oc-theme")).toBe(true)
+  expect(
+    localStorageEntries.every(
+      ([key]) => key === "oc-lang" || key === "oc-theme",
+    ),
+  ).toBe(true)
+  const localStorageValues = Object.fromEntries(localStorageEntries)
+  expect(localStorageValues["oc-lang"]).toMatch(/^(?:en|ja)$/)
+  expect(localStorageValues["oc-theme"]).toMatch(/^(?:light|dark|system)$/)
+  for (const [, value] of localStorageEntries) {
+    for (const secret of [plaintext, payload, keyMaterial.hex, keyMaterial.base64]) {
+      expect(value).not.toContain(secret)
+    }
+  }
 })
 
-test("承認保留中の localStorage はテーマと値1の非機微マーカーだけを許可する", async ({
+test("pending acknowledgement localStorage permits only the theme and the non-sensitive marker value 1", async ({
   page,
 }) => {
   await loadOnlineGate(page)
@@ -103,6 +117,7 @@ test("承認保留中の localStorage はテーマと値1の非機微マーカ�
 
   expect(entries).toEqual({
     "oc-offline-ack-pending": "1",
+    "oc-lang": "en",
     "oc-theme": "system",
   })
 })

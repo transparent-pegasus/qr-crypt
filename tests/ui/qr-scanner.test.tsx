@@ -19,7 +19,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { AppError } from "@/crypto/errors"
+import { AppError, messageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
 import type { CameraDiagnostic, QrScanHandle } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
@@ -74,10 +74,10 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
       />,
     )
 
-    expect(screen.getByLabelText("QRコード読取用カメラ映像")).toBeInTheDocument()
+    expect(screen.getByLabelText("Camera video for QR scanning")).toBeInTheDocument()
     expect(startQrScan).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     expect(startQrScan.mock.calls[0]?.[3]).toMatchObject({ once: false })
     expect(startQrScan.mock.calls[0]?.[3]?.signal?.aborted).toBe(false)
@@ -87,7 +87,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
 
     expect(onSingleScan).toHaveBeenCalledOnce()
     expect(onSingleScan).toHaveBeenCalledWith("message", "OCM1:message")
-    expect(screen.getByRole("button", { name: "カメラを起動" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
   })
 
   it("starts automatically only when autoStart is enabled", async () => {
@@ -135,20 +135,20 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         onSingleScan={onSingleScan}
       />,
     )
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
-    await screen.findByRole("button", { name: "カメラを停止" })
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await screen.findByRole("button", { name: "Stop camera" })
 
     act(() => emitScannedPayload("OCP1:not-a-symmetric-key"))
     expect(
       await screen.findByText(
-        "受理対象外のQRです(公開鍵)。この画面では共通鍵を読み取れます。",
+        "This QR code is not accepted (Public key). This screen can scan Symmetric key.",
       ),
     ).toBeInTheDocument()
     expect(scannerStop).not.toHaveBeenCalled()
 
     act(() => emitScannedPayload("OCF2:not-accepted"))
     expect(
-      await screen.findByText("この画面では複数QRを受理しません。"),
+      await screen.findByText("This screen does not accept multi-frame QR codes."),
     ).toBeInTheDocument()
     expect(scannerStop).not.toHaveBeenCalled()
 
@@ -165,25 +165,25 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     render(
       <QrScannerPanel singleTargets={["message"]} onSingleScan={vi.fn()} />,
     )
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
-    await screen.findByRole("button", { name: "カメラを停止" })
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await screen.findByRole("button", { name: "Stop camera" })
     const firstSignal = startQrScan.mock.calls[0]?.[3]?.signal
 
-    await user.click(screen.getByRole("button", { name: "カメラを停止" }))
+    await user.click(screen.getByRole("button", { name: "Stop camera" }))
     expect(firstSignal?.aborted).toBe(true)
     expect(scannerStop).toHaveBeenCalledOnce()
     expect(
-      screen.getByText("カメラを停止しました。再起動ボタンで再開できます。"),
+      screen.getByText("The camera was stopped. Press Restart to resume."),
     ).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "カメラを再起動" }))
+    await user.click(screen.getByRole("button", { name: "Restart camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
     setVisibility("hidden")
     fireEvent(document, new Event("visibilitychange"))
     expect(startQrScan.mock.calls[1]?.[3]?.signal?.aborted).toBe(true)
     expect(
       await screen.findByText(
-        "画面が非表示になったためカメラを停止しました。再起動ボタンで再開できます。",
+        "The camera was stopped because the screen was hidden. Press Restart to resume.",
       ),
     ).toBeInTheDocument()
 
@@ -192,7 +192,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     await act(async () => Promise.resolve())
     expect(startQrScan).toHaveBeenCalledTimes(2)
     expect(
-      screen.getByRole("button", { name: "カメラを再起動" }),
+      screen.getByRole("button", { name: "Restart camera" }),
     ).toBeEnabled()
   })
 
@@ -211,16 +211,18 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
       <QrScannerPanel singleTargets={["message"]} onSingleScan={vi.fn()} />,
     )
 
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
-    expect(await screen.findByText(cameraError.userMessage)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    expect(
+      await screen.findByText(messageFor(cameraError.code, "en")),
+    ).toBeInTheDocument()
     expect(
       screen.getByText(
-        "診断: NotReadableError @track-ended [0x0 rs=2 track=ended/unmuted]",
+        "Diagnostic: NotReadableError @track-ended [0x0 rs=2 track=ended/unmuted]",
       ),
     ).toBeInTheDocument()
     expect(startQrScan).toHaveBeenCalledOnce()
 
-    await user.click(screen.getByRole("button", { name: "カメラを再起動" }))
+    await user.click(screen.getByRole("button", { name: "Restart camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
   })
 
@@ -252,7 +254,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         onSingleScan={onSingleScan}
       />,
     )
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
     act(() => {
       oldError?.(new AppError("CAMERA_NOT_AVAILABLE"), {
         phase: "acquiring",
@@ -261,7 +263,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
       })
     })
     await user.click(
-      await screen.findByRole("button", { name: "カメラを再起動" }),
+      await screen.findByRole("button", { name: "Restart camera" }),
     )
     await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
 
@@ -282,7 +284,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     const view = render(
       <QrScannerPanel singleTargets={["message"]} onSingleScan={vi.fn()} />,
     )
-    await user.click(screen.getByRole("button", { name: "カメラを起動" }))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     const signal = startQrScan.mock.calls[0]?.[3]?.signal
 
@@ -308,19 +310,19 @@ describe("QrScannerModal", () => {
     const user = userEvent.setup()
     render(
       <QrScannerModal
-        triggerLabel="暗号文QRを読み取る"
-        title="暗号文QRを読み取る"
+        triggerLabel="Scan a ciphertext QR code"
+        title="Scan a ciphertext QR code"
         singleTargets={["message"]}
         onSingleScan={vi.fn()}
       />,
     )
     const trigger = screen.getByRole("button", {
-      name: "暗号文QRを読み取る",
+      name: "Scan a ciphertext QR code",
     })
     await user.click(trigger)
 
     const dialog = await screen.findByRole("dialog", {
-      name: "暗号文QRを読み取る",
+      name: "Scan a ciphertext QR code",
     })
     expect(dialog).toHaveFocus()
     expect(dialog).not.toHaveClass("overflow-y-auto")
@@ -333,7 +335,7 @@ describe("QrScannerModal", () => {
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     expect(
       screen.getByText(
-        "カメラ画像は保存されません。閉じる・停止ボタン・画面離脱で停止します。",
+        "Camera images are not stored. Scanning stops when you close the dialog, press Stop, or leave the screen.",
       ),
     ).toBeInTheDocument()
 
@@ -346,7 +348,7 @@ describe("QrScannerModal", () => {
   it("disables the trigger and shows guidance when the camera is unavailable", () => {
     render(
       <QrScannerModal
-        triggerLabel="鍵QRを読み取る"
+        triggerLabel="Scan a key QR code"
         singleTargets={["symmetric-key"]}
         onSingleScan={vi.fn()}
         cameraAvailable={false}
@@ -354,11 +356,11 @@ describe("QrScannerModal", () => {
     )
 
     expect(
-      screen.getByRole("button", { name: "鍵QRを読み取る" }),
+      screen.getByRole("button", { name: "Scan a key QR code" }),
     ).toBeDisabled()
     expect(
       screen.getByText(
-        "この端末ではカメラを利用できません。ペイロードを貼り付けてください。",
+        "The camera is unavailable on this device. Paste the payload instead.",
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
@@ -376,13 +378,13 @@ describe("QrScannerModal", () => {
     const user = userEvent.setup()
     render(
       <QrScannerModal
-        triggerLabel="暗号文QRを読み取る"
+        triggerLabel="Scan a ciphertext QR code"
         singleTargets={["message"]}
         onSingleScan={callback}
       />,
     )
     await user.click(
-      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
     )
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
 
@@ -390,11 +392,11 @@ describe("QrScannerModal", () => {
 
     expect(
       await screen.findByText(
-        new AppError("UNSUPPORTED_ALGORITHM").userMessage,
+        messageFor("UNSUPPORTED_ALGORITHM", "en"),
       ),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole("dialog", { name: "QRコードを読み取る" }),
+      screen.getByRole("dialog", { name: "Scan a QR code" }),
     ).toBeInTheDocument()
   })
 
@@ -407,21 +409,21 @@ describe("QrScannerModal", () => {
     const user = userEvent.setup()
     render(
       <QrScannerModal
-        triggerLabel="暗号文QRを読み取る"
+        triggerLabel="Scan a ciphertext QR code"
         singleTargets={["message"]}
         onSingleScan={onSingleScan}
       />,
     )
     const trigger = screen.getByRole("button", {
-      name: "暗号文QRを読み取る",
+      name: "Scan a ciphertext QR code",
     })
 
     await user.click(trigger)
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     act(() => emitScannedPayload("OCM1:first"))
-    expect(await screen.findByText("取り込み中です…")).toBeInTheDocument()
+    expect(await screen.findByText("Importing…")).toBeInTheDocument()
     expect(
-      screen.queryByRole("button", { name: "カメラを起動" }),
+      screen.queryByRole("button", { name: "Start camera" }),
     ).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Close" }))
     expect(trigger).toBeDisabled()
@@ -432,13 +434,13 @@ describe("QrScannerModal", () => {
     await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
 
     expect(
-      screen.getByRole("dialog", { name: "QRコードを読み取る" }),
+      screen.getByRole("dialog", { name: "Scan a QR code" }),
     ).toBeInTheDocument()
 
     await act(async () => emitScannedPayload("OCM1:second"))
     await waitFor(() =>
       expect(
-        screen.queryByRole("dialog", { name: "QRコードを読み取る" }),
+        screen.queryByRole("dialog", { name: "Scan a QR code" }),
       ).not.toBeInTheDocument(),
     )
     expect(onSingleScan).toHaveBeenCalledTimes(2)
@@ -449,17 +451,17 @@ describe("QrScannerModal", () => {
     const user = userEvent.setup()
     render(
       <QrScannerModal
-        triggerLabel="暗号文QRを読み取る"
+        triggerLabel="Scan a ciphertext QR code"
         singleTargets={["message"]}
         onSingleScan={() => delivery.promise}
       />,
     )
     await user.click(
-      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
     )
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     act(() => emitScannedPayload("OCM1:message"))
-    await screen.findByText("取り込み中です…")
+    await screen.findByText("Importing…")
     await user.click(screen.getByRole("button", { name: "Close" }))
 
     await act(async () =>
@@ -467,7 +469,7 @@ describe("QrScannerModal", () => {
     )
     expect(
       await screen.findByText(
-        new AppError("UNSUPPORTED_ALGORITHM").userMessage,
+        messageFor("UNSUPPORTED_ALGORITHM", "en"),
       ),
     ).toBeInTheDocument()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
@@ -479,14 +481,14 @@ describe("QrScannerModal", () => {
       return (
         <>
           <QrScannerModal
-            triggerLabel="鍵QRを読み取る"
+            triggerLabel="Scan a key QR code"
             singleTargets={["symmetric-key"]}
             onSingleScan={() => setFollowOnOpen(true)}
           />
           <Dialog open={followOnOpen} onOpenChange={setFollowOnOpen}>
             <DialogContent>
-              <DialogTitle>共通鍵を取り込みます</DialogTitle>
-              <button type="button">保存確認</button>
+              <DialogTitle>Import the symmetric key</DialogTitle>
+              <button type="button">Confirm save</button>
             </DialogContent>
           </Dialog>
         </>
@@ -495,15 +497,15 @@ describe("QrScannerModal", () => {
 
     const user = userEvent.setup()
     render(<Harness />)
-    await user.click(screen.getByRole("button", { name: "鍵QRを読み取る" }))
+    await user.click(screen.getByRole("button", { name: "Scan a key QR code" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     await act(async () => emitScannedPayload("OCK1:key"))
 
     const followOn = await screen.findByRole("dialog", {
-      name: "共通鍵を取り込みます",
+      name: "Import the symmetric key",
     })
     expect(
-      within(followOn).getByRole("button", { name: "保存確認" }),
+      within(followOn).getByRole("button", { name: "Confirm save" }),
     ).toHaveFocus()
   })
 
@@ -526,14 +528,14 @@ describe("QrScannerModal", () => {
     const onComplete = vi.fn(() => delivery.promise)
     render(
       <QrScannerModal
-        triggerLabel="暗号文QRを読み取る"
+        triggerLabel="Scan a ciphertext QR code"
         singleTargets={["message"]}
         onSingleScan={vi.fn()}
         multipart={{ session, onComplete }}
       />,
     )
     fireEvent.click(
-      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
     )
     await act(async () => {
       await Promise.resolve()
@@ -559,11 +561,11 @@ describe("QrScannerModal", () => {
       artifactBytes: Uint8Array.of(2),
     })
     expect(
-      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
     ).toBeDisabled()
     expect(
       screen.queryByText(
-        "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+        "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
       ),
     ).not.toBeInTheDocument()
 
@@ -571,7 +573,7 @@ describe("QrScannerModal", () => {
 
     expect(
       screen.getByText(
-        "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+        "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
       ),
     ).toBeInTheDocument()
   })
@@ -582,14 +584,14 @@ describe("QrScannerModal", () => {
     const onComplete = vi.fn()
     render(
       <QrScannerModal
-        triggerLabel="暗号文QRを読み取る"
+        triggerLabel="Scan a ciphertext QR code"
         singleTargets={["message"]}
         onSingleScan={vi.fn()}
         multipart={{ session, onComplete }}
       />,
     )
     await user.click(
-      screen.getByRole("button", { name: "暗号文QRを読み取る" }),
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
     )
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
 
@@ -599,13 +601,13 @@ describe("QrScannerModal", () => {
 
     await waitFor(() =>
       expect(
-        screen.queryByRole("dialog", { name: "QRコードを読み取る" }),
+        screen.queryByRole("dialog", { name: "Scan a QR code" }),
       ).not.toBeInTheDocument(),
     )
     expect(onComplete).toHaveBeenCalledOnce()
     expect(
       screen.getByText(
-        "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+        "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
       ),
     ).toBeInTheDocument()
     await waitFor(() => expect(scannerStop).toHaveBeenCalledOnce())
@@ -626,7 +628,7 @@ describe("QrScannerModal", () => {
     vi.spyOn(session, "state").mockImplementation(() => state)
     render(
       <QrScannerModal
-        triggerLabel="暗号文QRを読み取る"
+        triggerLabel="Scan a ciphertext QR code"
         singleTargets={["message"]}
         onSingleScan={vi.fn()}
         multipart={{ session, onComplete: vi.fn() }}
@@ -634,13 +636,13 @@ describe("QrScannerModal", () => {
     )
 
     expect(
-      screen.getByText("複数QR読取中: 受信 1 / 3"),
+      screen.getByText("Multi-frame QR scan in progress: received 1 / 3"),
     ).toBeInTheDocument()
     state = { kind: "idle" }
     await act(async () => vi.advanceTimersByTimeAsync(1_000))
     expect(
       screen.getByText(
-        "読取期限を過ぎたため、一時読取状態を破棄しました。",
+        "The temporary scan state expired and was discarded.",
       ),
     ).toBeInTheDocument()
   })

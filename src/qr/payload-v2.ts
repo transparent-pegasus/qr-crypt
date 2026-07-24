@@ -1,19 +1,21 @@
-// v2 QR ペイロード(spec2 §11/§12、plan2.1 §D — WP-A2 がプレフィックス表と
-// フレームコーデックを凍結)。型付きエンベロープの復号・組立・UI 配線は
-// WP-12(multipart)/ WP-13(payload 統合)が本モジュールの上へ実装する。
+// v2 QR payloads. The prefix table and frame codec are frozen wire contracts; see
+// docs/qr-protocol-v2.md §1 and §6. Typed-envelope decoding, assembly, and UI wiring
+// build on this module.
 //
-// 方針(plan2.1 §D1):
-//   - OCM2/OCP2/OCS2/OCI2 は「単一ペイロード表現(貼付・ファイル取込)と論理型」
-//   - 表示は常に OCF2(frameCount≥1)。フレームの chunk は artifact CBOR の
-//     生バイトを直接分割する(inner 文字列の再 base64url は禁止)
-//   - OCB2 は予約のみ(VITE_ENABLE_ENCRYPTED_SEED_BACKUP=false — 生成・受理不可)
+// Policy:
+//   - OCM2/OCP2/OCS2/OCI2 are the single-payload representation (paste/file import)
+//     and the logical type.
+//   - Display always uses OCF2 (frameCount≥1). Frame chunks split raw artifact-CBOR
+//     bytes directly; re-encoding an inner string as base64url is prohibited.
+//   - OCB2 is reserved only (VITE_ENABLE_ENCRYPTED_SEED_BACKUP=false; neither generate
+//     nor accept it).
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { decodeQrFrameV2, encodeQrFrameV2 } from "@/crypto/pq/canonical-cbor"
 import { fromBase64Url, toBase64Url } from "@/lib/base64url"
 import { MAX_FRAME_PAYLOAD_CHARS } from "@/lib/limits"
 
-// artifactType ↔ プレフィックスの対応表(v1 プレフィックスの再利用禁止 spec2 §11)
+// artifactType ↔ prefix mapping; reusing v1 prefixes is prohibited.
 export const QR_PREFIX_V2 = {
   "pq-message": "OCM2:",
   "pq-kem-public-key": "OCP2:",
@@ -25,8 +27,9 @@ export const QR_PREFIX_V2 = {
 
 export type V2PayloadKind = V2ArtifactType | "frame"
 
-// v2 ペイロード全体(貼付経路)の文字数上限: 最大 artifact(64×900B)の
-// base64url + プレフィックス。フレーム経路は MAX_FRAME_PAYLOAD_CHARS が別途上限。
+// Character limit for a complete v2 payload on the paste path: base64url of the
+// maximum artifact (64×900B) plus the prefix. MAX_FRAME_PAYLOAD_CHARS separately
+// limits the frame path.
 export const MAX_V2_PAYLOAD_CHARS = 80_000
 
 export interface ClassifiedV2Payload {
@@ -34,7 +37,7 @@ export interface ClassifiedV2Payload {
   prefix: string
 }
 
-// v2 プレフィックス判定。v2 でなければ null(呼出側が v1 経路へ委譲する)。
+// Detect a v2 prefix. Return null for non-v2 input so the caller can delegate to the v1 path.
 export function classifyV2Payload(text: string): ClassifiedV2Payload | null {
   for (const [kind, prefix] of Object.entries(QR_PREFIX_V2) as [
     V2PayloadKind,
@@ -45,14 +48,14 @@ export function classifyV2Payload(text: string): ClassifiedV2Payload | null {
   return null
 }
 
-// 単一ペイロード(bare OC?2)→ artifact 生バイト。型付き検証は呼出側
-// (validation.ts / canonical-cbor の各 decode)が行う。
+// Single payload (bare OC?2) → raw artifact bytes. The caller performs typed validation
+// through validation.ts or the corresponding canonical-cbor decoder.
 export function splitV2Payload(text: string): { kind: V2ArtifactType; bytes: Uint8Array } {
   const classified = classifyV2Payload(text)
   if (classified === null) throw new AppError("INVALID_QR_PREFIX")
   if (classified.kind === "frame") throw new AppError("INVALID_QR_PAYLOAD")
   if (classified.kind === "encrypted-seed-backup") {
-    // 予約プレフィックス(機能フラグ既定 OFF)。受理しない。
+    // Reserved prefix with its feature flag defaulting to OFF. Do not accept it.
     throw new AppError("UNSUPPORTED_ALGORITHM")
   }
   if (text.length > MAX_V2_PAYLOAD_CHARS) throw new AppError("INVALID_QR_PAYLOAD")
@@ -65,20 +68,21 @@ export function splitV2Payload(text: string): { kind: V2ArtifactType; bytes: Uin
   }
 }
 
-// artifact 生バイト → 単一ペイロード文字列(bare OC?2)
+// Raw artifact bytes → single payload string (bare OC?2).
 export function buildV2Payload(kind: V2ArtifactType, bytes: Uint8Array): string {
   if (kind === "encrypted-seed-backup") throw new AppError("UNSUPPORTED_ALGORITHM")
   return `${QR_PREFIX_V2[kind]}${toBase64Url(bytes)}`
 }
 
 // ---------------------------------------------------------------------------
-// OCF2 フレームコーデック(WP-A2 凍結。split/assemble は WP-12)
+// Frozen OCF2 frame codec; split/assemble operate on top of it.
 // ---------------------------------------------------------------------------
 
 export function encodeFrameToPayload(frame: QrFrameV2): string {
   const payload = `${QR_PREFIX_V2.frame}${toBase64Url(encodeQrFrameV2(frame))}`
   if (payload.length > MAX_FRAME_PAYLOAD_CHARS) {
-    // frameBytes の clamp 誤りなど生成側バグ。EC-Q で表示不能な文字列を返さない
+    // This indicates a generation-side bug such as an incorrect frameBytes clamp.
+    // Never return a string that cannot be displayed at EC-Q.
     throw new AppError("QR_TOO_LARGE")
   }
   return payload

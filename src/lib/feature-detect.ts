@@ -1,4 +1,4 @@
-// 機能検出(spec §31)。結果はゲート表示と機能別 disable に使う(plan §12-8)。
+// Feature detection. Use results for gate display and per-feature disabling.
 
 export interface FeatureSupport {
   webCrypto: boolean

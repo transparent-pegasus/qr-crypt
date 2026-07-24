@@ -1,12 +1,14 @@
-// store-only ZIP(無圧縮)出力(spec2 §12 の ZIP 一括出力 — WP-12)。
-// 依存追加はしない(fflate は provenance 無しのため不採用。plan2 §0)。
+// Store-only (uncompressed) ZIP output for bulk OCF2-frame export.
+// Do not add a dependency; fflate was rejected because it lacks provenance.
 //
-// 制約(plan2.1 C24 由来・凍結):
-//   - entry 名は内部生成の ASCII のみ(zip-slip 対象外だが検証はする)
-//   - 固定タイムスタンプ(決定的出力)
-//   - entry 数・合計サイズに上限を置き、ZIP32 超過は明示拒否
-//   - CRC32 / local+central directory offset の unit test 必須
-//   - 暗号成果物の生成経路から分離(ZIP 失敗で暗号結果を失わない)
+// Frozen constraints:
+//   - Entry names are internally generated ASCII only. They are not exposed to zip-slip,
+//     but still validate them.
+//   - Fixed timestamps for deterministic output.
+//   - Bound entry count and total size, and explicitly reject ZIP32 overflow.
+//   - Unit tests are required for CRC32 and local/central-directory offsets.
+//   - Keep this separate from cryptographic-artifact generation so a ZIP failure
+//     does not discard the cryptographic result.
 export interface ZipEntry {
   name: string
   data: Uint8Array

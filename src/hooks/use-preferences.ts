@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import type { MessageKey } from "@/i18n"
 import { env } from "@/schemas/env-schema"
 import type { Preferences } from "@/schemas/domain"
 import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
@@ -22,14 +23,14 @@ const DEFAULT_PREFERENCES: Preferences = {
 export interface UsePreferencesResult {
   preferences: Preferences
   loading: boolean
-  error: string | null
+  error: MessageKey | null
   updatePreferences: (patch: Partial<Preferences>) => Promise<Preferences>
 }
 
 export function usePreferences(): UsePreferencesResult {
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<MessageKey | null>(null)
 
   useEffect(() => {
     let active = true
@@ -38,7 +39,7 @@ export function usePreferences(): UsePreferencesResult {
         if (active) setPreferences(loaded)
       })
       .catch(() => {
-        if (active) setError("設定を読み込めませんでした。既定値を使用します。")
+        if (active) setError("hooks.preferences.loadFailed")
       })
       .finally(() => {
         if (active) setLoading(false)

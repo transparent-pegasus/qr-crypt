@@ -1,6 +1,6 @@
-// v2 suite 導出(plan2.1 §C1 — WP-A2 が実装・凍結)。
-// suite は preference ではなく「選択済み鍵の実 algorithm の組」から一意導出する。
-// UI profile は候補の filter/default にだけ使う。
+// v2 suite derivation; the mappings are a wire-compatibility contract.
+// Derive the suite uniquely from the selected keys' actual algorithm combination,
+// not from a preference. The UI profile is used only to filter/default candidates.
 import type {
   MlDsaAlgorithm,
   MlKemAlgorithm,
@@ -24,8 +24,8 @@ export function assertActiveSuite(suite: WireSuite): void {
   }
 }
 
-// 許可される署名付き組は (768,65) / (1024,87) のみ。
-// 768+87 等の混在は型混同/downgrade として拒否する。
+// The only permitted signed combinations are (768,65) and (1024,87).
+// Reject mixtures such as 768+87 as type confusion/downgrade attempts.
 export function resolveSuite(kem: MlKemAlgorithm, signature?: MlDsaAlgorithm): WireSuite {
   if (kem === "ML-KEM-768") {
     if (signature === undefined) return "ML-KEM-768+HKDF-SHA256+A256GCM"
@@ -46,7 +46,8 @@ export interface SuiteComponents {
   signature?: MlDsaAlgorithm
 }
 
-// 復号側の相互拘束(plan2.1 §C4)用の逆引き。resolveSuite と往復一致すること。
+// Reverse lookup for decryption-side cross-binding.
+// It must round-trip with resolveSuite.
 export function suiteComponents(suite: WireSuite): SuiteComponents {
   switch (suite) {
     case "ML-KEM-768+HKDF-SHA256+A256GCM":

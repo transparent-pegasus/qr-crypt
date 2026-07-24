@@ -1,29 +1,36 @@
 import { KeyRound, List, LockKeyhole, Settings } from "lucide-react"
-import { NavLink, useNavigate } from "react-router-dom"
+import { NavLink, useNavigate } from "react-router"
+import { useI18n, type MessageKey } from "@/i18n"
 import { cn } from "@/lib/utils"
 
-const ITEMS = [
-  { to: "/encrypt", label: "暗号・復号", icon: LockKeyhole },
-  { to: "/keys", label: "鍵追加", icon: KeyRound },
-  { to: "/saved", label: "鍵一覧", icon: List },
-  { to: "/settings", label: "設定", icon: Settings },
+const ITEMS: ReadonlyArray<{
+  to: string
+  labelKey: MessageKey
+  icon: typeof LockKeyhole
+}> = [
+  { to: "/encrypt", labelKey: "nav.encrypt", icon: LockKeyhole },
+  { to: "/keys", labelKey: "nav.keys", icon: KeyRound },
+  { to: "/saved", labelKey: "nav.keyList", icon: List },
+  { to: "/settings", labelKey: "nav.settings", icon: Settings },
 ] as const
 
 export function BottomNavigation() {
+  const { t } = useI18n()
   const navigate = useNavigate()
   return (
     <nav
-      aria-label="メインナビゲーション"
+      aria-label={t("nav.ariaLabel")}
       className="fixed bottom-0 left-0 right-0 z-30 border-t bg-background/95 pb-safe backdrop-blur"
     >
       <div className="mx-auto grid h-16 max-w-md grid-cols-4">
         {ITEMS.map((item) => {
           const Icon = item.icon
+          const label = t(item.labelKey)
           return (
             <NavLink
               key={item.to}
               to={item.to}
-              aria-label={item.label}
+              aria-label={label}
               onKeyDown={(event) => {
                 if (event.key === " ") {
                   event.preventDefault()

@@ -1,6 +1,7 @@
-// ポスト量子 ID のライフサイクル(spec2 §8/§10 — WP-13)。
-// シード生成・keygen・Vault 暗号化は Worker 内(generateIdentityKeys)。
-// KEM シードと DSA シードは独立の CSPRNG 呼出であること(テストで相異確認)。
+// Post-quantum identity lifecycle; see docs/qr-protocol-v2.md §7 and §7.1.
+// Seed generation, keygen, and Vault encryption occur inside the Worker
+// (generateIdentityKeys). KEM and DSA seeds must come from independent CSPRNG calls;
+// tests verify that they differ.
 import type { PqCryptoClient } from "@/crypto/pq/worker-client"
 import type {
   PostQuantumIdentity,
@@ -113,7 +114,8 @@ export async function createIdentity(
   }
 }
 
-// 旧世代は status="rotated"(復号/検証専用)で保持し、新世代を返す(plan2.1 §E1)
+// Retain the previous generation with status="rotated" (decryption/verification only)
+// and return the new generation.
 export interface RotateIdentityArgs {
   client: PqCryptoClient
   vaultKey: CryptoKey
@@ -123,7 +125,7 @@ export interface RotateIdentityArgs {
 
 export interface RotatedIdentity {
   next: PostQuantumIdentity
-  previous: PostQuantumIdentity // status を rotated へ更新した旧世代
+  previous: PostQuantumIdentity // Previous generation updated to status="rotated".
 }
 
 export async function rotateIdentity(args: RotateIdentityArgs): Promise<RotatedIdentity> {

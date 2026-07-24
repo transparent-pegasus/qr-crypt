@@ -1,5 +1,4 @@
-// jsdom プロジェクトの smoke テスト(plan §13 C2)。
-// WP-3 が本格的な UI テストを追加するまでの環境検証を兼ねる。
+// Smoke test for the jsdom project and its environment.
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 

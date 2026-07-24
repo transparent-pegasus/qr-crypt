@@ -1,6 +1,6 @@
-// IndexedDB 接続(spec §15)。schema 変更時は DB_VERSION を上げるだけでよく、
-// upgrade 時に旧 object store を全削除してから現行 schema を作り直す
-// （段階 migration なし・旧データは丸ごと破棄）。
+// IndexedDB connection. For schema changes, increment DB_VERSION;
+// during upgrade, delete all old object stores and recreate the current schema.
+// There is no incremental migration: all old data is discarded.
 import { deleteDB, openDB } from "idb"
 import type { DBSchema, IDBPDatabase } from "idb"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -207,7 +207,7 @@ export function closeDb(): void {
   databasePromise = undefined
 }
 
-// 全ローカルデータ初期化用(設定ページ)。SW キャッシュは対象外(plan §13 C21)
+// Used by the settings page to reset all local data. Service-worker caches are excluded.
 export async function deleteEntireDatabase(
   options: DeleteEntireDatabaseOptions = {},
 ): Promise<void> {

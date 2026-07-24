@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 import { loadOnlineGate, mainNavigation, switchToOfflineApp } from "./helpers"
 
-test("オンライン導入画面、PWA 資産、オフライン起動とナビゲーション", async ({
+test("shows online installation, serves PWA assets, then boots and navigates offline", async ({
   context,
   page,
 }) => {
@@ -31,10 +31,10 @@ test("オンライン導入画面、PWA 資産、オフライン起動とナビ�
   await expect(page).toHaveURL(/\/encrypt$/)
   const navigation = mainNavigation(page)
   await expect(navigation.getByRole("link")).toHaveCount(4)
-  for (const label of ["暗号・復号", "鍵追加", "鍵一覧", "設定"]) {
+  for (const label of ["Encrypt / decrypt", "Add keys", "Key list", "Settings"]) {
     await expect(
       navigation.getByRole("link", {
-        name: new RegExp(`^${label}(?: 現在のページ)?$`),
+        name: new RegExp(`^${label}(?: current page)?$`),
       }),
     ).toBeVisible()
   }

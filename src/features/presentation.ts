@@ -1,14 +1,34 @@
+import { translate, type Language } from "@/i18n/messages"
 import type { UiAlgorithm } from "@/schemas/domain"
 
-export const ALGORITHM_LABELS: Record<UiAlgorithm, string> = {
-  A256GCM: "共通鍵 AES-256-GCM",
-  MLKEM1024_A256GCM: "ポスト量子 ML-KEM-1024 + AES-256-GCM",
-  MLKEM1024_MLDSA87_A256GCM: "署名付きポスト量子 ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
+export const ALGORITHM_LABELS: Record<
+  Language,
+  Record<UiAlgorithm, string>
+> = {
+  en: {
+    A256GCM: translate("en", "algorithm.A256GCM"),
+    MLKEM1024_A256GCM: translate("en", "algorithm.MLKEM1024_A256GCM"),
+    MLKEM1024_MLDSA87_A256GCM: translate(
+      "en",
+      "algorithm.MLKEM1024_MLDSA87_A256GCM",
+    ),
+  },
+  ja: {
+    A256GCM: translate("ja", "algorithm.A256GCM"),
+    MLKEM1024_A256GCM: translate("ja", "algorithm.MLKEM1024_A256GCM"),
+    MLKEM1024_MLDSA87_A256GCM: translate(
+      "ja",
+      "algorithm.MLKEM1024_MLDSA87_A256GCM",
+    ),
+  },
 }
 
-export function formatDateTime(timestamp: number | undefined): string {
-  if (timestamp === undefined) return "未使用"
-  return new Intl.DateTimeFormat("ja-JP", {
+export function formatDateTime(
+  timestamp: number | undefined,
+  language: Language,
+): string {
+  if (timestamp === undefined) return translate(language, "common.unused")
+  return new Intl.DateTimeFormat(language === "ja" ? "ja-JP" : "en-US", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -42,10 +62,19 @@ export function formatFingerprint(fingerprintHex: string): string {
   return groups.join(" ")
 }
 
-export function formatFramePositions(indexes: readonly number[]): string {
+export function formatFramePositions(
+  indexes: readonly number[],
+  language: Language,
+): string {
   return indexes.length === 0
-    ? "なし"
-    : indexes.map((index) => `${index + 1}枚目`).join("、")
+    ? translate(language, "common.none")
+    : indexes
+        .map((index) =>
+          translate(language, "presentation.framePosition", {
+            position: index + 1,
+          }),
+        )
+        .join(translate(language, "presentation.frameSeparator"))
 }
 
 export function shortTechnicalId(value: string | undefined): string {

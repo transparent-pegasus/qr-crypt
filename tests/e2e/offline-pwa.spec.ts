@@ -14,7 +14,7 @@ import {
   workerObservations,
 } from "./helpers"
 
-test("precache 済み Worker だけでオフライン PQ 鍵生成・Encaps・Decaps・署名検証を完了する", async ({
+test("completes offline PQ keygen, Encaps, Decaps, and signature verification using only precached Workers", async ({
   context,
   page,
 }) => {
@@ -38,7 +38,7 @@ test("precache 済み Worker だけでオフライン PQ 鍵生成・Encaps・De
   await expect(mainNavigation(page)).toBeVisible()
   await expect(
     page.getByRole("heading", {
-      name: "続行前の確認",
+      name: "Confirm before continuing",
     }),
   ).toBeHidden()
 
@@ -50,16 +50,16 @@ test("precache 済み Worker だけでオフライン PQ 鍵生成・Encaps・De
     identityName,
     plaintext,
   })
-  expect(Number.parseInt(await detailValue(result, "QRフレーム数"), 10)).toBeGreaterThan(
+  expect(Number.parseInt(await detailValue(result, "QR frame count"), 10)).toBeGreaterThan(
     1,
   )
 
-  await page.getByRole("tab", { name: "復号", exact: true }).click()
-  await page.getByLabel("暗号文ペイロード").fill(payload)
-  const decrypt = page.getByRole("button", { name: "復号する", exact: true })
+  await page.getByRole("tab", { name: "Decrypt", exact: true }).click()
+  await page.getByLabel("Ciphertext payload").fill(payload)
+  const decrypt = page.getByRole("button", { name: "Decrypt", exact: true })
   await expect(decrypt).toBeEnabled()
   await decrypt.click()
-  await expect(page.getByText("署名はこの鍵に対して有効です")).toBeVisible({
+  await expect(page.getByText("The signature is valid for this key")).toBeVisible({
     timeout: 45_000,
   })
   await expect(page.getByText(plaintext, { exact: true })).toBeVisible()

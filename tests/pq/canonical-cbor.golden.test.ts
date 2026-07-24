@@ -1,6 +1,6 @@
-// v2 正準 CBOR のゴールデンフィクスチャ(plan2.1 §C9 — WP-A2 が凍結)。
-// ここの hex 値は docs/qr-protocol-v2.md §8 と一致していなければならない。
-// 値の変更はワイヤープロトコル改版を意味する — 安易に更新しないこと。
+// Golden fixtures for v2 canonical CBOR.
+// These hex values must match docs/qr-protocol-v2.md §8.
+// Changing a value requires a wire-protocol revision; do not update them casually.
 import { describe, expect, it } from "vitest"
 import type { MlKemMessageEnvelopeV2, QrFrameV2 } from "@/schemas/domain"
 import { AppError, type ErrorCode } from "@/crypto/errors"
@@ -24,7 +24,7 @@ import { MAX_FRAME_PAYLOAD_CHARS } from "@/lib/limits"
 import { qrByteCapacity } from "@/qr/encode"
 import { WIRE_SUITES } from "@/schemas/domain"
 
-const KEY_ID = "AAECAwQFBgcICQoLDA0ODw" // bytes 00..0f の base64url(22 文字)
+const KEY_ID = "AAECAwQFBgcICQoLDA0ODw" // 22-character base64url for bytes 00..0f.
 
 function hexToBytes(hex: string): Uint8Array {
   const out = new Uint8Array(hex.length / 2)
@@ -46,7 +46,7 @@ function expectCode(fn: () => unknown, code: ErrorCode): void {
 }
 
 // ---------------------------------------------------------------------------
-// ゴールデン(hex 凍結)
+// Golden values (frozen hex).
 // ---------------------------------------------------------------------------
 
 const AAD_GOLDEN_HEX =
@@ -98,7 +98,7 @@ function fixtureFrame(): QrFrameV2 {
 }
 
 describe("canonical-cbor goldens", () => {
-  it("MlKemAadV2 の符号化バイト列は凍結値と一致する", () => {
+  it("matches the frozen encoded bytes for MlKemAadV2", () => {
     const bytes = encodeMlKemAadV2({
       version: 2,
       type: "pq-message",
@@ -109,7 +109,7 @@ describe("canonical-cbor goldens", () => {
     expect(bytesToHex(bytes)).toBe(AAD_GOLDEN_HEX)
   })
 
-  it("キー挿入順が異なる同値オブジェクトは同一バイト列になる", () => {
+  it("encodes equivalent objects with different key insertion order identically", () => {
     const reordered = {
       kemCiphertextSha256: new Uint8Array(32).fill(0x22),
       recipientKemKeyId: KEY_ID,
@@ -120,26 +120,26 @@ describe("canonical-cbor goldens", () => {
     expect(bytesToHex(encodeCanonicalCbor(reordered))).toBe(AAD_GOLDEN_HEX)
   })
 
-  it("エンベロープの符号化(長さ・SHA-256)は凍結値と一致する", async () => {
+  it("matches the frozen envelope encoding length and SHA-256", async () => {
     const bytes = encodeMlKemEnvelopeV2(fixtureEnvelope())
     expect(bytes.byteLength).toBe(1301)
     expect(await sha256Hex(bytes)).toBe(
       "53b5af7642d5394156ef4eacfac829181a682e067d9c1fbc8297206117cea924",
     )
-    // 先頭 96 バイト(map ヘッダー a8 と iv/type/suite の並び)も固定する
+    // Also pin the first 96 bytes: map header a8 and iv/type/suite ordering.
     expect(bytesToHex(bytes.subarray(0, 48))).toBe(
       "a86269764c55555555555555555555555564747970656a70712d6d657373616765657375" +
         "697465781e4d4c2d4b454d2d",
     )
   })
 
-  it("QrFrameV2 の符号化は凍結値と一致し、往復で同値になる", () => {
+  it("matches the frozen QrFrameV2 encoding and round-trips identically", () => {
     const bytes = encodeQrFrameV2(fixtureFrame())
     expect(bytesToHex(bytes)).toBe(TINY_FRAME_GOLDEN_HEX)
     expect(decodeQrFrameV2(bytes)).toEqual(fixtureFrame())
   })
 
-  it("署名対象バイト列(SignedMessageBodyV2)は凍結値と一致する", () => {
+  it("matches the frozen signing-target bytes for SignedMessageBodyV2", () => {
     const bytes = signingTargetBytes({
       version: 2,
       messageId: new Uint8Array(16).fill(0x07),
@@ -148,12 +148,12 @@ describe("canonical-cbor goldens", () => {
       plaintext: new Uint8Array([0x74, 0x65, 0x73, 0x74]),
       senderSigningKeyId: KEY_ID,
     })
-    // createdAt は uint64(1b …)であり float64(fb …)ではないこと
+    // createdAt must be uint64 (1b …), not float64 (fb …).
     expect(bytesToHex(bytes)).toBe(SIGNING_TARGET_GOLDEN_HEX)
     expect(bytesToHex(bytes)).toContain("1b0000018bcfe56800")
   })
 
-  it("PublicIdentityBundleV2 の符号化(長さ・SHA-256)は凍結値と一致する", async () => {
+  it("matches the frozen PublicIdentityBundleV2 encoding length and SHA-256", async () => {
     const bytes = encodePublicIdentityBundleV2({
       version: 2,
       type: "pq-public-identity",
@@ -178,7 +178,7 @@ describe("canonical-cbor goldens", () => {
     expect(decodePublicIdentityBundleV2(bytes).name).toBe("テスト")
   })
 
-  it("エンベロープと unsigned body は往復で同値になる", () => {
+  it("round-trips the envelope and unsigned body identically", () => {
     const envelope = fixtureEnvelope()
     expect(decodeMlKemEnvelopeV2(encodeMlKemEnvelopeV2(envelope))).toEqual(envelope)
     const body = {
@@ -197,31 +197,31 @@ describe("canonical-cbor goldens", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 非正準・プロファイル外入力の拒否
+// Reject non-canonical and out-of-profile input.
 // ---------------------------------------------------------------------------
 
 describe("canonical-cbor rejections", () => {
   const rejects: [string, string][] = [
-    ["重複キー", "a2616101616102"],
-    ["キー順違反", "a2616201616102"],
-    ["不定長 map", "bf616101ff"],
-    ["後続データ", "0101"],
+    ["duplicate key", "a2616101616102"],
+    ["key-order violation", "a2616201616102"],
+    ["indefinite-length map", "bf616101ff"],
+    ["trailing data", "0101"],
     ["float64", "fb4000000000000000"],
-    ["負数", "20"],
-    ["タグ", "c001"],
-    ["配列", "8101"],
+    ["negative integer", "20"],
+    ["tag", "c001"],
+    ["array", "8101"],
     ["null", "f6"],
-    ["非最小整数(23 を 2 バイト表現)", "1817"],
-    ["非最小長さヘッダー(text 長 3 を 2 バイト表現)", "7803616263"],
-    ["空入力", ""],
+    ["non-minimal integer (23 encoded in two bytes)", "1817"],
+    ["non-minimal length header (text length 3 encoded in two bytes)", "7803616263"],
+    ["empty input", ""],
   ]
   for (const [label, hex] of rejects) {
-    it(`decodeCanonicalCbor は ${label} を拒否する`, () => {
+    it(`decodeCanonicalCbor rejects ${label}`, () => {
       expectCode(() => decodeCanonicalCbor(hexToBytes(hex)), "INVALID_QR_PAYLOAD")
     })
   }
 
-  it("未知キーを含むエンベロープを拒否する", () => {
+  it("rejects an envelope containing an unknown key", () => {
     const bytes = encodeCanonicalCbor({
       ...(fixtureEnvelope() as unknown as Record<string, never>),
       extra: 1,
@@ -229,7 +229,7 @@ describe("canonical-cbor rejections", () => {
     expectCode(() => decodeMlKemEnvelopeV2(bytes), "INVALID_QR_PAYLOAD")
   })
 
-  it("KEM 暗号文長が suite と不一致のエンベロープを拒否する", () => {
+  it("rejects an envelope whose KEM ciphertext length disagrees with the suite", () => {
     const broken = { ...fixtureEnvelope(), kemCiphertext: new Uint8Array(10) }
     expectCode(() => encodeMlKemEnvelopeV2(broken), "INVALID_QR_PAYLOAD")
     const bytes = encodeCanonicalCbor(
@@ -238,7 +238,7 @@ describe("canonical-cbor rejections", () => {
     expectCode(() => decodeMlKemEnvelopeV2(bytes), "INVALID_QR_PAYLOAD")
   })
 
-  it("unsigned body に senderSigningKeyId が載っていたら拒否する", () => {
+  it("rejects an unsigned body containing senderSigningKeyId", () => {
     const bytes = encodeCanonicalCbor({
       version: 2,
       messageId: new Uint8Array(16),
@@ -250,7 +250,7 @@ describe("canonical-cbor rejections", () => {
     expectCode(() => decodeUnsignedMessageBodyV2(bytes), "INVALID_QR_PAYLOAD")
   })
 
-  it("signed message の signature 欠落を拒否する", () => {
+  it("rejects a signed message with a missing signature", () => {
     const bytes = encodeCanonicalCbor({
       body: {
         version: 2,
@@ -264,7 +264,7 @@ describe("canonical-cbor rejections", () => {
     expectCode(() => decodeSignedMessageV2(bytes), "INVALID_QR_PAYLOAD")
   })
 
-  it("プロファイル混在(768+87)の bundle を拒否する", () => {
+  it("rejects a mixed-profile 768+87 bundle", () => {
     const bytes = encodeCanonicalCbor({
       version: 2,
       type: "pq-public-identity",
@@ -284,7 +284,7 @@ describe("canonical-cbor rejections", () => {
     expectCode(() => decodePublicIdentityBundleV2(bytes), "INVALID_QR_PAYLOAD")
   })
 
-  it("frameIndex ≥ frameCount のフレームを拒否する", () => {
+  it("rejects a frame with frameIndex ≥ frameCount", () => {
     const bytes = encodeCanonicalCbor({
       ...(fixtureFrame() as unknown as Record<string, never>),
       frameIndex: 2,
@@ -294,29 +294,29 @@ describe("canonical-cbor rejections", () => {
 })
 
 // ---------------------------------------------------------------------------
-// suite 契約と容量整合
+// Suite contract and capacity consistency.
 // ---------------------------------------------------------------------------
 
 describe("suite contract", () => {
-  it("resolveSuite と suiteComponents は往復一致する", () => {
+  it("round-trips resolveSuite and suiteComponents consistently", () => {
     for (const suite of WIRE_SUITES) {
       const components = suiteComponents(suite)
       expect(resolveSuite(components.kem, components.signature)).toBe(suite)
     }
   })
 
-  it("768 wire は codec として認識し、active policy では拒否する", () => {
+  it("recognizes 768 wire values in the codec and rejects them under active policy", () => {
     const envelope = fixtureEnvelope()
     expect(decodeMlKemEnvelopeV2(encodeMlKemEnvelopeV2(envelope))).toEqual(envelope)
     expectCode(() => assertActiveSuite(envelope.suite), "UNSUPPORTED_ALGORITHM")
   })
 
-  it("プロファイル混在の組は拒否する(plan2.1 §C1)", () => {
+  it("rejects mixed-profile combinations", () => {
     expectCode(() => resolveSuite("ML-KEM-768", "ML-DSA-87"), "UNSUPPORTED_ALGORITHM")
     expectCode(() => resolveSuite("ML-KEM-1024", "ML-DSA-65"), "UNSUPPORTED_ALGORITHM")
   })
 
-  it("MAX_FRAME_PAYLOAD_CHARS は QR v40 EC-Q の容量と一致する", () => {
+  it("matches MAX_FRAME_PAYLOAD_CHARS to QR v40 EC-Q capacity", () => {
     expect(MAX_FRAME_PAYLOAD_CHARS).toBe(qrByteCapacity("Q"))
   })
 })

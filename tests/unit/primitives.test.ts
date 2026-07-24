@@ -87,7 +87,7 @@ describe("random ids, feature detection, and env parsing", () => {
       { VITE_AUTO_CLEAR_SECONDS: "1.5" },
       { VITE_QR_RENDER_SIZE: "Infinity" },
     ]) {
-      expect(() => parseAppEnv(raw)).toThrow("環境変数が不正です")
+      expect(() => parseAppEnv(raw)).toThrow("Invalid environment variables")
     }
   })
 })

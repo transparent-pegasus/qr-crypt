@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { vi } from "vitest"
 import type { RegisterSWOptions } from "virtual:pwa-register/react"
-import { AppError, type ErrorCode, userMessageFor } from "@/crypto/errors"
+import { AppError, type ErrorCode } from "@/crypto/errors"
 import type {
   AesMessageEnvelopeV1,
   PublicKeyEnvelopeV1,
@@ -171,15 +171,11 @@ let lastPublicBundle: PublicIdentityBundleV2 | null = null
 let lastKemEnvelope: KemPublicKeyEnvelopeV2 | null = null
 let lastDsaEnvelope: DsaPublicKeyEnvelopeV2 | null = null
 
-// errors.ts は純粋(依存ゼロ)のためモックせず実物を使う。
-// FakeAppError の別クラス化は vi.mock factory ↔ fakes の循環初期化を起こすため
-// 廃止し、実 AppError の別名として維持する(WP-A2 で修正)。
+// errors.ts is pure (dependency-free), so use the real module instead of mocking it.
+// Defining FakeAppError as a separate class creates a circular initialization between
+// the vi.mock factory and fakes, so retain it as an alias of the real AppError.
 export const FakeAppError = AppError
 export type FakeAppError = AppError
-
-export function fakeUserMessageFor(code: ErrorCode): string {
-  return userMessageFor(code)
-}
 
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
 

@@ -1,5 +1,5 @@
-// QR ペイロード文字列の符号化・復号(docs/qr-protocol.md §1/§2/§6)。
-// 検証順序とエラー対応は qr-protocol.md §6 の表が正。
+// Encode and decode QR payload strings (docs/qr-protocol.md §1/§2/§6).
+// The table in qr-protocol.md §6 is authoritative for validation order and error mapping.
 import type {
   AnyEnvelopeV1,
   MessageEnvelope,
@@ -36,7 +36,7 @@ export const QR_PREFIX = {
   message: "OCM1:",
   "symmetric-key": "OCK1:",
   "public-key": "OCP1:",
-  // v1 では予約のみ(生成・受理とも行わない)
+  // Reserved in v1; neither generate nor accept it.
   "encrypted-private-key": "OCB1:",
 } as const
 
@@ -109,8 +109,8 @@ function containsUnsupportedCbor(value: unknown): boolean {
   return false
 }
 
-// CBOR は共有 Encoder({ useRecords: false, tagUint8Array: false })・
-// 型別の固定キー順ビルダー経由でのみ符号化する(plan §12-2)
+// Encode CBOR only through the shared Encoder({ useRecords: false, tagUint8Array: false })
+// and per-type builders with fixed key order.
 export function encodeEnvelopeToPayload(envelope: AnyEnvelopeV1): string {
   try {
     const kind = prefixKindForEnvelope(envelope)

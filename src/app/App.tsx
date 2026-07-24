@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react"
-import { RouterProvider } from "react-router-dom"
+import { RouterProvider } from "react-router"
 import { getDefaultBootController, type BootController } from "@/app/boot/boot-controller"
 import { useBootState } from "@/app/boot/use-boot-state"
 import { useDisplayGate } from "@/app/display-gate"
@@ -13,26 +13,36 @@ import { AppProviders, ThemeProvider, useSensitiveSession } from "@/app/provider
 import { OnlineGate, OnlineInstallScreen } from "@/components/online-gate"
 import { OfflineAckShell } from "@/components/offline-ack-shell"
 import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
-import { userMessageFor } from "@/crypto/errors"
+import {
+  LanguageProvider,
+  LanguageToggle,
+  useI18n,
+  type Language,
+} from "@/i18n"
 
 export interface AppProps {
   bootController?: BootController
   detectFeatures?: () => FeatureSupport
+  initialLanguage?: Language
   pwaHook?: UseRegisterSwHook
   reloadPage?: () => void
   routerFactory?: typeof createAppRouter
 }
 
 function UnsupportedBrowser({ features }: { features: FeatureSupport }) {
+  const { t } = useI18n()
   const entries = [
     ["Web Crypto", features.webCrypto],
     ["IndexedDB", features.indexedDb],
-    ["カメラ", features.camera],
+    [t("feature.camera"), features.camera],
     ["Service Worker", features.serviceWorker],
   ] as const
   return (
     <main className="grid min-h-dvh place-items-center bg-background p-4 text-foreground">
       <section className="w-full max-w-lg space-y-5 rounded-xl border bg-card p-6 shadow-sm">
+        <div className="flex justify-end">
+          <LanguageToggle />
+        </div>
         <div className="flex items-start gap-3">
           <AlertTriangle
             aria-hidden="true"
@@ -41,15 +51,14 @@ function UnsupportedBrowser({ features }: { features: FeatureSupport }) {
           <div>
             <p className="font-mono text-xs text-muted-foreground">UNSUPPORTED_BROWSER</p>
             <h1 className="text-xl font-bold tracking-tight">
-              このブラウザーでは利用できません
+              {t("browser.unsupported.title")}
             </h1>
           </div>
         </div>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          暗号化と端末内保存に必要な機能が不足しています。Web
-          CryptoとIndexedDBに対応した最新のブラウザーで開いてください。
+          {t("browser.unsupported.body")}
         </p>
-        <ul aria-label="ブラウザー機能一覧" className="space-y-2">
+        <ul aria-label={t("browser.featureList.ariaLabel")} className="space-y-2">
           {entries.map(([label, supported]) => (
             <li
               key={label}
@@ -62,7 +71,7 @@ function UnsupportedBrowser({ features }: { features: FeatureSupport }) {
               )}
               <span>{label}</span>
               <span className="ml-auto text-sm text-muted-foreground">
-                {supported ? "利用できます" : "利用できません"}
+                {supported ? t("common.supported.yes") : t("common.supported.no")}
               </span>
             </li>
           ))}
@@ -76,6 +85,9 @@ function BootStatusScreen({ children }: { children: ReactNode }) {
   return (
     <main className="grid min-h-dvh place-items-center bg-background p-4 text-foreground">
       <section className="w-full max-w-md space-y-3 rounded-xl border bg-card p-6 shadow-sm">
+        <div className="flex justify-end">
+          <LanguageToggle />
+        </div>
         {children}
       </section>
     </main>
@@ -104,6 +116,7 @@ function BootGate({
   reloadPage: () => void
   routerFactory: typeof createAppRouter
 }) {
+  const { t } = useI18n()
   const display = useDisplayGate()
   const { clearTransientForOnlineEpisode } = display
   const { resetSensitiveSession } = useSensitiveSession()
@@ -174,7 +187,7 @@ function BootGate({
       return (
         <BootStatusScreen>
           <p role="status" className="text-sm text-muted-foreground">
-            ネットワーク到達性とローカルデータを確認しています…
+            {t("boot.probing.status")}
           </p>
         </BootStatusScreen>
       )
@@ -195,9 +208,9 @@ function BootGate({
     case "wiping":
       return (
         <BootStatusScreen>
-          <h1 className="text-xl font-bold">ローカルデータを初期化しています</h1>
+          <h1 className="text-xl font-bold">{t("boot.wiping.title")}</h1>
           <p role="status" className="text-sm text-muted-foreground">
-            完了するまでこの画面を閉じないでください。
+            {t("boot.wiping.body")}
           </p>
         </BootStatusScreen>
       )
@@ -214,24 +227,18 @@ function BootGate({
       }
       return (
         <BootStatusScreen>
-          <h1 className="text-xl font-bold">
-            オンラインを検出したため、ローカルデータを初期化しました
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            論理削除を試行しました。物理消去は保証されません。
-          </p>
+          <h1 className="text-xl font-bold">{t("boot.wiped.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("boot.wiped.body")}</p>
         </BootStatusScreen>
       )
     case "partial-failure":
       return (
         <BootStatusScreen>
           <p className="font-mono text-xs text-destructive">RESET_FAILED</p>
-          <h1 className="text-xl font-bold">{userMessageFor("RESET_FAILED")}</h1>
+          <h1 className="text-xl font-bold">{t("errors.RESET_FAILED")}</h1>
+          <p className="text-sm text-muted-foreground">{t("boot.wiped.body")}</p>
           <p className="text-sm text-muted-foreground">
-            論理削除を試行しました。物理消去は保証されません。
-          </p>
-          <p className="text-sm text-muted-foreground">
-            このタブを閉じてください。再び利用するには、端末を完全フォーマットしてからアプリを導入し直してください。
+            {t("boot.partialFailure.retryHint")}
           </p>
         </BootStatusScreen>
       )
@@ -242,13 +249,13 @@ function reloadCurrentPage(): void {
   window.location.reload()
 }
 
-export function App({
+function AppContent({
   bootController,
   detectFeatures,
   pwaHook,
   reloadPage = reloadCurrentPage,
   routerFactory = createAppRouter,
-}: AppProps) {
+}: Omit<AppProps, "initialLanguage">) {
   const detector = detectFeatures ?? detectBrowserFeatures
   const features = useMemo(() => detector(), [detector])
 
@@ -268,5 +275,15 @@ export function App({
         routerFactory={routerFactory}
       />
     </AppProviders>
+  )
+}
+
+export function App({ initialLanguage, ...props }: AppProps) {
+  return (
+    <LanguageProvider
+      {...(initialLanguage === undefined ? {} : { initialLanguage })}
+    >
+      <AppContent {...props} />
+    </LanguageProvider>
   )
 }

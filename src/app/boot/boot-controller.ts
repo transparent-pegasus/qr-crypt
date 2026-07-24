@@ -341,7 +341,7 @@ function appMetadataTransaction(database: BootDatabase): BootTransaction {
   return database.transaction(STORE_APP_METADATA, "readwrite")
 }
 
-/** Storage API for WP-14's strongly-confirmed offline settings flow. */
+/** Storage API for the strongly confirmed, one-update-only offline maintenance flow. */
 export async function armMaintenanceToken(armedAt = Date.now()): Promise<void> {
   if (!Number.isFinite(armedAt) || armedAt < 0) throw new AppError("STORAGE_FAILED")
   if (typeof navigator !== "undefined" && navigator.onLine) {

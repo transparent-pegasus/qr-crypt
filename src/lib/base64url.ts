@@ -1,5 +1,5 @@
-// Base64URL(パディング無し)変換の集約点(spec §23)。
-// 他モジュールでの btoa/atob 直接使用は禁止。
+// Centralized Base64URL conversion without padding.
+// Direct use of btoa/atob in other modules is prohibited.
 
 export function toBase64Url(bytes: Uint8Array): string {
   let binary = ""
@@ -11,7 +11,8 @@ export function toBase64Url(bytes: Uint8Array): string {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "")
 }
 
-// 不正文字・パディング付き・長さ不整合は throw(呼出側で AppError へ変換)
+// Throw on invalid characters, padding, or inconsistent length; callers convert
+// the error to AppError.
 export function fromBase64Url(text: string): Uint8Array {
   if (!/^[A-Za-z0-9_-]*$/u.test(text) || text.length % 4 === 1) {
     throw new TypeError("invalid base64url")

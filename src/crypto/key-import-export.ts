@@ -1,4 +1,4 @@
-// 鍵の import/export。import は必ず厳密検証を伴う。
+// Key import/export. Import always includes strict validation.
 import { AppError, toAppError } from "@/crypto/errors"
 import { toOwnedArrayBuffer } from "@/lib/bytes"
 import { AES_KEY_BYTES } from "@/lib/limits"
@@ -15,7 +15,8 @@ export async function exportAesKeyRaw(key: CryptoKey): Promise<Uint8Array> {
   }
 }
 
-// 32 バイト以外は AppError(INVALID_QR_PAYLOAD)。extractable: true で復元
+// Reject any length other than 32 bytes with AppError(INVALID_QR_PAYLOAD).
+// Restore with extractable: true.
 export async function importAesKeyRaw(raw: Uint8Array): Promise<CryptoKey> {
   if (raw.byteLength !== AES_KEY_BYTES) {
     throw new AppError("INVALID_QR_PAYLOAD")

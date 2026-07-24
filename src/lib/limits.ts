@@ -1,4 +1,5 @@
-// サイズ制約の単一導出表(plan §13 C12、v2: plan2.1 §D2)。個別モジュールでの再定義禁止。
+// Single derivation table for size constraints.
+// Redefining these constraints in individual modules is prohibited.
 import { env } from "@/schemas/env-schema"
 export {
   FRAME_INTERVAL_MS_DEFAULT,
@@ -14,60 +15,65 @@ export {
   type FrameIntervalMs,
 } from "@/lib/frame-interval"
 
-// 平文の最大 UTF-8 バイト数(spec §7.2、env で調整可能)
+// Maximum plaintext size in UTF-8 bytes, configurable via the environment.
 export const MAX_PLAINTEXT_BYTES = env.maxPlaintextBytes
 
-// AES-256-GCM は平文長 + 認証タグ 16B(WebCrypto は末尾付加)
+// AES-256-GCM size is plaintext length + a 16B authentication tag appended by WebCrypto.
 export const MAX_CIPHERTEXT_BYTES = MAX_PLAINTEXT_BYTES + 16
 
-// AAD("OCAAD1|v|type|alg|keyId|createdAt")の実寸は 60B 前後。余裕を見た上限。
+// AAD ("OCAAD1|v|type|alg|keyId|createdAt") is about 60B in practice.
+// This limit includes headroom.
 export const MAX_AAD_BYTES = 128
 
-// v1 経路専用のペイロード文字列上限(plan2.1 §D2 — v2 経路では使用しない)。
-// 最大 RSA ハイブリッドエンベロープ ≈ CBOR(固定キー 9 個 + ciphertext 4112B
-// + wrappedKey 384B + iv 12B + aad ≤128B + 文字列 ID 群) ≈ 4.7KB
-// → base64url ≈ ceil(4700×4/3) ≈ 6267 + プレフィックス 5 ≈ 6.3K < 8192(余裕込み)
+// Payload-string limit exclusively for the v1 path; unused by v2.
+// Maximum RSA hybrid envelope ≈ CBOR (9 fixed keys + ciphertext 4112B
+// + wrappedKey 384B + iv 12B + aad ≤128B + string IDs) ≈ 4.7KB
+// → base64url ≈ ceil(4700×4/3) ≈ 6267 + 5-character prefix ≈ 6.3K < 8192
+// (including headroom).
 export const MAX_PAYLOAD_CHARS = 8192
 
-// 鍵 ID / アーティファクト ID: 16 バイト乱数の base64url(22 文字)
+// Key IDs / artifact IDs: base64url of 16 random bytes (22 characters).
 export const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/
 export const KEY_ID_RAW_BYTES = 16
 
-// RSA-OAEP-3072 の wrap 出力は常に modulus 長 = 384B
+// RSA-OAEP-3072 wrapping output is always the modulus length: 384B.
 export const WRAPPED_KEY_BYTES = 384
 
-// AES-GCM の IV は 96bit 固定(spec §8)
+// AES-GCM IVs are fixed at 96 bits.
 export const IV_BYTES = 12
 
-// AES-256 raw 鍵長
+// Raw AES-256 key length.
 export const AES_KEY_BYTES = 32
 
 // ---------------------------------------------------------------------------
-// v2 ポスト量子(spec2 §5/§6/§12、plan2.1 §C5/§D2/§G)
+// v2 post-quantum limits; see docs/qr-protocol-v2.md §4–§6.
 // ---------------------------------------------------------------------------
 
-// HKDF-SHA-256 の salt は暗号化ごとの CSPRNG 32B(spec2 §5)
+// HKDF-SHA-256 salt is 32B from the CSPRNG for each encryption.
 export const HKDF_SALT_BYTES = 32
 
-// messageId は CSPRNG 16B 固定長(plan2.1 §G。リプレイ防止機構ではない)
+// messageId is a fixed 16B from the CSPRNG; it is not replay prevention.
 export const MESSAGE_ID_BYTES = 16
 
-// 鍵生成シード長(spec2 §8。FIPS 203/204 の KeyGen シード)
+// FIPS 203/204 KeyGen seed lengths.
 export const KEM_SEED_BYTES = 64
 export const DSA_SEED_BYTES = 32
 
-// フレーム設定の範囲と既定(spec2 §12。Preferences/env の検証は本表を参照)
-// FRAME_BYTES_MIN=400 を下げてはならない: 同一 origin の旧 PWA バンドルが
-// IndexedDB を共有したまま frameBytes < 400 を validatePreferences すると
-// STORAGE_FAILED → boot の preferencesReadFailed 経由で wipeOnOnline が強制される。
+// Frame-setting ranges and defaults from docs/qr-protocol-v2.md §6.
+// Preferences/environment validation
+// references this table. Do not lower FRAME_BYTES_MIN=400: if an older PWA bundle on
+// the same origin shares IndexedDB and validates frameBytes < 400, it produces
+// STORAGE_FAILED, which forces wipeOnOnline through boot's preferencesReadFailed path.
 export const FRAME_BYTES_MIN = 400
 export const FRAME_BYTES_MAX = 900
 export const FRAME_BYTES_DEFAULT = 600
-// 送信側 split のみが使う chunk 下限(preferences 範囲とは独立。上記 wipe ハザード回避)。
+// Minimum chunk size used only by sender-side splitting. It is independent of the
+// Preferences range to avoid the wipe hazard described above.
 export const FRAME_CHUNK_MIN_BYTES = 200
-// OCP2/OCS2 単鍵 QR 表示専用の固定 chunk(設定・Preferences 非連動・非永続)。
+// Fixed chunk size used only to display OCP2/OCS2 single-key QRs.
+// It is not tied to settings/Preferences and is not persisted.
 export const PQ_KEY_QR_FRAME_BYTES = 280
-// OCI2 は読取安定性のため 200B を目安に 20〜25 枚へ均等分割する。
+// For scanning stability, split OCI2 evenly into 20–25 frames targeting about 200B each.
 export const PQ_IDENTITY_QR_TARGET_FRAME_BYTES = 200
 export const PQ_IDENTITY_QR_FRAME_COUNT_MIN = 20
 export const PQ_IDENTITY_QR_FRAME_COUNT_MAX = 25
@@ -90,23 +96,24 @@ export const TRANSFER_TIMEOUT_MINUTES_DEFAULT = 10
 export const RESET_CHURN_MB_MIN = 0
 export const RESET_CHURN_MB_MAX = 512
 
-// プロトコル上の絶対上限(受信側 resource 検査。plan2.1 §D4)。
-// 送信側の生成上限は env.qrMaxFrames(≤64)で別途絞る。
-// 2026-07-23 maximum 正準 CBOR 実測(maxPlaintext=4,096B、name="テスト"):
+// Absolute protocol limit for receiver-side resource checks.
+// The sender generation limit is separately constrained by env.qrMaxFrames (≤64).
+// Measured maximum canonical CBOR on 2026-07-23 (maxPlaintext=4,096B,
+// name=<three-character, 9-byte non-ASCII UTF-8 fixture>):
 // artifact                         bytes   OCF2 frames (400 / 600 / 900B)
 // unsigned empty / max          1,887 / 5,986       5/4/3 / 15/10/7
 // signed empty / max            6,613 / 10,711     17/12/8 / 27/18/12
 // OCI2 bundle                    4,402              12/8/5
 // OCP2 KEM / OCS2 DSA           1,733 / 2,755       5/3/2 / 7/5/4
 // OCB2 reserved sizing fixture   4,637              12/8/6
-// OCI2 は count 均等分割: 4,402B→23 枚(191/192B)。
-// 単鍵固定 chunk 280B (PQ_KEY_QR_FRAME_BYTES): OCP2 1,733→7 / OCS2 2,755→10
-// 各 OCF2 文字列の EC-Q 実生成も maximum-artifact-size.golden.test.ts で固定する。
+// OCI2 splits evenly by count: 4,402B → 23 frames (191/192B).
+// Fixed 280B single-key chunks (PQ_KEY_QR_FRAME_BYTES): OCP2 1,733 → 7 / OCS2 2,755 → 10.
+// maximum-artifact-size.golden.test.ts also pins actual EC-Q generation for every OCF2 string.
 export const PROTOCOL_MAX_FRAMES = 64
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX
 export const MAX_ARTIFACT_BYTES_ABSOLUTE = PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES
 
-// 送信側: 現在の frameBytes 設定で生成可能な artifact 生バイト上限(plan2.1 §D2)
+// Sender: maximum raw artifact bytes generatable under the current frameBytes setting.
 export function maxArtifactBytes(frameBytes: number): number {
   if (
     !Number.isSafeInteger(frameBytes) ||
@@ -118,7 +125,7 @@ export function maxArtifactBytes(frameBytes: number): number {
   return env.qrMaxFrames * frameBytes
 }
 
-// OCF2 フレーム文字列(プレフィックス込み)の上限 = QR v40・EC-Q のバイト容量。
-// ペイロードは ASCII のみのため文字数 = バイト数(qr/encode.ts の容量表と一致
-// していることを tests/pq のゴールデンテストで固定する)。
+// The OCF2 frame-string limit, including the prefix, equals QR v40 EC-Q byte capacity.
+// Payloads are ASCII-only, so character count equals byte count; golden tests under
+// tests/pq pin equality with the capacity table in qr/encode.ts.
 export const MAX_FRAME_PAYLOAD_CHARS = 1663

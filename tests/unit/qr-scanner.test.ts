@@ -305,7 +305,6 @@ describe("camera scanner lifecycle", () => {
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({
         code: "CAMERA_NOT_AVAILABLE",
-        userMessage: "カメラを利用できません。",
       }),
       {
         phase: "playing",
@@ -331,7 +330,6 @@ describe("camera scanner lifecycle", () => {
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({
         code: "CAMERA_NOT_AVAILABLE",
-        userMessage: "カメラを利用できません。",
       }),
       {
         phase: "playing",
@@ -414,7 +412,6 @@ describe("camera scanner lifecycle", () => {
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({
         code: "CAMERA_NOT_AVAILABLE",
-        userMessage: "カメラを利用できません。",
       }),
       {
         phase: "playing",

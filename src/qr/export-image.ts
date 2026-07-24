@@ -1,5 +1,5 @@
-// QR の PNG/SVG/テキスト出力とダウンロード(spec §13/§14)。
-// ファイル名に秘密情報・平文・鍵素材を含めない。
+// QR PNG/SVG/text export and download.
+// Filenames must not contain secret information, plaintext, or key material.
 import type { QrEcLevel } from "@/schemas/domain"
 import * as QRCode from "qrcode"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -46,7 +46,8 @@ export async function qrSvgBlob(
   }
 }
 
-// 制御文字と / \ : * ? " < > | を除去、trim、空なら "qr"、80 文字で切詰
+// Remove control characters and / \ : * ? " < > |, trim, use "qr" if empty,
+// and truncate to 80 characters.
 export function sanitizeQrFileName(name: string): string {
   let result = ""
   const forbidden = new Set(["/", "\\", ":", "*", "?", '"', "<", ">", "|"])

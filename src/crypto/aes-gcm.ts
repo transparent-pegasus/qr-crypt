@@ -1,5 +1,5 @@
-// AES-256-GCM(spec §8 / docs/qr-protocol.md §5)。
-// IV は暗号化ごとに randomBytes(12)。tagLength は 128 を明示。
+// AES-256-GCM; see docs/qr-protocol.md §5.
+// Use randomBytes(12) for every encryption IV and explicitly set tagLength to 128.
 import type { AesMessageEnvelopeV1 } from "@/crypto/envelope"
 import { buildAad } from "@/crypto/envelope"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -12,7 +12,7 @@ import {
   MAX_PLAINTEXT_BYTES,
 } from "@/lib/limits"
 
-// extractable: true(共通鍵 QR 生成のため)、usages: encrypt/decrypt
+// extractable: true (required to generate a symmetric-key QR); usages: encrypt/decrypt.
 export async function generateAesKey(): Promise<CryptoKey> {
   try {
     return await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, [
@@ -74,8 +74,8 @@ export async function encryptWithAesKey(args: {
   }
 }
 
-// AAD はエンベロープから再計算し envelope.aad と一致検証してから復号。
-// 復号結果が MAX_PLAINTEXT_BYTES 超なら DECRYPTION_FAILED(plan §13 C12)。
+// Recompute AAD from the envelope, verify that it matches envelope.aad, and only then decrypt.
+// If the decrypted result exceeds MAX_PLAINTEXT_BYTES, fail with DECRYPTION_FAILED.
 export async function decryptWithAesKey(args: {
   key: CryptoKey
   envelope: AesMessageEnvelopeV1

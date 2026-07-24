@@ -1,7 +1,7 @@
-// PQ 暗号 Worker RPC ホスト(spec2 §4、WP-11)。
-// 同期プロバイダー(provider-noble)は本 Worker 内でのみ保持する。
-// 秘密素材(seed / 展開済み秘密鍵 / 共有秘密 / 導出鍵バイト)は
-// postMessage で外へ返さず、各操作の finally で zeroize する(plan2.1 §F)。
+// PQ cryptographic Worker RPC host.
+// Hold the synchronous provider (provider-noble) only inside this Worker.
+// Never return secret material (seeds, expanded secret keys, shared secrets, or derived
+// key bytes) through postMessage; zeroize it in each operation's finally block.
 import { AppError, type ErrorCode } from "@/crypto/errors"
 import {
   decodeSignedMessageV2,
@@ -99,7 +99,7 @@ async function generateIdentityKeys(
   let kemSecretKey: Uint8Array | undefined
   let dsaSecretKey: Uint8Array | undefined
   try {
-    // 独立した CSPRNG 呼出。KEM seed と DSA seed の共用は禁止。
+    // Independent CSPRNG calls. Sharing a seed between KEM and DSA is prohibited.
     kemSeed = generateKemSeed()
     dsaSeed = generateDsaSeed()
     const kemKeys = kem.keygen(kemSeed)
@@ -483,8 +483,9 @@ function fallbackCode(operation: PqWorkerOperation): ErrorCode {
 }
 
 function sanitizedCode(error: unknown, operation: PqWorkerOperation): ErrorCode {
-  // RPC 操作ごとの公開エラーへ畳み込み、CBOR/WebCrypto/noble の内部段階を
-  // 呼出側へ漏らさない。署名の不一致だけは verify 系の公開コードになる。
+  // Collapse failures into public errors for each RPC operation without exposing
+  // internal CBOR/WebCrypto/noble stages to the caller. Only a signature mismatch
+  // becomes a public verification error code.
   if (error instanceof AppError && error.code === "UNSUPPORTED_ALGORITHM") {
     return error.code
   }
@@ -555,8 +556,8 @@ function exactOwnedBuffer(view: Uint8Array): ArrayBuffer | undefined {
   return undefined
 }
 
-// 秘密結果(plaintext / signedMessageBytes)は transfer しない。公開 artifact の
-// exact-length owned ArrayBuffer だけを移動する。
+// Do not transfer secret results (plaintext / signedMessageBytes). Transfer only
+// exact-length owned ArrayBuffers containing public artifacts.
 function publicTransferables(
   operation: PqWorkerOperation,
   response: PqWorkerRpcResponse,

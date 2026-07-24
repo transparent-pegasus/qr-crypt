@@ -1,5 +1,5 @@
-// v2 バイト規約のゴールデンフィクスチャ(plan2.1 §C5/§C8/§E5 — WP-A2 が凍結)。
-// hex 値は docs/qr-protocol-v2.md §8 と一致していなければならない。
+// Golden fixtures for v2 byte conventions.
+// Hex values must match docs/qr-protocol-v2.md §8.
 import { describe, expect, it } from "vitest"
 import type { PublicIdentityBundleV2 } from "@/schemas/domain"
 import { AppError, type ErrorCode } from "@/crypto/errors"
@@ -30,14 +30,14 @@ function expectCode(fn: () => unknown, code: ErrorCode): void {
 }
 
 describe("hkdfInfoV2", () => {
-  it("unsigned 768 の info バイト列は凍結値と一致する", () => {
+  it("matches the frozen info bytes for unsigned 768", () => {
     expect(bytesToHex(hkdfInfoV2("ML-KEM-768+HKDF-SHA256+A256GCM", KEY_ID))).toBe(
       "51525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b484b44462d534841" +
         "3235362b4132353647434d00000102030405060708090a0b0c0d0e0f02",
     )
   })
 
-  it("signed 768 の info バイト列は凍結値と一致する", () => {
+  it("matches the frozen info bytes for signed 768", () => {
     expect(
       bytesToHex(hkdfInfoV2("ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM", KEY_ID)),
     ).toBe(
@@ -47,7 +47,7 @@ describe("hkdfInfoV2", () => {
     )
   })
 
-  it("keyId は base64url 22 文字・生 16 バイトのみ受理する", () => {
+  it("accepts only a 22-character base64url keyId encoding 16 raw bytes", () => {
     expect(bytesToHex(keyIdRawBytes(KEY_ID))).toBe("000102030405060708090a0b0c0d0e0f")
     expectCode(() => keyIdRawBytes("AAAA"), "INVALID_QR_PAYLOAD")
     expectCode(() => keyIdRawBytes("AAECAwQFBgcICQoLDA0OD+"), "INVALID_QR_PAYLOAD")
@@ -55,7 +55,7 @@ describe("hkdfInfoV2", () => {
 })
 
 describe("mlDsaContextV2", () => {
-  it("コンテキストは UTF8(QRYPT-MESSAGE-V2) 固定・255B 以下", () => {
+  it("fixes the context to UTF8(QRYPT-MESSAGE-V2) at no more than 255B", () => {
     const context = mlDsaContextV2()
     expect(bytesToHex(context)).toBe("51525950542d4d4553534147452d5632")
     expect(context.byteLength).toBeLessThanOrEqual(255)
@@ -63,7 +63,7 @@ describe("mlDsaContextV2", () => {
 })
 
 describe("buildVaultAadV2", () => {
-  it("AAD バイト列は凍結値と一致する", () => {
+  it("matches the frozen AAD bytes", () => {
     const aad = buildVaultAadV2({
       identityId: KEY_ID,
       role: "ml-kem-seed",
@@ -80,7 +80,7 @@ describe("buildVaultAadV2", () => {
     )
   })
 
-  it("role と algorithm の不一致は fail-closed(シード差替え検出)", () => {
+  it("fails closed on a role/algorithm mismatch to detect seed substitution", () => {
     expectCode(
       () =>
         buildVaultAadV2({
@@ -107,13 +107,13 @@ describe("buildVaultAadV2", () => {
 })
 
 describe("pq fingerprints", () => {
-  it("個別鍵指紋はドメイン分離付きで凍結値と一致する", async () => {
+  it("matches the domain-separated frozen fingerprint for an individual key", async () => {
     expect(
       await pqKeyFingerprint("kem", "ML-KEM-768", new Uint8Array(1184).fill(0x0a)),
     ).toBe("86cca89b088994ddd47493b21d6c2ff3e3d44621ab842d289ca92325b1425dc9")
   })
 
-  it("identity 指紋は name を除いたタプルへの指紋で、name に依存しない", async () => {
+  it("fingerprints the identity tuple without name and is independent of name", async () => {
     const bundle: PublicIdentityBundleV2 = {
       version: 2,
       type: "pq-public-identity",
@@ -143,7 +143,7 @@ describe("pq fingerprints", () => {
 })
 
 describe("payload-v2 frame codec", () => {
-  it("OCF2 フレームは往復で同値になり、EC-Q に収まる", () => {
+  it("round-trips OCF2 frames and fits them within EC-Q", () => {
     const frame = {
       version: 2 as const,
       type: "qr-frame" as const,
@@ -153,7 +153,7 @@ describe("payload-v2 frame codec", () => {
       frameCount: 2,
       totalByteLength: 1800,
       payloadSha256: new Uint8Array(32).fill(0x02),
-      chunk: new Uint8Array(900).fill(0x03), // プロトコル最大 chunk
+      chunk: new Uint8Array(900).fill(0x03), // Maximum protocol chunk.
     }
     const payload = encodeFrameToPayload(frame)
     expect(payload.startsWith(QR_PREFIX_V2.frame)).toBe(true)
@@ -162,7 +162,7 @@ describe("payload-v2 frame codec", () => {
     expect(decodeFramePayload(payload)).toEqual(frame)
   })
 
-  it("プレフィックス分類は v2 のみ返し、v1 は null", () => {
+  it("classifies only v2 prefixes and returns null for v1", () => {
     expect(classifyV2Payload("OCF2:xxxx")?.kind).toBe("frame")
     expect(classifyV2Payload("OCM2:xxxx")?.kind).toBe("pq-message")
     expect(classifyV2Payload("OCI2:xxxx")?.kind).toBe("pq-public-identity")
@@ -170,7 +170,7 @@ describe("payload-v2 frame codec", () => {
     expect(classifyV2Payload("plain")).toBeNull()
   })
 
-  it("OCB2(予約)は生成・受理とも拒否する", () => {
+  it("rejects both generation and acceptance of reserved OCB2", () => {
     expectCode(() => splitV2Payload("OCB2:AAAA"), "UNSUPPORTED_ALGORITHM")
     expectCode(
       () => splitV2Payload("OCB2:"),
@@ -178,7 +178,7 @@ describe("payload-v2 frame codec", () => {
     )
   })
 
-  it("フレーム以外を decodeFramePayload に渡すと拒否する", () => {
+  it("rejects non-frame input passed to decodeFramePayload", () => {
     expectCode(() => decodeFramePayload("OCM2:AAAA"), "INVALID_QR_PREFIX")
     expectCode(() => decodeFramePayload("OCF2:"), "INVALID_QR_PAYLOAD")
     expectCode(() => decodeFramePayload("OCF2:!!!"), "INVALID_QR_PAYLOAD")

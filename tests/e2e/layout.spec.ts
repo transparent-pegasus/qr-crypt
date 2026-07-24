@@ -5,7 +5,7 @@ import {
   openOfflineApp,
 } from "./helpers"
 
-test("320px 幅で鍵タブが横 overflow せず2等分になる", async ({
+test("splits key tabs evenly without horizontal overflow at 320px", async ({
   context,
   page,
 }) => {
@@ -27,7 +27,7 @@ test("320px 幅で鍵タブが横 overflow せず2等分になる", async ({
   expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1)
 })
 
-test("共通 Close の寸法・タイトル余白・固定位置と非表示指定を保つ", async ({
+test("preserves shared Close dimensions, title spacing, fixed position, and hidden state", async ({
   context,
   page,
 }) => {
@@ -63,12 +63,12 @@ test("共通 Close の寸法・タイトル余白・固定位置と非表示指�
 
   await savedClose.click()
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "読込", exact: true }).click()
+  await page.getByRole("tab", { name: "Import", exact: true }).click()
   await page
-    .getByRole("button", { name: "鍵QRを読み取る", exact: true })
+    .getByRole("button", { name: "Scan a key QR code", exact: true })
     .click()
   const scannerDialog = page.getByRole("dialog", {
-    name: "鍵QRを読み取る",
+    name: "Scan a key QR code",
   })
   const scannerClose = scannerDialog.getByRole("button", {
     name: "Close",

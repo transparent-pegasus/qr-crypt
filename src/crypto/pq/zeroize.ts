@@ -1,6 +1,7 @@
-// 秘密バイト列の消去(spec2 §4)。JS では GC・内部コピー・最適化のため
-// 完全なメモリー消去は保証できない — その事実はセキュリティ画面へ明記する。
-// detached(Transfer 済み)バッファーへの fill は no-op のため黙って握る。
+// Clearing secret byte arrays. JavaScript cannot guarantee complete memory
+// erasure because of garbage collection, internal copies, and optimization; state that
+// limitation explicitly on the security screen. Silently tolerate fill on a detached
+// (already transferred) buffer because it cannot clear anything.
 
 export function zeroize(...views: (Uint8Array | undefined)[]): void {
   for (const view of views) {
@@ -8,12 +9,12 @@ export function zeroize(...views: (Uint8Array | undefined)[]): void {
     try {
       view.fill(0)
     } catch {
-      // detached ArrayBuffer 等。消去対象が既に移動済みであれば何もできない
+      // Detached ArrayBuffer or equivalent: nothing can be done once the target has moved.
     }
   }
 }
 
-// fn の完了(例外含む)後に必ず views を消去する
+// Always clear views after fn completes, including when it throws.
 export async function withZeroize<T>(
   views: (Uint8Array | undefined)[],
   fn: () => Promise<T>,

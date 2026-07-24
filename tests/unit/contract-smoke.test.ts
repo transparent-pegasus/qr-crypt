@@ -1,8 +1,8 @@
-// 契約レイヤーの smoke テスト(plan §13 C2/C4)。
-// スタブ実装の呼出はせず、実装済みの契約部分のみを検証する。
-// WP-2 はこのテストを緑に保ったまま拡張してよい(削除・弱体化は不可)。
+// Contract-layer smoke tests.
+// Do not invoke stub implementations; verify only implemented portions of the contract.
+// These tests may be extended, but must not be removed or weakened.
 import { describe, expect, it } from "vitest"
-import { AppError, ERROR_CODES, toAppError, userMessageFor } from "@/crypto/errors"
+import { AppError, ERROR_CODES, messageFor, toAppError } from "@/crypto/errors"
 import {
   FRAME_INTERVAL_MS_VALUES,
   isFrameIntervalMs,
@@ -17,14 +17,15 @@ import { env, parseAppEnv } from "@/schemas/env-schema"
 import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
 
 describe("contract smoke", () => {
-  it("error model exposes all 15 spec codes with Japanese user messages", () => {
+  it("keeps only error codes and resolves user messages explicitly by language", () => {
     expect(ERROR_CODES).toHaveLength(20)
     const error = new AppError("DECRYPTION_FAILED")
     expect(error.code).toBe("DECRYPTION_FAILED")
-    expect(error.userMessage).toBe(
+    expect(error).not.toHaveProperty("userMessage")
+    expect(messageFor(error.code, "ja")).toBe(
       "復号できませんでした。鍵、暗号方式、または暗号文が一致していません。",
     )
-    expect(userMessageFor("QR_TOO_LARGE")).toContain("QRコード")
+    expect(messageFor("QR_TOO_LARGE", "en")).toContain("QR code")
     expect(toAppError(new Error("x"), "STORAGE_FAILED").code).toBe("STORAGE_FAILED")
     expect(toAppError(error, "STORAGE_FAILED")).toBe(error)
   })
@@ -58,19 +59,21 @@ describe("contract smoke", () => {
         parseAppEnv({
           VITE_QR_FRAME_INTERVAL_MS: String(frameIntervalMs),
         }),
-      ).toThrow("環境変数が不正です")
+      ).toThrow("Invalid environment variables")
     }
-    expect(() => parseAppEnv({ VITE_ENABLE_RSA: "yes" })).toThrow("環境変数が不正です")
+    expect(() => parseAppEnv({ VITE_ENABLE_RSA: "yes" })).toThrow(
+      "Invalid environment variables",
+    )
     expect(() => parseAppEnv({ VITE_QR_RENDER_SIZE: "abc" })).toThrow(
-      "環境変数が不正です",
+      "Invalid environment variables",
     )
     for (const legacyAlgorithm of ["MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"]) {
       expect(() => parseAppEnv({ VITE_DEFAULT_ALGORITHM: legacyAlgorithm })).toThrow(
-        "環境変数が不正です",
+        "Invalid environment variables",
       )
     }
     expect(() => parseAppEnv({ VITE_DEFAULT_PQ_PROFILE: "balanced" })).toThrow(
-      "環境変数が不正です",
+      "Invalid environment variables",
     )
   })
 
@@ -94,7 +97,7 @@ describe("contract smoke", () => {
     expect(QR_PREFIX["encrypted-private-key"]).toBe("OCB1:")
   })
 
-  it("qr name schema enforces spec §14 rules", () => {
+  it("qr name schema enforces the naming rules", () => {
     expect(qrNameSchema.parse("  暗号文-20260721  ")).toBe("暗号文-20260721")
     expect(() => qrNameSchema.parse("   ")).toThrow()
     expect(() => qrNameSchema.parse("a".repeat(81))).toThrow()

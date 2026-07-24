@@ -23,7 +23,7 @@ describe("AnimatedQrFrames", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
-  it("shows one-based Japanese missing-frame positions and the current speed grid", () => {
+  it("shows one-based English missing-frame positions and the current speed grid", () => {
     render(
       <AnimatedQrFrames
         frames={[frame(0, 3), frame(2, 3)]}
@@ -33,9 +33,11 @@ describe("AnimatedQrFrames", () => {
     )
 
     expect(
-      screen.getByText("欠損フレーム: 2枚目。欠損したままでは復元できません。"),
+      screen.getByText(
+        "Missing frames: frame 2. Recovery is not possible while frames are missing.",
+      ),
     ).toBeInTheDocument()
-    const speed = screen.getByLabelText("表示速度")
+    const speed = screen.getByLabelText("Display speed")
     expect(speed).toHaveAttribute("min", "1000")
     expect(speed).toHaveAttribute("max", "3000")
     expect(speed).toHaveAttribute("step", "500")

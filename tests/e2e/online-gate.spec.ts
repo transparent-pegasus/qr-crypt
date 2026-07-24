@@ -10,15 +10,15 @@ import {
   waitForServiceWorkerControl,
 } from "./helpers"
 
-test("オンライン遷移で機能と一時平文を隠しオフライン復帰時に消去済みにする", async ({
+test("hides functionality and transient plaintext online and leaves it cleared after returning offline", async ({
   context,
   page,
 }) => {
   await loadOnlineGate(page)
-  await expect(page.getByLabel("平文")).toBeHidden()
+  await expect(page.getByLabel("Plaintext")).toBeHidden()
   await switchToOfflineApp(page, context)
 
-  const plaintext = page.getByLabel("平文", { exact: true })
+  const plaintext = page.getByLabel("Plaintext", { exact: true })
   await plaintext.fill("オンライン遷移で即時消去する一時平文")
   await context.setOffline(false)
   await expectOnlineGate(page)
@@ -29,10 +29,10 @@ test("オンライン遷移で機能と一時平文を隠しオフライン復�
   await expect(plaintext).toBeHidden()
   await acknowledgeOfflineRisk(page)
   await expect(mainNavigation(page)).toBeVisible()
-  await expect(page.getByLabel("平文", { exact: true })).toHaveValue("")
+  await expect(page.getByLabel("Plaintext", { exact: true })).toHaveValue("")
 })
 
-test("マーカー不在の真のコールドオフライン起動では承認を要求しない", async ({
+test("does not require acknowledgement on a genuine marker-free cold offline boot", async ({
   context,
   page,
 }) => {
@@ -40,13 +40,13 @@ test("マーカー不在の真のコールドオフライン起動では承認�
   await switchToColdOfflineApp(page, context)
   await expect(
     page.getByRole("heading", {
-      name: "続行前の確認",
+      name: "Confirm before continuing",
     }),
   ).toBeHidden()
   await expect(mainNavigation(page)).toBeVisible()
 })
 
-test("2タブの片側承認は他方の進行中 shell を解除せず origin の次回起動へ反映する", async ({
+test("one tab's acknowledgement does not unlock the other tab's active shell and applies on the origin's next boot", async ({
   context,
   page,
 }) => {
@@ -73,7 +73,7 @@ test("2タブの片側承認は他方の進行中 shell を解除せず origin �
     await expect(mainNavigation(peer)).toBeVisible()
     await expect(
       peer.getByRole("heading", {
-        name: "続行前の確認",
+        name: "Confirm before continuing",
       }),
     ).toBeHidden()
   } finally {

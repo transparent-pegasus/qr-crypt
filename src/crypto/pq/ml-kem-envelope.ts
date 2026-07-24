@@ -1,6 +1,7 @@
-// PQ メッセージ暗号化の高レベル API(spec2 §5/§6/§7 — WP-13)。
-// suite は選択済み鍵の実 algorithm から resolveSuite で導出する(plan2.1 §C1)。
-// Worker RPC(encryptPqMessage)へ委譲し、main thread で秘密素材を扱わない。
+// High-level API for PQ message encryption; see docs/qr-protocol-v2.md §3–§5.
+// Derive the suite from the selected keys' actual algorithms via resolveSuite
+// rather than from a preference. Delegate to the encryptPqMessage Worker RPC so the main thread
+// does not handle secret material.
 import type { PqCryptoClient } from "@/crypto/pq/worker-client"
 import type {
   MlKemMessageEnvelopeV2,
@@ -14,10 +15,10 @@ import { MAX_PLAINTEXT_BYTES, MESSAGE_ID_BYTES } from "@/lib/limits"
 
 export interface EncryptPqArgs {
   client: PqCryptoClient
-  // 受信者: 取込済み bundle(recipient の KEM 公開鍵と keyId を提供)
+  // Recipient: imported bundle that supplies the recipient KEM public key and keyId.
   recipient: PqPublicBundleRecord
   plaintext: Uint8Array
-  // 署名付きの場合のみ: 自分の identity(signing 側を使用)+ Vault 鍵
+  // Signed mode only: the local identity (signing side) plus the Vault key.
   sign?: {
     identity: PostQuantumIdentity
     vaultKey: CryptoKey
