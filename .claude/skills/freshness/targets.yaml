@@ -17,13 +17,13 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-07-24 # last revision of this registry itself
+updated: 2026-07-25 # last revision of this registry itself
 
 units:
   - id: deps
     category: dependencies
     cadence_days: 14
-    last_checked: 2026-07-24
+    last_checked: 2026-07-25
     files:
       - package.json
       - aube-lock.yaml
@@ -50,7 +50,7 @@ units:
   - id: crypto-noble
     category: crypto
     cadence_days: 90 # also triggered by any @noble/post-quantum advisory/release
-    last_checked: null
+    last_checked: 2026-07-25
     files:
       - package.json # "@noble/post-quantum" exact pin
       - aube-lock.yaml # frozen graph must move with the pin
@@ -77,7 +77,7 @@ units:
   - id: toolchain
     category: dependencies
     cadence_days: 30
-    last_checked: 2026-07-24
+    last_checked: 2026-07-25
     files:
       - mise.toml # node / aube pins
       - README.md # duplicates the pinned versions in prose
@@ -96,8 +96,8 @@ units:
     files:
       - .github/workflows/cloudflare-pages.yml
     why: >
-      Floating major tags (actions/checkout@v6, jdx/mise-action@v3,
-      cloudflare/wrangler-action@v3) accumulate drift; majors move.
+      Floating major tags (actions/checkout@v7, jdx/mise-action@v4,
+      cloudflare/wrangler-action@v4) accumulate drift; majors move.
     method: |
       Check each action repo for newer majors; bump the uses: lines.
       Keep mise-action reading mise.toml. VITE_BUILD_SHA stays ${{ github.sha }}.
@@ -111,7 +111,7 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-07-24
+    last_checked: 2026-07-25
     files:
       - docs/threat-model.md
     why: >
@@ -125,13 +125,15 @@ units:
       src/app/boot/. Convert any new relative dates to absolute.
     verify: >
       Diff claims against README security section and the settings page
-      「セキュリティについて」copy; spot-check advisory IDs still resolve.
+      "About security" copy (settings.security.* keys in
+      src/i18n/messages.ts, both locales); spot-check advisory IDs still
+      resolve.
     sync: [ui-security-copy, readme]
 
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: null
+    last_checked: 2026-07-25
     files:
       - docs/security-review.md
     why: >
@@ -168,7 +170,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-07-24
+    last_checked: 2026-07-25
     files:
       - docs/qr-protocol-v2.md
       - docs/boot-and-reset-v2.md
@@ -193,7 +195,7 @@ units:
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-07-24
+    last_checked: 2026-07-25
     files:
       - src/lib/limits.ts # dated measured CBOR/OCF2 size comments
       - src/lib/frame-interval.ts # persisted/displayed QR interval policy grid
@@ -241,27 +243,32 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-07-24
+    last_checked: 2026-07-25
     files:
-      - src/pages/settings-page.tsx # 「セキュリティについて」 disclosures
-      - src/pages/keys-page.tsx # experimental / 未独立監査 banners
-      - src/components/online-gate.tsx # オフライン切替の侵害前提コピー (2026-07-24)
-      - src/components/offline-ack-shell.tsx # 「接続した端末は常に侵害されうる」前提コピー
+      - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
+      - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
+      - src/pages/keys-page.tsx # experimental / not-independently-audited banners
+      - src/components/online-gate.tsx # offline-switch compromise-assumption copy
+      - src/components/offline-ack-shell.tsx # "a connected device can always be compromised" copy
     why: >
       In-app disclosures (noble unaudited, JS side-channel caveat, wipe
       honesty, feature rows) mirror docs; they stale when audit status,
-      active policy, or threat model change.
+      active policy, or threat model change. The copy itself lives in the
+      i18n catalog (both locales must move together).
     method: |
-      Diff the disclosure copy against docs/security-review.md and
-      docs/threat-model.md; update banners when audit/release status moves.
-    verify: aube test -- tests/ui/keys-settings.test.tsx
+      Diff the disclosure copy (both locales in src/i18n/messages.ts) against
+      docs/security-review.md and docs/threat-model.md; update banners when
+      audit/release status moves.
+    verify: aube test -- tests/ui/keys-settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx
 
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-07-24
+    last_checked: 2026-07-25
     files:
       - README.md
+      - README.ja.md
+      - SECURITY.md # duplicates release-status claims (repo-public ≠ release-approved)
     why: >
       Dated PQ bench table (2026-07-23), experimental/audit status claims,
       release checklist, supply-chain history, managed-deviation dates, and
@@ -275,7 +282,7 @@ units:
   - id: external-links
     category: links
     cadence_days: 180
-    last_checked: 2026-07-24
+    last_checked: 2026-07-25
     files:
       - components.json # https://ui.shadcn.com/schema.json
       - design-system/offline-cipher/MASTER.md # Google Fonts URLs (archival)
