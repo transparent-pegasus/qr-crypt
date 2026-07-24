@@ -45,7 +45,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
     expectOnline(page.getByText("オフライン利用準備状態")).toBeVisible(),
     expectOnline(
       page.getByText(
-        "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。一度オンラインに接続した端末は侵害されている可能性があり、オフライン化しても信頼できる状態に戻るわけではありません。",
+        "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。",
       ),
     ).toBeVisible(),
     expectOnline(page.getByText("オンライン", { exact: true })).toBeVisible(),

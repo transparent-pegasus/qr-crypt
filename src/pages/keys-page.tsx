@@ -810,12 +810,6 @@ export function KeysPage() {
         </TabsList>
 
         <TabsContent value="create" className="mt-6 space-y-4">
-          {createKind === "pq-identity" && (
-            <Alert>
-              <ShieldCheck aria-hidden="true" className="size-4" />
-              <AlertTitle>experimental・未独立監査</AlertTitle>
-            </Alert>
-          )}
           <CreateField
             kind={createKind}
             onKindChange={setCreateKind}
@@ -1306,6 +1300,12 @@ function CreateField({
           onChange={(event) => onChange(event.target.value)}
           maxLength={80}
         />
+        {kind === "pq-identity" && (
+          <Alert>
+            <ShieldCheck aria-hidden="true" className="size-4" />
+            <AlertTitle>experimental・未独立監査</AlertTitle>
+          </Alert>
+        )}
         <Button
           type="button"
           className="h-11 w-full"
