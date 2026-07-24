@@ -5,6 +5,12 @@
 # Roles bind to agent types, not reserved panes: at delegation time,
 # any idle pane of the matching agent type can take the task.
 
+# Fallback rule (owner decision 2026-07-24): wherever `cursor` is assigned but
+# no cursor pane exists in the session, substitute `grok` for that slot.
+# Double review is NEVER degraded to a single review while a substitute
+# (grok) is available — always run two independent reviewers.
+# This file and SKILL.md are authoritative over any agent memory notes.
+
 roles:
   planning-design:
     description: Planning and design work
@@ -14,9 +20,13 @@ roles:
     agents: # one review each, independent
       - codex
       - cursor
+    fallbacks:
+      cursor: grok # keep two reviewers even when cursor is absent
   coder:
     description: Complex coding (see "Complex coding boundary" in SKILL.md)
     agent: codex
   generalist:
     description: Everything else — simple coding, search, file inspection, tests, lint, routine operations
     agent: cursor
+    fallbacks:
+      cursor: grok
