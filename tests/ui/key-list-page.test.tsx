@@ -3,8 +3,10 @@ import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
+  deleteBundle,
   deleteIdentity,
   deleteKeyRecord,
+  fakeBundles,
   fakeIdentities,
   fakeKeys,
   listIdentities,
@@ -30,21 +32,40 @@ describe("key list page", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
-  it("lists both key kinds without public/confidential sensitivity badges", async () => {
+  it("defaults to owned keys, merges newest-first, and filters with one kind select", async () => {
     const user = userEvent.setup()
     await renderKeyList()
 
     expect(screen.getByRole("heading", { name: "鍵一覧" })).toBeInTheDocument()
-    const pqTab = screen.getByRole("tab", { name: "ポスト量子ID" })
-    const symmetricTab = screen.getByRole("tab", { name: "共通鍵" })
-    expect(pqTab).toHaveAttribute("aria-selected", "true")
+    const ownTab = screen.getByRole("tab", { name: "自分の鍵" })
+    const peerTab = screen.getByRole("tab", { name: "相手の鍵" })
+    expect(ownTab).toHaveAttribute("aria-selected", "true")
+    expect(peerTab).toHaveAttribute("aria-selected", "false")
+    expect(screen.getByRole("tablist")).toHaveClass(
+      "grid",
+      "h-11",
+      "w-full",
+      "grid-cols-2",
+    )
+    const kindFilter = screen.getByRole("combobox", { name: "種別" })
+    expect(screen.getAllByRole("combobox")).toHaveLength(1)
+    expect(kindFilter).toHaveClass("h-11")
+    expect(kindFilter).toHaveTextContent("すべて")
+
+    const rows = within(screen.getByRole("tabpanel")).getAllByRole("button")
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent("自分のPQ ID")
+    expect(rows[1]).toHaveTextContent("共通鍵A")
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
     expect(screen.getByText(/ポスト量子ID ·/)).toBeInTheDocument()
     expect(screen.getByText("active")).toBeInTheDocument()
-    expect(screen.queryByText("共通鍵A")).not.toBeInTheDocument()
+    expect(screen.getByText("共通鍵A")).toBeInTheDocument()
+    expect(screen.getByText(/共通鍵 ·/)).toBeInTheDocument()
+    expect(screen.getByText("AES-256-GCM")).toBeInTheDocument()
     expect(screen.queryByText("公開")).not.toBeInTheDocument()
     expect(screen.queryByText("機密")).not.toBeInTheDocument()
     expect(screen.queryByText("受信鍵B")).not.toBeInTheDocument()
+    expect(screen.queryByText("確認済みの相手")).not.toBeInTheDocument()
 
     await user.click(rowFor("自分のPQ ID"))
     let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
@@ -53,17 +74,41 @@ describe("key list page", () => {
     expect(within(dialog).getByText("2".repeat(64))).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
-    await user.click(symmetricTab)
-    expect(symmetricTab).toHaveAttribute("aria-selected", "true")
+    await user.click(kindFilter)
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "すべて",
+      "ポスト量子ID",
+      "共通鍵",
+    ])
+    await user.click(screen.getByRole("option", { name: "共通鍵" }))
     expect(screen.getByText("共通鍵A")).toBeInTheDocument()
-    expect(screen.getByText(/共通鍵 ·/)).toBeInTheDocument()
-    expect(screen.getByText("AES-256-GCM")).toBeInTheDocument()
     expect(screen.queryByText("自分のPQ ID")).not.toBeInTheDocument()
 
     await user.click(rowFor("共通鍵A"))
     dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     expect(within(dialog).getByText("sym-key-00000001")).toBeInTheDocument()
     expect(within(dialog).getByText("AES-256-GCM")).toBeInTheDocument()
+  })
+
+  it("shows imported bundles only on the peer-key tab and keeps their actions", async () => {
+    const user = userEvent.setup()
+    const recordId = fakeBundles[0]!.recordId
+    await renderKeyList()
+
+    expect(screen.queryByText("確認済みの相手")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("tab", { name: "相手の鍵" }))
+    expect(screen.getByText("確認済みの相手")).toBeInTheDocument()
+    expect(screen.getByText("人物確認済み")).toBeInTheDocument()
+    expect(screen.getByText("4".repeat(64))).toBeInTheDocument()
+    expect(screen.getByText("5".repeat(64))).toBeInTheDocument()
+    expect(screen.getByText("6".repeat(64))).toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "種別" })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "削除" }))
+    await waitFor(() => expect(deleteBundle).toHaveBeenCalledWith(recordId))
+    expect(
+      await screen.findByText("取り込んだ公開鍵セットがありません。"),
+    ).toBeInTheDocument()
   })
 
   it("shows QR views in the same dialog and never offers QR persistence", async () => {
@@ -86,7 +131,6 @@ describe("key list page", () => {
     )
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
-    await user.click(screen.getByRole("tab", { name: "共通鍵" }))
     await user.click(rowFor("共通鍵A"))
     dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(within(dialog).getByRole("button", { name: "秘密鍵QRを表示" }))
@@ -136,7 +180,6 @@ describe("key list page", () => {
   it("closes automatically when the selected symmetric key is deleted", async () => {
     const user = userEvent.setup()
     await renderKeyList()
-    await user.click(screen.getByRole("tab", { name: "共通鍵" }))
     await user.click(rowFor("共通鍵A"))
     const dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(within(dialog).getByRole("button", { name: "共通鍵Aを削除" }))
@@ -177,6 +220,7 @@ describe("key list page", () => {
     const user = userEvent.setup()
     fakeKeys.splice(0)
     fakeIdentities.splice(0)
+    fakeBundles.splice(0)
     let resolveIdentities: ((value: typeof fakeIdentities) => void) | undefined
     listIdentities.mockImplementationOnce(
       () =>
@@ -191,9 +235,11 @@ describe("key list page", () => {
     expect(
       await screen.findByText("鍵がありません。鍵ページから作成できます。"),
     ).toBeInTheDocument()
-    expect(screen.getByText("ポスト量子IDがありません。")).toBeInTheDocument()
-    await user.click(screen.getByRole("tab", { name: "共通鍵" }))
-    expect(screen.getByText("共通鍵がありません。")).toBeInTheDocument()
+    expect(screen.getByText("自分の鍵がありません。")).toBeInTheDocument()
+    await user.click(screen.getByRole("tab", { name: "相手の鍵" }))
+    expect(
+      screen.getByText("取り込んだ公開鍵セットがありません。"),
+    ).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "鍵ページを開く" })).toHaveAttribute(
       "href",
       "/keys",
@@ -201,11 +247,9 @@ describe("key list page", () => {
   })
 
   it("shows one source error while continuing to render the other source", async () => {
-    const user = userEvent.setup()
     listIdentities.mockRejectedValueOnce(new Error("identity read failed"))
     await renderKeyList()
     expect(await screen.findByText("ポスト量子IDを読み込めません")).toBeInTheDocument()
-    await user.click(screen.getByRole("tab", { name: "共通鍵" }))
     expect(await screen.findByText("共通鍵A")).toBeInTheDocument()
 
     resetUi()

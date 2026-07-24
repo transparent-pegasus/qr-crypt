@@ -432,12 +432,6 @@ export function KeyDetailDialog({
 
           {view.kind === "symmetric-qr" && symmetric && (
             <div className="space-y-4">
-              <Alert variant="destructive">
-                <AlertTitle>機密情報</AlertTitle>
-                <AlertDescription>
-                  第三者に見せると、過去と将来の暗号文を復号されるおそれがあります。
-                </AlertDescription>
-              </Alert>
               <QrDisplay
                 payload={view.payload}
                 ecLevel={ecLevelFor("stored-key", preferences)}
@@ -445,6 +439,12 @@ export function KeyDetailDialog({
                 title="共通鍵QR"
                 fullscreenEnabled={false}
               />
+              <Alert variant="destructive">
+                <AlertTitle>機密情報</AlertTitle>
+                <AlertDescription>
+                  第三者に見せると、過去と将来の暗号文を復号されるおそれがあります。
+                </AlertDescription>
+              </Alert>
               <div className="flex items-start gap-2">
                 <Checkbox
                   id="secret-ack"

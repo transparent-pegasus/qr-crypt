@@ -26,7 +26,6 @@ import {
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { generateArtifactId } from "@/crypto/random"
 import {
-  useFeatureSupport,
   useSensitiveSession,
   useTransientClear,
 } from "@/app/providers"
@@ -172,7 +171,6 @@ export function EncryptPage() {
   } = usePqRecords()
   const { preferences, error: preferencesError } = usePreferences()
   const getPqClient = usePqCryptoClient()
-  const { camera } = useFeatureSupport()
   const { nonce } = useTransientClear()
   const { setSensitiveSession, resetSensitiveSession } = useSensitiveSession()
   const [mode, setMode] = useState<PageMode>("encrypt")
@@ -618,104 +616,126 @@ export function EncryptPage() {
         </>
       ) : (
         <>
-          <div className="space-y-2">
-            <Label htmlFor="decrypt-payload">暗号文ペイロード</Label>
-            <Textarea
-              id="decrypt-payload"
-              value={decryptInput}
-              onChange={(event) => {
-                setDecryptInput(event.target.value)
-                setDecrypted(null)
-                setError(null)
-              }}
-              className="min-h-28 break-all font-mono text-base focus-visible:ring-2"
-              placeholder="OCM1: または OCM2: ペイロードを貼り付けてください"
-              autoComplete="off"
-              spellCheck={false}
-              disabled={busy}
-            />
-          </div>
-          {decryptInputInvalid && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>暗号文を確認できません</AlertTitle>
-              <AlertDescription>
-                対応するOCM1/OCM2暗号文を入力してください。
-              </AlertDescription>
-            </Alert>
-          )}
-          {parsedDecrypt && (
-            <Card>
-              <CardContent className="space-y-2 p-4 text-sm">
-                <DetailRow
-                  label="方式"
-                  value={
-                    parsedDecrypt.kind === "message"
-                      ? "A256GCM"
-                      : parsedDecrypt.envelope.suite
-                  }
-                />
-                <DetailRow
-                  label="受信者鍵ID"
-                  value={
-                    parsedDecrypt.kind === "message"
-                      ? parsedDecrypt.envelope.keyId
-                      : parsedDecrypt.envelope.recipientKemKeyId
-                  }
-                  mono
-                />
-              </CardContent>
-            </Card>
-          )}
-          {parsedPqUnsupported && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>非対応（旧プロファイル）</AlertTitle>
-              <AlertDescription>
-                この暗号文は現在利用できない旧ポスト量子プロファイルです。
-              </AlertDescription>
-            </Alert>
-          )}
-          {parsedDecrypt && !parsedPqUnsupported && !canDecrypt && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>KEY_NOT_FOUND</AlertTitle>
-              <AlertDescription>{userMessageFor("KEY_NOT_FOUND")}</AlertDescription>
-            </Alert>
-          )}
-          <Button
-            type="button"
-            className="h-11 w-full cursor-pointer focus-visible:ring-2"
-            disabled={!canDecrypt}
-            onClick={() => void handleDecrypt()}
-          >
-            {busy && <LoaderCircle aria-hidden="true" className="animate-spin" />}
-            {busy ? "復号中…" : "復号する"}
-          </Button>
+          <Card aria-labelledby="decrypt-camera-title">
+            <CardHeader className="p-4 pb-3">
+              <h3
+                id="decrypt-camera-title"
+                className="font-semibold leading-none tracking-tight"
+              >
+                画像で読み取る
+              </h3>
+            </CardHeader>
+            <CardContent className="space-y-4 p-4 pt-0">
+              <QrScannerModal
+                triggerLabel="暗号文QRを読み取る"
+                camera={false}
+                imageImport
+                className="space-y-6"
+                singleTargets={["message"]}
+                title="暗号文QRを読み取る"
+                onSingleScan={(_target, payload) => {
+                  setDecryptInput(payload)
+                  setDecrypted(null)
+                  setError(null)
+                }}
+                multipart={{
+                  session: multipartSession,
+                  onComplete: ({ artifactType, artifactBytes }) => {
+                    if (artifactType !== "pq-message")
+                      throw new AppError("INVALID_QR_PAYLOAD")
+                    const envelope = decodeMlKemEnvelopeV2(artifactBytes)
+                    setDecryptInput(
+                      buildV2Payload("pq-message", encodeMlKemEnvelopeV2(envelope)),
+                    )
+                    setDecrypted(null)
+                    setError(null)
+                  },
+                }}
+              />
+            </CardContent>
+          </Card>
 
-          <QrScannerModal
-            triggerLabel="暗号文QRを読み取る"
-            imageImport
-            className="space-y-6"
-            singleTargets={["message"]}
-            cameraAvailable={camera}
-            title="暗号文QRを読み取る"
-            onSingleScan={(_target, payload) => {
-              setDecryptInput(payload)
-              setDecrypted(null)
-              setError(null)
-            }}
-            multipart={{
-              session: multipartSession,
-              onComplete: ({ artifactType, artifactBytes }) => {
-                if (artifactType !== "pq-message")
-                  throw new AppError("INVALID_QR_PAYLOAD")
-                const envelope = decodeMlKemEnvelopeV2(artifactBytes)
-                setDecryptInput(
-                  buildV2Payload("pq-message", encodeMlKemEnvelopeV2(envelope)),
-                )
-                setDecrypted(null)
-                setError(null)
-              },
-            }}
-          />
+          <Card aria-labelledby="decrypt-paste-title">
+            <CardHeader className="p-4 pb-3">
+              <h3
+                id="decrypt-paste-title"
+                className="font-semibold leading-none tracking-tight"
+              >
+                ペイロードを貼り付ける
+              </h3>
+            </CardHeader>
+            <CardContent className="space-y-4 p-4 pt-0">
+              <div className="space-y-2">
+                <Label htmlFor="decrypt-payload">暗号文ペイロード</Label>
+                <Textarea
+                  id="decrypt-payload"
+                  value={decryptInput}
+                  onChange={(event) => {
+                    setDecryptInput(event.target.value)
+                    setDecrypted(null)
+                    setError(null)
+                  }}
+                  className="min-h-28 break-all font-mono text-base focus-visible:ring-2"
+                  placeholder="OCM1: または OCM2: ペイロードを貼り付けてください"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={busy}
+                />
+              </div>
+              {decryptInputInvalid && (
+                <Alert variant="destructive" role="alert">
+                  <AlertTitle>暗号文を確認できません</AlertTitle>
+                  <AlertDescription>
+                    対応するOCM1/OCM2暗号文を入力してください。
+                  </AlertDescription>
+                </Alert>
+              )}
+              {parsedDecrypt && (
+                <div className="space-y-2 text-sm">
+                  <DetailRow
+                    label="方式"
+                    value={
+                      parsedDecrypt.kind === "message"
+                        ? "A256GCM"
+                        : parsedDecrypt.envelope.suite
+                    }
+                  />
+                  <DetailRow
+                    label="受信者鍵ID"
+                    value={
+                      parsedDecrypt.kind === "message"
+                        ? parsedDecrypt.envelope.keyId
+                        : parsedDecrypt.envelope.recipientKemKeyId
+                    }
+                    mono
+                  />
+                </div>
+              )}
+              {parsedPqUnsupported && (
+                <Alert variant="destructive" role="alert">
+                  <AlertTitle>非対応（旧プロファイル）</AlertTitle>
+                  <AlertDescription>
+                    この暗号文は現在利用できない旧ポスト量子プロファイルです。
+                  </AlertDescription>
+                </Alert>
+              )}
+              {parsedDecrypt && !parsedPqUnsupported && !canDecrypt && (
+                <Alert variant="destructive" role="alert">
+                  <AlertTitle>KEY_NOT_FOUND</AlertTitle>
+                  <AlertDescription>{userMessageFor("KEY_NOT_FOUND")}</AlertDescription>
+                </Alert>
+              )}
+              <Button
+                type="button"
+                className="h-11 w-full cursor-pointer focus-visible:ring-2"
+                disabled={!canDecrypt}
+                onClick={() => void handleDecrypt()}
+              >
+                {busy && <LoaderCircle aria-hidden="true" className="animate-spin" />}
+                {busy ? "復号中…" : "復号する"}
+              </Button>
+            </CardContent>
+          </Card>
 
           {decrypted?.kind === "signed-key-unknown" && (
             <Alert variant="destructive" role="alert">

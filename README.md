@@ -268,7 +268,8 @@ Android Chrome・iOS Safari）と独立監査記録が揃うまで `release-appr
 | balanced 降格・maximum 本筋化 | balanced 降格・maximum 本筋化は spec2/plan2.1 §A 推奨初期範囲からのオーナー承認済み意図的逸脱(2026-07-23)。maximum（1024/87）のみを運用し、認識済みの balanced（768/65）は `UNSUPPORTED_ALGORITHM` で拒否する |
 | `QrFrameV2.artifactType` に `pq-kem-public-key` / `pq-dsa-public-key` を追加 | spec2 §12 の 3 値からの拡張（単鍵公開鍵フレーム用） |
 | エラーコード `RESET_FAILED`・`SIGNATURE_INVALID`・`SIGNING_KEY_NOT_FOUND`・`FRAME_MISMATCH`・`WORKER_UNAVAILABLE` の追加 | `RESET_FAILED` は plan 暫定名 `WIPE_FAILED` から、論理削除の正直な命名方針で確定。他は署名検証失敗・署名鍵欠落・フレーム不整合・Worker 利用不可 |
-| RSA-OAEP ハイブリッド削除・`VITE_ENABLE_RSA=false`・`VITE_DEFAULT_ALGORITHM=MLKEM1024_A256GCM` | WP-14 完了。初期仕様の RSA 経路からの逸脱（反転済み） |
+| RSA-OAEP ハイブリッド削除・`VITE_ENABLE_RSA=false` | WP-14 完了。初期仕様の RSA 経路からの逸脱（反転済み） |
+| `VITE_DEFAULT_ALGORITHM=A256GCM`（既定を共通鍵 AES-256-GCM へ） | オーナー要件 2026-07-24。ポスト量子暗号方式は選択式のまま維持 |
 | QR のアプリ内保存機能なし | オーナー要件 2026-07-24。暗号文・鍵系 QR とも表示・PNG/SVG/ZIP エクスポート・クリップボードのみとし、保存済み QR 機能と `qrArtifacts` store は廃止 |
 
 Action ピン（`actions/checkout@v6` / `jdx/mise-action@v3` / `cloudflare/wrangler-action@v3`）はいずれも該当リポジトリにメジャータグが存在することを確認済みです。変更不要のため、ここでの追加逸脱はありません（改訂 20）。

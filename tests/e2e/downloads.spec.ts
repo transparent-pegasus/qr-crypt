@@ -136,7 +136,6 @@ test("鍵一覧モーダルから秘密鍵QRと公開鍵セットQRを出力す�
   await createSymmetricKey(page, symmetricName)
 
   await goToOfflinePage(page, "/saved")
-  await page.getByRole("tab", { name: "共通鍵", exact: true }).click()
   await page.getByRole("button", { name: new RegExp(symmetricName) }).click()
   let dialog = page.getByRole("dialog", { name: symmetricName })
   await dialog

@@ -35,7 +35,6 @@ test("共通 Close の寸法・タイトル余白・固定位置と非表示指�
   await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, "レイアウト検証鍵")
   await goToOfflinePage(page, "/saved")
-  await page.getByRole("tab", { name: "共通鍵", exact: true }).click()
   await page.getByRole("button", { name: /レイアウト検証鍵/ }).click()
   const savedDialog = page.getByRole("dialog", { name: "レイアウト検証鍵" })
   const savedClose = savedDialog.getByRole("button", {
@@ -63,13 +62,13 @@ test("共通 Close の寸法・タイトル余白・固定位置と非表示指�
   expect(intersects).toBe(false)
 
   await savedClose.click()
-  await goToOfflinePage(page, "/encrypt")
-  await page.getByRole("tab", { name: "復号", exact: true }).click()
+  await goToOfflinePage(page, "/keys")
+  await page.getByRole("tab", { name: "読込", exact: true }).click()
   await page
-    .getByRole("button", { name: "暗号文QRを読み取る", exact: true })
+    .getByRole("button", { name: "鍵QRを読み取る", exact: true })
     .click()
   const scannerDialog = page.getByRole("dialog", {
-    name: "暗号文QRを読み取る",
+    name: "鍵QRを読み取る",
   })
   const scannerClose = scannerDialog.getByRole("button", {
     name: "Close",

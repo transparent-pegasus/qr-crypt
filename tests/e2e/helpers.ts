@@ -203,7 +203,7 @@ export async function goToOfflinePage(
 
 export async function createSymmetricKey(page: Page, name: string): Promise<void> {
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "鍵を作成", exact: true }).click()
+  await page.getByRole("tab", { name: "作成", exact: true }).click()
   await chooseOption(page, "種類", "共通鍵")
   await page.getByLabel("共通鍵名", { exact: true }).fill(name)
   await page.getByRole("button", { name: "共通鍵を作成", exact: true }).click()
@@ -216,7 +216,7 @@ export async function createSymmetricKey(page: Page, name: string): Promise<void
 
 export async function createPqIdentity(page: Page, name: string): Promise<void> {
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "鍵を作成", exact: true }).click()
+  await page.getByRole("tab", { name: "作成", exact: true }).click()
   await chooseOption(page, "種類", "ポスト量子ID")
   await page.getByLabel("ポスト量子ID名", { exact: true }).fill(name)
   await page.getByRole("button", { name: "ポスト量子IDを作成", exact: true }).click()

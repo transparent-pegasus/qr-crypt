@@ -3,18 +3,17 @@ import {
   collectAnimatedFramePayloads,
   createPqIdentity,
   emitInjectedQr,
-  encryptSignedPq,
+  goToOfflinePage,
   injectedScanSnapshot,
   installInjectedDecoderStream,
   loadOnlineGate,
   primeInjectedDecoderPrecache,
-  seedSelfPublicBundle,
   switchToOfflineAppInSession,
 } from "./helpers"
 
 const expect = baseExpect.configure({ timeout: 30_000 })
 
-test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も順不同・重複から完成して復号する", async ({
+test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も順不同・重複から完成して公開鍵セットを取り込む", async ({
   context,
   page,
 }) => {
@@ -25,33 +24,48 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
   await switchToOfflineAppInSession(page, context)
 
   const identityName = "継続スキャンPQ-ID"
-  const plaintext = "順不同の複数QRを継続読取して署名検証まで完了する日本語本文"
   await createPqIdentity(page, identityName)
-  await seedSelfPublicBundle(page, identityName)
-  const first = await encryptSignedPq(page, { identityName, plaintext })
-  const frameRegion = first.result.getByRole("region", {
-    name: "暗号文フレーム表示",
+  await goToOfflinePage(page, "/saved")
+  await page.getByRole("button", { name: new RegExp(identityName) }).click()
+  let identityDialog = page.getByRole("dialog", { name: identityName })
+  await identityDialog
+    .getByRole("button", { name: "公開鍵セットQR", exact: true })
+    .click()
+  let frameDialog = page.getByRole("dialog", {
+    name: `${identityName} 公開鍵セット`,
+  })
+  let frameRegion = frameDialog.getByRole("region", {
+    name: `${identityName} 公開鍵セットフレーム表示`,
   })
   const frames = await collectAnimatedFramePayloads(frameRegion)
   expect(frames.length).toBeGreaterThan(1)
 
-  const secondPlaintext = "別transferIdを作るための二つ目の署名付き本文"
-  await page.getByLabel("平文", { exact: true }).fill(secondPlaintext)
-  await page.getByRole("button", { name: "暗号化する", exact: true }).click()
-  await expect
-    .poll(() => first.result.locator("p").first().innerText(), { timeout: 45_000 })
-    .not.toBe(first.payload)
+  await frameDialog
+    .getByRole("button", { name: "詳細に戻る", exact: true })
+    .click()
+  identityDialog = page.getByRole("dialog", { name: identityName })
+  await identityDialog
+    .getByRole("button", { name: "公開鍵セットQR", exact: true })
+    .click()
+  frameDialog = page.getByRole("dialog", {
+    name: `${identityName} 公開鍵セット`,
+  })
+  frameRegion = frameDialog.getByRole("region", {
+    name: `${identityName} 公開鍵セットフレーム表示`,
+  })
   const otherFrames = await collectAnimatedFramePayloads(frameRegion)
   expect(otherFrames[0]).not.toBe(frames[0])
+  await frameDialog.getByRole("button", { name: "Close", exact: true }).click()
 
-  await page.getByRole("tab", { name: "復号", exact: true }).click()
+  await goToOfflinePage(page, "/keys")
+  await page.getByRole("tab", { name: "読込", exact: true }).click()
   const scanTrigger = page.getByRole("button", {
-    name: "暗号文QRを読み取る",
+    name: "鍵QRを読み取る",
     exact: true,
   })
   await expect(scanTrigger).toBeEnabled()
   await scanTrigger.click()
-  const scanDialog = page.getByRole("dialog", { name: "暗号文QRを読み取る" })
+  const scanDialog = page.getByRole("dialog", { name: "鍵QRを読み取る" })
   await expect(scanDialog).toBeVisible()
   await expect(page.getByText("QRコードを順不同で読み取れます")).toBeVisible()
   await expect(
@@ -118,11 +132,13 @@ test("注入 decoder stream を同じ UI handler へ流し、混在拒否後も�
   snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)?.active).toBe(false)
 
-  const decrypt = page.getByRole("button", { name: "復号する", exact: true })
-  await expect(decrypt).toBeEnabled()
-  await decrypt.click()
-  await expect(page.getByText("署名はこの鍵に対して有効です")).toBeVisible({
-    timeout: 45_000,
+  const fingerprintDialog = page.getByRole("dialog", {
+    name: "別経路で指紋を比較してください",
   })
-  await expect(page.getByText(plaintext, { exact: true })).toBeVisible()
+  await expect(fingerprintDialog).toBeVisible()
+  await fingerprintDialog
+    .getByRole("button", { name: "未確認のまま保存", exact: true })
+    .click()
+  await expect(fingerprintDialog).not.toBeVisible()
+  await expect(page.getByText("未確認のまま保存しました")).toBeVisible()
 })

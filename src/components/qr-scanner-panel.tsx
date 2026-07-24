@@ -825,6 +825,7 @@ function imageBatchNotice(summary: ImageBatchSummary): string {
 
 export type QrScannerModalProps = QrScannerPanelProps & {
   triggerLabel: string
+  camera?: boolean
   imageImport?: boolean
   className?: string
 }
@@ -832,6 +833,7 @@ export type QrScannerModalProps = QrScannerPanelProps & {
 export function QrScannerModal(props: QrScannerModalProps) {
   const {
     triggerLabel,
+    camera = true,
     cameraAvailable = true,
     imageImport = false,
     title = "QRコードを読み取る",
@@ -1310,45 +1312,47 @@ export function QrScannerModal(props: QrScannerModalProps) {
       className={cn("space-y-2", className)}
       aria-busy={deliveryBusy}
     >
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogTrigger asChild>
-          <Button
-            type="button"
-            className="h-11 w-full"
-            disabled={!cameraAvailable || deliveryBusy}
+      {camera && (
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+          <DialogTrigger asChild>
+            <Button
+              type="button"
+              className="h-11 w-full"
+              disabled={!cameraAvailable || deliveryBusy}
+            >
+              <Camera aria-hidden="true" />
+              {triggerLabel}
+            </Button>
+          </DialogTrigger>
+          <DialogContent
+            ref={contentRef}
+            tabIndex={-1}
+            className="max-h-[95dvh] max-w-lg p-4"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault()
+              contentRef.current?.focus()
+            }}
+            onCloseAutoFocus={(event) => {
+              if (!automaticCloseRef.current) return
+              event.preventDefault()
+              automaticCloseRef.current = false
+            }}
           >
-            <Camera aria-hidden="true" />
-            {triggerLabel}
-          </Button>
-        </DialogTrigger>
-        <DialogContent
-          ref={contentRef}
-          tabIndex={-1}
-          className="max-h-[95dvh] max-w-lg p-4"
-          onOpenAutoFocus={(event) => {
-            event.preventDefault()
-            contentRef.current?.focus()
-          }}
-          onCloseAutoFocus={(event) => {
-            if (!automaticCloseRef.current) return
-            event.preventDefault()
-            automaticCloseRef.current = false
-          }}
-        >
-          <DialogTitle className="sr-only">{title}</DialogTitle>
-          <div
-            data-qr-scanner-scroll-region
-            className="max-h-[calc(95dvh-4rem)] overflow-y-auto"
-          >
-            {open && panel}
-          </div>
-        </DialogContent>
-      </Dialog>
+            <DialogTitle className="sr-only">{title}</DialogTitle>
+            <div
+              data-qr-scanner-scroll-region
+              className="max-h-[calc(95dvh-4rem)] overflow-y-auto"
+            >
+              {open && panel}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
       {imageImport && (
         <>
           <Button
             type="button"
-            variant="secondary"
+            variant={camera ? "secondary" : "default"}
             className="h-11 w-full"
             disabled={open || deliveryBusy}
             onClick={() => fileInputRef.current?.click()}
@@ -1373,7 +1377,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
           />
         </>
       )}
-      {!cameraAvailable && (
+      {camera && !cameraAvailable && (
         <p className="text-sm text-muted-foreground">
           {imageImport ? (
             <>

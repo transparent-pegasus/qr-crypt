@@ -34,7 +34,6 @@ test("作成完了から鍵一覧・QR表示・削除まで操作でき、QRと�
   await goToOfflinePage(page, "/saved")
   await expect(page.getByRole("heading", { name: "鍵一覧" })).toBeVisible()
   await expect(page.getByText("メッセージ暗号文はアプリ内へ保存しません。")).toBeVisible()
-  await page.getByRole("tab", { name: "共通鍵", exact: true }).click()
   await page.getByText(keyName, { exact: true }).click()
   let dialog = page.getByRole("dialog", { name: keyName, exact: true })
   await expect(dialog.getByText("AES-256-GCM", { exact: true })).toBeVisible()

@@ -47,11 +47,23 @@ test("fake camera を破棄・再起動し、閉じると全 track を停止す�
     )
   })
   const bundleTab = page.getByRole("tab", {
-    name: "鍵を読み込む",
+    name: "読込",
     exact: true,
   })
   await bundleTab.click()
   await expect(bundleTab).toHaveAttribute("data-state", "active")
+  await expect(
+    page.getByRole("heading", { name: "カメラで読み取る", exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("heading", {
+      name: "ペイロードを貼り付ける",
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    page.getByText("相手の画面の輝度を上げてもらい、カメラを15〜20cmほど離して"),
+  ).toBeVisible()
   const scanTrigger = page.getByRole("button", {
     name: "鍵QRを読み取る",
     exact: true,

@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   KeyRound,
   LoaderCircle,
+  ScanLine,
   ShieldCheck,
   Trash2,
 } from "lucide-react"
@@ -16,9 +17,8 @@ import {
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrScannerModal } from "@/components/qr-scanner-panel"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -55,11 +55,16 @@ import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { generateKeyId } from "@/crypto/random"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
-import { formatFingerprint, formatSuggestedDate } from "@/features/presentation"
+import {
+  ALGORITHM_LABELS,
+  formatFingerprint,
+  formatSuggestedDate,
+} from "@/features/presentation"
 import { useKeys } from "@/hooks/use-keys"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
+import { cn } from "@/lib/utils"
 import { decodePayload } from "@/qr/payload"
 import type {
   DsaPublicKeyEnvelopeV2,
@@ -73,13 +78,9 @@ import { keyNameSchema } from "@/schemas/key-schema"
 import { deleteKeyRecord, saveKeyRecord } from "@/storage/key-repository"
 import {
   confirmBundleFingerprint,
-  deleteBundle,
-  revokeBundle,
   saveBundle,
 } from "@/storage/pq-bundle-repository"
-import {
-  saveIdentity,
-} from "@/storage/pq-identity-repository"
+import { saveIdentity } from "@/storage/pq-identity-repository"
 
 type KeysTab = "create" | "import"
 type CreateKeyKind = "pq-identity" | "symmetric"
@@ -88,15 +89,6 @@ type SingleKeyRead = KemPublicKeyEnvelopeV2 | DsaPublicKeyEnvelopeV2
 
 function assertUsableBundle(bundle: PublicIdentityBundleV2 | PqPublicBundleRecord): void {
   assertActiveSuite(resolveSuite(bundle.kem.algorithm, bundle.signing.algorithm))
-}
-
-function isUsableBundle(bundle: PqPublicBundleRecord): boolean {
-  try {
-    assertUsableBundle(bundle)
-    return true
-  } catch {
-    return false
-  }
 }
 
 function assertUsableSingleKey(envelope: SingleKeyRead): void {
@@ -114,14 +106,19 @@ export function KeysPage() {
   const { keys, loading: keysLoading, error: keysError, refresh: refreshKeys } = useKeys()
   const {
     identities,
-    bundles,
     loading: pqLoading,
     error: pqError,
     refresh: refreshPq,
   } = usePqRecords()
   const getPqClient = usePqCryptoClient()
   const [tab, setTab] = useState<KeysTab>("create")
-  const [createKind, setCreateKind] = useState<CreateKeyKind>("pq-identity")
+  // 既定種類は設定のデフォルト暗号方式に従う(明示選択が最優先)
+  const [createKindOverride, setCreateKindOverride] = useState<CreateKeyKind | null>(
+    null,
+  )
+  const createKind: CreateKeyKind =
+    createKindOverride ??
+    (preferences.defaultAlgorithm === "A256GCM" ? "symmetric" : "pq-identity")
   const [keyName, setKeyName] = useState("")
   const [importPayload, setImportPayload] = useState("")
   const [busy, setBusy] = useState(false)
@@ -433,17 +430,17 @@ export function KeysPage() {
       <Tabs value={tab} onValueChange={(value) => setTab(value as KeysTab)}>
         <TabsList className="grid h-11 w-full grid-cols-2">
           <TabsTrigger value="create" className="h-9 cursor-pointer px-1 text-sm">
-            鍵を作成
+            作成
           </TabsTrigger>
           <TabsTrigger value="import" className="h-9 cursor-pointer px-1 text-sm">
-            鍵を読み込む
+            読込
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="create" className="mt-6 space-y-4">
           <CreateField
             kind={createKind}
-            onKindChange={setCreateKind}
+            onKindChange={setCreateKindOverride}
             value={keyName}
             onChange={setKeyName}
             busy={busy}
@@ -454,36 +451,61 @@ export function KeysPage() {
         </TabsContent>
 
         <TabsContent value="import" className="mt-6 space-y-4">
-          <QrScannerModal
-            triggerLabel="鍵QRを読み取る"
-            singleTargets={["symmetric-key"]}
-            cameraAvailable={camera}
-            title="鍵QRを読み取る"
-            onSingleScan={(_target, payload) => importScannedPayload(payload)}
-            multipart={{
-              session: scanSession,
-              onComplete: (completion) => handleCompletedArtifact(completion),
-            }}
-          />
-          <div className="space-y-2">
-            <Label htmlFor="key-payload">鍵ペイロード</Label>
-            <Textarea
-              id="key-payload"
-              value={importPayload}
-              onChange={(event) => setImportPayload(event.target.value)}
-              placeholder="OCK1: / OCP2: / OCS2: / OCI2: を貼り付け"
-              className="min-h-28 break-all font-mono"
-            />
-            <Button
-              type="button"
-              className="h-11 w-full"
-              disabled={busy || !importPayload.trim()}
-              onClick={() => void importPastedPayload()}
-            >
-              <KeyRound aria-hidden="true" />
-              鍵を読み取る
-            </Button>
-          </div>
+          <Card aria-labelledby="camera-import-title">
+            <CardHeader className="p-4 pb-3">
+              <h3
+                id="camera-import-title"
+                className="font-semibold leading-none tracking-tight"
+              >
+                カメラで読み取る
+              </h3>
+            </CardHeader>
+            <CardContent className="space-y-4 p-4 pt-0">
+              <DemoKeyQr />
+              <QrScannerModal
+                triggerLabel="鍵QRを読み取る"
+                singleTargets={["symmetric-key"]}
+                cameraAvailable={camera}
+                title="鍵QRを読み取る"
+                onSingleScan={(_target, payload) => importScannedPayload(payload)}
+                multipart={{
+                  session: scanSession,
+                  onComplete: (completion) => handleCompletedArtifact(completion),
+                }}
+              />
+            </CardContent>
+          </Card>
+          <Card aria-labelledby="paste-import-title">
+            <CardHeader className="p-4 pb-3">
+              <h3
+                id="paste-import-title"
+                className="font-semibold leading-none tracking-tight"
+              >
+                ペイロードを貼り付ける
+              </h3>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <div className="space-y-2">
+                <Label htmlFor="key-payload">鍵ペイロード</Label>
+                <Textarea
+                  id="key-payload"
+                  value={importPayload}
+                  onChange={(event) => setImportPayload(event.target.value)}
+                  placeholder="OCK1: / OCP2: / OCS2: / OCI2: を貼り付け"
+                  className="min-h-28 break-all font-mono"
+                />
+                <Button
+                  type="button"
+                  className="h-11 w-full"
+                  disabled={busy || !importPayload.trim()}
+                  onClick={() => void importPastedPayload()}
+                >
+                  <KeyRound aria-hidden="true" />
+                  鍵を読み取る
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
           {singleKeyRead && (
             <Alert>
               <CheckCircle2 aria-hidden="true" className="size-4" />
@@ -501,17 +523,6 @@ export function KeysPage() {
                 </p>
               </AlertDescription>
             </Alert>
-          )}
-          <BundleList
-            bundles={bundles}
-            busy={busy}
-            refresh={refreshPq}
-            setError={setError}
-          />
-          {!pqLoading && bundles.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              上のQR読取またはペイロード貼付から公開鍵セットを取り込めます。
-            </p>
           )}
         </TabsContent>
       </Tabs>
@@ -640,8 +651,23 @@ export function KeysPage() {
           else await refreshKeys()
           setSelection(nextSelection)
         }}
-      />
+        />
     </section>
+  )
+}
+
+function DemoKeyQr() {
+  return (
+    // アイコン上余白 = CardHeader pb-3(12px) + py-3(12px) = 24px。下も gap-6 で 24px に揃える
+    <div className="flex flex-col items-center gap-6 py-3">
+      <ScanLine
+        aria-hidden="true"
+        className="size-32 text-muted-foreground"
+      />
+      <p className="text-sm text-muted-foreground">
+        相手の画面の輝度を上げてもらい、カメラを15〜20cmほど離してピントが合うまで静止すると読み取りやすくなります。
+      </p>
+    </div>
   )
 }
 
@@ -676,8 +702,10 @@ function CreateField({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="pq-identity">ポスト量子ID</SelectItem>
-              <SelectItem value="symmetric">共通鍵</SelectItem>
+              <SelectItem value="pq-identity">
+                ポスト量子ID ML-KEM-1024 + ML-DSA-87
+              </SelectItem>
+              <SelectItem value="symmetric">{ALGORITHM_LABELS.A256GCM}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -689,12 +717,16 @@ function CreateField({
           maxLength={80}
         />
         {kind === "pq-identity" && (
-          <Alert>
-            <ShieldCheck aria-hidden="true" className="size-4" />
-            <AlertDescription className="font-medium leading-none tracking-tight">
-              experimental・未独立監査
-            </AlertDescription>
-          </Alert>
+          <div
+            role="note"
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "h-11 w-full cursor-default text-muted-foreground hover:bg-background hover:text-muted-foreground",
+            )}
+          >
+            <ShieldCheck aria-hidden="true" />
+            experimental・未独立監査
+          </div>
         )}
         <Button
           type="button"
@@ -721,114 +753,5 @@ function Fingerprint({ label, value }: { label: string; value: string }) {
       <p className="break-all font-mono text-xs">{value}</p>
       <p className="font-mono text-sm">比較表示: {formatFingerprint(value)}</p>
     </div>
-  )
-}
-
-function Empty({ text }: { text: string }) {
-  return (
-    <div className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">
-      {text}
-    </div>
-  )
-}
-
-function BundleList({
-  bundles,
-  busy,
-  refresh,
-  setError,
-}: {
-  bundles: PqPublicBundleRecord[]
-  busy: boolean
-  refresh: () => Promise<void>
-  setError: (value: string | null) => void
-}) {
-  if (bundles.length === 0) return <Empty text="取り込んだ公開鍵セットがありません。" />
-  return (
-    <>
-      {bundles.map((record) => {
-        const supported = isUsableBundle(record)
-        return (
-          <Card key={record.recordId}>
-            <CardContent className="space-y-3 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">
-                    {record.trust === "fingerprint-confirmed"
-                      ? (record.name ?? "確認済み公開鍵")
-                      : "未確認の公開鍵"}
-                  </p>
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {record.identityId}
-                  </p>
-                </div>
-                <Badge
-                  variant={
-                    supported && record.trust === "fingerprint-confirmed"
-                      ? "default"
-                      : "secondary"
-                  }
-                >
-                  {supported
-                    ? record.trust === "fingerprint-confirmed"
-                      ? "人物確認済み"
-                      : "unverified"
-                    : "非対応（旧プロファイル）"}
-                </Badge>
-              </div>
-              <Fingerprint
-                label={`受信公開鍵 ${record.kem.algorithm}`}
-                value={record.kem.fingerprint}
-              />
-              <Fingerprint
-                label={`署名公開鍵 ${record.signing.algorithm}`}
-                value={record.signing.fingerprint}
-              />
-              <Fingerprint
-                label="Identity fingerprint"
-                value={record.identityFingerprint}
-              />
-              {!supported && (
-                <p className="text-sm text-destructive">
-                  非対応（旧プロファイル）のため、削除以外の操作はできません。
-                </p>
-              )}
-              <div className={`grid gap-2 ${supported ? "grid-cols-2" : "grid-cols-1"}`}>
-                {supported && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() =>
-                      void revokeBundle(record.recordId, Date.now())
-                        .then(refresh)
-                        .catch((caught) =>
-                          setError(toAppError(caught, "STORAGE_FAILED").userMessage),
-                        )
-                    }
-                  >
-                    利用停止
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="destructive"
-                  disabled={busy}
-                  onClick={() =>
-                    void deleteBundle(record.recordId)
-                      .then(refresh)
-                      .catch((caught) =>
-                        setError(toAppError(caught, "STORAGE_FAILED").userMessage),
-                      )
-                  }
-                >
-                  削除
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )
-      })}
-    </>
   )
 }

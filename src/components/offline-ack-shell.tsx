@@ -53,10 +53,10 @@ export function OfflineAckShell({
           </div>
         )}
 
-        <header className="flex items-start gap-3">
+        <header className="flex items-center gap-4">
           <AlertTriangle
             aria-hidden="true"
-            className="mt-0.5 size-6 shrink-0 text-warning"
+            className="size-11 shrink-0 text-warning sm:size-12"
           />
           <div className="min-w-0 flex-1 space-y-1">
             <p role="status" className="text-xs font-medium text-muted-foreground">
@@ -89,8 +89,8 @@ export function OfflineAckShell({
           </p>
         </div>
 
-        <div className="space-y-2 rounded-lg border p-4">
-          <div className="flex min-h-11 items-start gap-3">
+        <div className="space-y-1 rounded-lg border p-4">
+          <div className="flex items-start gap-3">
             <Checkbox
               id={checkboxId}
               checked={checked}
