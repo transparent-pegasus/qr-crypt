@@ -1,4 +1,7 @@
+# Project Goal
+
+Build fully offline encryption engineered against nation-state cryptanalysis and compromise; reject any transfer—including removable storage—that cannot meet this threat model.
+
 # Rules
 
-- use $orchestration at every task start.
-- On completing any task: register any newly introduced time-decaying file in `.claude/skills/freshness/targets.yaml`; for listed files the task touched or invalidated, refresh and verify the affected units per `.claude/skills/freshness/SKILL.md`, stamping `last_checked` only after verify passes (invariants are verified, never stamped).
+- On task completion, follow `.claude/skills/freshness/SKILL.md`: add new time-decaying files to `targets.yaml`; for listed files touched or invalidated, refresh and verify affected units; stamp only passed units; verify, never stamp, invariants.

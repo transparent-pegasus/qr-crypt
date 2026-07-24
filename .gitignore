@@ -8,5 +8,10 @@ test-results/
 coverage/
 .tmp/
 
-# CodeGraph のローカル索引(生成物)
+# CodeGraph local index (generated)
 .codegraph/
+
+# Private agent tooling (local only; freshness skill stays tracked)
+.claude/skills/herdr/
+.claude/skills/orchestration/
+.claude/skills/using-herdr-sibling-panes/

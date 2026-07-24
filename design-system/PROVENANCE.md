@@ -11,7 +11,7 @@ spec §5「ui-ux-pro-max-skill の使用」の実施記録。
 | `.agents/skills/ui-ux-pro-max/`(repo) | 無し |
 | `.windsurf/skills/ui-ux-pro-max/`(repo) | 無し |
 | `~/.claude/skills/ui-ux-pro-max/` ほか home 直下 | 無し |
-| **ローカル plugin cache** | **発見・採用**: `/home/dev/.claude/plugins/cache/ui-ux-pro-max-skill/ui-ux-pro-max/2.11.0/` |
+| **ローカル plugin cache** | **発見・採用**: local plugin cache (ui-ux-pro-max 2.11.0) |
 
 - 使用バージョン: **2.11.0**(ローカルにダウンロード済み。ネットからの再インストールはしていない)
 - 読了した SKILL.md: `<plugin>/.claude/skills/ui-ux-pro-max/SKILL.md`(Workflow: Step1 要件分析 → Step2 `--design-system` → Step3 `--domain` 補完 → Step4 `--stack` ガイドライン)
@@ -40,3 +40,15 @@ spec §5「ui-ux-pro-max-skill の使用」の実施記録。
 ページ別規則は `design-system/pages/{encrypt,keys,saved-qr,settings}.md`(spec §5 の指定 5 ファイル構成)。
 
 その後プロダクト名は Qrypt へ改名(2026-07-21)
+
+## 4. License
+
+The generator plugin, ui-ux-pro-max v2.11.0, is MIT-licensed (Copyright (c) 2024 Next Level Builder). Its persisted output stored in this directory is redistributed under that license.
+
+## 5. Removed archival artifacts (2026-07-25)
+
+For publication, `design-system/offline-cipher/` (the raw persisted generator
+output duplicated by the adapted `MASTER.md`) and
+`design-system/pages/saved-qr.md` (the spec of the since-removed saved-QR
+page) were deleted from the tree. They remain available in git history.
+References to those paths in the Japanese sections above are historical.
