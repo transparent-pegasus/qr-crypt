@@ -16,6 +16,7 @@ import {
 import { toast } from "sonner"
 import { useFeatureSupport, useSensitiveSession } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
+import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrDisplay } from "@/components/qr-display"
 import { QrScannerModal } from "@/components/qr-scanner-panel"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -40,7 +41,6 @@ import {
 } from "@/components/ui/collapsible"
 import {
   Dialog,
-  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -48,6 +48,13 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -85,6 +92,7 @@ import { useKeys } from "@/hooks/use-keys"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
+import { PQ_KEY_QR_FRAME_BYTES } from "@/lib/limits"
 import { ecLevelFor } from "@/qr/encode"
 import {
   buildExportFileName,
@@ -95,6 +103,7 @@ import {
 } from "@/qr/export-image"
 import { splitIntoFrames } from "@/qr/multipart/split"
 import { decodePayload, encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
+import { buildV2Payload } from "@/qr/payload-v2"
 import type {
   DsaPublicKeyEnvelopeV2,
   KemPublicKeyEnvelopeV2,
@@ -104,6 +113,7 @@ import type {
   QrFrameV2,
   StoredKeyRecord,
   StoredQrArtifact,
+  StorablePqArtifactKind,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { keyNameSchema, qrNameSchema } from "@/schemas/key-schema"
@@ -122,11 +132,17 @@ import {
 } from "@/storage/pq-identity-repository"
 import { saveQrArtifact } from "@/storage/qr-repository"
 
-type KeysTab = "symmetric" | "identity" | "bundle"
+type KeysTab = "create" | "import"
+type CreateKeyKind = "pq-identity" | "symmetric"
 
 interface FramedQrSession {
   title: string
   outputName: string
+  qrName: string
+  artifactType: StorablePqArtifactKind
+  payload: string
+  algorithm: string
+  keyId: string
   frames: QrFrameV2[]
 }
 
@@ -135,6 +151,12 @@ interface SymmetricQrSession {
   payload: string
   name: string
   acknowledged: boolean
+}
+
+interface PendingDelete {
+  kind: "symmetric" | "identity"
+  id: string
+  name: string
 }
 
 type SingleKeyRead = KemPublicKeyEnvelopeV2 | DsaPublicKeyEnvelopeV2
@@ -187,7 +209,8 @@ export function KeysPage() {
     refresh: refreshPq,
   } = usePqRecords()
   const getPqClient = usePqCryptoClient()
-  const [tab, setTab] = useState<KeysTab>("symmetric")
+  const [tab, setTab] = useState<KeysTab>("create")
+  const [createKind, setCreateKind] = useState<CreateKeyKind>("pq-identity")
   const [keyName, setKeyName] = useState("")
   const [importPayload, setImportPayload] = useState("")
   const [busy, setBusy] = useState(false)
@@ -205,6 +228,7 @@ export function KeysPage() {
     useState<StoredKeyRecord | null>(null)
   const [symmetricImportName, setSymmetricImportName] = useState("")
   const [symmetricImportAcknowledged, setSymmetricImportAcknowledged] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
 
   const symmetricKeys = useMemo(
     () => keys.filter((key) => key.kind === "symmetric"),
@@ -346,10 +370,52 @@ export function KeysPage() {
       const artifact = await buildSymmetricArtifact()
       if (!artifact) return
       await saveQrArtifact(artifact)
-      toast.success("共通鍵QRを保存しました")
+      toast.success("鍵QRを保存しました")
     } catch (caught) {
       if (caught instanceof AppError && caught.code === "DUPLICATE_QR") {
         const artifact = await buildSymmetricArtifact()
+        if (artifact) setDuplicateArtifact(artifact)
+        return
+      }
+      setError(toAppError(caught, "STORAGE_FAILED").userMessage)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const buildFramedArtifact = async (): Promise<StoredQrArtifact | null> => {
+    if (!framedQr) return null
+    const parsedName = qrNameSchema.safeParse(framedQr.qrName)
+    if (!parsedName.success) {
+      setError(parsedName.error.issues[0]?.message ?? "QR名を確認してください。")
+      return null
+    }
+    return {
+      id: generateArtifactId(),
+      name: parsedName.data,
+      kind: framedQr.artifactType,
+      sensitivity: "public",
+      algorithm: framedQr.algorithm,
+      payload: framedQr.payload,
+      payloadSha256: await payloadSha256Hex(framedQr.payload),
+      byteLength: new TextEncoder().encode(framedQr.payload).byteLength,
+      createdAt: Date.now(),
+      keyId: framedQr.keyId,
+    }
+  }
+
+  const saveFramedQr = async () => {
+    if (!framedQr) return
+    setBusy(true)
+    setError(null)
+    try {
+      const artifact = await buildFramedArtifact()
+      if (!artifact) return
+      await saveQrArtifact(artifact)
+      toast.success("鍵QRを保存しました")
+    } catch (caught) {
+      if (caught instanceof AppError && caught.code === "DUPLICATE_QR") {
+        const artifact = await buildFramedArtifact()
         if (artifact) setDuplicateArtifact(artifact)
         return
       }
@@ -366,7 +432,7 @@ export function KeysPage() {
     try {
       await saveQrArtifact(duplicateArtifact, { allowDuplicate: true })
       setDuplicateArtifact(null)
-      toast.success("共通鍵QRを重複保存しました")
+      toast.success("鍵QRを重複保存しました")
     } catch (caught) {
       setError(toAppError(caught, "STORAGE_FAILED").userMessage)
     } finally {
@@ -424,10 +490,14 @@ export function KeysPage() {
       let artifactType: "pq-public-identity" | "pq-kem-public-key" | "pq-dsa-public-key"
       let artifactBytes: Uint8Array
       let title: string
+      let algorithm: string
+      let keyId: string
       if (kind === "bundle") {
         artifactType = "pq-public-identity"
         artifactBytes = encodePublicIdentityBundleV2(buildPublicBundle(identity))
         title = `${identity.name} 公開鍵セット`
+        algorithm = `${identity.kem.algorithm}+${identity.signing.algorithm}`
+        keyId = identity.id
       } else if (kind === "kem") {
         artifactType = "pq-kem-public-key"
         artifactBytes = encodeKemPublicKeyEnvelopeV2({
@@ -441,6 +511,8 @@ export function KeysPage() {
           createdAt: identity.createdAt,
         })
         title = `${identity.name} 暗号化用公開鍵`
+        algorithm = identity.kem.algorithm
+        keyId = identity.kem.keyId
       } else {
         artifactType = "pq-dsa-public-key"
         artifactBytes = encodeDsaPublicKeyEnvelopeV2({
@@ -454,14 +526,21 @@ export function KeysPage() {
           createdAt: identity.createdAt,
         })
         title = `${identity.name} 署名検証用公開鍵`
+        algorithm = identity.signing.algorithm
+        keyId = identity.signing.keyId
       }
       setFramedQr({
         title,
         outputName: `${title}-${formatSuggestedDate(Date.now())}`,
+        qrName: title.slice(0, 80),
+        artifactType,
+        payload: buildV2Payload(artifactType, artifactBytes),
+        algorithm,
+        keyId,
         frames: await splitIntoFrames({
           artifactType,
           artifactBytes,
-          frameBytes: preferences.frameBytes,
+          frameBytes: PQ_KEY_QR_FRAME_BYTES,
         }),
       })
     } catch (caught) {
@@ -504,13 +583,22 @@ export function KeysPage() {
     }
   }
 
-  const removeIdentity = async (identity: PostQuantumIdentity) => {
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    const target = pendingDelete
     setBusy(true)
     setError(null)
     try {
-      await deleteIdentity(identity.id)
-      await refreshPq()
-      toast.success("旧プロファイルIDを削除しました")
+      if (target.kind === "symmetric") {
+        await deleteKeyRecord(target.id)
+        await refreshKeys()
+        toast.success("共通鍵を削除しました")
+      } else {
+        await deleteIdentity(target.id)
+        await refreshPq()
+        toast.success("ポスト量子IDを削除しました")
+      }
+      setPendingDelete(null)
     } catch (caught) {
       setError(toAppError(caught, "STORAGE_FAILED").userMessage)
     } finally {
@@ -712,36 +800,57 @@ export function KeysPage() {
       )}
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as KeysTab)}>
-        <TabsList className="grid h-11 w-full grid-cols-3">
-          <TabsTrigger
-            value="symmetric"
-            className="h-9 cursor-pointer px-1 text-sm"
-          >
-            共通鍵
+        <TabsList className="grid h-11 w-full grid-cols-2">
+          <TabsTrigger value="create" className="h-9 cursor-pointer px-1 text-sm">
+            鍵を作成
           </TabsTrigger>
-          <TabsTrigger
-            value="identity"
-            className="h-9 cursor-pointer px-1 text-sm"
-          >
-            ポスト量子ID
-          </TabsTrigger>
-          <TabsTrigger
-            value="bundle"
-            className="h-9 cursor-pointer px-1 text-sm"
-          >
-            相手の公開鍵
+          <TabsTrigger value="import" className="h-9 cursor-pointer px-1 text-sm">
+            鍵を読み込む
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="symmetric" className="mt-6 space-y-4">
+        <TabsContent value="create" className="mt-6 space-y-4">
+          {createKind === "pq-identity" && (
+            <Alert>
+              <ShieldCheck aria-hidden="true" className="size-4" />
+              <AlertTitle>experimental・未独立監査</AlertTitle>
+            </Alert>
+          )}
           <CreateField
-            label="共通鍵名"
+            kind={createKind}
+            onKindChange={setCreateKind}
             value={keyName}
             onChange={setKeyName}
-            buttonLabel="共通鍵を作成"
             busy={busy}
-            onCreate={() => void createSymmetric()}
+            onCreate={() =>
+              void (createKind === "pq-identity" ? createPqIdentity() : createSymmetric())
+            }
           />
+
+          <h3 className="pt-2 text-base font-semibold">ポスト量子ID</h3>
+          {identityGroups.map(({ head, previous }) => (
+            <IdentityCard
+              key={head.id}
+              identity={head}
+              previous={previous}
+              busy={busy}
+              onShow={showIdentityQr}
+              onRotate={rotate}
+              onRevoke={revoke}
+              onDelete={(identity) =>
+                setPendingDelete({
+                  kind: "identity",
+                  id: identity.id,
+                  name: identity.name,
+                })
+              }
+            />
+          ))}
+          {!pqLoading && identities.length === 0 && (
+            <Empty text="ポスト量子IDがありません。上のフォームから作成できます。" />
+          )}
+
+          <h3 className="pt-2 text-base font-semibold">共通鍵</h3>
           {symmetricKeys.map((record) => (
             <Card key={record.id}>
               <CardContent className="space-y-3 p-4">
@@ -753,55 +862,44 @@ export function KeysPage() {
                   <Badge>AES-256-GCM</Badge>
                 </div>
                 <Fingerprint label="鍵指紋" value={record.fingerprint} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 w-full"
-                  disabled={busy}
-                  onClick={() => void showSymmetricQr(record)}
-                >
-                  <QrCode aria-hidden="true" />
-                  秘密鍵QRを表示
-                </Button>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11"
+                    disabled={busy}
+                    onClick={() => void showSymmetricQr(record)}
+                  >
+                    <QrCode aria-hidden="true" />
+                    秘密鍵QRを表示
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="h-11"
+                    disabled={busy}
+                    aria-label={`${record.name}を削除`}
+                    onClick={() =>
+                      setPendingDelete({
+                        kind: "symmetric",
+                        id: record.id,
+                        name: record.name,
+                      })
+                    }
+                  >
+                    <Trash2 aria-hidden="true" />
+                    削除
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
           {!keysLoading && symmetricKeys.length === 0 && (
-            <Empty text="共通鍵がありません。" />
+            <Empty text="共通鍵がありません。種類を共通鍵へ切り替えて作成できます。" />
           )}
         </TabsContent>
 
-        <TabsContent value="identity" className="mt-6 space-y-4">
-          <Alert>
-            <ShieldCheck aria-hidden="true" className="size-4" />
-            <AlertTitle>experimental・未独立監査</AlertTitle>
-          </Alert>
-          <CreateField
-            label="ポスト量子ID名"
-            value={keyName}
-            onChange={setKeyName}
-            buttonLabel="maximum IDを作成"
-            busy={busy}
-            onCreate={() => void createPqIdentity()}
-          />
-          {identityGroups.map(({ head, previous }) => (
-            <IdentityCard
-              key={head.id}
-              identity={head}
-              previous={previous}
-              busy={busy}
-              onShow={showIdentityQr}
-              onRotate={rotate}
-              onRevoke={revoke}
-              onDelete={removeIdentity}
-            />
-          ))}
-          {!pqLoading && identities.length === 0 && (
-            <Empty text="ポスト量子IDがありません。" />
-          )}
-        </TabsContent>
-
-        <TabsContent value="bundle" className="mt-6 space-y-4">
+        <TabsContent value="import" className="mt-6 space-y-4">
           <QrScannerModal
             triggerLabel="鍵QRを読み取る"
             singleTargets={["symmetric-key"]}
@@ -856,6 +954,11 @@ export function KeysPage() {
             refresh={refreshPq}
             setError={setError}
           />
+          {!pqLoading && bundles.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              上のQR読取またはペイロード貼付から公開鍵セットを取り込めます。
+            </p>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -863,7 +966,7 @@ export function KeysPage() {
         open={framedQr !== null}
         onOpenChange={(open) => !open && setFramedQr(null)}
       >
-        <DialogContent className="max-h-[95dvh] max-w-lg overflow-y-auto">
+        <NoAutofocusDialogContent className="max-h-[95dvh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{framedQr?.title}</DialogTitle>
             <DialogDescription>
@@ -871,21 +974,42 @@ export function KeysPage() {
             </DialogDescription>
           </DialogHeader>
           {framedQr && (
-            <AnimatedQrFrames
-              frames={framedQr.frames}
-              frameIntervalMs={preferences.frameIntervalMs}
-              outputName={framedQr.outputName}
-              title={framedQr.title}
-            />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="framed-qr-name">QR名</Label>
+                <Input
+                  id="framed-qr-name"
+                  value={framedQr.qrName}
+                  maxLength={80}
+                  onChange={(event) =>
+                    setFramedQr({ ...framedQr, qrName: event.target.value })
+                  }
+                />
+              </div>
+              <Button
+                type="button"
+                className="h-11 w-full"
+                disabled={busy || !framedQr.qrName.trim()}
+                onClick={() => void saveFramedQr()}
+              >
+                保存済み鍵QRへ保存
+              </Button>
+              <AnimatedQrFrames
+                frames={framedQr.frames}
+                frameIntervalMs={preferences.frameIntervalMs}
+                outputName={framedQr.outputName}
+                title={framedQr.title}
+              />
+            </div>
           )}
-        </DialogContent>
+        </NoAutofocusDialogContent>
       </Dialog>
 
       <Dialog
         open={symmetricQr !== null}
         onOpenChange={(open) => !open && setSymmetricQr(null)}
       >
-        <DialogContent className="max-h-[95dvh] max-w-lg overflow-y-auto">
+        <NoAutofocusDialogContent className="max-h-[95dvh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>共通鍵QR</DialogTitle>
             <DialogDescription>
@@ -969,11 +1093,11 @@ export function KeysPage() {
               </div>
             </div>
           )}
-        </DialogContent>
+        </NoAutofocusDialogContent>
       </Dialog>
 
       <Dialog open={pendingBundle !== null} onOpenChange={() => undefined}>
-        <DialogContent
+        <NoAutofocusDialogContent
           className="max-h-[95dvh] max-w-lg overflow-y-auto [&>button.absolute]:hidden"
           onEscapeKeyDown={(event) => event.preventDefault()}
           onPointerDownOutside={(event) => event.preventDefault()}
@@ -1026,7 +1150,7 @@ export function KeysPage() {
               確認して保存
             </Button>
           </DialogFooter>
-        </DialogContent>
+        </NoAutofocusDialogContent>
       </Dialog>
 
       <Dialog
@@ -1039,7 +1163,7 @@ export function KeysPage() {
           }
         }}
       >
-        <DialogContent>
+        <NoAutofocusDialogContent>
           <DialogHeader>
             <DialogTitle>共通鍵を取り込みます</DialogTitle>
             <DialogDescription>
@@ -1080,7 +1204,7 @@ export function KeysPage() {
               共通鍵を保存
             </Button>
           </DialogFooter>
-        </DialogContent>
+        </NoAutofocusDialogContent>
       </Dialog>
 
       <AlertDialog
@@ -1105,31 +1229,79 @@ export function KeysPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingDelete ? `「${pendingDelete.name}」を削除しますか?` : "鍵を削除しますか?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete?.kind === "identity"
+                ? "このID宛の暗号文は復号できなくなります。失効と異なり元に戻せません。"
+                : "この鍵で暗号化した暗号文は復号できなくなります。元に戻せません。"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => void confirmDelete()}
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </section>
   )
 }
 
 function CreateField({
-  label,
+  kind,
+  onKindChange,
   value,
   onChange,
-  buttonLabel,
   busy,
   onCreate,
 }: {
-  label: string
+  kind: CreateKeyKind
+  onKindChange: (kind: CreateKeyKind) => void
   value: string
   onChange: (value: string) => void
-  buttonLabel: string
   busy: boolean
   onCreate: () => void
 }) {
+  const pq = kind === "pq-identity"
+  const nameLabel = pq ? "ポスト量子ID名" : "共通鍵名"
+  const buttonLabel = pq ? "ポスト量子IDを作成" : "共通鍵を作成"
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
-        <Label htmlFor={`create-${buttonLabel}`}>{label}</Label>
+        <div className="space-y-2">
+          <Label htmlFor="create-key-kind">種類</Label>
+          <Select
+            value={kind}
+            onValueChange={(value) => onKindChange(value as CreateKeyKind)}
+          >
+            <SelectTrigger id="create-key-kind" className="h-11">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="pq-identity">ポスト量子ID</SelectItem>
+              <SelectItem value="symmetric">共通鍵</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Label htmlFor="create-key-name">{nameLabel}</Label>
         <Input
-          id={`create-${buttonLabel}`}
+          id="create-key-name"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           maxLength={80}
@@ -1188,7 +1360,7 @@ function IdentityCard({
   ) => Promise<void>
   onRotate: (identity: PostQuantumIdentity) => Promise<void>
   onRevoke: (identity: PostQuantumIdentity) => Promise<void>
-  onDelete: (identity: PostQuantumIdentity) => Promise<void>
+  onDelete: (identity: PostQuantumIdentity) => void
 }) {
   const supported = isUsableIdentity(identity)
   const old = identity.status !== "active"
@@ -1278,17 +1450,16 @@ function IdentityCard({
               </Button>
             </>
           )}
-          {!supported && (
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={busy}
-              onClick={() => void onDelete(identity)}
-            >
-              <Trash2 aria-hidden="true" />
-              旧プロファイルIDを削除
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={busy}
+            aria-label={`${identity.name}を削除`}
+            onClick={() => onDelete(identity)}
+          >
+            <Trash2 aria-hidden="true" />
+            削除
+          </Button>
         </div>
         <p className="text-xs text-muted-foreground">
           失効はこの端末での利用停止であり、外部の相手には伝播しません。
@@ -1326,29 +1497,31 @@ function IdentityCard({
                     <p className="font-mono text-sm">
                       比較表示: {formatFingerprint(generation.identityFingerprint)}
                     </p>
-                    {generationSupported ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void onShow(generation, "signing")}
-                      >
-                        <QrCode aria-hidden="true" />
-                        署名検証用単鍵QR
-                      </Button>
-                    ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {generationSupported && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => void onShow(generation, "signing")}
+                        >
+                          <QrCode aria-hidden="true" />
+                          署名検証用単鍵QR
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="destructive"
                         size="sm"
                         disabled={busy}
-                        onClick={() => void onDelete(generation)}
+                        aria-label={`${generation.name}を削除`}
+                        onClick={() => onDelete(generation)}
                       >
                         <Trash2 aria-hidden="true" />
                         削除
                       </Button>
-                    )}
+                    </div>
                   </div>
                 )
               })}

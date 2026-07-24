@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   ChevronLeft,
   ChevronRight,
@@ -32,6 +32,7 @@ export interface AnimatedQrFramesProps {
   outputName: string
   size?: number
   title?: string
+  onFirstRendered?: () => void
 }
 
 interface FrameSlot {
@@ -45,6 +46,7 @@ export function AnimatedQrFrames({
   outputName,
   size = env.qrRenderSize,
   title = "複数QR",
+  onFirstRendered,
 }: AnimatedQrFramesProps) {
   const { slots, missingIndexes, frameCount } = useMemo(() => {
     const expected = Math.max(0, ...frames.map((frame) => frame.frameCount))
@@ -69,6 +71,13 @@ export function AnimatedQrFrames({
   const [speed, setSpeed] = useState(frameIntervalMs)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const firstRenderedRef = useRef(false)
+
+  const handleRendered = () => {
+    if (firstRenderedRef.current) return
+    firstRenderedRef.current = true
+    onFirstRendered?.()
+  }
 
   useEffect(() => {
     let active = true
@@ -190,6 +199,7 @@ export function AnimatedQrFrames({
         ecLevel="Q"
         size={size}
         title={`${title} ${currentIndex! + 1} / ${frameCount}`}
+        onRendered={handleRendered}
       />
 
       <div className="flex items-center justify-center gap-2">

@@ -103,6 +103,7 @@ vi.mock("@/qr/multipart/assemble", () => ({
 }))
 vi.mock("@/qr/payload-v2", () => ({
   buildV2Payload: fakes.buildV2Payload,
+  splitV2Payload: fakes.splitV2Payload,
   encodeFrameToPayload: fakes.encodeFrameToPayload,
 }))
 

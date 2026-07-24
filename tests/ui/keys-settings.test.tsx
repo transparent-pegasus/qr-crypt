@@ -12,6 +12,9 @@ import { env } from "@/schemas/env-schema"
 import {
   armMaintenanceToken,
   confirmBundleFingerprint,
+  createIdentity,
+  createSymmetricKeyRecord,
+  deleteIdentity,
   deleteKeyRecord,
   emitScannedPayload,
   encodeDsaPublicKeyEnvelopeV2,
@@ -24,6 +27,7 @@ import {
   fakePreferences,
   saveBundle,
   saveQrArtifact,
+  splitIntoFrames,
   startQrScan,
   updatePreferences,
 } from "./helpers/fakes"
@@ -36,32 +40,28 @@ describe("key management v2", () => {
     resetUi()
   })
 
-  it("shows three tabs, hides legacy RSA keys, and provides their deletion route", async () => {
+  it("shows create/import tabs, defaults to create, and keeps legacy RSA cleanup", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    for (const name of ["共通鍵", "ポスト量子ID", "相手の公開鍵"]) {
+    for (const name of ["鍵を作成", "鍵を読み込む"]) {
       expect(await screen.findByRole("tab", { name })).toBeInTheDocument()
     }
-    expect(screen.getAllByRole("tab")).toHaveLength(3)
+    expect(screen.getAllByRole("tab")).toHaveLength(2)
+    expect(screen.getByRole("tab", { name: "鍵を作成" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
     expect(screen.getByRole("tablist")).toHaveClass(
       "grid",
       "h-11",
       "w-full",
-      "grid-cols-3",
+      "grid-cols-2",
     )
     for (const tab of screen.getAllByRole("tab")) {
-      expect(tab).toHaveClass(
-        "h-9",
-        "cursor-pointer",
-        "px-1",
-        "text-sm",
-      )
+      expect(tab).toHaveClass("h-9", "cursor-pointer", "px-1", "text-sm")
       await user.click(tab)
       expect(screen.getByRole("tabpanel")).toHaveClass("mt-6")
     }
-    expect(screen.queryByRole("tab", { name: "鍵を読み取る" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("tab", { name: "受信公開鍵" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("tab", { name: "署名公開鍵" })).not.toBeInTheDocument()
     expect(
       screen.getByText(/旧形式のRSA鍵 2 件は v2 で使用不可、復元できません/),
     ).toBeInTheDocument()
@@ -71,11 +71,36 @@ describe("key management v2", () => {
     expect(fakeKeys.every((key) => key.kind === "symmetric")).toBe(true)
   })
 
+  it("creates the selected key kind through the embedded type select", async () => {
+    const user = userEvent.setup()
+    const identityCount = fakeIdentities.length
+    const symmetricCount = fakeKeys.filter((key) => key.kind === "symmetric").length
+    await renderApp("/keys")
+
+    expect(await screen.findByText("experimental・未独立監査")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "ポスト量子IDを作成" })).toBeDisabled()
+    await user.type(screen.getByLabelText("ポスト量子ID名"), "新しいPQ ID")
+    await user.click(screen.getByRole("button", { name: "ポスト量子IDを作成" }))
+    await waitFor(() => expect(createIdentity).toHaveBeenCalledOnce())
+    expect(fakeIdentities).toHaveLength(identityCount + 1)
+
+    await user.click(screen.getByRole("combobox", { name: "種類" }))
+    await user.click(screen.getByRole("option", { name: "共通鍵" }))
+    expect(screen.queryByText("experimental・未独立監査")).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText("共通鍵名"), "新しい共通鍵")
+    await user.click(screen.getByRole("button", { name: "共通鍵を作成" }))
+    await waitFor(() => expect(createSymmetricKeyRecord).toHaveBeenCalledOnce())
+    expect(fakeKeys.filter((key) => key.kind === "symmetric")).toHaveLength(
+      symmetricCount + 1,
+    )
+    expect(screen.queryByText(/maximum IDを作成/)).not.toBeInTheDocument()
+  })
+
   it("blocks immediately on OCI2 fingerprint comparison and can save unverified", async () => {
     const user = userEvent.setup()
     const originalCount = fakeBundles.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
+    await user.click(await screen.findByRole("tab", { name: "鍵を読み込む" }))
     await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:fake")
     await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
 
@@ -101,7 +126,7 @@ describe("key management v2", () => {
   it("confers fingerprint-confirmed trust only after the explicit checkbox", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
+    await user.click(await screen.findByRole("tab", { name: "鍵を読み込む" }))
     await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:fake")
     await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
     const dialog = await screen.findByRole("dialog", {
@@ -135,7 +160,7 @@ describe("key management v2", () => {
     encodePublicIdentityBundleV2(legacyBundle)
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
+    await user.click(await screen.findByRole("tab", { name: "鍵を読み込む" }))
     await user.type(screen.getByLabelText("鍵ペイロード"), "OCI2:legacy-balanced")
     await user.click(screen.getByRole("button", { name: "鍵を読み取る" }))
 
@@ -167,7 +192,7 @@ describe("key management v2", () => {
     }
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
+    await user.click(await screen.findByRole("tab", { name: "鍵を読み込む" }))
     const input = screen.getByLabelText("鍵ペイロード")
 
     encodeKemPublicKeyEnvelopeV2(legacyKem)
@@ -187,8 +212,7 @@ describe("key management v2", () => {
   it("exposes maximum identity fingerprints, lifecycle actions, and all OCF2 outputs", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "ポスト量子ID" }))
-    expect(screen.getByText("experimental・未独立監査")).toBeInTheDocument()
+    expect(await screen.findByText("experimental・未独立監査")).toBeInTheDocument()
     expect(screen.queryByText(/balanced/i)).not.toBeInTheDocument()
     expect(screen.getByText("3".repeat(64))).toBeInTheDocument()
     expect(screen.getByText("1".repeat(64))).toBeInTheDocument()
@@ -198,11 +222,30 @@ describe("key management v2", () => {
 
     await user.click(screen.getByRole("button", { name: "公開鍵セットQR" }))
     const qrDialog = await screen.findByRole("dialog", { name: /公開鍵セット/ })
+    expect(qrDialog).toHaveFocus()
     expect(within(qrDialog).getByText(/OCF2フレーム/)).toBeInTheDocument()
     expect(within(qrDialog).getByRole("button", { name: "一時停止" })).toBeInTheDocument()
     expect(
       within(qrDialog).getByRole("button", { name: /ZIPで出力/ }),
     ).toBeInTheDocument()
+    expect(splitIntoFrames).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        artifactType: "pq-public-identity",
+        frameBytes: 300,
+      }),
+    )
+    await user.click(
+      within(qrDialog).getByRole("button", {
+        name: "保存済み鍵QRへ保存",
+      }),
+    )
+    await waitFor(() => expect(saveQrArtifact).toHaveBeenCalledOnce())
+    expect(fakeArtifacts[0]).toMatchObject({
+      kind: "pq-public-identity",
+      sensitivity: "public",
+      algorithm: "ML-KEM-1024+ML-DSA-87",
+      keyId: fakeIdentities[0]?.id,
+    })
     expect(fakeIdentities).toHaveLength(1)
   })
 
@@ -227,7 +270,6 @@ describe("key management v2", () => {
     )
 
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "ポスト量子ID" }))
     expect(await screen.findByText("3".repeat(64))).toBeInTheDocument()
     expect(screen.getAllByText("active")).toHaveLength(1)
     expect(screen.queryByText("rotated")).not.toBeInTheDocument()
@@ -235,6 +277,46 @@ describe("key management v2", () => {
     await user.click(screen.getByRole("button", { name: /旧世代 1 件、復号専用/ }))
     expect(screen.getByText("rotated")).toBeInTheDocument()
     expect(screen.getAllByRole("button", { name: "署名検証用単鍵QR" })).toHaveLength(2)
+  })
+
+  it("requires destructive confirmation before deleting symmetric keys or identities", async () => {
+    const user = userEvent.setup()
+    await renderApp("/keys")
+
+    await user.click(await screen.findByRole("button", { name: "共通鍵Aを削除" }))
+    let confirmation = await screen.findByRole("alertdialog", {
+      name: "「共通鍵A」を削除しますか?",
+    })
+    expect(
+      within(confirmation).getByText(
+        "この鍵で暗号化した暗号文は復号できなくなります。元に戻せません。",
+      ),
+    ).toBeInTheDocument()
+    expect(deleteKeyRecord).not.toHaveBeenCalled()
+    await user.click(within(confirmation).getByRole("button", { name: "キャンセル" }))
+    expect(deleteKeyRecord).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "共通鍵Aを削除" }))
+    confirmation = await screen.findByRole("alertdialog", {
+      name: "「共通鍵A」を削除しますか?",
+    })
+    await user.click(within(confirmation).getByRole("button", { name: "削除する" }))
+    await waitFor(() =>
+      expect(deleteKeyRecord).toHaveBeenCalledWith("sym-key-00000001"),
+    )
+
+    await user.click(screen.getByRole("button", { name: "自分のPQ IDを削除" }))
+    confirmation = await screen.findByRole("alertdialog", {
+      name: "「自分のPQ ID」を削除しますか?",
+    })
+    expect(
+      within(confirmation).getByText(
+        "このID宛の暗号文は復号できなくなります。失効と異なり元に戻せません。",
+      ),
+    ).toBeInTheDocument()
+    expect(deleteIdentity).not.toHaveBeenCalled()
+    await user.click(within(confirmation).getByRole("button", { name: "削除する" }))
+    await waitFor(() => expect(deleteIdentity).toHaveBeenCalledWith("I".repeat(22)))
   })
 
   it("retains duplicate handling for saved key QR without introducing message persistence", async () => {
@@ -265,7 +347,7 @@ describe("key management v2", () => {
     const user = userEvent.setup()
     const originalCount = fakeKeys.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "相手の公開鍵" }))
+    await user.click(await screen.findByRole("tab", { name: "鍵を読み込む" }))
     expect(startQrScan).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "鍵QRを読み取る" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
