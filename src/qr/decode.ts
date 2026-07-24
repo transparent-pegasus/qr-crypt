@@ -278,8 +278,14 @@ function acquireCamera(attempt: CameraAttempt): Promise<MediaStream> {
   const acquisition = cameraAcquisitionQueue.then(async () => {
     if (!isActiveAttempt(attempt)) throw new AttemptCancelled()
 
+    // 解像度未指定だと多くの端末が 640×480 を返し、鍵 QR(~100 モジュール)が
+    // 1 モジュール 2–3px となり静止でも復号不能になる。ideal は不一致でも拒否されない。
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
+      video: {
+        facingMode: "environment",
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
     })
     if (!isActiveAttempt(attempt)) {
       stopStream(stream, attempt.video)
