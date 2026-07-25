@@ -41,6 +41,11 @@ export default defineConfig(() => {
         },
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
+          // The landing page under /about/ is an online-only surface. Keep its
+          // bytes out of the offline bundle, and stop the SPA navigation
+          // fallback from serving the app shell in its place.
+          globIgnores: ["about/**"],
+          navigateFallbackDenylist: [/^\/about\//],
           navigateFallback: "/index.html",
           cleanupOutdatedCaches: true,
           // The reachability sentinel gating the destructive wipe-on-online path

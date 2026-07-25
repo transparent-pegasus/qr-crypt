@@ -122,6 +122,7 @@ const en = {
   "gate.switchOffline.title": "Switch to offline mode",
   "gate.switchOffline.body":
     "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
+  "gate.about.link": "What this app does",
 
   "relay.card.title": "OCF2 message-header QR relay",
   "relay.card.description":
@@ -750,6 +751,7 @@ const ja = {
   "gate.switchOffline.title": "オフラインに切り替えてください",
   "gate.switchOffline.body":
     "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。",
+  "gate.about.link": "このアプリが何をするか",
 
   "relay.card.title": "OCF2メッセージヘッダーQRリレー",
   "relay.card.description":
