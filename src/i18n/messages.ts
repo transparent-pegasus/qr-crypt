@@ -481,7 +481,7 @@ const en = {
   "settings.field.defaultAlgorithm": "Default cryptographic algorithm",
   "settings.field.defaultEc": "Default QR error-correction level",
   "settings.ec.hint":
-    "Higher levels are easier to scan but hold less data. Key QR codes always use H, regardless of this setting.",
+    "Higher levels are easier to scan but hold less data. This setting applies only to the single-image AES message QR; the symmetric-key QR is fixed at H, and all frame-based QRs (ciphertext, public key, and identity) are fixed at Q.",
   "settings.card.pqMessage": "Post-quantum messages",
   "settings.requireSignature.label": "Require a signature",
   "settings.requireSignature.forced":
@@ -1060,7 +1060,7 @@ const ja = {
   "settings.field.defaultAlgorithm": "デフォルト暗号方式",
   "settings.field.defaultEc": "デフォルトQR誤り訂正レベル",
   "settings.ec.hint":
-    "高いほど読み取りに強く、入る量は減ります。鍵QRは設定にかかわらず常にHです。",
+    "高いほど読み取りに強く、入る量は減ります。この設定が効くのは単一画像のAESメッセージQRだけです。共通鍵QRは常にH、フレーム分割QR（暗号文・公開鍵・公開鍵セット）は常にQです。",
   "settings.card.pqMessage": "ポスト量子メッセージ",
   "settings.requireSignature.label": "署名を必須にする",
   "settings.requireSignature.forced":
