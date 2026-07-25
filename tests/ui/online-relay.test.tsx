@@ -97,6 +97,19 @@ function deferPreflight(render: Deferred<string>): void {
     .mockImplementationOnce(() => render.promise)
 }
 
+// Relay payloads are ~500 characters each. Typing them keystroke by keystroke
+// costs one React render per character and pushed the slowest cases past the
+// 5s default timeout on CI runners; a paste is one event and is also how relay
+// text actually arrives.
+async function enterRelayText(
+  user: ReturnType<typeof userEvent.setup>,
+  input: HTMLElement,
+  text: string,
+): Promise<void> {
+  await user.click(input)
+  await user.paste(text)
+}
+
 function relayElement(props: Partial<React.ComponentProps<typeof OnlineRelay>> = {}) {
   return (
     <LanguageProvider initialLanguage="en">
@@ -145,7 +158,10 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
-  vi.clearAllMocks()
+  // reset, not clear: clearAllMocks leaves queued mockImplementationOnce
+  // entries behind, so a test that fails mid-flight hands its unconsumed
+  // deferred renders to the next test. beforeEach reinstalls both defaults.
+  vi.resetAllMocks()
 })
 
 describe("relay frame-set parser", () => {
@@ -735,11 +751,11 @@ describe("online relay UI", () => {
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     const input = screen.getByLabelText("Relay text")
 
-    await user.type(input, `${olderFirst}\n${olderSecond}`)
+    await enterRelayText(user, input, `${olderFirst}\n${olderSecond}`)
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
     expect(renderQr).toHaveBeenCalledTimes(2)
     await user.clear(input)
-    await user.type(input, `${newerFirst}\n${newerSecond}`)
+    await enterRelayText(user, input, `${newerFirst}\n${newerSecond}`)
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
     expect(renderQr).toHaveBeenCalledTimes(4)
 
@@ -769,10 +785,10 @@ describe("online relay UI", () => {
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     const input = screen.getByLabelText("Relay text")
 
-    await user.type(input, `${olderFirst}\n${olderSecond}`)
+    await enterRelayText(user, input, `${olderFirst}\n${olderSecond}`)
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
     await user.clear(input)
-    await user.type(input, `${newerFirst}\n${newerSecond}`)
+    await enterRelayText(user, input, `${newerFirst}\n${newerSecond}`)
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
 
     await act(async () => {
@@ -804,10 +820,10 @@ describe("online relay UI", () => {
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     const input = screen.getByLabelText("Relay text")
 
-    await user.type(input, `${first}\n${second}`)
+    await enterRelayText(user, input, `${first}\n${second}`)
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
     await user.clear(input)
-    await user.type(input, `${replacementFirst}\n${replacementSecond}`)
+    await enterRelayText(user, input, `${replacementFirst}\n${replacementSecond}`)
     await act(async () => {
       pendingRender.resolve("stale-preflight")
       await pendingRender.promise
@@ -830,7 +846,7 @@ describe("online relay UI", () => {
     renderRelay()
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
-    await user.type(
+    await enterRelayText(user, 
       screen.getByLabelText("Relay text"),
       `${closingFirst}\n${closingSecond}`,
     )
@@ -839,7 +855,7 @@ describe("online relay UI", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
-    await user.type(
+    await enterRelayText(user, 
       screen.getByLabelText("Relay text"),
       `${reopenedFirst}\n${reopenedSecond}`,
     )
@@ -870,7 +886,7 @@ describe("online relay UI", () => {
     renderRelay()
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
-    await user.type(screen.getByLabelText("Relay text"), `${first}\n${second}`)
+    await enterRelayText(user, screen.getByLabelText("Relay text"), `${first}\n${second}`)
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
 
     act(() => window.dispatchEvent(new Event("pagehide")))
@@ -895,7 +911,7 @@ describe("online relay UI", () => {
     const rendered = renderRelay()
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
-    await user.type(screen.getByLabelText("Relay text"), `${first}\n${second}`)
+    await enterRelayText(user, screen.getByLabelText("Relay text"), `${first}\n${second}`)
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
 
     rendered.rerender(relayElement({ eligible: false }))
@@ -920,7 +936,7 @@ describe("online relay UI", () => {
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     const first = payload(0)
     const second = payload(1)
-    await user.type(screen.getByLabelText("Relay text"), `${second}\r\n${first}\r\n`)
+    await enterRelayText(user, screen.getByLabelText("Relay text"), `${second}\r\n${first}\r\n`)
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
     expect(
       await screen.findByText("This relay provides no app file-download controls."),
@@ -935,7 +951,7 @@ describe("online relay UI", () => {
     renderRelay()
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
-    await user.type(screen.getByLabelText("Relay text"), payload(1))
+    await enterRelayText(user, screen.getByLabelText("Relay text"), payload(1))
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
 
     expect(
@@ -951,7 +967,7 @@ describe("online relay UI", () => {
     renderRelay()
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
-    await user.type(screen.getByLabelText("Relay text"), `${payload(0)}\n${payload(1)}`)
+    await enterRelayText(user, screen.getByLabelText("Relay text"), `${payload(0)}\n${payload(1)}`)
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(
