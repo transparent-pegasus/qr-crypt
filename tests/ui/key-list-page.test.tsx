@@ -16,6 +16,7 @@ import {
   fakeKeys,
   listIdentities,
   listKeyRecords,
+  renderQrDataUrl,
   revokeIdentity,
   saveRotation,
   splitIntoFrames,
@@ -26,6 +27,14 @@ function rowFor(text: string): HTMLButtonElement {
   const row = screen.getByText(text).closest("button")
   if (!(row instanceof HTMLButtonElement)) throw new Error(`row not found: ${text}`)
   return row
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
 }
 
 async function renderKeyList(): Promise<void> {
@@ -150,6 +159,8 @@ describe("key list page", () => {
 
   it("shows QR views in the same dialog and never offers QR persistence", async () => {
     const user = userEvent.setup()
+    const firstQrRender = deferred<string>()
+    renderQrDataUrl.mockImplementationOnce(() => firstQrRender.promise)
     await renderKeyList()
 
     await user.click(rowFor("自分のPQ ID"))
@@ -160,10 +171,16 @@ describe("key list page", () => {
     expect(
       within(dialog).getByRole("button", { name: "Back to details" }),
     ).toBeInTheDocument()
-    const bundleFullscreen = await within(dialog).findByRole("button", {
+    const bundleFullscreenTriggers = within(dialog).getAllByRole("button", {
       name: "View full screen",
     })
-    expect(bundleFullscreen).toBeEnabled()
+    expect(bundleFullscreenTriggers).toHaveLength(1)
+    const bundleFullscreen = bundleFullscreenTriggers[0]!
+    expect(bundleFullscreen).toBeDisabled()
+    await waitFor(() => expect(renderQrDataUrl).toHaveBeenCalled())
+    expect(bundleFullscreen).toBeDisabled()
+    firstQrRender.resolve("data:image/png;base64,ZmFrZQ==")
+    await waitFor(() => expect(bundleFullscreen).toBeEnabled())
     expect(within(dialog).queryByText(/Saved/)).toBeNull()
     await waitFor(() =>
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
@@ -180,7 +197,7 @@ describe("key list page", () => {
     })
     expect(within(fullscreen).getByLabelText("Frame density")).toBeInTheDocument()
     expect(within(fullscreen).getByLabelText("Display speed")).toBeInTheDocument()
-    await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
+    await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
     expect(screen.getByRole("dialog", { name: /public-key bundle/ })).toBeInTheDocument()
 
     await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
@@ -196,13 +213,16 @@ describe("key list page", () => {
       ),
     )
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
-    await user.click(
-      await within(dialog).findByRole("button", { name: "View full screen" }),
-    )
+    const kemFullscreenTriggers = within(dialog).getAllByRole("button", {
+      name: "View full screen",
+    })
+    expect(kemFullscreenTriggers).toHaveLength(1)
+    await waitFor(() => expect(kemFullscreenTriggers[0]).toBeEnabled())
+    await user.click(kemFullscreenTriggers[0]!)
     fullscreen = await screen.findByRole("dialog", {
       name: /View .*encryption public key.* full screen/,
     })
-    await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
+    await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
 
     await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
     await user.click(
@@ -219,22 +239,28 @@ describe("key list page", () => {
       ),
     )
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
-    await user.click(
-      await within(dialog).findByRole("button", { name: "View full screen" }),
-    )
+    const signingFullscreenTriggers = within(dialog).getAllByRole("button", {
+      name: "View full screen",
+    })
+    expect(signingFullscreenTriggers).toHaveLength(1)
+    await waitFor(() => expect(signingFullscreenTriggers[0]).toBeEnabled())
+    await user.click(signingFullscreenTriggers[0]!)
     fullscreen = await screen.findByRole("dialog", {
       name: /View .*signature-verification public key.* full screen/,
     })
-    await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
+    await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
     await user.click(rowFor("共通鍵A"))
     dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
     dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
-    await user.click(
-      await within(dialog).findByRole("button", { name: "View full screen" }),
-    )
+    const symmetricFullscreenTriggers = within(dialog).getAllByRole("button", {
+      name: "View full screen",
+    })
+    expect(symmetricFullscreenTriggers).toHaveLength(1)
+    await waitFor(() => expect(symmetricFullscreenTriggers[0]).toBeEnabled())
+    await user.click(symmetricFullscreenTriggers[0]!)
     fullscreen = await screen.findByRole("dialog", {
       name: /View Symmetric-key QR full screen/,
     })
@@ -260,6 +286,54 @@ describe("key list page", () => {
     expect(svg).toBeEnabled()
     expect(copy).toBeEnabled()
     expect(within(dialog).queryByText(/Saved/)).toBeNull()
+  })
+
+  it("keeps the fullscreen trigger disabled while identity frame splitting is pending", async () => {
+    const user = userEvent.setup()
+    splitIntoFrames.mockImplementationOnce(() => new Promise<never>(() => undefined))
+    await renderKeyList()
+
+    await user.click(rowFor("自分のPQ ID"))
+    let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+    await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
+    dialog = await screen.findByRole("dialog", { name: /public-key bundle/ })
+    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledOnce())
+
+    const triggers = within(dialog).getAllByRole("button", {
+      name: "View full screen",
+    })
+    expect(triggers).toHaveLength(1)
+    expect(triggers[0]).toBeDisabled()
+    await user.click(triggers[0]!)
+    expect(dialog).not.toHaveAttribute("inert")
+    expect(dialog).not.toHaveAttribute("aria-hidden", "true")
+    expect(
+      screen.queryByRole("dialog", { name: /full screen/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("keeps the fullscreen trigger disabled when identity frame splitting fails", async () => {
+    const user = userEvent.setup()
+    splitIntoFrames.mockRejectedValueOnce(new Error("split failed"))
+    await renderKeyList()
+
+    await user.click(rowFor("自分のPQ ID"))
+    let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+    await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
+    dialog = await screen.findByRole("dialog", { name: /public-key bundle/ })
+    await within(dialog).findByRole("alert")
+
+    const triggers = within(dialog).getAllByRole("button", {
+      name: "View full screen",
+    })
+    expect(triggers).toHaveLength(1)
+    expect(triggers[0]).toBeDisabled()
+    await user.click(triggers[0]!)
+    expect(dialog).not.toHaveAttribute("inert")
+    expect(dialog).not.toHaveAttribute("aria-hidden", "true")
+    expect(
+      screen.queryByRole("dialog", { name: /full screen/ }),
+    ).not.toBeInTheDocument()
   })
 
   it("retains secretVisible across fullscreen close and clears it only with the detail dialog", async () => {

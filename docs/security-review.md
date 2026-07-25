@@ -53,7 +53,7 @@ density. The renderer grid-rounds a per-artifact minimum from total bytes and
 preference without persisting an automatic clamp. Thus 100B remains a valid
 stored density and works for OCI2/OCP2/OCS2 and smaller messages, while both
 measured signed-message fixtures render at the automatic 200B minimum. A
-minimum above 900B fails closed as `QR_TOO_LARGE`. The fullscreen slider uses
+minimum above 900B fails closed as `QR_TOO_LARGE`. The density slider uses
 a 100B step; storage continues to accept off-grid integers such as 250B. The
 shipped default is 200B.
 
@@ -69,10 +69,10 @@ being misclassified while still rejecting stored/new 2,250ms.
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-24: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-25: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
 - Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-07-24): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
+- FIPS errata (§3 step 1, checked 2026-07-25): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
 - **Not independently audited.** The audit status as of 0.6.1 is self-audit only (scope: everything)
 - **Side channels: as a JS implementation, constant-time execution is not guaranteed.** In particular, for the ML-KEM decaps implicit-rejection path, constant-time behavior under JS/JIT is explicitly documented and not guaranteed
 - APIs used by the active policy (verified against the actual 0.6.1 source):

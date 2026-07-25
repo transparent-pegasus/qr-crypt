@@ -220,9 +220,9 @@ test("controls signed multipart frames and exports the ZIP and every PNG as real
   const counter = frames.getByText(/^\d+ \/ \d+$/).last()
   await frames.getByRole("button", { name: "Pause" }).click()
   const initialCounter = await counter.innerText()
-  await frames.getByRole("button", { name: "Next frame" }).click()
+  await frames.getByRole("button", { name: "Next" }).click()
   await expect(counter).not.toHaveText(initialCounter)
-  await frames.getByRole("button", { name: "Previous frame" }).click()
+  await frames.getByRole("button", { name: "Previous" }).click()
   await expect(counter).toHaveText(initialCounter)
   await frames.getByLabel("Display speed").fill("2500")
   await expect(frames.getByText("2500 ms", { exact: true })).toBeVisible()
@@ -232,7 +232,7 @@ test("controls signed multipart frames and exports the ZIP and every PNG as real
     name: /View Ciphertext \d+ \/ \d+ full screen/,
   })
   await expect(fullscreen.getByRole("img", { name: /Full-screen .* image/ })).toBeVisible()
-  await fullscreen.getByRole("button", { name: "Close" }).first().click()
+  await fullscreen.getByRole("button", { name: "Close" }).click()
 
   const framePayloads = await collectAnimatedFramePayloads(frames)
   expect(framePayloads).toHaveLength(frameCount)

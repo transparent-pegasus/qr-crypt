@@ -146,12 +146,19 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
     const density = fullscreen.getByLabel("Frame density", { exact: true })
     const speed = fullscreen.getByLabel("Display speed", { exact: true })
     const close = fullscreen.getByRole("button", { name: "Close", exact: true })
+    const transport = [
+      ["Previous", fullscreen.getByRole("button", { name: "Previous", exact: true })],
+      ["Pause", fullscreen.getByRole("button", { name: "Pause", exact: true })],
+      ["Next", fullscreen.getByRole("button", { name: "Next", exact: true })],
+    ] as const
     for (const [label, locator] of [
       ["QR image", image],
       ["density", density],
       ["speed", speed],
       ["Close", close],
+      ...transport,
     ] as const) {
+      await expect(locator).toBeVisible()
       await expectInsideViewport(locator, viewport.width, viewport.height, label)
     }
     const overflow = await fullscreen.evaluate((element) => ({
@@ -170,27 +177,21 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
       const imageBox = await image.boundingBox()
       expect(Math.min(imageBox!.width, imageBox!.height)).toBeGreaterThanOrEqual(240)
     } else {
-      const restartDetails = controls.locator("details")
-      await restartDetails.locator("summary").click()
-      await expect(restartDetails).toHaveAttribute("open", "")
-      expect(
-        await controls.evaluate((element) => getComputedStyle(element).overflowY),
-      ).toBe("auto")
-      for (const [label, locator] of [
-        ["density", density],
-        ["density restart warning", restartDetails.locator("summary")],
-        ["density restart detail", restartDetails.locator("p")],
-        ["speed", speed],
-        ["Close", close],
-      ] as const) {
-        await locator.scrollIntoViewIfNeeded()
-        await expectInsideViewport(locator, viewport.width, viewport.height, label)
-      }
+      await expect(controls.locator("details")).toHaveCount(0)
+      const controlOverflow = await controls.evaluate((element) => ({
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+        scrollTop: element.scrollTop,
+      }))
+      expect(controlOverflow.scrollHeight).toBeLessThanOrEqual(
+        controlOverflow.clientHeight,
+      )
+      expect(controlOverflow.scrollTop).toBe(0)
       await expectInsideViewport(
         controls,
         viewport.width,
         viewport.height,
-        "expanded controls",
+        "landscape controls",
       )
       const controlsBox = await controls.boundingBox()
       expect(controlsBox!.height).toBeLessThanOrEqual(300)
@@ -199,4 +200,48 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
     await expect(fullscreen).toBeHidden()
     await expect(detail).toBeVisible()
   }
+
+  await page.evaluate(() => localStorage.setItem("oc-lang", "ja"))
+  await page.reload({ waitUntil: "domcontentloaded" })
+  await page.setViewportSize({ width: 740, height: 360 })
+  await page.getByRole("button", { name: new RegExp(identityName) }).click()
+  const japaneseDetail = page.getByRole("dialog", { name: identityName })
+  await japaneseDetail
+    .getByRole("button", { name: "公開鍵セットQR", exact: true })
+    .click()
+  await japaneseDetail
+    .getByRole("button", { name: "全画面表示", exact: true })
+    .click()
+  const japaneseFullscreen = page.getByRole("dialog", { name: /全画面/ })
+  await expect(japaneseFullscreen).toBeVisible()
+  await japaneseFullscreen.evaluate(async (element) => {
+    await Promise.all(
+      element
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => undefined)),
+    )
+  })
+  for (const [label, locator] of [
+    ["前へ", japaneseFullscreen.getByRole("button", { name: "前へ", exact: true })],
+    [
+      "一時停止",
+      japaneseFullscreen.getByRole("button", { name: "一時停止", exact: true }),
+    ],
+    ["次へ", japaneseFullscreen.getByRole("button", { name: "次へ", exact: true })],
+  ] as const) {
+    await expect(locator).toBeVisible()
+    await expectInsideViewport(locator, 740, 360, label)
+  }
+  const japaneseControls = japaneseFullscreen.locator("[data-fullscreen-controls]")
+  const japaneseOverflow = await japaneseControls.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }))
+  expect(japaneseOverflow.scrollHeight).toBeLessThanOrEqual(
+    japaneseOverflow.clientHeight,
+  )
+  expect((await japaneseControls.boundingBox())!.height).toBeLessThanOrEqual(300)
+  await japaneseFullscreen
+    .getByRole("button", { name: "閉じる", exact: true })
+    .click()
 })

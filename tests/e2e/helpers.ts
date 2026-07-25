@@ -724,7 +724,7 @@ export async function collectAnimatedFramePayloads(scope: Locator): Promise<stri
     if (payloads.size === total) break
     const before = await counter.innerText()
     const beforeSource = source
-    await scope.getByRole("button", { name: "Next frame" }).click()
+    await scope.getByRole("button", { name: "Next" }).click()
     await expect(counter).not.toHaveText(before)
     await expect(image).not.toHaveAttribute("src", beforeSource)
   }

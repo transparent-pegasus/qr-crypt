@@ -215,11 +215,9 @@ const en = {
   "animatedQr.missing.body":
     "Missing frames: {indexes}. Recovery is not possible while frames are missing.",
   "animatedQr.frameTitle": "{title} {current} / {total}",
-  "animatedQr.prev.ariaLabel": "Previous frame",
   "animatedQr.prev": "Previous",
   "animatedQr.play": "Play",
   "animatedQr.pause": "Pause",
-  "animatedQr.next.ariaLabel": "Next frame",
   "animatedQr.next": "Next",
   "animatedQr.speed.label": "Display speed",
   "animatedQr.density.label": "Frame density",
@@ -847,11 +845,9 @@ const ja = {
   "animatedQr.missing.body":
     "欠損フレーム: {indexes}。欠損したままでは復元できません。",
   "animatedQr.frameTitle": "{title} {current} / {total}",
-  "animatedQr.prev.ariaLabel": "前のフレーム",
   "animatedQr.prev": "前へ",
   "animatedQr.play": "再生",
   "animatedQr.pause": "一時停止",
-  "animatedQr.next.ariaLabel": "次のフレーム",
   "animatedQr.next": "次へ",
   "animatedQr.speed.label": "表示速度",
   "animatedQr.density.label": "フレーム密度",

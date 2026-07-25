@@ -24,11 +24,20 @@ import {
   fakeIdentities,
   fakeKeys,
   fakePreferences,
+  renderQrDataUrl,
   saveBundle,
   startQrScan,
   updatePreferences,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
 
 describe("key management v2", () => {
   beforeEach(resetUi)
@@ -157,6 +166,8 @@ describe("key management v2", () => {
 
   it("opens every key QR fullscreen from /keys and persists fullscreen controls across remount", async () => {
     const user = userEvent.setup()
+    const firstQrRender = deferred<string>()
+    renderQrDataUrl.mockImplementationOnce(() => firstQrRender.promise)
     await renderApp("/keys")
 
     await user.type(await screen.findByLabelText("Symmetric-key name"), "全画面共通鍵")
@@ -164,14 +175,21 @@ describe("key management v2", () => {
     let dialog = await screen.findByRole("dialog", { name: "全画面共通鍵" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
     dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
-    await user.click(
-      await within(dialog).findByRole("button", { name: "View full screen" }),
-    )
+    const symmetricFullscreenTriggers = within(dialog).getAllByRole("button", {
+      name: "View full screen",
+    })
+    expect(symmetricFullscreenTriggers).toHaveLength(1)
+    expect(symmetricFullscreenTriggers[0]).toBeDisabled()
+    await waitFor(() => expect(renderQrDataUrl).toHaveBeenCalled())
+    expect(symmetricFullscreenTriggers[0]).toBeDisabled()
+    firstQrRender.resolve("data:image/png;base64,ZmFrZQ==")
+    await waitFor(() => expect(symmetricFullscreenTriggers[0]).toBeEnabled())
+    await user.click(symmetricFullscreenTriggers[0]!)
     let fullscreen = await screen.findByRole("dialog", {
       name: /View Symmetric-key QR full screen/,
     })
     expect(within(fullscreen).getByText("Sensitive information")).toBeInTheDocument()
-    await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
+    await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
     await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
@@ -196,9 +214,12 @@ describe("key management v2", () => {
       ["Signature-verification public-key QR", /signature-verification public key/],
     ] as const) {
       await user.click(within(dialog).getByRole("button", { name: buttonName }))
-      await user.click(
-        await within(dialog).findByRole("button", { name: "View full screen" }),
-      )
+      const fullscreenTriggers = within(dialog).getAllByRole("button", {
+        name: "View full screen",
+      })
+      expect(fullscreenTriggers).toHaveLength(1)
+      await waitFor(() => expect(fullscreenTriggers[0]).toBeEnabled())
+      await user.click(fullscreenTriggers[0]!)
       fullscreen = await screen.findByRole("dialog", {
         name: new RegExp(`View .*${title.source}.* full screen`),
       })
@@ -218,11 +239,15 @@ describe("key management v2", () => {
           })
         })
       }
-      await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
+      await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
       await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
     }
 
     await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
+    expect(
+      within(dialog).getAllByRole("button", { name: "View full screen" }),
+    ).toHaveLength(1)
+    expect(await within(dialog).findByLabelText("Frame density")).toBeInTheDocument()
     expect(await within(dialog).findByLabelText("Display speed")).toHaveValue("2500")
   })
 

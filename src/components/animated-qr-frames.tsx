@@ -10,7 +10,6 @@ import {
   Play,
   Sun,
   TriangleAlert,
-  X,
 } from "lucide-react"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
@@ -50,6 +49,8 @@ export interface AnimatedQrFramesProps {
   title?: string
   onFirstRendered?: () => void
   fullscreenEnabled?: boolean
+  fullscreenOpen?: boolean
+  showFullscreenTrigger?: boolean
   exportsEnabled?: boolean
   onFrameIntervalMsChange?: (ms: number) => void
   frameBytes?: number
@@ -83,6 +84,8 @@ export function AnimatedQrFrames({
   title: titleProp,
   onFirstRendered,
   fullscreenEnabled = true,
+  fullscreenOpen,
+  showFullscreenTrigger = true,
   exportsEnabled = true,
   onFrameIntervalMsChange,
   frameBytes,
@@ -94,8 +97,10 @@ export function AnimatedQrFrames({
   const { language, t } = useI18n()
   const title = titleProp ?? t("animatedQr.defaultTitle")
   const controlId = useId()
-  const speedInputId = `frame-speed-${controlId}`
-  const densityInputId = `frame-density-${controlId}`
+  const inlineSpeedInputId = `frame-speed-${controlId}-inline`
+  const fullscreenSpeedInputId = `frame-speed-${controlId}-fullscreen`
+  const inlineDensityInputId = `frame-density-${controlId}-inline`
+  const fullscreenDensityInputId = `frame-density-${controlId}-fullscreen`
   const { slots, missingIndexes, frameCount } = useMemo(() => {
     const expected = Math.max(0, ...frames.map((frame) => frame.frameCount))
     const nextSlots = new Map<number, FrameSlot>()
@@ -125,7 +130,8 @@ export function AnimatedQrFrames({
   const position = cursor.generation === frameGeneration ? cursor.position : 0
   const [paused, setPaused] = useState(false)
   const [speed, setSpeed] = useState(() => currentFrameInterval(frameIntervalMs))
-  const [fullscreen, setFullscreen] = useState(false)
+  const [uncontrolledFullscreen, setUncontrolledFullscreen] = useState(false)
+  const fullscreen = fullscreenOpen ?? uncontrolledFullscreen
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(error)
@@ -138,7 +144,7 @@ export function AnimatedQrFrames({
   }
 
   const changeFullscreen = (open: boolean) => {
-    setFullscreen(open)
+    if (fullscreenOpen === undefined) setUncontrolledFullscreen(open)
     onFullscreenOpenChange?.(open)
   }
 
@@ -301,41 +307,44 @@ export function AnimatedQrFrames({
   }
 
   const transportControls = (fullscreenControls: boolean) => (
-    <div className="flex items-center justify-center gap-2">
+    <div className="flex flex-wrap items-center justify-center gap-2">
       <Button
         type="button"
         variant="outline"
-        className="h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 landscape:size-11 landscape:p-0"
+        className={`h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 ${
+          fullscreenControls
+            ? "border-slate-400 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            : ""
+        }`}
         onClick={movePrevious}
-        aria-label={t("animatedQr.prev.ariaLabel")}
       >
         <ChevronLeft aria-hidden="true" />
-        <span className={fullscreenControls ? "landscape:sr-only" : ""}>
-          {t("animatedQr.prev")}
-        </span>
+        <span>{t("animatedQr.prev")}</span>
       </Button>
       <Button
         type="button"
         variant="secondary"
-        className="h-11 min-w-28 cursor-pointer px-3 focus-visible:ring-2 landscape:size-11 landscape:min-w-11 landscape:p-0"
+        className={`h-11 min-w-28 cursor-pointer px-3 focus-visible:ring-2 ${
+          fullscreenControls
+            ? "border-slate-400 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            : ""
+        }`}
         onClick={togglePaused}
-        aria-label={t(paused ? "animatedQr.play" : "animatedQr.pause")}
       >
         {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-        <span className={fullscreenControls ? "landscape:sr-only" : ""}>
-          {t(paused ? "animatedQr.play" : "animatedQr.pause")}
-        </span>
+        <span>{t(paused ? "animatedQr.play" : "animatedQr.pause")}</span>
       </Button>
       <Button
         type="button"
         variant="outline"
-        className="h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 landscape:size-11 landscape:p-0"
+        className={`h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 ${
+          fullscreenControls
+            ? "border-slate-400 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            : ""
+        }`}
         onClick={moveNext}
-        aria-label={t("animatedQr.next.ariaLabel")}
       >
-        <span className={fullscreenControls ? "landscape:sr-only" : ""}>
-          {t("animatedQr.next")}
-        </span>
+        <span>{t("animatedQr.next")}</span>
         <ChevronRight aria-hidden="true" />
       </Button>
     </div>
@@ -346,7 +355,7 @@ export function AnimatedQrFrames({
       data-fullscreen-controls
       className="mx-auto flex w-full max-w-md flex-col gap-2 landscape:my-auto landscape:w-[min(42vw,18rem)] landscape:max-h-[300px] landscape:gap-1.5 landscape:overflow-y-auto"
     >
-      <div className="flex items-center justify-center gap-3">
+      <div className="flex flex-col items-center justify-center gap-1.5">
         <p
           aria-live="polite"
           className="shrink-0 text-center font-mono text-base tabular-nums"
@@ -360,7 +369,9 @@ export function AnimatedQrFrames({
         <>
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-3 text-sm">
-              <Label htmlFor={densityInputId}>{t("animatedQr.density.label")}</Label>
+              <Label htmlFor={fullscreenDensityInputId}>
+                {t("animatedQr.density.label")}
+              </Label>
               <span className="flex items-center gap-1 font-mono text-xs tabular-nums">
                 {splitting && (
                   <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />
@@ -369,7 +380,7 @@ export function AnimatedQrFrames({
               </span>
             </div>
             <Input
-              id={densityInputId}
+              id={fullscreenDensityInputId}
               aria-label={t("animatedQr.density.label")}
               type="range"
               min={densityMinimum}
@@ -379,23 +390,18 @@ export function AnimatedQrFrames({
               onChange={(event) => changeDensity(event.target.value)}
             />
           </div>
-          <details className="text-xs text-slate-700">
-            <summary className="flex cursor-pointer list-none items-center gap-1.5 focus-visible:ring-2">
-              <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
-              <span className="truncate">{t("animatedQr.density.restartWarning")}</span>
-            </summary>
-            <p className="pl-5 leading-snug">{t("animatedQr.density.restartDetail")}</p>
-          </details>
         </>
       )}
 
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-3 text-sm">
-          <Label htmlFor={speedInputId}>{t("animatedQr.speed.label")}</Label>
+          <Label htmlFor={fullscreenSpeedInputId}>
+            {t("animatedQr.speed.label")}
+          </Label>
           <span className="font-mono text-xs tabular-nums">{speed} ms</span>
         </div>
         <Input
-          id={speedInputId}
+          id={fullscreenSpeedInputId}
           aria-label={t("animatedQr.speed.label")}
           type="range"
           min={FRAME_INTERVAL_MS_MIN}
@@ -406,19 +412,6 @@ export function AnimatedQrFrames({
         />
       </div>
 
-      <p className="flex min-w-0 items-center justify-center gap-1.5 truncate text-xs text-slate-700">
-        <Sun aria-hidden="true" className="size-4 shrink-0" />
-        <span className="truncate">{t("animatedQr.brightnessHint")}</span>
-      </p>
-      <Button
-        type="button"
-        variant="outline"
-        className="h-11 w-full cursor-pointer border-slate-300 bg-white text-slate-950 focus-visible:ring-2"
-        onClick={() => changeFullscreen(false)}
-      >
-        <X aria-hidden="true" />
-        {t("common.close")}
-      </Button>
     </div>
   )
 
@@ -450,6 +443,7 @@ export function AnimatedQrFrames({
         })}
         onRendered={handleRendered}
         fullscreenEnabled={fullscreenEnabled}
+        showFullscreenTrigger={showFullscreenTrigger}
         fullscreenControls={fullscreenControls}
         fullscreenOpen={fullscreen}
         onFullscreenOpenChange={changeFullscreen}
@@ -463,13 +457,53 @@ export function AnimatedQrFrames({
             {currentIndex! + 1} / {frameCount}
           </p>
 
+          {densityEnabled && (
+            <>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor={inlineDensityInputId}>
+                    {t("animatedQr.density.label")}
+                  </Label>
+                  <span className="flex items-center gap-1 font-mono text-xs tabular-nums">
+                    {splitting && (
+                      <LoaderCircle
+                        aria-hidden="true"
+                        className="size-3.5 animate-spin"
+                      />
+                    )}
+                    {frameBytes} B
+                  </span>
+                </div>
+                <Input
+                  id={inlineDensityInputId}
+                  aria-label={t("animatedQr.density.label")}
+                  type="range"
+                  min={densityMinimum}
+                  max={FRAME_BYTES_MAX}
+                  step={FRAME_BYTES_STEP}
+                  value={frameBytes}
+                  onChange={(event) => changeDensity(event.target.value)}
+                />
+              </div>
+              <details className="text-xs text-muted-foreground">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 focus-visible:ring-2">
+                  <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
+                  <span>{t("animatedQr.density.restartWarning")}</span>
+                </summary>
+                <p className="pl-5 leading-snug">
+                  {t("animatedQr.density.restartDetail")}
+                </p>
+              </details>
+            </>
+          )}
+
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
-              <Label htmlFor={speedInputId}>{t("animatedQr.speed.label")}</Label>
+              <Label htmlFor={inlineSpeedInputId}>{t("animatedQr.speed.label")}</Label>
               <span className="font-mono text-xs tabular-nums">{speed} ms</span>
             </div>
             <Input
-              id={speedInputId}
+              id={inlineSpeedInputId}
               aria-label={t("animatedQr.speed.label")}
               type="range"
               min={FRAME_INTERVAL_MS_MIN}
@@ -486,36 +520,39 @@ export function AnimatedQrFrames({
           </p>
 
           {exportsEnabled && (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-3 gap-2">
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 cursor-pointer focus-visible:ring-2"
+                className="h-11 cursor-pointer px-2 text-xs focus-visible:ring-2"
                 disabled={exporting || missingIndexes.length > 0}
                 onClick={() => void exportAllPng()}
+                aria-label={t("animatedQr.export.allPng")}
               >
                 <Download aria-hidden="true" />
-                {t("animatedQr.export.allPng")}
+                PNG
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 cursor-pointer focus-visible:ring-2"
+                className="h-11 cursor-pointer px-2 text-xs focus-visible:ring-2"
                 disabled={exporting || missingIndexes.length > 0}
                 onClick={() => void exportZip()}
+                aria-label={t("animatedQr.export.zip")}
               >
                 <FileArchive aria-hidden="true" />
-                {t("animatedQr.export.zip")}
+                ZIP
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 cursor-pointer focus-visible:ring-2"
+                className="h-11 cursor-pointer px-2 text-xs focus-visible:ring-2"
                 disabled={exporting}
                 onClick={() => void exportSvg()}
+                aria-label={t("animatedQr.export.currentSvg")}
               >
                 <FileCode2 aria-hidden="true" />
-                {t("animatedQr.export.currentSvg")}
+                SVG
               </Button>
             </div>
           )}
