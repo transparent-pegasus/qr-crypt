@@ -17,3 +17,6 @@ coverage/
 # Private agent tooling (local only; freshness skill stays tracked)
 .claude/skills/*
 !.claude/skills/freshness/
+
+# Local task workflow (untracked)
+/WORKFLOW.md
