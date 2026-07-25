@@ -50,6 +50,9 @@ const en = {
   "nav.keyList": "Key list",
   "nav.settings": "Settings",
   "nav.ariaLabel": "Main navigation",
+  "nav.top": "Top",
+  "nav.relay": "Relay",
+  "nav.onlineAriaLabel": "Online navigation",
 
   "errors.UNSUPPORTED_BROWSER":
     "This browser does not provide the required features. Open the app in a supported browser.",
@@ -677,6 +680,9 @@ const ja = {
   "nav.keyList": "鍵一覧",
   "nav.settings": "設定",
   "nav.ariaLabel": "メインナビゲーション",
+  "nav.top": "トップ",
+  "nav.relay": "リレー",
+  "nav.onlineAriaLabel": "オンラインナビゲーション",
 
   "errors.UNSUPPORTED_BROWSER":
     "このブラウザーでは必要な機能を利用できません。対応ブラウザーで開いてください。",

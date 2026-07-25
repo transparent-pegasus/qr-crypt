@@ -55,7 +55,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
       ),
     ).toBeVisible(),
     expectOnline(page.getByText("Online", { exact: true })).toBeVisible(),
-    expectOnline(page.getByRole("navigation")).toBeHidden(),
+    expectOnline(mainNavigation(page)).toBeHidden(),
   ])
 }
 
