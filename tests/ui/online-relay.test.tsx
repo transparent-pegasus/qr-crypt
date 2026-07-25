@@ -350,7 +350,7 @@ describe("online relay UI", () => {
         </FeatureSupportProvider>
       </LanguageProvider>,
     )
-    expect(screen.queryByText("Ciphertext QR relay")).not.toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     expect(scanStart).not.toHaveBeenCalled()
 
     rerender(

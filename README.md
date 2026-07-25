@@ -64,17 +64,17 @@ operational boundary with `UNSUPPORTED_ALGORITHM`.
 
 ### PQ benchmark reference values
 
-Values from a single run of `aube bench:pq` on 2026-07-24 (Vitest 4.1.10, Linux x86_64,
+Values from a single run of `aube bench:pq` on 2026-07-25 (Vitest 4.1.10, Linux x86_64,
 Intel Core i7-10870H). `hz` is operations per second;
 mean is the average milliseconds per operation.
 
 | Operation | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| ML-KEM-1024 keygen | 1,053.52 | 0.9492 | 1,075.08 | 0.9302 |
-| ML-KEM-1024 encapsulate | 969.86 | 1.0311 | 959.56 | 1.0421 |
-| ML-KEM-1024 decapsulate | 711.05 | 1.4064 | 743.56 | 1.3449 |
-| ML-DSA-87 sign | 87.8268 | 11.3860 | 89.0098 | 11.2347 |
-| ML-DSA-87 verify | 274.85 | 3.6384 | 259.16 | 3.8587 |
+| ML-KEM-1024 keygen | 939.51 | 1.0644 | 1,028.91 | 0.9719 |
+| ML-KEM-1024 encapsulate | 845.64 | 1.1825 | 937.59 | 1.0666 |
+| ML-KEM-1024 decapsulate | 635.18 | 1.5744 | 744.56 | 1.3431 |
+| ML-DSA-87 sign | 76.6329 | 13.0492 | 82.7556 | 12.0838 |
+| ML-DSA-87 verify | 238.58 | 4.1914 | 265.85 | 3.7615 |
 
 These are reference values from a development machine; they are not a substitute for
 measurements in real browsers or on low-end devices, nor for the `release-approved` determination.

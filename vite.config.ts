@@ -21,7 +21,7 @@ export default defineConfig(() => {
           name: "Qrypt",
           short_name: "Qrypt",
           description:
-            "Offline encryption with a dedicated clean-origin ciphertext QR relay.",
+            "Offline encryption with a dedicated clean-origin OCF2 message-header QR relay.",
           lang: "en",
           start_url: "/",
           scope: "/",

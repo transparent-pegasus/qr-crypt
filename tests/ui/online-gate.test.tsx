@@ -58,17 +58,17 @@ describe("OnlineGate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("Install the PWA or relay ciphertext QR frames"),
+      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("Online installation and ciphertext relay"),
+      screen.getByText("Online installation and OCF2 message-header relay"),
     ).toBeInTheDocument()
     expect(
       screen.getByText(
-        "Encryption, decryption, key creation, key lists, and settings remain offline-only. A clean origin may also relay header-declared message frames without using local keys.",
+        "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, without using local keys.",
       ),
     ).toBeInTheDocument()
-    expect(await screen.findByText("Ciphertext QR relay")).toBeInTheDocument()
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeInTheDocument()
     expect(screen.getByRole("img", { name: /app icon/ })).toBeInTheDocument()
     expect(screen.getByText("PWA installation status").parentElement).toHaveTextContent(
       "Not installed",
@@ -130,14 +130,14 @@ describe("OnlineGate", () => {
 
     act(() => setTestOnlineStatus(true, { emit: true }))
     expect(
-      await screen.findByText("Install the PWA or relay ciphertext QR frames"),
+      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
     ).toBeInTheDocument()
     expect(screen.queryByText(/Regular feature nonce=/)).not.toBeInTheDocument()
 
     act(() => setTestOnlineStatus(false, { emit: true }))
     expect(await screen.findByText("Regular feature nonce=1")).toBeInTheDocument()
     expect(
-      screen.queryByText("Install the PWA or relay ciphertext QR frames"),
+      screen.queryByText("Install the PWA or relay OCF2 message-header QR frames"),
     ).not.toBeInTheDocument()
   })
 })

@@ -75,9 +75,9 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("Install the PWA or relay ciphertext QR frames"),
+      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
     ).toBeInTheDocument()
-    expect(await screen.findByText("Ciphertext QR relay")).toBeInTheDocument()
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(performWipe).not.toHaveBeenCalled()
     controller.stop()
@@ -95,10 +95,10 @@ describe("App boot gate", () => {
     })
     await renderApp("/encrypt", { bootController: controller })
 
-    await screen.findByText("Install the PWA or relay ciphertext QR frames")
-    expect(screen.queryByText("Ciphertext QR relay")).not.toBeInTheDocument()
+    await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     resolveDecision?.(decision())
-    expect(await screen.findByText("Ciphertext QR relay")).toBeInTheDocument()
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeInTheDocument()
     controller.stop()
   })
 
@@ -128,8 +128,8 @@ describe("App boot gate", () => {
     })
     await renderApp("/encrypt", { bootController: controller })
 
-    await screen.findByText("Install the PWA or relay ciphertext QR frames")
-    expect(screen.queryByText("Ciphertext QR relay")).not.toBeInTheDocument()
+    await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     controller.stop()
   })
 
@@ -141,9 +141,9 @@ describe("App boot gate", () => {
     })
     await renderApp("/encrypt", { bootController: controller })
 
-    await screen.findByText("Install the PWA or relay ciphertext QR frames")
+    await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
     expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
-    expect(screen.queryByText("Ciphertext QR relay")).not.toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     controller.stop()
   })
 
@@ -163,7 +163,7 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(await screen.findByText("Resetting local data")).toBeInTheDocument()
-    expect(screen.queryByText("Ciphertext QR relay")).not.toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     finishWipe?.({ ok: true, failedSteps: [] })
     await screen.findByText(
       "Local data was reset after an online connection was detected",
@@ -184,7 +184,7 @@ describe("App boot gate", () => {
         "Local data was reset after an online connection was detected",
       ),
     ).toBeInTheDocument()
-    expect(screen.queryByText("Ciphertext QR relay")).not.toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     expect(
       screen.getByText(
         "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
@@ -205,7 +205,7 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
-    expect(screen.queryByText("Ciphertext QR relay")).not.toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     expect(
       screen.getByText("Some operations did not finish while resetting local data."),
     ).toBeInTheDocument()

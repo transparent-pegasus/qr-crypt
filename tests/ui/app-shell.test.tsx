@@ -96,7 +96,7 @@ describe("app shell and feature gate", () => {
     expect(screen.getByText("This browser is not supported")).toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(
-      screen.queryByText("Install the PWA or relay ciphertext QR frames"),
+      screen.queryByText("Install the PWA or relay OCF2 message-header QR frames"),
     ).not.toBeInTheDocument()
   })
 
