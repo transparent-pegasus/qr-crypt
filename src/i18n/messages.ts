@@ -130,10 +130,10 @@ const en = {
   "relay.boundary.title": "Untrusted relay boundary",
   "relay.boundary.body":
     "The relay accepts frames whose untrusted outer header declares pq-message. It does not assemble the artifact or verify its total hash, inner type, AEAD, signature, sender, or safety; the receiving offline device is authoritative. Face-to-face key exchange is the supported workflow.",
-  "relay.capture.open": "Scan → text",
+  "relay.capture.open": "QR → text",
   "relay.capture.unavailable":
     "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
-  "relay.capture.title": "Scan QR frames to text",
+  "relay.capture.title": "QR frames to text",
   "relay.capture.description":
     "Start the camera explicitly, then scan every frame from the offline device. Malformed or mismatched frames are rejected without replacing accepted frames.",
   "relay.capture.video.ariaLabel": "OCF2 message-header relay camera preview",
@@ -759,7 +759,7 @@ const ja = {
   "relay.boundary.title": "信頼しない中継境界",
   "relay.boundary.body":
     "外側の信頼できないヘッダーがpq-messageと表明するフレームを受け入れます。成果物の組立、全体ハッシュ、内側の種類、AEAD、署名、送信者、安全性は検証しません。受信側のオフライン端末が最終判断者です。鍵交換は対面で行う運用を前提とします。",
-  "relay.capture.open": "スキャン → テキスト",
+  "relay.capture.open": "QR → テキスト",
   "relay.capture.unavailable":
     "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",
   "relay.capture.title": "QRフレームをテキスト化",
