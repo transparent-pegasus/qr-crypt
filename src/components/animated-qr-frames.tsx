@@ -344,7 +344,7 @@ export function AnimatedQrFrames({
   const fullscreenControls = (
     <div
       data-fullscreen-controls
-      className="mx-auto flex w-full max-w-md flex-col gap-2 landscape:my-auto landscape:w-[min(42vw,18rem)] landscape:max-h-[300px] landscape:gap-1.5"
+      className="mx-auto flex w-full max-w-md flex-col gap-2 landscape:my-auto landscape:w-[min(42vw,18rem)] landscape:max-h-[300px] landscape:gap-1.5 landscape:overflow-y-auto"
     >
       <div className="flex items-center justify-center gap-3">
         <p

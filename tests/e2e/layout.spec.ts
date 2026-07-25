@@ -170,6 +170,28 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
       const imageBox = await image.boundingBox()
       expect(Math.min(imageBox!.width, imageBox!.height)).toBeGreaterThanOrEqual(240)
     } else {
+      const restartDetails = controls.locator("details")
+      await restartDetails.locator("summary").click()
+      await expect(restartDetails).toHaveAttribute("open", "")
+      expect(
+        await controls.evaluate((element) => getComputedStyle(element).overflowY),
+      ).toBe("auto")
+      for (const [label, locator] of [
+        ["density", density],
+        ["density restart warning", restartDetails.locator("summary")],
+        ["density restart detail", restartDetails.locator("p")],
+        ["speed", speed],
+        ["Close", close],
+      ] as const) {
+        await locator.scrollIntoViewIfNeeded()
+        await expectInsideViewport(locator, viewport.width, viewport.height, label)
+      }
+      await expectInsideViewport(
+        controls,
+        viewport.width,
+        viewport.height,
+        "expanded controls",
+      )
       const controlsBox = await controls.boundingBox()
       expect(controlsBox!.height).toBeLessThanOrEqual(300)
     }
