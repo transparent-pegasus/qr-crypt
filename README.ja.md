@@ -53,8 +53,8 @@ v2 は **experimental** です。リポジトリ内の実装・テスト・文�
 
 | スイート | 内容 | 備考 |
 | --- | --- | --- |
-| AES-256-GCM | 対称暗号のみ | 既存経路 |
-| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | ポスト量子 KEM ハイブリッド | **既定**（`MLKEM1024_A256GCM`） |
+| AES-256-GCM | 対称暗号のみ | **既定**（`A256GCM`） |
+| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | ポスト量子 KEM ハイブリッド | 選択可（`MLKEM1024_A256GCM`） |
 | 上記 + ML-DSA-87 署名 | sign-then-encrypt | 署名付きメッセージ |
 
 現在の active policy は **maximum**（1024/87）のみです。wire 契約では 4 suite
