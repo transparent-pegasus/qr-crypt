@@ -100,7 +100,7 @@ export const LOCALES = {
       "flow.s4.cross":
         "オンライン端末で、オフライン端末の画面に出たQRコードを読み取ります。",
       "flow.s5.title": "受け取った人が文字をQRコードに戻す",
-      "flow.s5.where": "受信者のオンライン端末",
+      "flow.s5.where": "オンラインモード",
       "flow.s6.title": "受け取った人が復号して読む",
       "flow.s6.where": "復号タブ",
       "flow.s6.cross":

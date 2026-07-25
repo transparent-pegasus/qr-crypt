@@ -701,6 +701,10 @@ a {
   flex-shrink: 0;
 }
 
+.step__sep {
+  opacity: 0.45;
+}
+
 .step--online .step__where {
   color: var(--amber);
 }
