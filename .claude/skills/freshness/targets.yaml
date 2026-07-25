@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-07-25 # last revision of this registry itself
+updated: 2026-07-26 # last revision of this registry itself
 
 units:
   - id: deps
@@ -158,7 +158,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-07-25
+    last_checked: 2026-07-26
     files:
       - docs/security-review.md
     why: >
@@ -195,7 +195,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-07-25
+    last_checked: 2026-07-26
     files:
       - docs/qr-protocol-v2.md
       - docs/boot-and-reset-v2.md
@@ -220,13 +220,14 @@ units:
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-07-25
+    last_checked: 2026-07-26
     files:
-      - src/lib/limits.ts # measured CBOR/OCF2 sizes and uniform 100–900B density grid/minimum
+      - src/lib/limits.ts # measured CBOR/OCF2 sizes and active {100, 200}B density set / minimum
+      - src/lib/frame-bytes.ts # active density set and the append-only boot-readable range
       - src/lib/frame-interval.ts # persisted/displayed QR interval policy grid
-      - tests/pq/maximum-artifact-size.golden.test.ts # uniform density/clamp/off-grid fixtures
+      - tests/pq/maximum-artifact-size.golden.test.ts # active density / clamp / boot-readable fixtures
       - src/schemas/env-schema.ts # golden size guard at the maximum selectable density
-      - .env.prod # runtime crypto/framing policy and shipped 200B density default
+      - .env.prod # runtime crypto/framing policy and shipped 100B density default
       - .env.example # same density default, kept in step with .env.prod
     why: >
       Measured byte/frame tables (dated 2026-07-23) are cited by
@@ -238,12 +239,14 @@ units:
       comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
       env-schema.ts, and the .env.prod/.env.example defaults together, then
       sync the copy of the table in docs/security-review.md.
-      Verify the uniform preference-controlled 100–900B density for messages,
-      OCI2, OCP2, and OCS2; the 100B fullscreen grid; acceptance of stored
-      off-grid values; the grid-rounded per-artifact minimum; and the 200B
-      shipped default. Keep limits.ts, env-schema.ts, both env files,
-      docs/qr-protocol-v2.md, docs/security-review.md, and the golden test in
-      agreement.
+      Verify the active preference-controlled density set {100, 200}B for
+      messages, OCI2, OCP2, and OCS2 (100B shipped default; active writes
+      reject off-grid values such as 250B); the grid-rounded per-artifact
+      minimum against FRAME_BYTES_MAX = 200; and that the append-only
+      boot-readable range still accepts every previously storable integer
+      100–900 so stored preferences stay readable. Keep limits.ts,
+      env-schema.ts, both env files, docs/qr-protocol-v2.md,
+      docs/security-review.md, and the golden test in agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [security-review]
 

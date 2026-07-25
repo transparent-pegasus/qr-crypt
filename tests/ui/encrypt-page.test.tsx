@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
 import type { MlKemMessageEnvelopeV2 } from "@/schemas/domain"
+import { env } from "@/schemas/env-schema"
 import {
   emitScannedPayload,
   encryptPq,
@@ -19,6 +20,8 @@ import {
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
 
+const defaultQrMaxFrames = env.qrMaxFrames
+
 async function chooseSelectOption(
   user: ReturnType<typeof userEvent.setup>,
   label: string,
@@ -30,7 +33,10 @@ async function chooseSelectOption(
 
 describe("encrypt page v2", () => {
   beforeEach(resetUi)
-  afterEach(resetUi)
+  afterEach(() => {
+    env.qrMaxFrames = defaultQrMaxFrames
+    resetUi()
+  })
 
   it("offers the three active suites and never exposes RSA", async () => {
     const user = userEvent.setup()
@@ -103,7 +109,11 @@ describe("encrypt page v2", () => {
     expect(within(result).getByText("maximum")).toBeInTheDocument()
     expect(within(result).getByRole("button", { name: "Pause" })).toBeInTheDocument()
     expect(within(result).getByRole("button", { name: "Next" })).toBeInTheDocument()
-    expect(within(result).getByLabelText("Frame density")).toBeInTheDocument()
+    const inlineDensity = within(result).getByRole("radiogroup", {
+      name: "Frame density",
+    })
+    expect(within(inlineDensity).getByRole("radio", { name: "100 B" })).toBeEnabled()
+    expect(within(inlineDensity).getByRole("radio", { name: "200 B" })).toBeEnabled()
     expect(within(result).getByLabelText("Display speed")).toBeInTheDocument()
     expect(
       within(result).getByRole("button", { name: /Export all PNGs/ }),
@@ -129,7 +139,19 @@ describe("encrypt page v2", () => {
       name: /View Ciphertext 2 \/ .* full screen/,
     })
     expect(fullscreenDialog).toBeInTheDocument()
-    expect(within(fullscreenDialog).getByLabelText("Frame density")).toBeInTheDocument()
+    const fullscreenDensity = within(fullscreenDialog).getByRole("radiogroup", {
+      name: "Frame density",
+    })
+    const density100 = within(fullscreenDensity).getByRole("radio", {
+      name: "100 B",
+    })
+    const density200 = within(fullscreenDensity).getByRole("radio", {
+      name: "200 B",
+    })
+    expect(density100).toBeEnabled()
+    expect(density100).toBeChecked()
+    expect(density200).toBeEnabled()
+    expect(density200).not.toBeChecked()
     expect(within(fullscreenDialog).getByLabelText("Display speed")).toHaveValue("2500")
     const controlIds = Array.from(fullscreenDialog.querySelectorAll("input[id]")).map(
       (input) => input.id,
@@ -144,18 +166,16 @@ describe("encrypt page v2", () => {
     )
     expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
     expect(splitIntoFrames).toHaveBeenCalledTimes(splitCallsBeforeSpeed)
-    fireEvent.change(within(fullscreenDialog).getByLabelText("Frame density"), {
-      target: { value: "300" },
-    })
+    await user.click(density200)
     await waitFor(() =>
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-message",
-          frameBytes: 300,
+          frameBytes: 200,
         }),
       ),
     )
-    expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 300 })
+    expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 200 })
     updatePreferences.mockRejectedValueOnce(new Error("storage failed"))
     fireEvent.change(within(fullscreenDialog).getByLabelText("Display speed"), {
       target: { value: "2500" },
@@ -343,8 +363,9 @@ describe("encrypt page v2", () => {
       plaintext: "x".repeat(4_096),
     },
   ])(
-    "clamps a stored 100B density before the first $caseName split",
+    "clamps a stored 100 B density when $caseName exceeds a configured 64-frame limit",
     async ({ artifactBytes, plaintext }) => {
+      env.qrMaxFrames = 64
       fakePreferences.frameBytes = 100
       encryptPq.mockResolvedValueOnce({
         version: 2,

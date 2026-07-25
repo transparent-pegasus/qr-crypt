@@ -65,7 +65,9 @@ function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSn
 
 interface FakeBootDatabaseOptions {
   countFailure?: "keys" | "pqIdentities"
+  keyCount?: number
   missingStore?: "keys" | "preferences" | "appMetadata" | "pqIdentities"
+  preferencesValue?: Record<string, unknown>
   transactionFailure?: "create" | "done"
   vaultGetFailure?: boolean
 }
@@ -84,7 +86,7 @@ function fakeBootDatabase(options: FakeBootDatabaseOptions = {}) {
             if (options.countFailure === name) {
               throw new DOMException("count failed", "UnknownError")
             }
-            return 0
+            return name === "keys" ? (options.keyCount ?? 0) : 0
           },
           async get(key: IDBValidKey) {
             if (
@@ -93,6 +95,13 @@ function fakeBootDatabase(options: FakeBootDatabaseOptions = {}) {
               options.vaultGetFailure
             ) {
               throw new DOMException("get failed", "UnknownError")
+            }
+            if (
+              name === "preferences" &&
+              key === "preferences" &&
+              options.preferencesValue !== undefined
+            ) {
+              return { key: "preferences", value: options.preferencesValue }
             }
             return undefined
           },
@@ -279,6 +288,69 @@ describe("boot decisions", () => {
       "readonly",
     )
   })
+
+  it.each([300, 900] as const)(
+    "keeps stored legacy frameBytes=%i boot-readable without wiping sensitive data",
+    async (frameBytes) => {
+      const { database } = fakeBootDatabase({
+        keyCount: 1,
+        preferencesValue: { frameBytes, wipeOnOnline: false },
+      })
+      const getDatabase = async () => database
+      const snapshot = await readBootDecision({
+        getDatabase,
+      })
+      expect(snapshot).toMatchObject({
+        preferencesReadFailed: false,
+        sensitiveDataExists: true,
+        wipeOnOnline: false,
+      })
+
+      const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
+      const controller = createBootController({
+        fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+        performWipe,
+        readDecision: () => readBootDecision({ getDatabase }),
+      })
+      await controller.probe()
+
+      expect(performWipe).not.toHaveBeenCalled()
+      expect(controller.getState()).toEqual({
+        kind: "network-confirmed",
+        relayEligibility: "ineligible",
+      })
+    },
+  )
+
+  it.each([99, 901] as const)(
+    "fails closed for stored frameBytes=%i outside the boot-readable range",
+    async (frameBytes) => {
+      const { database } = fakeBootDatabase({
+        keyCount: 1,
+        preferencesValue: { frameBytes, wipeOnOnline: false },
+      })
+      const getDatabase = async () => database
+      const snapshot = await readBootDecision({
+        getDatabase,
+      })
+      expect(snapshot).toMatchObject({
+        preferencesReadFailed: true,
+        sensitiveDataExists: true,
+        wipeOnOnline: true,
+      })
+
+      const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
+      const controller = createBootController({
+        fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+        performWipe,
+        readDecision: () => readBootDecision({ getDatabase }),
+      })
+      await controller.probe()
+
+      expect(performWipe).toHaveBeenCalledTimes(1)
+      expect(controller.getState()).toEqual({ kind: "wiped" })
+    },
+  )
 
   it.each([
     ["consume succeeds", true, "offline-confirmed"],

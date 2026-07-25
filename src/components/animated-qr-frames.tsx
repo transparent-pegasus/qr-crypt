@@ -10,6 +10,7 @@ import {
   Play,
   Sun,
   TriangleAlert,
+  X,
 } from "lucide-react"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
@@ -21,13 +22,13 @@ import {
 } from "@/qr/export-image"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
 import {
-  FRAME_BYTES_MAX,
   FRAME_BYTES_MIN,
-  FRAME_BYTES_STEP,
+  FRAME_BYTES_VALUES,
   FRAME_INTERVAL_MS_DEFAULT,
   FRAME_INTERVAL_MS_MAX,
   FRAME_INTERVAL_MS_MIN,
   FRAME_INTERVAL_MS_STEP,
+  isFrameBytes,
   isFrameIntervalMs,
   minimumFrameBytesForArtifact,
 } from "@/lib/limits"
@@ -99,8 +100,8 @@ export function AnimatedQrFrames({
   const controlId = useId()
   const inlineSpeedInputId = `frame-speed-${controlId}-inline`
   const fullscreenSpeedInputId = `frame-speed-${controlId}-fullscreen`
-  const inlineDensityInputId = `frame-density-${controlId}-inline`
-  const fullscreenDensityInputId = `frame-density-${controlId}-fullscreen`
+  const inlineDensityControlId = `frame-density-${controlId}-inline`
+  const fullscreenDensityControlId = `frame-density-${controlId}-fullscreen`
   const { slots, missingIndexes, frameCount } = useMemo(() => {
     const expected = Math.max(0, ...frames.map((frame) => frame.frameCount))
     const nextSlots = new Map<number, FrameSlot>()
@@ -225,16 +226,42 @@ export function AnimatedQrFrames({
   const changeDensity = (raw: string) => {
     if (!densityEnabled) return
     const nextFrameBytes = Number(raw)
-    if (
-      !Number.isSafeInteger(nextFrameBytes) ||
-      nextFrameBytes < densityMinimum ||
-      nextFrameBytes > FRAME_BYTES_MAX ||
-      (nextFrameBytes - densityMinimum) % FRAME_BYTES_STEP !== 0
-    ) {
-      return
-    }
+    if (!isFrameBytes(nextFrameBytes) || nextFrameBytes < densityMinimum) return
     onFrameBytesChange(nextFrameBytes)
   }
+  const densityControl = (id: string, fullscreenControl: boolean) => (
+    <div
+      id={id}
+      role="radiogroup"
+      aria-label={t("animatedQr.density.label")}
+      className={`grid grid-cols-2 gap-1 rounded-md p-1 ${
+        fullscreenControl ? "bg-slate-100" : "bg-muted"
+      }`}
+    >
+      {FRAME_BYTES_VALUES.map((bytes) => (
+        <label key={bytes} className="relative">
+          <input
+            type="radio"
+            name={id}
+            value={bytes}
+            checked={frameBytes === bytes}
+            disabled={bytes < densityMinimum}
+            className="peer sr-only"
+            onChange={(event) => changeDensity(event.target.value)}
+          />
+          <span
+            className={`flex h-9 cursor-pointer items-center justify-center rounded-sm border border-transparent px-2 text-xs font-medium tabular-nums transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 ${
+              fullscreenControl
+                ? "text-slate-950 peer-checked:border-slate-400 peer-checked:bg-white"
+                : "peer-checked:border-border peer-checked:bg-background"
+            }`}
+          >
+            {bytes} B
+          </span>
+        </label>
+      ))}
+    </div>
+  )
 
   const exportAllPng = async () => {
     if (!exportsEnabled) return
@@ -307,44 +334,68 @@ export function AnimatedQrFrames({
   }
 
   const transportControls = (fullscreenControls: boolean) => (
-    <div className="flex flex-wrap items-center justify-center gap-2">
+    <div
+      data-transport-controls={fullscreenControls ? "fullscreen" : "inline"}
+      className={
+        fullscreenControls
+          ? "grid w-full grid-cols-4 items-center gap-2"
+          : "flex flex-wrap items-center justify-center gap-2"
+      }
+    >
       <Button
         type="button"
         variant="outline"
         className={`h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 ${
           fullscreenControls
-            ? "border-slate-400 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            ? "w-full border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
             : ""
         }`}
         onClick={movePrevious}
       >
         <ChevronLeft aria-hidden="true" />
-        <span>{t("animatedQr.prev")}</span>
+        <span className={fullscreenControls ? "sr-only" : undefined}>
+          {t("animatedQr.prev")}
+        </span>
       </Button>
       <Button
         type="button"
         variant="secondary"
-        className={`h-11 min-w-28 cursor-pointer px-3 focus-visible:ring-2 ${
+        className={`h-11 cursor-pointer px-3 focus-visible:ring-2 ${
           fullscreenControls
-            ? "border-slate-400 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
-            : ""
+            ? "min-w-11 w-full border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            : "min-w-28"
         }`}
         onClick={togglePaused}
       >
         {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-        <span>{t(paused ? "animatedQr.play" : "animatedQr.pause")}</span>
+        <span className={fullscreenControls ? "sr-only" : undefined}>
+          {t(paused ? "animatedQr.play" : "animatedQr.pause")}
+        </span>
       </Button>
+      {fullscreenControls && (
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 min-w-11 w-full cursor-pointer border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2"
+          aria-label={t("common.close")}
+          onClick={() => changeFullscreen(false)}
+        >
+          <X aria-hidden="true" />
+        </Button>
+      )}
       <Button
         type="button"
         variant="outline"
         className={`h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 ${
           fullscreenControls
-            ? "border-slate-400 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            ? "w-full border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
             : ""
         }`}
         onClick={moveNext}
       >
-        <span>{t("animatedQr.next")}</span>
+        <span className={fullscreenControls ? "sr-only" : undefined}>
+          {t("animatedQr.next")}
+        </span>
         <ChevronRight aria-hidden="true" />
       </Button>
     </div>
@@ -365,13 +416,33 @@ export function AnimatedQrFrames({
         {transportControls(true)}
       </div>
 
-      {densityEnabled && (
-        <>
-          <div className="space-y-1">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <Label htmlFor={fullscreenDensityInputId}>
-                {t("animatedQr.density.label")}
-              </Label>
+      <div
+        data-speed-density-controls
+        className="flex flex-wrap items-start gap-2 landscape:gap-1.5"
+      >
+        <div className="min-w-[8rem] flex-1 space-y-1">
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <Label htmlFor={fullscreenSpeedInputId}>
+              {t("animatedQr.speed.label")}
+            </Label>
+            <span className="font-mono text-xs tabular-nums">{speed} ms</span>
+          </div>
+          <Input
+            id={fullscreenSpeedInputId}
+            aria-label={t("animatedQr.speed.label")}
+            type="range"
+            min={FRAME_INTERVAL_MS_MIN}
+            max={FRAME_INTERVAL_MS_MAX}
+            step={FRAME_INTERVAL_MS_STEP}
+            value={speed}
+            onChange={(event) => changeSpeed(event.target.value)}
+          />
+        </div>
+
+        {densityEnabled && (
+          <div className="min-w-[8rem] flex-1 space-y-1">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="font-medium">{t("animatedQr.density.label")}</span>
               <span className="flex items-center gap-1 font-mono text-xs tabular-nums">
                 {splitting && (
                   <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />
@@ -379,39 +450,10 @@ export function AnimatedQrFrames({
                 {frameBytes} B
               </span>
             </div>
-            <Input
-              id={fullscreenDensityInputId}
-              aria-label={t("animatedQr.density.label")}
-              type="range"
-              min={densityMinimum}
-              max={FRAME_BYTES_MAX}
-              step={FRAME_BYTES_STEP}
-              value={frameBytes}
-              onChange={(event) => changeDensity(event.target.value)}
-            />
+            {densityControl(fullscreenDensityControlId, true)}
           </div>
-        </>
-      )}
-
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-3 text-sm">
-          <Label htmlFor={fullscreenSpeedInputId}>
-            {t("animatedQr.speed.label")}
-          </Label>
-          <span className="font-mono text-xs tabular-nums">{speed} ms</span>
-        </div>
-        <Input
-          id={fullscreenSpeedInputId}
-          aria-label={t("animatedQr.speed.label")}
-          type="range"
-          min={FRAME_INTERVAL_MS_MIN}
-          max={FRAME_INTERVAL_MS_MAX}
-          step={FRAME_INTERVAL_MS_STEP}
-          value={speed}
-          onChange={(event) => changeSpeed(event.target.value)}
-        />
+        )}
       </div>
-
     </div>
   )
 
@@ -445,6 +487,7 @@ export function AnimatedQrFrames({
         fullscreenEnabled={fullscreenEnabled}
         showFullscreenTrigger={showFullscreenTrigger}
         fullscreenControls={fullscreenControls}
+        fullscreenControlsIncludeClose
         fullscreenOpen={fullscreen}
         onFullscreenOpenChange={changeFullscreen}
       />
@@ -461,9 +504,9 @@ export function AnimatedQrFrames({
             <>
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <Label htmlFor={inlineDensityInputId}>
+                  <span className="font-medium">
                     {t("animatedQr.density.label")}
-                  </Label>
+                  </span>
                   <span className="flex items-center gap-1 font-mono text-xs tabular-nums">
                     {splitting && (
                       <LoaderCircle
@@ -474,16 +517,7 @@ export function AnimatedQrFrames({
                     {frameBytes} B
                   </span>
                 </div>
-                <Input
-                  id={inlineDensityInputId}
-                  aria-label={t("animatedQr.density.label")}
-                  type="range"
-                  min={densityMinimum}
-                  max={FRAME_BYTES_MAX}
-                  step={FRAME_BYTES_STEP}
-                  value={frameBytes}
-                  onChange={(event) => changeDensity(event.target.value)}
-                />
+                {densityControl(inlineDensityControlId, false)}
               </div>
               <details className="text-xs text-muted-foreground">
                 <summary className="select-none touch-manipulation flex cursor-pointer list-none items-center gap-1.5 focus-visible:ring-2">

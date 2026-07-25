@@ -169,10 +169,10 @@ QrFrameV2 = {
   transferId: bytes(16)       // CSPRNG
   artifactType: V2ArtifactType
   frameIndex: uint            // 0-based (0..frameCount-1)
-  frameCount: uint            // 1..64
-  totalByteLength: uint       // total raw artifact bytes (≤ 64×900)
+  frameCount: uint            // 1..128
+  totalByteLength: uint       // total raw artifact bytes (≤ 128×200)
   payloadSha256: bytes(32)    // SHA-256 over the raw artifact bytes (transfer integrity)
-  chunk: bytes(1..900)        // slice of the raw artifact CBOR bytes
+  chunk: bytes(1..200)        // slice of the raw artifact CBOR bytes
 }
 ```
 
@@ -186,21 +186,25 @@ QrFrameV2 = {
 - A sender selects exactly one split mode: fixed `frameBytes`, or an explicit
   balanced `frameCount`. Count mode rejects non-integers, counts above
   `VITE_QR_MAX_FRAMES` or the artifact byte length, and any result whose
-  largest chunk exceeds 900B. Every chunk is non-empty and largest/smallest
+  largest chunk exceeds 200B. Every chunk is non-empty and largest/smallest
   lengths differ by at most one byte
-- Defaults: chunk 200B / 2,000ms interval / max 64 frames. OCF2 chunks are
-  preference-controlled from 100–900B for messages, identity bundles, and
-  individual public keys. The density range control uses a 100B step,
-  while stored off-grid integers such as 250B remain valid and are not
-  coerced. The current interval values are exactly
-  1,000/1,500/2,000/2,500/3,000ms (UI step 500ms); off-grid env values and
-  new preference writes are rejected
+- Defaults: chunk 100B / 2,000ms interval / max 128 frames. Active OCF2
+  chunk density for messages, identity bundles, and individual public keys is
+  exactly the set `{100, 200}` bytes (shipped default 100B). The density
+  control is a two-option toggle; active writes (env parsing and preference
+  full/patch validation) reject every other integer, including former
+  off-grid values such as 250B. The boot read path stays append-only and
+  still accepts every previously storable integer from 100 through 900 so
+  stored preferences never become unreadable. The current interval values
+  are exactly 1,000/1,500/2,000/2,500/3,000ms (UI step 500ms); off-grid env
+  values and new preference writes are rejected
 - Before the first split of each artifact, the renderer computes
   `effectiveMin = 100 × ceil(ceil(totalByteLength / VITE_QR_MAX_FRAMES) / 100)`
   and uses `max(storedFrameBytes, effectiveMin)` without persisting an
-  automatic clamp. If `effectiveMin > 900`, generation fails as
-  `QR_TOO_LARGE`. The density slider starts at the same `effectiveMin`, so it
-  cannot select a transfer that exceeds the configured frame ceiling
+  automatic clamp. If `effectiveMin > 200`, generation fails as
+  `QR_TOO_LARGE`. The density toggle disables the option below the same
+  `effectiveMin`, so it cannot select a transfer that exceeds the configured
+  frame ceiling
 - A density change re-splits the raw artifact and therefore mints a new
   `transferId`. Receivers that collected any frames from the previous
   generation must discard them and restart; mixing generations is terminal
@@ -214,8 +218,9 @@ QrFrameV2 = {
   cryptographic processing starts while assembly is incomplete
 - `payloadSha256` is transfer integrity, **not sender authenticity**
   (mind the UI wording)
-- Scan state is released on timeout (default 10 minutes), explicit discard,
-  completion, or error
+- Scan state is released on timeout (default 10 minutes; configurable floor
+  3 minutes so one full 128-frame cycle at the 1,000ms interval fits),
+  explicit discard, completion, or error
 
 For boot compatibility, persisted legacy interval integers from 150 through
 2,000ms remain readable; the repository normalizes only these persisted legacy
@@ -330,7 +335,7 @@ contract; they do not imply availability under the active policy.
 | Signature verification failure (body withheld) | `SIGNATURE_INVALID` |
 | Sender signing key not imported (import flow offered) | `SIGNING_KEY_NOT_FOUND` |
 | Frame from another transferId mixed in / frame inconsistency | `FRAME_MISMATCH` |
-| Capacity exceeded, e.g. frameCount>64 | `QR_TOO_LARGE` |
+| Capacity exceeded, e.g. frameCount>128 | `QR_TOO_LARGE` |
 | OCB2 (reserved) / balanced/768-family operation / legacy RSA format (OCM1-RSA) | `UNSUPPORTED_ALGORITHM` (deprecation wording) |
 | Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
 | Partial failure of local reset | `RESET_FAILED` |

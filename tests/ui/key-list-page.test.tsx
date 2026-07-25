@@ -186,7 +186,7 @@ describe("key list page", () => {
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-public-identity",
-          frameBytes: 200,
+          frameBytes: 100,
         }),
       ),
     )
@@ -208,7 +208,7 @@ describe("key list page", () => {
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-kem-public-key",
-          frameBytes: 200,
+          frameBytes: 100,
         }),
       ),
     )
@@ -234,7 +234,7 @@ describe("key list page", () => {
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-dsa-public-key",
-          frameBytes: 200,
+          frameBytes: 100,
         }),
       ),
     )

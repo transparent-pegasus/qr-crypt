@@ -13,6 +13,7 @@ import { AnimatedQrFrames } from "@/components/animated-qr-frames"
 import { AppError } from "@/crypto/errors"
 import { useFrameSplit } from "@/hooks/use-frame-split"
 import type { QrFrameV2 } from "@/schemas/domain"
+import { env } from "@/schemas/env-schema"
 import {
   qrPngBlob,
   sanitizeQrFileName,
@@ -20,6 +21,8 @@ import {
   triggerDownload,
 } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
+
+const defaultQrMaxFrames = env.qrMaxFrames
 
 function frame(
   frameIndex: number,
@@ -56,6 +59,7 @@ describe("AnimatedQrFrames", () => {
   beforeEach(resetUi)
   afterEach(() => {
     vi.useRealTimers()
+    env.qrMaxFrames = defaultQrMaxFrames
     resetUi()
   })
 
@@ -106,9 +110,18 @@ describe("AnimatedQrFrames", () => {
     })
     expect(within(dialog).getByText("1 / 2")).toBeInTheDocument()
     expect(screen.getAllByLabelText("Display speed")).toHaveLength(1)
-    expect(screen.getAllByLabelText("Frame density")).toHaveLength(1)
+    expect(screen.getAllByRole("radiogroup", { name: "Frame density" })).toHaveLength(1)
     expect(within(dialog).getByLabelText("Display speed").id).toMatch(/-fullscreen$/)
-    expect(within(dialog).getByLabelText("Frame density").id).toMatch(/-fullscreen$/)
+    const density = within(dialog).getByRole("radiogroup", {
+      name: "Frame density",
+    })
+    expect(density.id).toMatch(/-fullscreen$/)
+    const density100 = within(density).getByRole("radio", { name: "100 B" })
+    const density200 = within(density).getByRole("radio", { name: "200 B" })
+    expect(density100).toBeEnabled()
+    expect(density100).toBeChecked()
+    expect(density200).toBeEnabled()
+    expect(density200).not.toBeChecked()
     const ids = Array.from(dialog.querySelectorAll("input[id]")).map((input) => input.id)
     expect(new Set(ids).size).toBe(ids.length)
     for (const id of ids) {
@@ -123,9 +136,7 @@ describe("AnimatedQrFrames", () => {
       target: { value: "1500" },
     })
     expect(onFrameIntervalMsChange).toHaveBeenCalledWith(1_500)
-    fireEvent.change(within(dialog).getByLabelText("Frame density"), {
-      target: { value: "200" },
-    })
+    fireEvent.click(density200)
     expect(onFrameBytesChange).toHaveBeenCalledWith(200)
 
     const fullscreenClose = within(dialog).getAllByRole("button", { name: "Close" })
@@ -142,12 +153,14 @@ describe("AnimatedQrFrames", () => {
     ).toHaveValue("1500")
     expect(
       screen
-        .getAllByLabelText("Frame density")
+        .getAllByRole("radiogroup", { name: "Frame density" })
         .some((input) => input.id.endsWith("-inline")),
     ).toBe(true)
   })
 
-  it("raises the density minimum when 100B cannot fit the artifact", async () => {
+  it("disables 100 B when the artifact exceeds a configured 64-frame floor", async () => {
+    env.qrMaxFrames = 64
+    const onFrameBytesChange = vi.fn()
     render(
       <AnimatedQrFrames
         frames={[
@@ -156,7 +169,7 @@ describe("AnimatedQrFrames", () => {
         ]}
         frameIntervalMs={2_000}
         frameBytes={200}
-        onFrameBytesChange={vi.fn()}
+        onFrameBytesChange={onFrameBytesChange}
         outputName="signed"
       />,
     )
@@ -164,8 +177,15 @@ describe("AnimatedQrFrames", () => {
       expect(screen.getByRole("button", { name: "View full screen" })).toBeEnabled(),
     )
     fireEvent.click(screen.getByRole("button", { name: "View full screen" }))
-    expect(screen.getByLabelText("Frame density")).toHaveAttribute("min", "200")
-    expect(screen.getByLabelText("Frame density")).toHaveAttribute("step", "100")
+    const density = screen.getByRole("radiogroup", { name: "Frame density" })
+    const density100 = within(density).getByRole("radio", { name: "100 B" })
+    const density200 = within(density).getByRole("radio", { name: "200 B" })
+    expect(density100).toBeDisabled()
+    expect(density100).not.toBeChecked()
+    expect(density200).toBeEnabled()
+    expect(density200).toBeChecked()
+    fireEvent.click(density100)
+    expect(onFrameBytesChange).not.toHaveBeenCalled()
   })
 
   it("resets to frame one when a same-length transfer generation replaces the frames", async () => {
@@ -307,7 +327,7 @@ describe("useFrameSplit", () => {
     expect(result.current.frames).toBe(firstFrames)
     expect(result.current.splitting).toBe(true)
 
-    rerender({ frameBytes: 300 })
+    rerender({ frameBytes: 100 })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(3))
     const newestFrames = [frame(0, 1, { transfer: 3 })]
     await act(async () => {

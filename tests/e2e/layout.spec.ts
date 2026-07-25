@@ -143,30 +143,75 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
       )
     })
     const image = fullscreen.getByRole("img", { name: /Full-screen .* image/ })
-    const density = fullscreen.getByLabel("Frame density", { exact: true })
-    const speed = fullscreen.getByLabel("Display speed", { exact: true })
-    const close = fullscreen.getByRole("button", { name: "Close", exact: true })
+    const controls = fullscreen.locator("[data-fullscreen-controls]")
+    const speedDensityRow = controls.locator("[data-speed-density-controls]")
+    const density = speedDensityRow.getByRole("radiogroup", {
+      name: "Frame density",
+      exact: true,
+    })
+    const speed = speedDensityRow.getByRole("slider", {
+      name: "Display speed",
+      exact: true,
+    })
+    const transportControls = controls.locator(
+      '[data-transport-controls="fullscreen"]',
+    )
+    const transportButtons = transportControls.getByRole("button")
+    const close = transportControls.getByRole("button", {
+      name: "Close",
+      exact: true,
+    })
+    await expect(transportButtons).toHaveCount(4)
+    for (const [index, name] of ["Previous", "Pause", "Close", "Next"].entries()) {
+      await expect(transportButtons.nth(index)).toHaveAccessibleName(name)
+    }
+    await expect(
+      fullscreen.getByRole("button", { name: "Close", exact: true }),
+    ).toHaveCount(1)
     const transport = [
       ["Previous", fullscreen.getByRole("button", { name: "Previous", exact: true })],
       ["Pause", fullscreen.getByRole("button", { name: "Pause", exact: true })],
+      ["Close", close],
       ["Next", fullscreen.getByRole("button", { name: "Next", exact: true })],
     ] as const
     for (const [label, locator] of [
       ["QR image", image],
       ["density", density],
       ["speed", speed],
-      ["Close", close],
       ...transport,
     ] as const) {
       await expect(locator).toBeVisible()
       await expectInsideViewport(locator, viewport.width, viewport.height, label)
     }
+    const [imageBox, closeBox, speedSectionBox, densitySectionBox] =
+      await Promise.all([
+        image.boundingBox(),
+        close.boundingBox(),
+        speed.locator("..").boundingBox(),
+        density.locator("..").boundingBox(),
+      ])
+    expect(imageBox).not.toBeNull()
+    expect(closeBox).not.toBeNull()
+    expect(speedSectionBox).not.toBeNull()
+    expect(densitySectionBox).not.toBeNull()
+    expect(
+      Math.abs(speedSectionBox!.y - densitySectionBox!.y),
+      `${viewport.width}x${viewport.height} speed and density row`,
+    ).toBeLessThanOrEqual(0.5)
+    const closeOverlapsImage =
+      closeBox!.x < imageBox!.x + imageBox!.width &&
+      closeBox!.x + closeBox!.width > imageBox!.x &&
+      closeBox!.y < imageBox!.y + imageBox!.height &&
+      closeBox!.y + closeBox!.height > imageBox!.y
+    expect(
+      closeOverlapsImage,
+      `${viewport.width}x${viewport.height} close/QR overlap`,
+    ).toBe(false)
     const overflow = await fullscreen.evaluate((element) => ({
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight,
     }))
     expect(overflow.scrollHeight).toBeLessThanOrEqual(overflow.clientHeight)
-    const controls = fullscreen.locator("[data-fullscreen-controls]")
     await expectInsideViewport(
       controls,
       viewport.width,
@@ -174,7 +219,6 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
       "controls",
     )
     if (viewport.portrait) {
-      const imageBox = await image.boundingBox()
       expect(Math.min(imageBox!.width, imageBox!.height)).toBeGreaterThanOrEqual(240)
     } else {
       await expect(controls.locator("details")).toHaveCount(0)
@@ -221,14 +265,14 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
         .map((animation) => animation.finished.catch(() => undefined)),
     )
   })
-  for (const [label, locator] of [
-    ["前へ", japaneseFullscreen.getByRole("button", { name: "前へ", exact: true })],
-    [
-      "一時停止",
-      japaneseFullscreen.getByRole("button", { name: "一時停止", exact: true }),
-    ],
-    ["次へ", japaneseFullscreen.getByRole("button", { name: "次へ", exact: true })],
-  ] as const) {
+  const japaneseTransport = japaneseFullscreen.locator(
+    '[data-transport-controls="fullscreen"]',
+  )
+  const japaneseTransportButtons = japaneseTransport.getByRole("button")
+  await expect(japaneseTransportButtons).toHaveCount(4)
+  for (const [index, label] of ["前へ", "一時停止", "閉じる", "次へ"].entries()) {
+    const locator = japaneseTransportButtons.nth(index)
+    await expect(locator).toHaveAccessibleName(label)
     await expect(locator).toBeVisible()
     await expectInsideViewport(locator, 740, 360, label)
   }
@@ -241,7 +285,7 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
     japaneseOverflow.clientHeight,
   )
   expect((await japaneseControls.boundingBox())!.height).toBeLessThanOrEqual(300)
-  await japaneseFullscreen
+  await japaneseTransport
     .getByRole("button", { name: "閉じる", exact: true })
     .click()
 })

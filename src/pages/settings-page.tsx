@@ -60,11 +60,11 @@ import {
 import type { Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
-  FRAME_BYTES_MAX,
-  FRAME_BYTES_MIN,
+  FRAME_BYTES_VALUES,
   FRAME_INTERVAL_MS_MAX,
   FRAME_INTERVAL_MS_MIN,
   FRAME_INTERVAL_MS_STEP,
+  isFrameBytes,
   isFrameIntervalMs,
   RESET_CHURN_MB_MAX,
   RESET_CHURN_MB_MIN,
@@ -157,7 +157,7 @@ export function SettingsPage() {
   }
 
   const saveIntegerPreference = (
-    key: "frameBytes" | "frameIntervalMs" | "transferTimeoutMinutes" | "resetChurnMb",
+    key: "frameIntervalMs" | "transferTimeoutMinutes" | "resetChurnMb",
     raw: string,
     minimum: number,
     maximum: number,
@@ -316,27 +316,28 @@ export function SettingsPage() {
           />
         </div>
         <SettingField
-          label={t("settings.field.frameBytes", {
-            min: FRAME_BYTES_MIN,
-            max: FRAME_BYTES_MAX,
-          })}
+          label={t("settings.field.frameBytes")}
           htmlFor="frame-bytes"
         >
-          <Input
-            id="frame-bytes"
-            type="number"
-            min={FRAME_BYTES_MIN}
-            max={FRAME_BYTES_MAX}
-            value={preferences.frameBytes}
-            onChange={(event) =>
-              saveIntegerPreference(
-                "frameBytes",
-                event.target.value,
-                FRAME_BYTES_MIN,
-                FRAME_BYTES_MAX,
-              )
-            }
-          />
+          <Select
+            value={String(preferences.frameBytes)}
+            disabled={preferencesLoading}
+            onValueChange={(raw) => {
+              const value = Number(raw)
+              if (isFrameBytes(value)) void savePreference({ frameBytes: value })
+            }}
+          >
+            <SelectTrigger id="frame-bytes" className="h-11 text-base">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FRAME_BYTES_VALUES.map((bytes) => (
+                <SelectItem key={bytes} value={String(bytes)}>
+                  {bytes} B
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </SettingField>
         <SettingField
           label={t("settings.field.frameInterval", {

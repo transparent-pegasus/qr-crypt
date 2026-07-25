@@ -4,6 +4,11 @@
 // back to defaults.
 import { z } from "zod"
 import {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
+  isFrameBytes,
+} from "@/lib/frame-bytes"
+import {
   FRAME_INTERVAL_MS_DEFAULT,
   isFrameIntervalMs,
 } from "@/lib/frame-interval"
@@ -46,6 +51,16 @@ const intFromString = (defaultValue: number, min: number, max: number) =>
     .default(String(defaultValue))
     .transform((value) => Number(value))
     .pipe(z.number().int().min(min).max(max))
+
+const frameBytesFromString = z
+  .string()
+  .default(String(FRAME_BYTES_MIN))
+  .transform((value) => Number(value))
+  .pipe(
+    z.number().refine(isFrameBytes, {
+      message: "must be a current frame-byte value",
+    }),
+  )
 
 const frameIntervalMsFromString = z
   .string()
@@ -98,9 +113,9 @@ const rawSchema = z.object({
   VITE_REQUIRE_SIGNATURE: boolFromString("false"),
   VITE_ENABLE_PRIVATE_KEY_EXPORT: boolFromString("false"),
   VITE_ENABLE_ENCRYPTED_SEED_BACKUP: boolFromString("false"),
-  VITE_QR_FRAME_BYTES: intFromString(200, 100, 900),
+  VITE_QR_FRAME_BYTES: frameBytesFromString,
   VITE_QR_FRAME_INTERVAL_MS: frameIntervalMsFromString,
-  VITE_QR_MAX_FRAMES: intFromString(64, 1, 64),
+  VITE_QR_MAX_FRAMES: intFromString(128, 1, 128),
   // Unknown provider names are startup errors.
   VITE_PQ_PROVIDER: z.enum(["noble"]).default("noble"),
   VITE_PQ_WORKER_ENABLED: boolFromString("true"),
@@ -128,7 +143,7 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
   //    selectable density. The renderer clamps each artifact independently, so the
   //    stored/default density is not a boot-capacity constraint.
   const maximumSignedBytes = maximumSignedArtifactBytes(v.VITE_MAX_PLAINTEXT_BYTES)
-  const configuredFrameCapacity = v.VITE_QR_MAX_FRAMES * 900
+  const configuredFrameCapacity = v.VITE_QR_MAX_FRAMES * FRAME_BYTES_MAX
   if (maximumSignedBytes > configuredFrameCapacity) {
     throw new Error(
       "Invalid environment variables: the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × the maximum selectable frame density",

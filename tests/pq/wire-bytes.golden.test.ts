@@ -13,7 +13,10 @@ import {
 } from "@/crypto/pq/wire-bytes"
 import { encodeFrameToPayload, decodeFramePayload, QR_PREFIX_V2, classifyV2Payload, splitV2Payload } from "@/qr/payload-v2"
 import { bytesToHex } from "@/lib/bytes"
-import { MAX_FRAME_PAYLOAD_CHARS } from "@/lib/limits"
+import {
+  FRAME_CHUNK_MAX_BYTES,
+  MAX_FRAME_PAYLOAD_CHARS,
+} from "@/lib/limits"
 import { payloadFits } from "@/qr/encode"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
@@ -144,9 +147,9 @@ describe("payload-v2 frame codec", () => {
       artifactType: "pq-message" as const,
       frameIndex: 1,
       frameCount: 2,
-      totalByteLength: 1800,
+      totalByteLength: FRAME_CHUNK_MAX_BYTES * 2,
       payloadSha256: new Uint8Array(32).fill(0x02),
-      chunk: new Uint8Array(900).fill(0x03), // Maximum protocol chunk.
+      chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES).fill(0x03),
     }
     const payload = encodeFrameToPayload(frame)
     expect(payload.startsWith(QR_PREFIX_V2.frame)).toBe(true)
