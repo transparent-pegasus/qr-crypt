@@ -2,11 +2,7 @@
 // Limit imports of @zxing/browser and @zxing/library to this module.
 import type { AppError } from "@/crypto/errors"
 import { BrowserQRCodeReader } from "@zxing/browser"
-import {
-  ChecksumException,
-  FormatException,
-  NotFoundException,
-} from "@zxing/library"
+import { ChecksumException, FormatException, NotFoundException } from "@zxing/library"
 import { AppError as ConcreteAppError } from "@/crypto/errors"
 
 export interface QrScanHandle {
@@ -77,6 +73,8 @@ interface CameraAttempt {
   frameRecoveryActive: boolean
   lastFrameErrorName: string | undefined
   retryDecoder: (() => void) | undefined
+  abortSignal: AbortSignal | undefined
+  abortListener: EventListener | undefined
 }
 
 class AttemptCancelled extends Error {}
@@ -224,6 +222,12 @@ function stopAttempt(attempt: CameraAttempt): void {
   if (attempt.stopped) return
   attempt.stopped = true
   attempt.resolveStopped()
+
+  if (attempt.abortSignal !== undefined && attempt.abortListener !== undefined) {
+    attempt.abortSignal.removeEventListener("abort", attempt.abortListener)
+    attempt.abortSignal = undefined
+    attempt.abortListener = undefined
+  }
 
   if (attempt.frameReadyTimeoutId !== undefined) {
     clearTimeout(attempt.frameReadyTimeoutId)
@@ -593,6 +597,8 @@ async function startQrScanImplementation(
     frameRecoveryActive: false,
     lastFrameErrorName: undefined,
     retryDecoder: undefined,
+    abortSignal: undefined,
+    abortListener: undefined,
   }
   activeAttempt = attempt
 
@@ -603,9 +609,13 @@ async function startQrScanImplementation(
   }
 
   const signal = options?.signal
-  const onAbort = () => stopAttempt(attempt)
-  signal?.addEventListener("abort", onAbort, { once: true })
-  if (signal?.aborted) onAbort()
+  if (signal !== undefined) {
+    const onAbort = () => stopAttempt(attempt)
+    attempt.abortSignal = signal
+    attempt.abortListener = onAbort
+    signal.addEventListener("abort", onAbort, { once: true })
+    if (signal.aborted) onAbort()
+  }
 
   const reader = new BrowserQRCodeReader()
   const operation: Promise<AttemptOutcome> = startAttempt(
@@ -661,7 +671,6 @@ async function startQrScanImplementation(
     throw mapped
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId)
-    signal?.removeEventListener("abort", onAbort)
   }
 }
 

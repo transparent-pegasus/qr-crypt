@@ -63,6 +63,40 @@ function payload(frameIndex: number, overrides: Partial<QrFrameV2> = {}): string
   return encodeFrameToPayload(frame(frameIndex, overrides))
 }
 
+interface Deferred<T> {
+  promise: Promise<T>
+  resolve(value: T): void
+  reject(reason?: unknown): void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
+function playbackPayloads(marker: number): readonly [string, string] {
+  const overrides = {
+    transferId: new Uint8Array(16).fill(marker),
+    payloadSha256: new Uint8Array(32).fill(marker),
+  } satisfies Partial<QrFrameV2>
+  return [payload(0, overrides), payload(1, overrides)]
+}
+
+function dataUrl(value: string): string {
+  return `data:image/png;base64,${btoa(value)}`
+}
+
+function deferPreflight(render: Deferred<string>): void {
+  renderQr
+    .mockImplementationOnce(() => render.promise)
+    .mockImplementationOnce(() => render.promise)
+}
+
 function relayElement(props: Partial<React.ComponentProps<typeof OnlineRelay>> = {}) {
   return (
     <LanguageProvider initialLanguage="en">
@@ -92,9 +126,7 @@ beforeEach(() => {
   scanText = null
   scanFailure = null
   scanSignal = undefined
-  renderQr.mockImplementation(
-    async (value: string) => `data:image/png;base64,${btoa(value)}`,
-  )
+  renderQr.mockImplementation(async (value: string) => dataUrl(value))
   scanStart.mockImplementation(
     async (
       _video: HTMLVideoElement,
@@ -567,6 +599,73 @@ describe("online relay UI", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
+  it.each(["local-wipe", "peer-wipe"] as const)(
+    "stops the settled scanner handoff through the %s boundary before its barrier",
+    async (reason) => {
+      let boundary:
+        | ((reason: import("@/app/boot/boot-controller").RelaySessionEndReason) => void)
+        | undefined
+      let settleStartup: (() => void) | undefined
+      const order: string[] = []
+      scanStart.mockImplementationOnce(
+        async (
+          _video: HTMLVideoElement,
+          _onText: (text: string) => void,
+          _onError: (error: import("@/crypto/errors").AppError) => void,
+          options?: { signal?: AbortSignal },
+        ) => {
+          scanSignal = options?.signal
+          let stopped = false
+          const handle = {
+            stop() {
+              if (stopped) return
+              stopped = true
+              scanSignal?.removeEventListener("abort", onAbort)
+              scanStop()
+              order.push("handle-stop")
+            },
+          }
+          const onAbort = () => handle.stop()
+          scanSignal?.addEventListener("abort", onAbort, { once: true })
+          await new Promise<void>((resolve) => {
+            settleStartup = resolve
+          })
+          return handle
+        },
+      )
+      renderRelay({
+        registerRelaySessionEndHandler(handler) {
+          boundary = handler
+          return () => {
+            boundary = undefined
+          }
+        },
+      })
+      const user = userEvent.setup()
+      await user.click(screen.getByRole("button", { name: "Scan → text" }))
+      await user.click(screen.getByRole("button", { name: "Start camera" }))
+      expect(settleStartup).toBeDefined()
+
+      await act(async () => {
+        // Resolving the scanner's inner await queues its return. Queuing the boundary
+        // next puts it ahead of OnlineRelay's `.then`, which that return queues later.
+        settleStartup?.()
+        await new Promise<void>((resolve) => {
+          queueMicrotask(() => {
+            boundary?.(reason)
+            order.push("barrier")
+            resolve()
+          })
+        })
+      })
+
+      expect(scanSignal?.aborted).toBe(true)
+      expect(scanStop).toHaveBeenCalledOnce()
+      expect(order).toEqual(["handle-stop", "barrier"])
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    },
+  )
+
   it("does not reopen after pagehide while an open-time proof is pending", async () => {
     let resolveRefresh: ((eligible: boolean) => void) | undefined
     const onEligibilityRefresh = vi.fn(
@@ -622,6 +721,197 @@ describe("online relay UI", () => {
       ),
     ).toBeInTheDocument()
     expect(scanStop).toHaveBeenCalled()
+  })
+
+  it("keeps a newer playback when an older render succeeds afterward", async () => {
+    const olderRender = deferred<string>()
+    const newerRender = deferred<string>()
+    deferPreflight(olderRender)
+    deferPreflight(newerRender)
+    const [olderFirst, olderSecond] = playbackPayloads(0x31)
+    const [newerFirst, newerSecond] = playbackPayloads(0x32)
+    renderRelay()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    const input = screen.getByLabelText("Relay text")
+
+    await user.type(input, `${olderFirst}\n${olderSecond}`)
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    expect(renderQr).toHaveBeenCalledTimes(2)
+    await user.clear(input)
+    await user.type(input, `${newerFirst}\n${newerSecond}`)
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    expect(renderQr).toHaveBeenCalledTimes(4)
+
+    await act(async () => {
+      newerRender.resolve("newer-preflight")
+      await newerRender.promise
+    })
+    expect(await screen.findByRole("img")).toHaveAttribute("src", dataUrl(newerFirst))
+
+    await act(async () => {
+      olderRender.resolve("older-preflight")
+      await olderRender.promise
+    })
+    expect(screen.getByRole("img")).toHaveAttribute("src", dataUrl(newerFirst))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("keeps a newer playback when an older render rejects afterward", async () => {
+    const olderRender = deferred<string>()
+    const newerRender = deferred<string>()
+    deferPreflight(olderRender)
+    deferPreflight(newerRender)
+    const [olderFirst, olderSecond] = playbackPayloads(0x41)
+    const [newerFirst, newerSecond] = playbackPayloads(0x42)
+    renderRelay()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    const input = screen.getByLabelText("Relay text")
+
+    await user.type(input, `${olderFirst}\n${olderSecond}`)
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.clear(input)
+    await user.type(input, `${newerFirst}\n${newerSecond}`)
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+
+    await act(async () => {
+      newerRender.resolve("newer-preflight")
+      await newerRender.promise
+    })
+    expect(await screen.findByRole("img")).toHaveAttribute("src", dataUrl(newerFirst))
+
+    await act(async () => {
+      olderRender.reject(new Error("stale render failure"))
+      await olderRender.promise.catch(() => undefined)
+    })
+    expect(screen.getByRole("img")).toHaveAttribute("src", dataUrl(newerFirst))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        "There is too much data to generate a QR code at this error-correction level.",
+      ),
+    ).not.toBeInTheDocument()
+  })
+
+  it("invalidates a pending playback render when the textarea is replaced", async () => {
+    const pendingRender = deferred<string>()
+    deferPreflight(pendingRender)
+    const [first, second] = playbackPayloads(0x51)
+    const [replacementFirst, replacementSecond] = playbackPayloads(0x52)
+    renderRelay()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    const input = screen.getByLabelText("Relay text")
+
+    await user.type(input, `${first}\n${second}`)
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.clear(input)
+    await user.type(input, `${replacementFirst}\n${replacementSecond}`)
+    await act(async () => {
+      pendingRender.resolve("stale-preflight")
+      await pendingRender.promise
+    })
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("This relay provides no app file-download controls."),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("ignores an old render rejection after closing and reopening playback", async () => {
+    const closingRender = deferred<string>()
+    const reopenedRender = deferred<string>()
+    deferPreflight(closingRender)
+    deferPreflight(reopenedRender)
+    const [closingFirst, closingSecond] = playbackPayloads(0x61)
+    const [reopenedFirst, reopenedSecond] = playbackPayloads(0x62)
+    renderRelay()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    await user.type(
+      screen.getByLabelText("Relay text"),
+      `${closingFirst}\n${closingSecond}`,
+    )
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(screen.getByRole("button", { name: "Close" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    await user.type(
+      screen.getByLabelText("Relay text"),
+      `${reopenedFirst}\n${reopenedSecond}`,
+    )
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await act(async () => {
+      reopenedRender.resolve("reopened-preflight")
+      await reopenedRender.promise
+    })
+    expect(await screen.findByRole("img")).toHaveAttribute("src", dataUrl(reopenedFirst))
+
+    await act(async () => {
+      closingRender.reject(new Error("closed render failure"))
+      await closingRender.promise.catch(() => undefined)
+    })
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByRole("img")).toHaveAttribute("src", dataUrl(reopenedFirst))
+    expect(
+      screen.queryByText(
+        "There is too much data to generate a QR code at this error-correction level.",
+      ),
+    ).not.toBeInTheDocument()
+  })
+
+  it("ignores a deferred render rejection after pagehide", async () => {
+    const pendingRender = deferred<string>()
+    deferPreflight(pendingRender)
+    const [first, second] = playbackPayloads(0x71)
+    renderRelay()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    await user.type(screen.getByLabelText("Relay text"), `${first}\n${second}`)
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+
+    act(() => window.dispatchEvent(new Event("pagehide")))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    await act(async () => {
+      pendingRender.reject(new Error("pagehide render failure"))
+      await pendingRender.promise.catch(() => undefined)
+    })
+
+    expect(
+      screen.queryByText(
+        "There is too much data to generate a QR code at this error-correction level.",
+      ),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText("Ciphertext QR relay")).toBeInTheDocument()
+  })
+
+  it("ignores a deferred render rejection after eligibility loss", async () => {
+    const pendingRender = deferred<string>()
+    deferPreflight(pendingRender)
+    const [first, second] = playbackPayloads(0x81)
+    const rendered = renderRelay()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    await user.type(screen.getByLabelText("Relay text"), `${first}\n${second}`)
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+
+    rendered.rerender(relayElement({ eligible: false }))
+    expect(screen.queryByText("Ciphertext QR relay")).not.toBeInTheDocument()
+    await act(async () => {
+      pendingRender.reject(new Error("ineligible render failure"))
+      await pendingRender.promise.catch(() => undefined)
+    })
+    rendered.rerender(relayElement({ eligible: true }))
+
+    expect(screen.getByText("Ciphertext QR relay")).toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        "There is too much data to generate a QR code at this error-correction level.",
+      ),
+    ).not.toBeInTheDocument()
   })
 
   it("accepts CRLF playback without exposing app file-download controls", async () => {

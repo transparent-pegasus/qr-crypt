@@ -313,6 +313,7 @@ export function OnlineRelay({
   const liveHandleRef = useRef<QrScanHandle | null>(null)
   const lifetimeTimeoutRef = useRef<number | null>(null)
   const playbackAnimationAbortRef = useRef<AbortController | null>(null)
+  const playbackOperationRef = useRef(0)
   const sessionGenerationRef = useRef(0)
   const pendingOpenGenerationRef = useRef(0)
 
@@ -338,6 +339,7 @@ export function OnlineRelay({
       if (reason !== "eligibility-loss") {
         pendingOpenGenerationRef.current += 1
       }
+      playbackOperationRef.current += 1
       sessionGenerationRef.current += 1
       stopCameraOnly()
       if (lifetimeTimeoutRef.current !== null) {
@@ -575,7 +577,10 @@ export function OnlineRelay({
   }
 
   const showPlayback = async () => {
-    const parsed = parseRelayText(playbackTextRef.current)
+    const input = playbackTextRef.current
+    const operation = ++playbackOperationRef.current
+    const generation = sessionGenerationRef.current
+    const parsed = parseRelayText(input)
     if (!parsed.ok) {
       setPlaybackError(PARSE_ERROR_KEYS[parsed.code])
       setPlaybackMissingIndexes(parsed.missingIndexes ?? [])
@@ -592,7 +597,6 @@ export function OnlineRelay({
       setPlaybackMissingIndexes([])
       return
     }
-    const generation = sessionGenerationRef.current
     try {
       await Promise.all(
         parsed.frames.map((frame) =>
@@ -603,13 +607,24 @@ export function OnlineRelay({
         ),
       )
     } catch {
+      if (
+        operation !== playbackOperationRef.current ||
+        generation !== sessionGenerationRef.current ||
+        !mountedRef.current
+      ) {
+        return
+      }
       endSession("render-error")
       if (mountedRef.current) {
         setTerminalNotice(errorMessageKey("QR_TOO_LARGE"))
       }
       return
     }
-    if (generation !== sessionGenerationRef.current || !mountedRef.current) {
+    if (
+      operation !== playbackOperationRef.current ||
+      generation !== sessionGenerationRef.current ||
+      !mountedRef.current
+    ) {
       return
     }
     playbackAnimationAbortRef.current?.abort()
@@ -782,6 +797,7 @@ export function OnlineRelay({
               className="min-h-36 font-mono text-xs"
               value={playbackText}
               onChange={(event) => {
+                playbackOperationRef.current += 1
                 playbackTextRef.current = event.target.value
                 setPlaybackText(event.target.value)
                 setPlaybackMissingIndexes([])
