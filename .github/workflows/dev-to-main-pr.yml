@@ -31,7 +31,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PR_TITLE: "merge: promote dev to main"
+          # The title has to read as a release, not as a routine merge: merging
+          # this is what ships production and publishes the signed release.
+          PR_TITLE: "release: promote dev to production"
           PR_BODY: |
             Merging this pull request deploys production to `CLOUDFLARE_PAGES_PROJECT` and publishes the signed prerelease via `.github/workflows/github-release.yml`.
 
