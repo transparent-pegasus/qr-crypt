@@ -128,7 +128,24 @@ guaranteed; JS memory erasure has limits
 1. Check the latest FIPS 203 / FIPS 204 errata (on the relevant NIST CSRC pages)
 2. Check the `@noble/post-quantum` changelog, known vulnerabilities, and advisories
 3. Confirm the KATs (`aube test:pq-vectors`) are all green
-4. Confirm the bundle makes no external network references (e2e: `tests/e2e/security.spec.ts` asserts all in-page requests are same-origin)
+4. Confirm the bundle makes no external network references **and** that
+   same-origin traffic stays on the no-payload allowlist. Same-origin alone
+   is not sufficient: a regression that POSTed relay text to this origin
+   would still be same-origin. e2e (`tests/e2e/security.spec.ts`, including
+   the online-relay scenario) must assert:
+   - **Allowlist (methods + paths only):** static/PWA resources; recurring
+     `HEAD /manifest.webmanifest?reach=…` (display probe); boot
+     `GET /reachability-sentinel.txt` (destructive probe). No other
+     runtime requests.
+   - **Negative matrix after capture / copy / paste / playback / rejection /
+     close / `pagehide` / timeout:** a unique frame marker is absent from
+     request bodies and query values, CacheStorage keys/bodies (static shell
+     permitted), localStorage (only `{oc-theme, oc-lang,
+     oc-offline-ack-pending}`), IndexedDB values, console,
+     `window.onerror` / unhandled rejections, visible error text,
+     `document.title`, `location.href`, and history state.
+   - Errors use fixed i18n / `AppError` mappings — never interpolate raw
+     input, frame metadata, `transferId`, hashes, or `caught.message`.
 5. Review the `aube-lock.yaml` diff (provenance maintained)
 
 ## 4. Items to Record Here When the Independent Review Completes (Template)

@@ -13,11 +13,17 @@ This table maps the target browser environments to the primary verification item
 | QR display | automated (e2e) | automated (e2e) | automated (e2e) | automated (e2e) | manual-pending |
 | QR scanning | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Non-extractable CryptoKey persistence in IndexedDB (generate → close tab → restore → decrypt) | automated (e2e) | manual-pending | automated (e2e) | automated (e2e) | manual-pending |
+| Online relay: camera scan → text (getUserMedia start on explicit action only) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: text → QR playback (verbatim OCF2 re-display) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: clipboard copy/paste (incl. CRLF intermediaries) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: session teardown on `pagehide` / BFCache restore (`pageshow` persisted) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: camera stop on close / background / eligibility loss | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 
 ## Notes
 
 * **iOS Safari**: IndexedDB persistence of non-extractable `CryptoKey`s (generate → close tab → restore → decrypt) is a mandatory manual on-device item. Success on `fake-indexeddb` is not treated as a sufficient condition.
 * **Offline launch / camera scanning**: partial automation via chromium e2e is planned. Real devices on Android / Windows, as well as Safari / Edge, are manual.
+* **Online relay (camera / display / clipboard / BFCache)**: chromium e2e may cover synthetic paths; real-device rows above stay `manual-pending` until measured. Clipboard sync targets and OS QR capture are outside app control.
 * **Edge**: manual on-device row. Screen-reader verification is also manual.
 * **macOS Safari / iOS Safari**: the core items (launch, AES encryption/decryption, key persistence across reload) are expected to be automated via Playwright webkit. PWA installation, camera, and iOS-specific persistence remain manual-pending.
 

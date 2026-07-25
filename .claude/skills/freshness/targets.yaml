@@ -272,6 +272,7 @@ units:
       - README.md
       - README.ja.md
       - SECURITY.md # duplicates release-status claims (repo-public ≠ release-approved)
+      - index.html # static meta description; must stay aligned with product claims, never relay-derived
     why: >
       Dated PQ bench table (2026-07-23), experimental/audit status claims,
       release checklist, supply-chain history, managed-deviation dates, and

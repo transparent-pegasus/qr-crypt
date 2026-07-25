@@ -20,7 +20,8 @@ export default defineConfig(() => {
         manifest: {
           name: "Qrypt",
           short_name: "Qrypt",
-          description: "Offline-only encrypted QR code tool for on-device use.",
+          description:
+            "Offline encryption with a dedicated clean-origin ciphertext QR relay.",
           lang: "en",
           start_url: "/",
           scope: "/",
