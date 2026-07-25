@@ -1,24 +1,24 @@
 name: Validate and Deploy
 
+# main pushes deploy production and, via github-release.yml, publish a signed
+# release. dev pushes deploy the dev Pages project. Every other branch and every
+# pull request runs the checks only.
 on:
+  push:
   pull_request:
     branches:
       - main
-  push:
-    branches:
-      - main
+      - dev
 
 permissions:
   contents: read
-  deployments: write
 
 concurrency:
   group: cloudflare-pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate-and-deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -58,16 +58,16 @@ jobs:
         env:
           VITE_BUILD_SHA: ${{ github.sha }}
 
-      - name: Deploy to Cloudflare Pages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: cloudflare/wrangler-action@v4
+      # The deploy job publishes exactly these bytes, so a deployment can never
+      # diverge from the artifact the checks above ran against.
+      - name: Upload the built site
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+        uses: actions/upload-artifact@v7
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: >-
-            pages deploy dist
-            --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }}
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          name: dist-${{ github.sha }}
+          path: dist
+          retention-days: 1
+          if-no-files-found: error
 
   e2e:
     runs-on: ubuntu-latest
@@ -91,3 +91,61 @@ jobs:
 
       - name: E2E tests
         run: aube test:e2e
+
+  deploy:
+    needs:
+      - validate
+      - e2e
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      deployments: write
+
+    steps:
+      - name: Download the built site
+        uses: actions/download-artifact@v8
+        with:
+          name: dist-${{ github.sha }}
+          path: dist
+
+      # Fail closed: an unset variable would otherwise send this branch's build
+      # to a wrongly named or non-existent Pages project.
+      - name: Require the target Pages project to be configured
+        env:
+          PAGES_PROJECT_MAIN: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          PAGES_PROJECT_DEV: ${{ vars.CLOUDFLARE_PAGES_PROJECT_DEV }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/heads/main) project="$PAGES_PROJECT_MAIN" ;;
+            refs/heads/dev) project="$PAGES_PROJECT_DEV" ;;
+            *) echo "::error::deploy reached an unexpected ref $GITHUB_REF" >&2; exit 1 ;;
+          esac
+          if [[ -z "$project" ]]; then
+            echo "::error::no Cloudflare Pages project variable is set for $GITHUB_REF" >&2
+            exit 1
+          fi
+
+      - name: Deploy to Cloudflare Pages (production)
+        if: github.ref == 'refs/heads/main'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy dist
+            --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy to Cloudflare Pages (dev)
+        if: github.ref == 'refs/heads/dev'
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: >-
+            pages deploy dist
+            --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT_DEV }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

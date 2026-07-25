@@ -23,8 +23,8 @@ defaults:
     shell: bash
 
 env:
-  EXPECTED_REPOSITORY: transparent-pegasus/qrypt
-  EXPECTED_WORKFLOW_IDENTITY: https://github.com/transparent-pegasus/qrypt/.github/workflows/github-release.yml@refs/heads/main
+  EXPECTED_REPOSITORY: transparent-pegasus/qr-crypt
+  EXPECTED_WORKFLOW_IDENTITY: https://github.com/transparent-pegasus/qr-crypt/.github/workflows/github-release.yml@refs/heads/main
   COSIGN_VERSION: v3.0.6
   COSIGN_VERIFY_IMAGE: ghcr.io/sigstore/cosign/cosign@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00 # v3.0.6
 
@@ -53,7 +53,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up mise and project tools
-        uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4
+        uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
         with:
           install: true
           cache: true
@@ -112,13 +112,13 @@ jobs:
             fail "package.json version is not a supported SemVer value"
 
           release_tag="v${version}-main.g${SOURCE_SHA}"
-          root_name="qrypt-${release_tag}-static-install"
+          root_name="qr-crypt-${release_tag}-static-install"
           archive_name="${root_name}.zip"
           bundle_name="${archive_name}.sigstore.json"
-          output_dir="$RUNNER_TEMP/qrypt-release"
-          stage_parent="$RUNNER_TEMP/qrypt-release-stage"
+          output_dir="$RUNNER_TEMP/qr-crypt-release"
+          stage_parent="$RUNNER_TEMP/qr-crypt-release-stage"
           stage_dir="$stage_parent/$root_name"
-          extract_parent="$RUNNER_TEMP/qrypt-release-extracted"
+          extract_parent="$RUNNER_TEMP/qr-crypt-release-extracted"
           extract_dir="$extract_parent/$root_name"
 
           for path in "$output_dir" "$stage_parent" "$extract_parent"; do
@@ -216,7 +216,7 @@ jobs:
           [[ "$total_size" -le 33554432 ]] ||
             fail "dist exceeds the 32 MiB uncompressed limit"
 
-          cmp -s dist/reachability-sentinel.txt <(printf '%s' "QRYPT-REACHABLE") ||
+          cmp -s dist/reachability-sentinel.txt <(printf '%s' "QR-CRYPT-REACHABLE") ||
             fail "reachability sentinel body is incorrect"
           grep -Fq "reachability-sentinel" dist/sw.js ||
             fail "service worker does not contain the sentinel route"
@@ -326,7 +326,7 @@ jobs:
           cp -a dist/. "$stage_dir/"
 
           cat > "$stage_dir/INSTALL.txt" <<EOF
-          Qrypt static offline deployment bundle
+          QR Crypt static offline deployment bundle
           =======================================
 
           Version: $version
@@ -342,7 +342,7 @@ jobs:
           the transport medium as untrusted until verification succeeds.
           Independently provision and authenticate all of the following:
           - Cosign $COSIGN_VERSION and a current Sigstore trusted_root.json
-          - a Qrypt verifier policy pinning the workflow identity, OIDC issuer,
+          - a QR Crypt verifier policy pinning the workflow identity, OIDC issuer,
             repository, main ref, and allowed "push" trigger
           - the intended release tag and full source commit
           Never copy expected policy values from the media being verified.
@@ -355,12 +355,12 @@ jobs:
             cosign verify-blob "$archive_name" \\
               --bundle "$bundle_name" \\
               --trusted-root /independently/provisioned/trusted_root.json \\
-              --certificate-identity "\$QRYPT_TRUSTED_WORKFLOW_IDENTITY" \\
-              --certificate-oidc-issuer "\$QRYPT_TRUSTED_OIDC_ISSUER" \\
-              --certificate-github-workflow-repository "\$QRYPT_TRUSTED_REPOSITORY" \\
-              --certificate-github-workflow-ref "\$QRYPT_TRUSTED_REF" \\
-              --certificate-github-workflow-sha "\$QRYPT_EXPECTED_SOURCE_SHA" \\
-              --certificate-github-workflow-trigger "\$QRYPT_TRUSTED_TRIGGER"
+              --certificate-identity "\$QR_CRYPT_TRUSTED_WORKFLOW_IDENTITY" \\
+              --certificate-oidc-issuer "\$QR_CRYPT_TRUSTED_OIDC_ISSUER" \\
+              --certificate-github-workflow-repository "\$QR_CRYPT_TRUSTED_REPOSITORY" \\
+              --certificate-github-workflow-ref "\$QR_CRYPT_TRUSTED_REF" \\
+              --certificate-github-workflow-sha "\$QR_CRYPT_EXPECTED_SOURCE_SHA" \\
+              --certificate-github-workflow-trigger "\$QR_CRYPT_TRUSTED_TRIGGER"
 
             sha256sum -c SHA256SUMS
 
@@ -380,12 +380,12 @@ jobs:
           3. Open http://localhost (or http://127.0.0.1) and wait until the PWA
              reports that offline use is ready.
           4. Stop the local server, remove the transport medium, physically
-             disconnect networking, and confirm Qrypt reports offline before
+             disconnect networking, and confirm QR Crypt reports offline before
              entering or restoring any secret.
 
           Opening index.html with file:// is unsupported. Plain HTTP on a LAN
           address is unsupported. Do not enter secrets while the install server
-          is running: its sentinel deliberately makes Qrypt treat that origin as
+          is running: its sentinel deliberately makes QR Crypt treat that origin as
           reachable.
           EOF
 
@@ -494,10 +494,10 @@ jobs:
           set -euo pipefail
 
           archive_root="${ARCHIVE_NAME%.zip}"
-          document_root="$RUNNER_TEMP/qrypt-release-extracted/$archive_root"
+          document_root="$RUNNER_TEMP/qr-crypt-release-extracted/$archive_root"
           [[ -d "$document_root" ]]
-          export QRYPT_RELEASE_DOCUMENT_ROOT="$document_root"
-          server_log="$RUNNER_TEMP/qrypt-release-server.log"
+          export QR_CRYPT_RELEASE_DOCUMENT_ROOT="$document_root"
+          server_log="$RUNNER_TEMP/qr-crypt-release-server.log"
 
           node <<'NODE' > "$server_log" 2>&1 &
           const fs = require("node:fs");
@@ -505,7 +505,7 @@ jobs:
           const http = require("node:http");
           const path = require("node:path");
 
-          const root = fs.realpathSync(process.env.QRYPT_RELEASE_DOCUMENT_ROOT);
+          const root = fs.realpathSync(process.env.QR_CRYPT_RELEASE_DOCUMENT_ROOT);
           const rules = [];
           let activeRule;
           for (const rawLine of fs
@@ -622,7 +622,7 @@ jobs:
             --dump-header "$sentinel_headers" \
             --output "$sentinel_body" \
             http://127.0.0.1:4173/reachability-sentinel.txt
-          cmp "$sentinel_body" <(printf '%s' "QRYPT-REACHABLE")
+          cmp "$sentinel_body" <(printf '%s' "QR-CRYPT-REACHABLE")
           grep -Eqi '^cache-control:.*no-store' "$sentinel_headers"
 
           root_headers="$RUNNER_TEMP/root-headers"
@@ -655,8 +655,8 @@ jobs:
         with:
           name: unsigned-release-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/qrypt-release/${{ steps.package.outputs.archive_name }}
-            ${{ runner.temp }}/qrypt-release/SHA256SUMS
+            ${{ runner.temp }}/qr-crypt-release/${{ steps.package.outputs.archive_name }}
+            ${{ runner.temp }}/qr-crypt-release/SHA256SUMS
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -768,7 +768,7 @@ jobs:
             fail "release version is invalid"
           [[ "$RELEASE_TAG" == "v${RELEASE_VERSION}-main.g${SOURCE_SHA}" ]] ||
             fail "release tag does not match version and source SHA"
-          [[ "$ARCHIVE_NAME" == "qrypt-${RELEASE_TAG}-static-install.zip" ]] ||
+          [[ "$ARCHIVE_NAME" == "qr-crypt-${RELEASE_TAG}-static-install.zip" ]] ||
             fail "archive name does not match the release tag"
           [[ "$BUNDLE_NAME" == "${ARCHIVE_NAME}.sigstore.json" ]] ||
             fail "signature bundle name does not match the archive"
@@ -832,11 +832,11 @@ jobs:
           grep -Fq "Source commit: $SOURCE_SHA" <<< "$install_text" ||
             fail "archive identity does not match the triggering commit"
 
-          release_title="Qrypt $RELEASE_VERSION automated experimental ${SOURCE_SHA:0:12}"
+          release_title="QR Crypt $RELEASE_VERSION automated experimental ${SOURCE_SHA:0:12}"
           notes_path="$RUNNER_TEMP/RELEASE_NOTES.md"
           {
             printf '%s\n' \
-              "<!-- qrypt-automated-release:$SOURCE_SHA -->" \
+              "<!-- qr-crypt-automated-release:$SOURCE_SHA -->" \
               '' \
               "Automated experimental build from main commit \`$SOURCE_SHA\`." \
               '' \
@@ -845,7 +845,7 @@ jobs:
               'automatically generated source archives are not install bundles.' \
               '' \
               "Verify the ZIP with \`$BUNDLE_NAME\` and an independently provisioned" \
-              "Qrypt verifier policy, then check \`SHA256SUMS\`. The archive's" \
+              "QR Crypt verifier policy, then check \`SHA256SUMS\`. The archive's" \
               "\`INSTALL.txt\` documents the trust bootstrap and offline deployment" \
               'constraints.'
           } > "$notes_path"
