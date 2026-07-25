@@ -310,7 +310,7 @@ export interface Preferences {
   qrErrorCorrection: QrEcLevel
   autoClearPlaintextAfterEncrypt: boolean
   backgroundClearEnabled: boolean
-  frameBytes: number // 200–900; limits.ts is the single derivation source.
+  frameBytes: number // 100–900; limits.ts is the single derivation source.
   frameIntervalMs: number // 1000–3000 in 500ms steps; limits.ts is the single derivation source.
   transferTimeoutMinutes: number // Default 10.
   wipeOnOnline: boolean // Default true.
@@ -322,7 +322,10 @@ export interface Preferences {
 export const PQ_PREFERENCE_DEFAULTS = {
   defaultPqProfile: "maximum",
   requireSignature: false,
-  frameBytes: 300,
+  // 100B cannot carry the measured 6,613B signed-empty artifact in 64 frames.
+  // 200B carries the measured 10,711B maximum while using lower QR versions
+  // than the former 300B default, which helps cameras lock on faster.
+  frameBytes: 200,
   frameIntervalMs: 2000,
   transferTimeoutMinutes: 10,
   wipeOnOnline: true,

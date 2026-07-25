@@ -188,17 +188,23 @@ QrFrameV2 = {
   `VITE_QR_MAX_FRAMES` or the artifact byte length, and any result whose
   largest chunk exceeds 900B. Every chunk is non-empty and largest/smallest
   lengths differ by at most one byte
-- Defaults: chunk 300B / 2,000ms interval / max 64 frames. Message chunks are
-  configurable from 200–900B. The current interval values are exactly
+- Defaults: chunk 200B / 2,000ms interval / max 64 frames. OCF2 chunks are
+  preference-controlled from 100–900B for messages, identity bundles, and
+  individual public keys. The fullscreen density control uses a 100B step,
+  while stored off-grid integers such as 250B remain valid and are not
+  coerced. The current interval values are exactly
   1,000/1,500/2,000/2,500/3,000ms (UI step 500ms); off-grid env values and
   new preference writes are rejected
-- OCI2 display uses balanced count mode with
-  `clamp(ceil(artifactBytes / 100), 40, 50)`. The 4,402B measured fixture
-  therefore uses 45 chunks of 97/98B. A custom `VITE_QR_MAX_FRAMES` below
-  the selected count fails closed as `QR_TOO_LARGE`; the selection is not
-  silently reduced
-- OCP2/OCS2 single-key display uses the fixed 140B chunk
-  (`PQ_KEY_QR_FRAME_BYTES`, not user-configurable)
+- Before the first split of each artifact, the renderer computes
+  `effectiveMin = 100 × ceil(ceil(totalByteLength / VITE_QR_MAX_FRAMES) / 100)`
+  and uses `max(storedFrameBytes, effectiveMin)` without persisting an
+  automatic clamp. If `effectiveMin > 900`, generation fails as
+  `QR_TOO_LARGE`. The density slider starts at the same `effectiveMin`, so it
+  cannot select a transfer that exceeds the configured frame ceiling
+- A density change re-splits the raw artifact and therefore mints a new
+  `transferId`. Receivers that collected any frames from the previous
+  generation must discard them and restart; mixing generations is terminal
+  `FRAME_MISMATCH`
 - Assembly invariants: the first frame freezes the immutable metadata
   (transferId/artifactType/frameCount/totalByteLength/payloadSha256).
   A repeated index is ignored only on an exact match; even a 1-byte

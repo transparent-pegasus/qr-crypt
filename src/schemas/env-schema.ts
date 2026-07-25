@@ -98,7 +98,7 @@ const rawSchema = z.object({
   VITE_REQUIRE_SIGNATURE: boolFromString("false"),
   VITE_ENABLE_PRIVATE_KEY_EXPORT: boolFromString("false"),
   VITE_ENABLE_ENCRYPTED_SEED_BACKUP: boolFromString("false"),
-  VITE_QR_FRAME_BYTES: intFromString(300, 200, 900),
+  VITE_QR_FRAME_BYTES: intFromString(200, 100, 900),
   VITE_QR_FRAME_INTERVAL_MS: frameIntervalMsFromString,
   VITE_QR_MAX_FRAMES: intFromString(64, 1, 64),
   // Unknown provider names are startup errors.
@@ -124,13 +124,14 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     )
   }
   // 2) Reject before startup any configuration where the raw artifact bytes for a
-  //    maximum signed message with maximum plaintext do not fit the configured total
-  //    OCF2 chunk capacity.
+  //    maximum signed message with maximum plaintext do not fit at the maximum
+  //    selectable density. The renderer clamps each artifact independently, so the
+  //    stored/default density is not a boot-capacity constraint.
   const maximumSignedBytes = maximumSignedArtifactBytes(v.VITE_MAX_PLAINTEXT_BYTES)
-  const configuredFrameCapacity = v.VITE_QR_MAX_FRAMES * v.VITE_QR_FRAME_BYTES
+  const configuredFrameCapacity = v.VITE_QR_MAX_FRAMES * 900
   if (maximumSignedBytes > configuredFrameCapacity) {
     throw new Error(
-      "Invalid environment variables: the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × VITE_QR_FRAME_BYTES",
+      "Invalid environment variables: the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × the maximum selectable frame density",
     )
   }
   let defaultAlgorithm: UiAlgorithm = v.VITE_DEFAULT_ALGORITHM
