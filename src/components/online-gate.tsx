@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { CheckCircle2, Download, Share2, WifiOff } from "lucide-react"
 import { useDisplayGate } from "@/app/display-gate"
 import { NetworkStatusBadge } from "@/components/network-status"
+import { OnlineRelay, type OnlineRelayProps } from "@/components/online-relay"
 import { usePwaOfflineReady } from "@/components/pwa-offline-ready"
 import { Button } from "@/components/ui/button"
 import { LanguageSelect, useI18n, type MessageKey } from "@/i18n"
@@ -28,10 +29,20 @@ function isIosSafari(): boolean {
 export function OnlineGate({ children }: { children: ReactNode }) {
   const { online } = useDisplayGate()
 
-  return online ? <OnlineInstallScreen /> : children
+  return online ? <OnlineInstallScreen relayEligible={false} /> : children
 }
 
-export function OnlineInstallScreen() {
+export interface OnlineInstallScreenProps {
+  relayEligible?: boolean
+  onRelayEligibilityRefresh?: OnlineRelayProps["onEligibilityRefresh"]
+  registerRelaySessionEndHandler?: OnlineRelayProps["registerRelaySessionEndHandler"]
+}
+
+export function OnlineInstallScreen({
+  relayEligible = false,
+  onRelayEligibilityRefresh,
+  registerRelaySessionEndHandler,
+}: OnlineInstallScreenProps = {}) {
   const { t } = useI18n()
   const { offlineReady, error: registrationError } = usePwaOfflineReady()
   const [installed, setInstalled] = useState(isStandalone)
@@ -125,9 +136,7 @@ export function OnlineInstallScreen() {
           <StatusRow
             label={t("pwa.offlineReady.label")}
             value={
-              offlineReady
-                ? t("pwa.offlineReady.ready")
-                : t("pwa.offlineReady.preparing")
+              offlineReady ? t("pwa.offlineReady.ready") : t("pwa.offlineReady.preparing")
             }
             ready={offlineReady}
           />
@@ -161,6 +170,14 @@ export function OnlineInstallScreen() {
             </p>
           )}
         </div>
+
+        <OnlineRelay
+          eligible={relayEligible}
+          {...(onRelayEligibilityRefresh
+            ? { onEligibilityRefresh: onRelayEligibilityRefresh }
+            : {})}
+          {...(registerRelaySessionEndHandler ? { registerRelaySessionEndHandler } : {})}
+        />
 
         <div className="flex items-start gap-3 rounded-xl border border-primary/40 bg-primary/5 p-5">
           <WifiOff aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-primary" />

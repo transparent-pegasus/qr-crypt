@@ -59,38 +59,31 @@ export const MESSAGE_ID_BYTES = 16
 export const KEM_SEED_BYTES = 64
 export const DSA_SEED_BYTES = 32
 
-// Frame-setting ranges and defaults from docs/qr-protocol-v2.md §6.
-// Preferences/environment validation references this table.
-// Halved from 400/600: smaller chunks pick a lower QR version, so modules render larger
-// and cameras lock on faster. An older bundle on the same origin would reject a stored
-// frameBytes < 400 and force a wipe, but this app is never updated after install.
-export const FRAME_BYTES_MIN = 200
+// Frame-setting range and fullscreen density grid from docs/qr-protocol-v2.md §6.
+// Preferences/environment validation references this table. Stored off-grid integers
+// remain readable; FRAME_BYTES_STEP applies only to the fullscreen range control.
+export const FRAME_BYTES_MIN = 100
 export const FRAME_BYTES_MAX = 900
-export const FRAME_BYTES_DEFAULT = 300
-// Minimum chunk size used only by sender-side splitting; below the Preferences floor
-// because the fixed key-QR chunk sizes are smaller than any selectable frameBytes.
-export const FRAME_CHUNK_MIN_BYTES = 100
-// Fixed chunk size used only to display OCP2/OCS2 single-key QRs.
-// It is not tied to settings/Preferences and is not persisted.
-// Halved from 280B for the same scan-reliability reason as the OCI2 target below.
-export const PQ_KEY_QR_FRAME_BYTES = 140
-// For scanning stability, split OCI2 evenly into 40–50 frames targeting about 100B each.
-// Halved from 200B/20–25 frames: 100B chunks drop each frame to a lower QR version, so
-// modules render larger and phone cameras lock on faster, at twice the frame count.
-export const PQ_IDENTITY_QR_TARGET_FRAME_BYTES = 100
-export const PQ_IDENTITY_QR_FRAME_COUNT_MIN = 40
-export const PQ_IDENTITY_QR_FRAME_COUNT_MAX = 50
+export const FRAME_BYTES_STEP = 100
 
-export function pqIdentityQrFrameCount(artifactByteLength: number): number {
-  if (!Number.isSafeInteger(artifactByteLength) || artifactByteLength < 1) {
-    throw new RangeError("artifactByteLength out of range")
+// Round the per-artifact floor onto the fullscreen density grid. The renderer clamps
+// to this value before its first split, while leaving the stored preference unchanged.
+export function minimumFrameBytesForArtifact(
+  artifactByteLength: number,
+  maximumFrames = env.qrMaxFrames,
+): number {
+  if (
+    !Number.isSafeInteger(artifactByteLength) ||
+    artifactByteLength < 1 ||
+    !Number.isSafeInteger(maximumFrames) ||
+    maximumFrames < 1 ||
+    maximumFrames > PROTOCOL_MAX_FRAMES
+  ) {
+    throw new RangeError("artifact framing inputs out of range")
   }
-  return Math.min(
-    PQ_IDENTITY_QR_FRAME_COUNT_MAX,
-    Math.max(
-      PQ_IDENTITY_QR_FRAME_COUNT_MIN,
-      Math.ceil(artifactByteLength / PQ_IDENTITY_QR_TARGET_FRAME_BYTES),
-    ),
+  return (
+    FRAME_BYTES_STEP *
+    Math.ceil(Math.ceil(artifactByteLength / maximumFrames) / FRAME_BYTES_STEP)
   )
 }
 export const TRANSFER_TIMEOUT_MINUTES_MIN = 1
@@ -103,14 +96,16 @@ export const RESET_CHURN_MB_MAX = 512
 // The sender generation limit is separately constrained by env.qrMaxFrames (≤64).
 // Measured maximum canonical CBOR on 2026-07-23 (maxPlaintext=4,096B,
 // name=<three-character, 9-byte non-ASCII UTF-8 fixture>):
-// artifact                         bytes   OCF2 frames (400 / 600 / 900B)
-// unsigned empty / max          1,887 / 5,986       5/4/3 / 15/10/7
-// signed empty / max            6,613 / 10,711     17/12/8 / 27/18/12
-// OCI2 bundle                    4,402              12/8/5
-// OCP2 KEM / OCS2 DSA           1,733 / 2,755       5/3/2 / 7/5/4
-// OCB2 reserved sizing fixture   4,637              12/8/6
-// OCI2 splits evenly by count: 4,402B → 45 frames (97/98B).
-// Fixed 140B single-key chunks (PQ_KEY_QR_FRAME_BYTES): OCP2 1,733 → 13 / OCS2 2,755 → 20.
+// artifact                         bytes   OCF2 frames (100 / 200 / 900B)
+// unsigned empty / max          1,887 / 5,986      19/10/3 / 60/30/7
+// signed empty / max            6,613 / 10,711     >64/34/8 / >64/54/12
+// OCI2 bundle                    4,402              45/23/5
+// OCP2 KEM / OCS2 DSA           1,733 / 2,755      18/9/2 / 28/14/4
+// OCB2 reserved sizing fixture   4,637              47/24/6
+// All displayed OCF2 artifacts use the preference-controlled density. A signed-empty
+// artifact is already 6,613B, so 100B cannot be the shipped default: 64×100=6,400B.
+// The 200B default carries every measured artifact (64×200=12,800B) while retaining
+// lower QR versions than the former 300B default for faster camera lock-on.
 // maximum-artifact-size.golden.test.ts also pins actual EC-Q generation for every OCF2 string.
 export const PROTOCOL_MAX_FRAMES = 64
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX

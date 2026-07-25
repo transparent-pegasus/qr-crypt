@@ -70,7 +70,7 @@ test("completes offline PQ keygen, Encaps, Decaps, and signature verification us
   )
   expect(workers.length).toBeGreaterThanOrEqual(2)
   for (const worker of workers) {
-    expect(worker.name).toBe("qrypt-pq-crypto")
+    expect(worker.name).toBe("qr-crypt-pq-crypto")
     const path = new URL(worker.scriptUrl!, page.url()).pathname
     expect(cachedWorkerPaths).toContain(path)
   }

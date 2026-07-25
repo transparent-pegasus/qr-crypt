@@ -36,11 +36,17 @@ function escapeRegex(value: string): string {
 export async function expectOnlineGate(page: Page): Promise<void> {
   await Promise.all([
     expectOnline(
-      page.getByText("Only PWA installation is available while online"),
+      page.getByText("Install the PWA or relay OCF2 message-header QR frames"),
     ).toBeVisible(),
     expectOnline(
-      page.getByRole("img", { name: /app icon/ }),
+      page.getByText("Online installation and OCF2 message-header relay"),
     ).toBeVisible(),
+    expectOnline(
+      page.getByText(
+        "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, without using local keys.",
+      ),
+    ).toBeVisible(),
+    expectOnline(page.getByRole("img", { name: /app icon/ })).toBeVisible(),
     expectOnline(page.getByText("PWA installation status")).toBeVisible(),
     expectOnline(page.getByText("Offline-use readiness")).toBeVisible(),
     expectOnline(
@@ -134,7 +140,7 @@ export async function switchToOfflineApp(
   await context.setOffline(true)
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
-    page.getByText("Only PWA installation is available while online"),
+    page.getByText("Install the PWA or relay OCF2 message-header QR frames"),
   ).toBeHidden()
   await expectOfflineAcknowledgement(page)
   await acknowledgeOfflineRisk(page)
@@ -259,7 +265,7 @@ export async function seedSelfPublicBundle(
             fingerprint: string
           }
         }
-        const open = indexedDB.open("qrypt")
+        const open = indexedDB.open("qr-crypt")
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const database = open.result
@@ -373,7 +379,7 @@ export async function rawQrArtifacts(page: Page): Promise<QrArtifactSummary[]> {
   return page.evaluate(
     () =>
       new Promise<QrArtifactSummary[]>((resolve, reject) => {
-        const open = indexedDB.open("qrypt")
+        const open = indexedDB.open("qr-crypt")
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const database = open.result
@@ -393,7 +399,7 @@ export async function rawStoreCount(page: Page, storeName: string): Promise<numb
   return page.evaluate(
     (name) =>
       new Promise<number>((resolve, reject) => {
-        const open = indexedDB.open("qrypt")
+        const open = indexedDB.open("qr-crypt")
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const database = open.result
@@ -423,7 +429,7 @@ interface WorkerObservation {
 
 export async function installWorkerProbe(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const storageKey = "__qrypt_e2e_worker_observations"
+    const storageKey = "__qr_crypt_e2e_worker_observations"
     type Observation = {
       kind: "constructed" | "operation"
       scriptUrl?: string
@@ -491,7 +497,7 @@ export async function workerObservations(page: Page): Promise<WorkerObservation[
   return page.evaluate(() => {
     try {
       return JSON.parse(
-        sessionStorage.getItem("__qrypt_e2e_worker_observations") ?? "[]",
+        sessionStorage.getItem("__qr_crypt_e2e_worker_observations") ?? "[]",
       ) as WorkerObservation[]
     } catch {
       return []
@@ -509,15 +515,15 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
       emit(payload: string): void
     }
     type DecoderWindow = Window & {
-      __qryptE2eScans?: ScanEntry[]
-      __qryptE2eDecoder?: (
+      __qrCryptE2eScans?: ScanEntry[]
+      __qrCryptE2eDecoder?: (
         video: HTMLVideoElement,
         onText: (payload: string) => void,
         onError: (error: unknown) => void,
         options?: { once?: boolean },
       ) => Promise<ScanEntry>
-      __qryptE2eEmit?: (payload: string) => void
-      __qryptE2eScanSnapshot?: () => Array<{
+      __qrCryptE2eEmit?: (payload: string) => void
+      __qrCryptE2eScanSnapshot?: () => Array<{
         active: boolean
         once: boolean
         emissions: number
@@ -525,8 +531,8 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
     }
     const target = window as DecoderWindow
     const scans: ScanEntry[] = []
-    target.__qryptE2eScans = scans
-    target.__qryptE2eDecoder = async (_video, onText, _onError, options) => {
+    target.__qrCryptE2eScans = scans
+    target.__qrCryptE2eDecoder = async (_video, onText, _onError, options) => {
       const entry: ScanEntry = {
         active: true,
         once: options?.once ?? true,
@@ -544,12 +550,12 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
       scans.push(entry)
       return entry
     }
-    target.__qryptE2eEmit = (payload) => {
+    target.__qrCryptE2eEmit = (payload) => {
       const entry = [...scans].reverse().find((candidate) => candidate.active)
       if (entry === undefined) throw new Error("No active injected QR decoder")
       entry.emit(payload)
     }
-    target.__qryptE2eScanSnapshot = () =>
+    target.__qrCryptE2eScanSnapshot = () =>
       scans.map(({ active, once, emissions }) => ({ active, once, emissions }))
   })
 
@@ -563,7 +569,7 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
       throw new Error("Production scanner bundle marker was not found")
     }
     const [marker, video, onText, onError, options] = matches[0]!
-    const injected = `${marker}if(globalThis.__qryptE2eDecoder){return await globalThis.__qryptE2eDecoder(${video},${onText},${onError},${options})}`
+    const injected = `${marker}if(globalThis.__qrCryptE2eDecoder){return await globalThis.__qrCryptE2eDecoder(${video},${onText},${onError},${options})}`
     await route.fulfill({ response, body: source.replace(marker, injected) })
   })
 }
@@ -582,7 +588,7 @@ export async function primeInjectedDecoderPrecache(page: Page): Promise<void> {
         if (!response.ok)
           throw new Error(`Injected bundle fetch failed: ${response.status}`)
         const source = await response.clone().text()
-        if (!source.includes("__qryptE2eDecoder")) {
+        if (!source.includes("__qrCryptE2eDecoder")) {
           throw new Error("Injected decoder marker is absent from the fetched bundle")
         }
         await cache.put(request, response)
@@ -596,8 +602,8 @@ export async function primeInjectedDecoderPrecache(page: Page): Promise<void> {
 
 export async function emitInjectedQr(page: Page, payload: string): Promise<void> {
   await page.evaluate((value) => {
-    const emit = (window as Window & { __qryptE2eEmit?: (payload: string) => void })
-      .__qryptE2eEmit
+    const emit = (window as Window & { __qrCryptE2eEmit?: (payload: string) => void })
+      .__qrCryptE2eEmit
     if (emit === undefined) throw new Error("Injected QR decoder is unavailable")
     emit(value)
   }, payload)
@@ -609,13 +615,13 @@ export async function injectedScanSnapshot(
   return page.evaluate(() => {
     const snapshot = (
       window as Window & {
-        __qryptE2eScanSnapshot?: () => Array<{
+        __qrCryptE2eScanSnapshot?: () => Array<{
           active: boolean
           once: boolean
           emissions: number
         }>
       }
-    ).__qryptE2eScanSnapshot
+    ).__qrCryptE2eScanSnapshot
     if (snapshot === undefined) throw new Error("Injected QR decoder is unavailable")
     return snapshot()
   })

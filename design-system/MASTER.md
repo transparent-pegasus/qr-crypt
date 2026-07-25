@@ -1,4 +1,4 @@
-# Qrypt — Design System MASTER
+# QR Crypt — Design System MASTER
 
 > ページ実装時は先に `design-system/pages/<page>.md` を参照し、存在すればそちらが本ファイルを上書きする。
 > 本ファイルは ui-ux-pro-max-skill の生成結果(`design-system/offline-cipher/MASTER.md`、検索クエリは spec §5 の 3 件)を基に、
@@ -105,7 +105,7 @@ QR コード表示面だけは例外: **常に白背景 `#FFFFFF`・黒セル `#
 - **Badge(機密度)**: 公開=`secondary`+Globe / 機密=`--warning` 面+ShieldAlert / 最高機密=`--destructive` 面+TriangleAlert。**必ずアイコン+テキスト併記**(色のみ禁止)。最高機密は一覧・詳細で常時表示。
 - **ネットワーク状態バッジ**: オンライン=`--success` ドット+「オンライン」/ オフライン=`--muted-foreground` ドット+「オフライン」。**安全性の主張をしない**(「オフラインなので安全」等の文言禁止、spec §2)。
 - **トースト(sonner)**: 成功/情報のみ。エラーはインライン `role="alert"`(アイコン+文言)を優先。
-- **QR 表示**: 白面パネル(padding 16px、白 `#FFFFFF` 固定、border `#E2E8F0`、rounded 12px)。サイズ既定 512px・`max-width:100%`。全画面表示は白全面+中央 QR(min(90vw, 512px))+「画面の輝度を上げると読み取りやすくなります」+ 44px 閉じるボタン。データサイズ・EC レベル表示を添える。
+- **QR 表示**: 白面パネル(padding 16px、白 `#FFFFFF` 固定、border `#E2E8F0`、rounded 12px)。サイズ既定 512px・`max-width:100%`。全画面表示は白全面・四辺 safe-area 対応・`h-dvh overflow-hidden` とし、QR は残り領域内で `max-height:100%; width:auto; object-fit:contain`。単一画像 QR は輝度ヒント+44px 閉じる、複数 QR はカウンター/44px 再生操作/密度/速度/転送再開警告/1行の輝度ヒント/44px 閉じるを表示する。縦向きは QR 上・操作下、横向きは `minmax(0,1fr)` の QR と高さ 300px 以下の操作列を左右に置き、横向きの移動/再生操作は 44×44px アイコン+`aria-label`。データサイズ・EC レベル表示を添える。
 
 ## 7. アクセシビリティ / モーション
 

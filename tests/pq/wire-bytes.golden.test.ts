@@ -32,8 +32,7 @@ function expectCode(fn: () => unknown, code: ErrorCode): void {
 describe("hkdfInfoV2", () => {
   it("matches the frozen info bytes for unsigned 768", () => {
     expect(bytesToHex(hkdfInfoV2("ML-KEM-768+HKDF-SHA256+A256GCM", KEY_ID))).toBe(
-      "51525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b484b44462d534841" +
-        "3235362b4132353647434d00000102030405060708090a0b0c0d0e0f02",
+      "51522d43525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02",
     )
   })
 
@@ -41,9 +40,7 @@ describe("hkdfInfoV2", () => {
     expect(
       bytesToHex(hkdfInfoV2("ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM", KEY_ID)),
     ).toBe(
-      "51525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b4d4c2d4453412d36" +
-        "352b484b44462d5348413235362b4132353647434d0000010203040506070809" +
-        "0a0b0c0d0e0f02",
+      "51522d43525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b4d4c2d4453412d36352b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02",
     )
   })
 
@@ -55,9 +52,9 @@ describe("hkdfInfoV2", () => {
 })
 
 describe("mlDsaContextV2", () => {
-  it("fixes the context to UTF8(QRYPT-MESSAGE-V2) at no more than 255B", () => {
+  it("fixes the context to UTF8(QR-CRYPT-MESSAGE-V2) at no more than 255B", () => {
     const context = mlDsaContextV2()
-    expect(bytesToHex(context)).toBe("51525950542d4d4553534147452d5632")
+    expect(bytesToHex(context)).toBe("51522d43525950542d4d4553534147452d5632")
     expect(context.byteLength).toBeLessThanOrEqual(255)
   })
 })
@@ -72,11 +69,7 @@ describe("buildVaultAadV2", () => {
       publicKeySha256: new Uint8Array(32).fill(0x11),
     })
     expect(bytesToHex(aad)).toBe(
-      "a764726f6c656b6d6c2d6b656d2d7365656464747970656f71727970742d7661756c742d" +
-        "616164656b657949647641414543417751464267634943516f4c4441304f4477677665727369" +
-        "6f6e0269616c676f726974686d6a4d4c2d4b454d2d3736386a6964656e74697479496476" +
-        "41414543417751464267634943516f4c4441304f44776f7075626c69634b65795368613235" +
-        "3658201111111111111111111111111111111111111111111111111111111111111111",
+      "a764726f6c656b6d6c2d6b656d2d7365656464747970657271722d63727970742d7661756c742d616164656b657949647641414543417751464267634943516f4c4441304f44776776657273696f6e0269616c676f726974686d6a4d4c2d4b454d2d3736386a6964656e7469747949647641414543417751464267634943516f4c4441304f44776f7075626c69634b657953686132353658201111111111111111111111111111111111111111111111111111111111111111",
     )
   })
 
@@ -110,7 +103,7 @@ describe("pq fingerprints", () => {
   it("matches the domain-separated frozen fingerprint for an individual key", async () => {
     expect(
       await pqKeyFingerprint("kem", "ML-KEM-768", new Uint8Array(1184).fill(0x0a)),
-    ).toBe("86cca89b088994ddd47493b21d6c2ff3e3d44621ab842d289ca92325b1425dc9")
+    ).toBe("874c5f32a6464e06a88104f81736753065aeb63c2a5398ddf0d9e93e5d16a6e3")
   })
 
   it("fingerprints the identity tuple without name and is independent of name", async () => {
@@ -132,7 +125,7 @@ describe("pq fingerprints", () => {
       createdAt: 1_700_000_000_000,
     }
     const expected =
-      "803025820e019d89098a95ec449fb59aa6f0232c856d036172425e81a2716122"
+      "e37a66b4fce2ff58563d283cadc68e4f63da47255093221a4e6944614416e999"
     expect(await pqIdentityFingerprint(bundle)).toBe(expected)
     const renamed = { ...bundle, name: "別名" }
     expect(await pqIdentityFingerprint(renamed)).toBe(expected)

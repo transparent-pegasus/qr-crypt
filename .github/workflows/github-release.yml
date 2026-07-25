@@ -1,0 +1,1162 @@
+name: Release main build
+
+on:
+  push:
+    branches:
+      - main
+
+permissions: {}
+
+# Rollout prerequisite: first enable repository Release immutability, then set
+# the repository Actions variable RELEASE_IMMUTABILITY_ENABLED to literal true.
+# The variable is a fail-closed operator acknowledgement; isImmutable and
+# GitHub's release attestations are independently checked after publication.
+
+# A distinct group per source commit prevents a newer push from cancelling or
+# replacing an older main commit's release.
+concurrency:
+  group: release-${{ github.repository }}-${{ github.sha }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  EXPECTED_REPOSITORY: transparent-pegasus/qr-crypt
+  EXPECTED_WORKFLOW_IDENTITY: https://github.com/transparent-pegasus/qr-crypt/.github/workflows/github-release.yml@refs/heads/main
+  COSIGN_VERSION: v3.0.6
+  COSIGN_VERIFY_IMAGE: ghcr.io/sigstore/cosign/cosign@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00 # v3.0.6
+
+jobs:
+  build:
+    name: Validate and package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      VITE_BUILD_SHA: ${{ github.sha }}
+    outputs:
+      archive-name: ${{ steps.package.outputs.archive_name }}
+      bundle-name: ${{ steps.package.outputs.bundle_name }}
+      package-artifact-id: ${{ steps.upload-package.outputs.artifact-id }}
+      release-tag: ${{ steps.package.outputs.release_tag }}
+      version: ${{ steps.package.outputs.version }}
+
+    steps:
+      - name: Checkout the source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up mise and project tools
+        uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: true
+
+      - name: Install frozen dependencies
+        run: aube ci
+
+      - name: Type check
+        run: aube typecheck
+
+      - name: Lint
+        run: aube lint
+
+      - name: Unit tests
+        run: aube test
+
+      - name: Post-quantum known-answer tests
+        run: aube test:pq-vectors
+
+      - name: Post-quantum integration tests
+        run: aube test:pq
+
+      - name: Multipart QR tests
+        run: aube test:qr-multipart
+
+      - name: Build production PWA
+        run: aube build:prod
+
+      - name: Validate and package the static PWA
+        id: package
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            printf 'release packaging error: %s\n' "$*" >&2
+            exit 1
+          }
+
+          [[ "$GITHUB_REPOSITORY" == "$EXPECTED_REPOSITORY" ]] ||
+            fail "unexpected repository: $GITHUB_REPOSITORY"
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+            fail "source SHA is not a full lowercase Git object ID"
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]] ||
+            fail "checkout does not match the triggering commit"
+
+          version="$(
+            node -e '
+              const fs = require("node:fs");
+              const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+              process.stdout.write(String(pkg.version));
+            '
+          )"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]] ||
+            fail "package.json version is not a supported SemVer value"
+
+          release_tag="v${version}-main.g${SOURCE_SHA}"
+          root_name="qr-crypt-${release_tag}-static-install"
+          archive_name="${root_name}.zip"
+          bundle_name="${archive_name}.sigstore.json"
+          output_dir="$RUNNER_TEMP/qr-crypt-release"
+          stage_parent="$RUNNER_TEMP/qr-crypt-release-stage"
+          stage_dir="$stage_parent/$root_name"
+          extract_parent="$RUNNER_TEMP/qr-crypt-release-extracted"
+          extract_dir="$extract_parent/$root_name"
+
+          for path in "$output_dir" "$stage_parent" "$extract_parent"; do
+            [[ "$path" == "$RUNNER_TEMP/"* ]] ||
+              fail "refusing to clean a path outside RUNNER_TEMP"
+          done
+          rm -rf -- "$output_dir" "$stage_parent" "$extract_parent"
+          mkdir -p -- "$output_dir" "$stage_dir" "$extract_parent"
+
+          [[ -d dist ]] || fail "dist directory is missing"
+          required_files=(
+            dist/index.html
+            dist/manifest.webmanifest
+            dist/sw.js
+            dist/favicon.svg
+            dist/reachability-sentinel.txt
+            dist/_headers
+            dist/_redirects
+            dist/icons/apple-touch-icon-180.png
+            dist/icons/icon-192.png
+            dist/icons/icon-512.png
+            dist/icons/maskable-512.png
+          )
+          for file in "${required_files[@]}"; do
+            [[ -s "$file" ]] || fail "required static file is missing or empty: $file"
+          done
+
+          shopt -s nullglob
+          workbox_files=(dist/workbox-*.js)
+          asset_files=(dist/assets/*)
+          shopt -u nullglob
+          [[ "${#workbox_files[@]}" -eq 1 ]] ||
+            fail "expected exactly one generated Workbox runtime"
+          [[ "${#asset_files[@]}" -gt 0 ]] ||
+            fail "dist/assets has no files"
+
+          fixed_paths=(
+            _headers
+            _redirects
+            favicon.svg
+            icons/apple-touch-icon-180.png
+            icons/icon-192.png
+            icons/icon-512.png
+            icons/maskable-512.png
+            index.html
+            manifest.webmanifest
+            reachability-sentinel.txt
+            sw.js
+          )
+          for asset in "${asset_files[@]}"; do
+            [[ -f "$asset" && ! -L "$asset" ]] ||
+              fail "dist/assets must contain only flat regular files: $asset"
+            asset_name="${asset#dist/assets/}"
+            [[ "$asset_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*-[A-Za-z0-9_-]{8}\.(js|css)$ ]] ||
+              fail "unexpected generated asset name: $asset_name"
+            references="$(
+              grep -RFl --binary-files=text "$asset_name" \
+                dist/index.html dist/sw.js dist/assets |
+                grep -Fvx "$asset" || true
+            )"
+            [[ -n "$references" ]] ||
+              fail "generated asset is not referenced by the static closure: $asset_name"
+          done
+
+          expected_files="$RUNNER_TEMP/expected-dist-files"
+          actual_files="$RUNNER_TEMP/actual-dist-files"
+          {
+            printf '%s\n' "${fixed_paths[@]}"
+            printf '%s\n' "${workbox_files[@]#dist/}"
+            printf '%s\n' "${asset_files[@]#dist/}"
+          } | LC_ALL=C sort > "$expected_files"
+          find dist -type f -printf '%P\n' |
+            LC_ALL=C sort > "$actual_files"
+          diff -u "$expected_files" "$actual_files" ||
+            fail "dist contains a file outside the explicit release allowlist"
+
+          expected_dirs="$RUNNER_TEMP/expected-dist-dirs"
+          actual_dirs="$RUNNER_TEMP/actual-dist-dirs"
+          printf '%s\n' assets icons | LC_ALL=C sort > "$expected_dirs"
+          find dist -mindepth 1 -type d -printf '%P\n' |
+            LC_ALL=C sort > "$actual_dirs"
+          diff -u "$expected_dirs" "$actual_dirs" ||
+            fail "dist contains a directory outside the explicit release allowlist"
+
+          file_count="$(find dist -type f | wc -l)"
+          [[ "$file_count" -le 256 ]] ||
+            fail "dist contains too many files"
+          oversized_file="$(find dist -type f -size +16777216c -print -quit)"
+          [[ -z "$oversized_file" ]] ||
+            fail "dist file exceeds the 16 MiB limit: $oversized_file"
+          total_size="$(
+            find dist -type f -printf '%s\n' |
+              awk '{ total += $1 } END { print total + 0 }'
+          )"
+          [[ "$total_size" -le 33554432 ]] ||
+            fail "dist exceeds the 32 MiB uncompressed limit"
+
+          cmp -s dist/reachability-sentinel.txt <(printf '%s' "QR-CRYPT-REACHABLE") ||
+            fail "reachability sentinel body is incorrect"
+          grep -Fq "reachability-sentinel" dist/sw.js ||
+            fail "service worker does not contain the sentinel route"
+          grep -Fq "NetworkOnly" dist/sw.js ||
+            fail "service worker sentinel route is not NetworkOnly"
+          grep -Fq "Content-Security-Policy:" dist/_headers ||
+            fail "_headers is missing Content-Security-Policy"
+          awk '
+            $0 == "/reachability-sentinel.txt" { in_sentinel = 1; next }
+            in_sentinel && /^[^[:space:]]/ { in_sentinel = 0 }
+            in_sentinel && tolower($0) ~ /cache-control:[[:space:]]*no-store/ {
+              found = 1
+            }
+            END { exit found ? 0 : 1 }
+          ' dist/_headers ||
+            fail "_headers does not make the reachability sentinel no-store"
+          grep -Eq '^[[:space:]]*/\*[[:space:]]+/index\.html[[:space:]]+200([[:space:]]|$)' \
+            dist/_redirects ||
+            fail "_redirects does not provide the SPA fallback"
+
+          unexpected="$(
+            find dist -mindepth 1 ! -type d ! -type f -print -quit
+          )"
+          [[ -z "$unexpected" ]] ||
+            fail "symlink or special file is forbidden: $unexpected"
+          unexpected="$(
+            find dist -type f \
+              \( -iname '*.map' -o -iname '*.map.gz' -o -iname '*.map.br' \
+              -o -iname '.env' -o -iname '.env.*' -o -iname '*.env' \
+              -o -iname '*.env.*' \) -print -quit
+          )"
+          [[ -z "$unexpected" ]] ||
+            fail "development or environment file is forbidden: $unexpected"
+          unexpected="$(
+            grep -RIl --binary-files=without-match 'sourceMappingURL=' dist |
+              head -n 1 || true
+          )"
+          [[ -z "$unexpected" ]] ||
+            fail "source-map reference is forbidden: $unexpected"
+          build_sha_files="$(
+            grep -RFl --binary-files=text "$SOURCE_SHA" dist/assets || true
+          )"
+          [[ -n "$build_sha_files" ]] ||
+            fail "built assets do not contain the full source SHA"
+
+          while IFS= read -r -d '' path; do
+            relative="${path#dist/}"
+            [[ "$relative" =~ ^[A-Za-z0-9._/-]+$ ]] ||
+              fail "non-portable archive path: $relative"
+            [[ "$relative" != /* && "$relative" != *"/../"* &&
+              "$relative" != "../"* && "$relative" != *"/.." ]] ||
+              fail "unsafe archive path: $relative"
+          done < <(find dist -mindepth 1 -print0)
+
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const fail = (message) => {
+            throw new Error(`static closure validation failed: ${message}`);
+          };
+          const requireFile = (url) => {
+            const clean = url.split(/[?#]/, 1)[0];
+            if (!clean.startsWith("/") || clean === "/") return;
+            const relative = clean.slice(1);
+            if (
+              relative.includes("\\") ||
+              relative.split("/").includes("..") ||
+              !fs.statSync(path.join("dist", relative), {
+                throwIfNoEntry: false,
+              })?.isFile()
+            ) {
+              fail(`missing or unsafe root-relative asset ${url}`);
+            }
+          };
+
+          const index = fs.readFileSync("dist/index.html", "utf8");
+          for (const match of index.matchAll(/\b(?:href|src)="([^"]+)"/g)) {
+            requireFile(match[1]);
+          }
+
+          const manifest = JSON.parse(
+            fs.readFileSync("dist/manifest.webmanifest", "utf8"),
+          );
+          if (
+            manifest.start_url !== "/" ||
+            manifest.scope !== "/" ||
+            manifest.display !== "standalone"
+          ) {
+            fail("manifest must be a standalone PWA deployed at an origin root");
+          }
+          if (!Array.isArray(manifest.icons) || manifest.icons.length === 0) {
+            fail("manifest has no icons");
+          }
+          for (const icon of manifest.icons) requireFile(String(icon.src));
+
+          const serviceWorker = fs.readFileSync("dist/sw.js", "utf8");
+          if (
+            /(?:\burl|["']url["'])\s*:\s*["']\/?reachability-sentinel\.txt["']/.test(
+              serviceWorker,
+            )
+          ) {
+            fail("reachability sentinel is present in the precache manifest");
+          }
+          NODE
+
+          cp -a dist/. "$stage_dir/"
+
+          cat > "$stage_dir/INSTALL.txt" <<EOF
+          QR Crypt static offline deployment bundle
+          =======================================
+
+          Version: $version
+          Source commit: $SOURCE_SHA
+          Release tag: $release_tag
+
+          STATUS
+          This is an automated experimental build. It is not independently
+          audited or security-approved.
+
+          AUTHENTICATE BEFORE USE
+          Treat this file, the ZIP, its signature bundle, the release page, and
+          the transport medium as untrusted until verification succeeds.
+          Independently provision and authenticate all of the following:
+          - Cosign $COSIGN_VERSION and a current Sigstore trusted_root.json
+          - a QR Crypt verifier policy pinning the workflow identity, OIDC issuer,
+            repository, main ref, and allowed "push" trigger
+          - the intended release tag and full source commit
+          Never copy expected policy values from the media being verified.
+          Same-media checksums and trust roots are not independent trust anchors.
+          Keyless signing publishes identity and digest to Sigstore transparency.
+
+          From the directory containing all three release assets, use only the
+          independently provisioned policy values to verify:
+
+            cosign verify-blob "$archive_name" \\
+              --bundle "$bundle_name" \\
+              --trusted-root /independently/provisioned/trusted_root.json \\
+              --certificate-identity "\$QR_CRYPT_TRUSTED_WORKFLOW_IDENTITY" \\
+              --certificate-oidc-issuer "\$QR_CRYPT_TRUSTED_OIDC_ISSUER" \\
+              --certificate-github-workflow-repository "\$QR_CRYPT_TRUSTED_REPOSITORY" \\
+              --certificate-github-workflow-ref "\$QR_CRYPT_TRUSTED_REF" \\
+              --certificate-github-workflow-sha "\$QR_CRYPT_EXPECTED_SOURCE_SHA" \\
+              --certificate-github-workflow-trigger "\$QR_CRYPT_TRUSTED_TRIGGER"
+
+            sha256sum -c SHA256SUMS
+
+          Only after verification may this file's displayed source commit and tag
+          be compared with the independently authenticated intended values.
+          The signature authenticates this ZIP. It does not make removable
+          media, firmware, the operating system, browser, or local server safe.
+
+          DEPLOY ON THE OFFLINE DEVICE
+          1. Extract this ZIP. It creates one $root_name directory; use that
+             directory as the server document root.
+          2. Use an audited static server already preinstalled through an
+             independent trusted process. Bind it only to 127.0.0.1/localhost.
+             It must enforce the included _headers and _redirects semantics:
+             security headers, correct MIME types, SPA fallback to /index.html,
+             and no-store for the reachability sentinel.
+          3. Open http://localhost (or http://127.0.0.1) and wait until the PWA
+             reports that offline use is ready.
+          4. Stop the local server, remove the transport medium, physically
+             disconnect networking, and confirm QR Crypt reports offline before
+             entering or restoring any secret.
+
+          Opening index.html with file:// is unsupported. Plain HTTP on a LAN
+          address is unsupported. Do not enter secrets while the install server
+          is running: its sentinel deliberately makes QR Crypt treat that origin as
+          reachable.
+          EOF
+
+          commit_epoch="$(git show -s --format=%ct "$SOURCE_SHA")"
+          [[ "$commit_epoch" =~ ^[0-9]+$ && "$commit_epoch" -ge 315532800 ]] ||
+            fail "invalid source commit timestamp"
+          find "$stage_dir" -type d -exec chmod 0755 {} +
+          find "$stage_dir" -type f -exec chmod 0644 {} +
+          find "$stage_dir" -exec touch -h -d "@$commit_epoch" {} +
+
+          ZIP_STAGING_PARENT="$stage_parent" \
+            ZIP_ROOT="$root_name" \
+            ZIP_OUTPUT="$output_dir/$archive_name" \
+            COMMIT_EPOCH="$commit_epoch" \
+            python3 <<'PY'
+          import os
+          import stat
+          import zipfile
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          parent = Path(os.environ["ZIP_STAGING_PARENT"])
+          root_name = os.environ["ZIP_ROOT"]
+          root = parent / root_name
+          output = Path(os.environ["ZIP_OUTPUT"])
+          timestamp = datetime.fromtimestamp(
+              int(os.environ["COMMIT_EPOCH"]),
+              tz=timezone.utc,
+          ).timetuple()[:6]
+
+          files = sorted(path for path in root.rglob("*") if path.is_file())
+          if not files:
+              raise SystemExit("staging tree has no regular files")
+
+          with zipfile.ZipFile(
+              output,
+              mode="x",
+              compression=zipfile.ZIP_STORED,
+          ) as archive:
+              for path in files:
+                  mode = path.lstat().st_mode
+                  if stat.S_IFMT(mode) != stat.S_IFREG:
+                      raise SystemExit(f"unsafe staging entry: {path}")
+                  relative = path.relative_to(parent).as_posix()
+                  info = zipfile.ZipInfo(relative, date_time=timestamp)
+                  info.create_system = 3
+                  info.compress_type = zipfile.ZIP_STORED
+                  info.external_attr = (stat.S_IFREG | 0o644) << 16
+                  with path.open("rb") as source:
+                      archive.writestr(info, source.read())
+          PY
+
+          (
+            cd "$output_dir"
+            sha256sum "$archive_name" > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+          unzip -tqq "$output_dir/$archive_name"
+
+          entry_count=0
+          while IFS= read -r entry; do
+            entry_count=$((entry_count + 1))
+            [[ "$entry" =~ ^[A-Za-z0-9._/-]+$ ]] ||
+              fail "ZIP contains a non-portable path: $entry"
+            [[ "$entry" == "$root_name/"* ]] ||
+              fail "ZIP entry is not rooted under $root_name: $entry"
+            [[ "$entry" != /* && "$entry" != *"/../"* &&
+              "$entry" != "../"* && "$entry" != *"/.." ]] ||
+              fail "ZIP contains an unsafe path: $entry"
+          done < <(unzip -Z1 "$output_dir/$archive_name")
+          [[ "$entry_count" -gt 0 && "$entry_count" -le 5000 ]] ||
+            fail "ZIP entry count is outside the allowed range"
+
+          unzip -qq "$output_dir/$archive_name" -d "$extract_parent"
+          diff -qr "$stage_dir" "$extract_dir"
+
+          (
+            cd "$stage_dir"
+            find . -type f -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum --zero
+          ) > "$RUNNER_TEMP/staged-hashes"
+          (
+            cd "$extract_dir"
+            find . -type f -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum --zero
+          ) > "$RUNNER_TEMP/extracted-hashes"
+          cmp "$RUNNER_TEMP/staged-hashes" "$RUNNER_TEMP/extracted-hashes" ||
+            fail "extracted file hashes do not match the staging tree"
+
+          {
+            printf 'archive_name=%s\n' "$archive_name"
+            printf 'bundle_name=%s\n' "$bundle_name"
+            printf 'release_tag=%s\n' "$release_tag"
+            printf 'version=%s\n' "$version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install Playwright Chromium
+        run: aube exec playwright install --with-deps chromium
+
+      - name: E2E-test the exact packaged PWA
+        env:
+          ARCHIVE_NAME: ${{ steps.package.outputs.archive_name }}
+        run: |
+          set -euo pipefail
+
+          archive_root="${ARCHIVE_NAME%.zip}"
+          document_root="$RUNNER_TEMP/qr-crypt-release-extracted/$archive_root"
+          [[ -d "$document_root" ]]
+          export QR_CRYPT_RELEASE_DOCUMENT_ROOT="$document_root"
+          server_log="$RUNNER_TEMP/qr-crypt-release-server.log"
+
+          node <<'NODE' > "$server_log" 2>&1 &
+          const fs = require("node:fs");
+          const fsp = require("node:fs/promises");
+          const http = require("node:http");
+          const path = require("node:path");
+
+          const root = fs.realpathSync(process.env.QR_CRYPT_RELEASE_DOCUMENT_ROOT);
+          const rules = [];
+          let activeRule;
+          for (const rawLine of fs
+            .readFileSync(path.join(root, "_headers"), "utf8")
+            .split(/\r?\n/)) {
+            if (!rawLine.trim()) continue;
+            if (!/^\s/.test(rawLine)) {
+              activeRule = { pattern: rawLine.trim(), headers: {} };
+              rules.push(activeRule);
+              continue;
+            }
+            if (!activeRule) throw new Error("header without a path rule");
+            const separator = rawLine.indexOf(":");
+            if (separator < 1) throw new Error(`invalid header: ${rawLine}`);
+            activeRule.headers[rawLine.slice(0, separator).trim()] = rawLine
+              .slice(separator + 1)
+              .trim();
+          }
+
+          const matches = (pattern, pathname) =>
+            pattern === "/*"
+              ? true
+              : pattern.endsWith("*")
+                ? pathname.startsWith(pattern.slice(0, -1))
+                : pathname === pattern;
+
+          const mimeTypes = new Map([
+            [".css", "text/css; charset=utf-8"],
+            [".html", "text/html; charset=utf-8"],
+            [".js", "text/javascript; charset=utf-8"],
+            [".json", "application/json; charset=utf-8"],
+            [".png", "image/png"],
+            [".svg", "image/svg+xml"],
+            [".txt", "text/plain; charset=utf-8"],
+            [".wasm", "application/wasm"],
+            [".webmanifest", "application/manifest+json; charset=utf-8"],
+          ]);
+
+          const server = http.createServer(async (request, response) => {
+            try {
+              if (request.method !== "GET" && request.method !== "HEAD") {
+                response.writeHead(405, { Allow: "GET, HEAD" });
+                response.end();
+                return;
+              }
+
+              let pathname;
+              try {
+                pathname = decodeURIComponent(
+                  new URL(request.url, "http://localhost").pathname,
+                );
+              } catch {
+                response.writeHead(400);
+                response.end();
+                return;
+              }
+
+              const relative = pathname === "/" ? "index.html" : pathname.slice(1);
+              let filePath = path.resolve(root, relative);
+              if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
+                response.writeHead(400);
+                response.end();
+                return;
+              }
+
+              const file = await fsp.stat(filePath).catch(() => undefined);
+              if (!file?.isFile()) filePath = path.join(root, "index.html");
+              const body = await fsp.readFile(filePath);
+              const headers = {};
+              for (const rule of rules) {
+                if (matches(rule.pattern, pathname)) {
+                  Object.assign(headers, rule.headers);
+                }
+              }
+              headers["Content-Type"] =
+                mimeTypes.get(path.extname(filePath)) ??
+                "application/octet-stream";
+              headers["Content-Length"] = String(body.length);
+              response.writeHead(200, headers);
+              response.end(request.method === "HEAD" ? undefined : body);
+            } catch (error) {
+              console.error(error);
+              response.writeHead(500);
+              response.end();
+            }
+          });
+
+          server.listen(4173, "127.0.0.1");
+          process.on("SIGTERM", () => server.close(() => process.exit(0)));
+          NODE
+          server_pid=$!
+          cleanup() {
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          ready=false
+          for _ in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != "true" ]]; then
+            cat "$server_log" >&2
+            exit 1
+          fi
+
+          sentinel_headers="$RUNNER_TEMP/sentinel-headers"
+          sentinel_body="$RUNNER_TEMP/sentinel-body"
+          curl --fail --silent --show-error \
+            --dump-header "$sentinel_headers" \
+            --output "$sentinel_body" \
+            http://127.0.0.1:4173/reachability-sentinel.txt
+          cmp "$sentinel_body" <(printf '%s' "QR-CRYPT-REACHABLE")
+          grep -Eqi '^cache-control:.*no-store' "$sentinel_headers"
+
+          root_headers="$RUNNER_TEMP/root-headers"
+          curl --fail --silent --show-error \
+            --dump-header "$root_headers" \
+            --output /dev/null \
+            http://127.0.0.1:4173/
+          grep -Eqi '^content-security-policy:' "$root_headers"
+
+          manifest_headers="$RUNNER_TEMP/manifest-headers"
+          curl --fail --silent --show-error \
+            --dump-header "$manifest_headers" \
+            --output /dev/null \
+            http://127.0.0.1:4173/manifest.webmanifest
+          grep -Eqi '^content-type: application/manifest\+json' "$manifest_headers"
+
+          fallback_body="$RUNNER_TEMP/fallback-body"
+          curl --fail --silent --show-error \
+            --output "$fallback_body" \
+            http://127.0.0.1:4173/nonexistent/spa/route
+          cmp "$fallback_body" "$document_root/index.html"
+
+          # Reuse the header-aware reference server instead of Playwright's
+          # build-and-preview command, so tests exercise the archived bytes.
+          env -u CI aube test:e2e
+
+      - name: Upload unsigned release payload
+        id: upload-package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: unsigned-release-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/qr-crypt-release/${{ steps.package.outputs.archive_name }}
+            ${{ runner.temp }}/qr-crypt-release/SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  sign:
+    name: Sign package
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      id-token: write
+    outputs:
+      signature-artifact-id: ${{ steps.upload-signature.outputs.artifact-id }}
+
+    steps:
+      - name: Download package by artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          artifact-ids: ${{ needs.build.outputs.package-artifact-id }}
+          path: ${{ runner.temp }}/unsigned-release
+
+      - name: Verify package checksum
+        env:
+          ARCHIVE_NAME: ${{ needs.build.outputs.archive-name }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/unsigned-release"
+          [[ -f "$ARCHIVE_NAME" && -f SHA256SUMS ]]
+          [[ "$(find . -maxdepth 1 -type f | wc -l)" -eq 2 ]]
+          sha256sum -c SHA256SUMS
+
+      - name: Install pinned Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Sign and verify the exact ZIP
+        env:
+          ARCHIVE_NAME: ${{ needs.build.outputs.archive-name }}
+          BUNDLE_NAME: ${{ needs.build.outputs.bundle-name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/unsigned-release"
+          [[ "$GITHUB_REPOSITORY" == "$EXPECTED_REPOSITORY" ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+          cosign sign-blob "$ARCHIVE_NAME" \
+            --bundle "$BUNDLE_NAME" \
+            --yes
+          cosign verify-blob "$ARCHIVE_NAME" \
+            --bundle "$BUNDLE_NAME" \
+            --certificate-identity "$EXPECTED_WORKFLOW_IDENTITY" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-github-workflow-repository "$EXPECTED_REPOSITORY" \
+            --certificate-github-workflow-ref "refs/heads/main" \
+            --certificate-github-workflow-sha "$SOURCE_SHA" \
+            --certificate-github-workflow-trigger "push"
+
+      - name: Upload signature bundle
+        id: upload-signature
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: signed-release-${{ github.sha }}
+          path: ${{ runner.temp }}/unsigned-release/${{ needs.build.outputs.bundle-name }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  publish:
+    name: Publish fail-closed prerelease
+    needs:
+      - build
+      - sign
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      # This privileged job deliberately performs no checkout and invokes no
+      # third-party action. Inline code downloads immutable handoffs by ID.
+      - name: Publish or verify the commit release
+        env:
+          ARCHIVE_NAME: ${{ needs.build.outputs.archive-name }}
+          BUNDLE_NAME: ${{ needs.build.outputs.bundle-name }}
+          GH_TOKEN: ${{ github.token }}
+          IMMUTABILITY_ACKNOWLEDGED: ${{ vars.RELEASE_IMMUTABILITY_ENABLED }}
+          PACKAGE_ARTIFACT_ID: ${{ needs.build.outputs.package-artifact-id }}
+          RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          SIGNATURE_ARTIFACT_ID: ${{ needs.sign.outputs.signature-artifact-id }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            printf 'release publication error: %s\n' "$*" >&2
+            exit 1
+          }
+
+          [[ "$GITHUB_REPOSITORY" == "$EXPECTED_REPOSITORY" ]] ||
+            fail "unexpected repository: $GITHUB_REPOSITORY"
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+            fail "source SHA is invalid"
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]] ||
+            fail "release version is invalid"
+          [[ "$RELEASE_TAG" == "v${RELEASE_VERSION}-main.g${SOURCE_SHA}" ]] ||
+            fail "release tag does not match version and source SHA"
+          [[ "$ARCHIVE_NAME" == "qr-crypt-${RELEASE_TAG}-static-install.zip" ]] ||
+            fail "archive name does not match the release tag"
+          [[ "$BUNDLE_NAME" == "${ARCHIVE_NAME}.sigstore.json" ]] ||
+            fail "signature bundle name does not match the archive"
+          [[ "$PACKAGE_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] ||
+            fail "package artifact ID is invalid"
+          [[ "$SIGNATURE_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] ||
+            fail "signature artifact ID is invalid"
+
+          package_dir="$RUNNER_TEMP/release-package"
+          signature_dir="$RUNNER_TEMP/release-signature"
+          mkdir -p -- "$package_dir" "$signature_dir"
+          package_handoff="$RUNNER_TEMP/package-handoff.zip"
+          signature_handoff="$RUNNER_TEMP/signature-handoff.zip"
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$PACKAGE_ARTIFACT_ID/zip" \
+            > "$package_handoff"
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$SIGNATURE_ARTIFACT_ID/zip" \
+            > "$signature_handoff"
+          [[ -s "$package_handoff" && -s "$signature_handoff" ]] ||
+            fail "artifact handoff download is empty"
+          unzip -tqq "$package_handoff"
+          unzip -tqq "$signature_handoff"
+
+          expected_handoff="$RUNNER_TEMP/expected-handoff"
+          actual_handoff="$RUNNER_TEMP/actual-handoff"
+          printf '%s\n' "$ARCHIVE_NAME" SHA256SUMS |
+            LC_ALL=C sort > "$expected_handoff"
+          unzip -Z1 "$package_handoff" |
+            LC_ALL=C sort > "$actual_handoff"
+          diff -u "$expected_handoff" "$actual_handoff" ||
+            fail "package artifact contains unexpected entries"
+          printf '%s\n' "$BUNDLE_NAME" > "$expected_handoff"
+          unzip -Z1 "$signature_handoff" > "$actual_handoff"
+          diff -u "$expected_handoff" "$actual_handoff" ||
+            fail "signature artifact contains unexpected entries"
+          unzip -qq "$package_handoff" -d "$package_dir"
+          unzip -qq "$signature_handoff" -d "$signature_dir"
+
+          archive_path="$package_dir/$ARCHIVE_NAME"
+          checksum_path="$package_dir/SHA256SUMS"
+          bundle_path="$signature_dir/$BUNDLE_NAME"
+          for file in "$archive_path" "$checksum_path" "$bundle_path"; do
+            [[ -s "$file" ]] || fail "missing release input: $file"
+          done
+          [[ "$(find "$package_dir" -mindepth 1 -maxdepth 1 | wc -l)" -eq 2 ]] ||
+            fail "unexpected file in package handoff"
+          [[ "$(find "$package_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 2 ]] ||
+            fail "non-regular file in package handoff"
+          [[ "$(find "$signature_dir" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ]] ||
+            fail "unexpected file in signature handoff"
+          [[ "$(find "$signature_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 1 ]] ||
+            fail "non-regular file in signature handoff"
+          (
+            cd "$package_dir"
+            sha256sum -c SHA256SUMS
+          )
+          unzip -tqq "$archive_path"
+          archive_root="${ARCHIVE_NAME%.zip}"
+          install_text="$(unzip -p "$archive_path" "$archive_root/INSTALL.txt")"
+          grep -Fq "Source commit: $SOURCE_SHA" <<< "$install_text" ||
+            fail "archive identity does not match the triggering commit"
+
+          release_title="QR Crypt $RELEASE_VERSION automated experimental ${SOURCE_SHA:0:12}"
+          notes_path="$RUNNER_TEMP/RELEASE_NOTES.md"
+          {
+            printf '%s\n' \
+              "<!-- qr-crypt-automated-release:$SOURCE_SHA -->" \
+              '' \
+              "Automated experimental build from main commit \`$SOURCE_SHA\`." \
+              '' \
+              'This build is not independently audited or security-approved. Use only' \
+              "\`$ARCHIVE_NAME\` as the static offline deployment bundle. GitHub's" \
+              'automatically generated source archives are not install bundles.' \
+              '' \
+              "Verify the ZIP with \`$BUNDLE_NAME\` and an independently provisioned" \
+              "QR Crypt verifier policy, then check \`SHA256SUMS\`. The archive's" \
+              "\`INSTALL.txt\` documents the trust bootstrap and offline deployment" \
+              'constraints.'
+          } > "$notes_path"
+
+          expected_assets=("$ARCHIVE_NAME" "SHA256SUMS" "$BUNDLE_NAME")
+          expected_assets_file="$RUNNER_TEMP/expected-assets"
+          actual_assets_file="$RUNNER_TEMP/actual-assets"
+          printf '%s\n' "${expected_assets[@]}" |
+            LC_ALL=C sort > "$expected_assets_file"
+          release_json="$RUNNER_TEMP/release.json"
+          release_error="$RUNNER_TEMP/release.error"
+          tag_json="$RUNNER_TEMP/tag.json"
+          tag_error="$RUNNER_TEMP/tag.error"
+
+          assert_exact_published_release() {
+            [[ "$(jq -r '.tagName' "$release_json")" == "$RELEASE_TAG" ]] ||
+              fail "release tag metadata mismatch"
+            [[ "$(jq -r '.name' "$release_json")" == "$release_title" ]] ||
+              fail "release title mismatch"
+            [[ "$(jq -r '.isDraft' "$release_json")" == "false" ]] ||
+              fail "release unexpectedly remains a draft"
+            [[ "$(jq -r '.isPrerelease' "$release_json")" == "true" ]] ||
+              fail "release is not marked as a prerelease"
+            [[ "$(jq -r '.isImmutable' "$release_json")" == "true" ]] ||
+              fail "release is published but not immutable"
+            jq -e --rawfile expected "$notes_path" \
+              '.body == $expected' "$release_json" > /dev/null ||
+              fail "release notes mismatch"
+
+            jq -r '.assets[].name' "$release_json" |
+              LC_ALL=C sort > "$actual_assets_file"
+            diff -u "$expected_assets_file" "$actual_assets_file" ||
+              fail "published release assets do not match the allowlist"
+          }
+
+          load_published_release_after_publication() {
+            local attempt
+            for attempt in 1 2 3 4 5 6; do
+              if gh release view "$RELEASE_TAG" \
+                --repo "$GITHUB_REPOSITORY" \
+                --json assets,body,isDraft,isImmutable,isPrerelease,name,tagName \
+                > "$release_json" 2> "$release_error" &&
+                [[ "$(jq -r '.isDraft' "$release_json")" == "false" ]] &&
+                [[ "$(jq -r '.isImmutable' "$release_json")" == "true" ]]; then
+                return
+              fi
+              sleep 2
+            done
+            cat "$release_error" >&2
+            fail "published immutable release did not become observable"
+          }
+
+          assert_exact_draft() {
+            [[ "$(jq -r '.tag_name' "$release_json")" == "$RELEASE_TAG" ]] ||
+              fail "draft tag metadata mismatch"
+            [[ "$(jq -r '.name' "$release_json")" == "$release_title" ]] ||
+              fail "draft title mismatch"
+            [[ "$(jq -r '.draft' "$release_json")" == "true" ]] ||
+              fail "release record is not the expected draft"
+            [[ "$(jq -r '.prerelease' "$release_json")" == "true" ]] ||
+              fail "draft is not marked as a prerelease"
+            [[ "$(jq -r '.immutable // false' "$release_json")" == "false" ]] ||
+              fail "draft unexpectedly reports immutable"
+            [[ "$(jq -r '.author.login' "$release_json")" == "github-actions[bot]" ]] ||
+              fail "draft was not created by GitHub Actions"
+            jq -e --rawfile expected "$notes_path" \
+              '.body == $expected' "$release_json" > /dev/null ||
+              fail "draft notes mismatch"
+            jq -e 'all(.assets[]; .state == "uploaded")' \
+              "$release_json" > /dev/null ||
+              fail "draft contains an asset that is not fully uploaded"
+
+            jq -r '.assets[].name' "$release_json" |
+              LC_ALL=C sort > "$actual_assets_file"
+            [[ "$(wc -l < "$actual_assets_file")" -eq \
+              "$(LC_ALL=C sort -u "$actual_assets_file" | wc -l)" ]] ||
+              fail "draft contains duplicate asset names"
+            unexpected_assets="$RUNNER_TEMP/unexpected-draft-assets"
+            comm -23 "$actual_assets_file" "$expected_assets_file" \
+              > "$unexpected_assets"
+            [[ ! -s "$unexpected_assets" ]] ||
+              fail "draft contains an asset outside the allowlist"
+          }
+
+          assert_exact_draft_assets() {
+            assert_exact_draft
+            diff -u "$expected_assets_file" "$actual_assets_file" ||
+              fail "draft release assets are incomplete"
+          }
+
+          verify_published_assets() {
+            local attempt attestation_log published_dir published_install
+            published_dir="$(mktemp -d "$RUNNER_TEMP/published-release.XXXXXX")"
+            gh release download "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "$ARCHIVE_NAME" \
+              --pattern "SHA256SUMS" \
+              --pattern "$BUNDLE_NAME" \
+              --dir "$published_dir"
+            [[ "$(find "$published_dir" -mindepth 1 -maxdepth 1 | wc -l)" -eq 3 ]] ||
+              fail "downloaded release has an unexpected asset count"
+            [[ "$(find "$published_dir" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 3 ]] ||
+              fail "downloaded release contains a non-regular asset"
+            [[ -s "$published_dir/$BUNDLE_NAME" ]] ||
+              fail "published Cosign bundle is empty"
+            (
+              cd "$published_dir"
+              sha256sum -c SHA256SUMS
+            )
+            unzip -tqq "$published_dir/$ARCHIVE_NAME"
+            published_install="$(
+              unzip -p "$published_dir/$ARCHIVE_NAME" \
+                "$archive_root/INSTALL.txt"
+            )"
+            grep -Fq "Source commit: $SOURCE_SHA" <<< "$published_install" ||
+              fail "published archive source identity is incorrect"
+            grep -Fq "Release tag: $RELEASE_TAG" <<< "$published_install" ||
+              fail "published archive tag identity is incorrect"
+
+            attestation_log="$RUNNER_TEMP/release-attestation.log"
+            for attempt in 1 2 3 4 5 6; do
+              : > "$attestation_log"
+              if gh release verify "$RELEASE_TAG" \
+                --repo "$GITHUB_REPOSITORY" \
+                >> "$attestation_log" 2>&1 &&
+                gh release verify-asset "$RELEASE_TAG" \
+                  "$published_dir/$ARCHIVE_NAME" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  >> "$attestation_log" 2>&1 &&
+                gh release verify-asset "$RELEASE_TAG" \
+                  "$published_dir/SHA256SUMS" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  >> "$attestation_log" 2>&1 &&
+                gh release verify-asset "$RELEASE_TAG" \
+                  "$published_dir/$BUNDLE_NAME" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  >> "$attestation_log" 2>&1; then
+                break
+              fi
+              if [[ "$attempt" -eq 6 ]]; then
+                cat "$attestation_log" >&2
+                fail "GitHub release attestation did not become verifiable"
+              fi
+              sleep $((attempt * 5))
+            done
+
+            # The pinned verifier container receives neither GH_TOKEN nor a
+            # Docker socket; only the three public release files are mounted.
+            docker run --rm \
+              --cap-drop=ALL \
+              --security-opt=no-new-privileges \
+              --read-only \
+              --tmpfs /tmp:rw,noexec,nosuid,nodev \
+              --env HOME=/tmp \
+              --mount "type=bind,src=$published_dir,dst=/release,readonly" \
+              "$COSIGN_VERIFY_IMAGE" \
+              verify-blob "/release/$ARCHIVE_NAME" \
+              --bundle "/release/$BUNDLE_NAME" \
+              --certificate-identity "$EXPECTED_WORKFLOW_IDENTITY" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              --certificate-github-workflow-repository "$EXPECTED_REPOSITORY" \
+              --certificate-github-workflow-ref "refs/heads/main" \
+              --certificate-github-workflow-sha "$SOURCE_SHA" \
+              --certificate-github-workflow-trigger "push"
+          }
+
+          tag_exists=false
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+            > "$tag_json" 2> "$tag_error"; then
+            tag_exists=true
+            [[ "$(jq -r '.object.type' "$tag_json")" == "commit" ]] ||
+              fail "canonical tag is not a lightweight commit tag"
+            tag_sha="$(jq -r '.object.sha' "$tag_json")"
+            [[ "$tag_sha" == "$SOURCE_SHA" ]] ||
+              fail "existing tag resolves to $tag_sha instead of $SOURCE_SHA"
+          elif ! grep -Eqi 'HTTP 404|Not Found' "$tag_error"; then
+            cat "$tag_error" >&2
+            fail "could not determine whether the canonical tag exists"
+          fi
+
+          release_exists=false
+          if gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json assets,body,isDraft,isImmutable,isPrerelease,name,tagName \
+            > "$release_json" 2> "$release_error"; then
+            release_exists=true
+          elif ! grep -Eqi 'release not found|HTTP 404' "$release_error"; then
+            cat "$release_error" >&2
+            fail "could not determine whether the release exists"
+          fi
+
+          if [[ "$release_exists" == "true" ]]; then
+            [[ "$tag_exists" == "true" ]] ||
+              fail "release exists without its canonical tag"
+            assert_exact_published_release
+            verify_published_assets
+            printf '%s\n' \
+              "Matching same-SHA release verified; no release state was mutated."
+            exit 0
+          fi
+
+          [[ "$IMMUTABILITY_ACKNOWLEDGED" == "true" ]] ||
+            fail "enable Release immutability, then set repository variable RELEASE_IMMUTABILITY_ENABLED=true"
+
+          if [[ "$tag_exists" == "false" ]]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/tags/$RELEASE_TAG" \
+              -f "sha=$SOURCE_SHA" > /dev/null
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+            > "$tag_json"
+          [[ "$(jq -r '.object.type' "$tag_json")" == "commit" ]] ||
+            fail "canonical tag is not a lightweight commit tag"
+          [[ "$(jq -r '.object.sha' "$tag_json")" == "$SOURCE_SHA" ]] ||
+            fail "canonical tag does not resolve to the source commit"
+
+          create_payload="$RUNNER_TEMP/create-release.json"
+          create_error="$RUNNER_TEMP/create-release.error"
+          jq -n \
+            --arg tag "$RELEASE_TAG" \
+            --arg title "$release_title" \
+            --rawfile body "$notes_path" \
+            '{
+              tag_name: $tag,
+              name: $title,
+              body: $body,
+              draft: true,
+              prerelease: true,
+              make_latest: "false"
+            }' > "$create_payload"
+
+          if gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+            --input "$create_payload" \
+            > "$release_json" 2> "$create_error"; then
+            :
+          else
+            # A failed prior attempt may have left the exact automation-owned
+            # draft behind. Scan history only after creation fails.
+            release_pages="$RUNNER_TEMP/release-pages.json"
+            release_matches="$RUNNER_TEMP/release-matches.json"
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+              > "$release_pages" ||
+              fail "could not inspect releases after draft creation failed"
+            jq --arg tag "$RELEASE_TAG" \
+              '[.[][] | select(.tag_name == $tag)]' \
+              "$release_pages" > "$release_matches"
+            match_count="$(jq 'length' "$release_matches")"
+            if [[ "$match_count" -eq 0 ]]; then
+              cat "$create_error" >&2
+              fail "draft creation failed and no recoverable release exists"
+            fi
+            [[ "$match_count" -eq 1 ]] ||
+              fail "multiple releases unexpectedly use the canonical tag"
+            jq '.[0]' "$release_matches" > "$release_json"
+
+            if [[ "$(jq -r '.draft' "$release_json")" == "false" ]]; then
+              load_published_release_after_publication
+              assert_exact_published_release
+              verify_published_assets
+              printf '%s\n' \
+                "Matching same-SHA release verified after a create race."
+              exit 0
+            fi
+          fi
+
+          release_id="$(jq -r '.id' "$release_json")"
+          [[ "$release_id" =~ ^[1-9][0-9]*$ ]] ||
+            fail "draft release ID is invalid"
+          assert_exact_draft
+
+          gh release upload "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            "$archive_path#Static offline deployment bundle" \
+            "$checksum_path#SHA-256 checksum" \
+            "$bundle_path#Sigstore verification bundle"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            > "$release_json"
+          assert_exact_draft_assets
+
+          # Close the mutable-draft tag race immediately before publication.
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+            > "$tag_json"
+          [[ "$(jq -r '.object.type' "$tag_json")" == "commit" ]] ||
+            fail "canonical tag ceased to be a lightweight commit tag"
+          [[ "$(jq -r '.object.sha' "$tag_json")" == "$SOURCE_SHA" ]] ||
+            fail "canonical tag moved before publication"
+
+          publish_payload="$RUNNER_TEMP/publish-release.json"
+          jq -n \
+            --arg title "$release_title" \
+            --rawfile body "$notes_path" \
+            '{
+              name: $title,
+              body: $body,
+              draft: false,
+              prerelease: true,
+              make_latest: "false"
+            }' > "$publish_payload"
+          gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+            --input "$publish_payload" > /dev/null
+
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+            > "$tag_json"
+          [[ "$(jq -r '.object.type' "$tag_json")" == "commit" ]] ||
+            fail "published tag is not a lightweight commit tag"
+          [[ "$(jq -r '.object.sha' "$tag_json")" == "$SOURCE_SHA" ]] ||
+            fail "published tag does not resolve to the source commit"
+
+          load_published_release_after_publication
+          assert_exact_published_release
+          verify_published_assets

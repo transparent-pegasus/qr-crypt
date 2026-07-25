@@ -79,9 +79,7 @@ describe("key management v2", () => {
     const exampleCaption = screen.getByText(
       "Ask the other party to increase their screen brightness, hold the camera about 15–20 cm away, and keep it still until the image is in focus.",
     )
-    const scanIcon = exampleCaption.parentElement!.querySelector(
-      "svg.lucide-scan-line",
-    )!
+    const scanIcon = exampleCaption.parentElement!.querySelector("svg.lucide-scan-line")!
     expect(scanIcon).toHaveAttribute("aria-hidden", "true")
     expect(exampleCaption.parentElement!.querySelector("img")).toBeNull()
     expect(
@@ -94,7 +92,9 @@ describe("key management v2", () => {
     ).not.toBeInTheDocument()
     expect(screen.queryByText("確認済みの相手")).not.toBeInTheDocument()
     expect(
-      screen.getByText(/2 legacy RSA keys cannot be used with v2 and cannot be recovered/),
+      screen.getByText(
+        /2 legacy RSA keys cannot be used with v2 and cannot be recovered/,
+      ),
     ).toBeInTheDocument()
     expect(screen.queryByText("受信鍵B")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Delete legacy keys" }))
@@ -110,7 +110,9 @@ describe("key management v2", () => {
 
     // defaultAlgorithm=A256GCM in the fakes, so the default kind is symmetric key.
     expect(await screen.findByLabelText("Symmetric-key name")).toBeInTheDocument()
-    expect(screen.queryByText("experimental · not independently audited")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("experimental · not independently audited"),
+    ).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Create a symmetric key" })).toBeDisabled()
     await user.type(screen.getByLabelText("Symmetric-key name"), "新しい共通鍵")
     await user.click(screen.getByRole("button", { name: "Create a symmetric key" }))
@@ -153,6 +155,77 @@ describe("key management v2", () => {
     expect(screen.queryByText(/Create a maximum ID/)).not.toBeInTheDocument()
   })
 
+  it("opens every key QR fullscreen from /keys and persists fullscreen controls across remount", async () => {
+    const user = userEvent.setup()
+    await renderApp("/keys")
+
+    await user.type(await screen.findByLabelText("Symmetric-key name"), "全画面共通鍵")
+    await user.click(screen.getByRole("button", { name: "Create a symmetric key" }))
+    let dialog = await screen.findByRole("dialog", { name: "全画面共通鍵" })
+    await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
+    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    await user.click(
+      await within(dialog).findByRole("button", { name: "View full screen" }),
+    )
+    let fullscreen = await screen.findByRole("dialog", {
+      name: /View Symmetric-key QR full screen/,
+    })
+    expect(within(fullscreen).getByText("Sensitive information")).toBeInTheDocument()
+    await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
+    await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+
+    await user.click(screen.getByRole("combobox", { name: "Type" }))
+    await user.click(
+      screen.getByRole("option", {
+        name: "Post-quantum identity ML-KEM-1024 + ML-DSA-87",
+      }),
+    )
+    await user.type(
+      await screen.findByLabelText("Post-quantum identity name"),
+      "全画面PQ ID",
+    )
+    await user.click(
+      screen.getByRole("button", { name: "Create a post-quantum identity" }),
+    )
+    dialog = await screen.findByRole("dialog", { name: "全画面PQ ID" })
+
+    for (const [buttonName, title] of [
+      ["Public-key bundle QR", /public-key bundle/],
+      ["Encryption public-key QR", /encryption public key/],
+      ["Signature-verification public-key QR", /signature-verification public key/],
+    ] as const) {
+      await user.click(within(dialog).getByRole("button", { name: buttonName }))
+      await user.click(
+        await within(dialog).findByRole("button", { name: "View full screen" }),
+      )
+      fullscreen = await screen.findByRole("dialog", {
+        name: new RegExp(`View .*${title.source}.* full screen`),
+      })
+      expect(within(fullscreen).getByLabelText("Frame density")).toBeInTheDocument()
+      expect(within(fullscreen).getByLabelText("Display speed")).toBeInTheDocument()
+      if (buttonName === "Public-key bundle QR") {
+        fireEvent.change(within(fullscreen).getByLabelText("Frame density"), {
+          target: { value: "300" },
+        })
+        fireEvent.change(within(fullscreen).getByLabelText("Display speed"), {
+          target: { value: "2500" },
+        })
+        await waitFor(() => {
+          expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 300 })
+          expect(updatePreferences).toHaveBeenCalledWith({
+            frameIntervalMs: 2_500,
+          })
+        })
+      }
+      await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
+      await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
+    }
+
+    await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
+    expect(await within(dialog).findByLabelText("Display speed")).toHaveValue("2500")
+  })
+
   it("blocks immediately on OCI2 fingerprint comparison and can save unverified", async () => {
     const user = userEvent.setup()
     const originalCount = fakeBundles.length
@@ -175,7 +248,9 @@ describe("key management v2", () => {
       }),
     ).toBeInTheDocument()
 
-    await user.click(within(dialog).getByRole("button", { name: "Save without verification" }))
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save without verification" }),
+    )
     await waitFor(() => expect(saveBundle).toHaveBeenCalledTimes(1))
     expect(confirmBundleFingerprint).not.toHaveBeenCalled()
     expect(fakeBundles).toHaveLength(originalCount + 1)
@@ -314,7 +389,7 @@ describe("settings v2", () => {
     const frameBytes = await screen.findByLabelText(/Raw data per frame/)
     const frameInterval = screen.getByLabelText(/Frame interval/)
     const transferTimeout = screen.getByLabelText(/Scan-state lifetime/)
-    expect(frameBytes).toHaveAttribute("min", "200")
+    expect(frameBytes).toHaveAttribute("min", "100")
     expect(frameBytes).toHaveAttribute("max", "900")
     expect(frameInterval).toHaveAttribute("min", "1000")
     expect(frameInterval).toHaveAttribute("max", "3000")
@@ -349,7 +424,9 @@ describe("settings v2", () => {
     )
     expect(screen.getByText(/Churn does not guarantee erasure/)).toBeInTheDocument()
     expect(
-      screen.getByText(/JavaScript implementation does not guarantee resistance to side channels/),
+      screen.getByText(
+        /JavaScript implementation does not guarantee resistance to side channels/,
+      ),
     ).toBeInTheDocument()
     expect(screen.getByText(/Physical erasure is not guaranteed/)).toBeInTheDocument()
   })
@@ -362,9 +439,13 @@ describe("settings v2", () => {
     expect(signature).toBeChecked()
     expect(signature).toBeDisabled()
     expect(
-      screen.getByText(/cannot be disabled because it is required by the environment configuration/),
+      screen.getByText(
+        /cannot be disabled because it is required by the environment configuration/,
+      ),
     ).toBeInTheDocument()
-    await userEvent.setup().click(screen.getByLabelText("Default cryptographic algorithm"))
+    await userEvent
+      .setup()
+      .click(screen.getByLabelText("Default cryptographic algorithm"))
     expect(
       screen.queryByRole("option", { name: /^Post-quantum ML-KEM/ }),
     ).not.toBeInTheDocument()

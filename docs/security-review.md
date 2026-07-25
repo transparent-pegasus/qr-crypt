@@ -23,7 +23,7 @@ the active policy and is rejected at the operational boundary as
     maximum while preserving `wipeOnOnline=false`.
   - `tests/pq/maximum-artifact-size.golden.test.ts` pins the canonical CBOR raw
     byte counts in the table below, the OCF2 frame counts at chunk sizes
-    200/300/400/600/900B, real EC-Q generation for every frame, and boundary agreement
+    100/200/300/400/600/900B, real EC-Q generation for every displayable frame, and boundary agreement
     with the env capacity guard.
   - The ML-KEM-1024 / ML-DSA-87 KATs and `aube test` / `aube typecheck` pass,
     and the `aube bench:pq` maximum reference figures plus the README and
@@ -39,26 +39,26 @@ substitute for independent review and do not close the blocker.
 Measured maximum fixture (`maxPlaintext=4,096B`, `name="テスト"` — the literal
 fixture string):
 
-| artifact | canonical CBOR (bytes) | OCF2 frames (200 / 300 / 400 / 600 / 900B) |
+| artifact | canonical CBOR (bytes) | OCF2 frames (100 / 200 / 300 / 400 / 600 / 900B) |
 |---|---:|---:|
-| unsigned empty / max | 1,887 / 5,986 | 10/7/5/4/3 / 30/20/15/10/7 |
-| signed empty / max | 6,613 / 10,711 | 34/23/17/12/8 / 54/36/27/18/12 |
-| OCI2 bundle | 4,402 | 23/15/12/8/5 |
-| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 9/6/5/3/2 / 14/10/7/5/4 |
-| OCB2 reserved sizing fixture | 4,637 | 24/16/12/8/6 |
+| unsigned empty / max | 1,887 / 5,986 | 19/10/7/5/4/3 / 60/30/20/15/10/7 |
+| signed empty / max | 6,613 / 10,711 | >64/34/23/17/12/8 / >64/54/36/27/18/12 |
+| OCI2 bundle | 4,402 | 45/23/15/12/8/5 |
+| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 18/9/6/5/3/2 / 28/14/10/7/5/4 |
+| OCB2 reserved sizing fixture | 4,637 | 47/24/16/12/8/6 |
 
-OCI2 display uses balanced count mode:
-`clamp(ceil(artifactBytes / 100), 40, 50)`. The 4,402B fixture selects 45
-frames whose chunks are 97/98B. Tests cover short names through the maximum
-80-character name, byte-exact reconstruction, non-empty chunks whose sizes
-differ by at most 1 byte, and real EC-Q generation. If `VITE_QR_MAX_FRAMES` is below the selected count,
-generation fails closed as `QR_TOO_LARGE`. OCP2/OCS2 use the fixed 140B
-chunk (`PQ_KEY_QR_FRAME_BYTES`), producing 13/20 frames for the measured
-fixtures. The 200/300/400/600/900 figures above remain message-class measurements
-across the configurable range; 300B is the default.
+All displayed OCF2 artifacts use the same preference-controlled 100–900B
+density. The renderer grid-rounds a per-artifact minimum from total bytes and
+`VITE_QR_MAX_FRAMES`, then uses the greater of that minimum and the stored
+preference without persisting an automatic clamp. Thus 100B remains a valid
+stored density and works for OCI2/OCP2/OCS2 and smaller messages, while both
+measured signed-message fixtures render at the automatic 200B minimum. A
+minimum above 900B fails closed as `QR_TOO_LARGE`. The fullscreen slider uses
+a 100B step; storage continues to accept off-grid integers such as 250B. The
+shipped default is 200B.
 
 The current multipart transition interval is exactly
-1,000/1,500/2,000/2,500/3,000ms, defaulting to 1,000ms. New preferences and
+1,000/1,500/2,000/2,500/3,000ms, defaulting to 2,000ms. New preferences and
 environment values off that grid are rejected. Boot reads the exact union of
 legacy safe integers 150–2,000ms and the current grid, then the preferences
 repository normalizes only persisted legacy values to the nearest
@@ -128,7 +128,24 @@ guaranteed; JS memory erasure has limits
 1. Check the latest FIPS 203 / FIPS 204 errata (on the relevant NIST CSRC pages)
 2. Check the `@noble/post-quantum` changelog, known vulnerabilities, and advisories
 3. Confirm the KATs (`aube test:pq-vectors`) are all green
-4. Confirm the bundle makes no external network references (e2e: `tests/e2e/security.spec.ts` asserts all in-page requests are same-origin)
+4. Confirm the bundle makes no external network references **and** that
+   same-origin traffic stays on the no-payload allowlist. Same-origin alone
+   is not sufficient: a regression that POSTed relay text to this origin
+   would still be same-origin. e2e (`tests/e2e/security.spec.ts`, including
+   the online-relay scenario) must assert:
+   - **Allowlist (methods + paths only):** static/PWA resources; recurring
+     `HEAD /manifest.webmanifest?reach=…` (display probe); boot
+     `GET /reachability-sentinel.txt` (destructive probe). No other
+     runtime requests.
+   - **Negative matrix after capture / copy / paste / playback / rejection /
+     close / `pagehide` / timeout:** a unique frame marker is absent from
+     request bodies and query values, CacheStorage keys/bodies (static shell
+     permitted), localStorage (only `{oc-theme, oc-lang,
+     oc-offline-ack-pending}`), IndexedDB values, console,
+     `window.onerror` / unhandled rejections, visible error text,
+     `document.title`, `location.href`, and history state.
+   - Errors use fixed i18n / `AppError` mappings — never interpolate raw
+     input, frame metadata, `transferId`, hashes, or `caught.message`.
 5. Review the `aube-lock.yaml` diff (provenance maintained)
 
 ## 4. Items to Record Here When the Independent Review Completes (Template)

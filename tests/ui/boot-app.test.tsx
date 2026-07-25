@@ -5,6 +5,7 @@ import {
   createBootController,
   type BootDecisionSnapshot,
 } from "@/app/boot/boot-controller"
+import type { BestEffortResetReport } from "@/storage/best-effort-reset"
 import { getPreferences } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
 import { setTestOnlineStatus } from "./helpers/network"
@@ -14,13 +15,19 @@ function response(body: string, status = 200): Response {
 }
 
 function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSnapshot {
-  return {
+  const snapshot = {
     wipeOnOnline: true,
     sensitiveDataExists: false,
     maintenanceTokenArmed: false,
     resetChurnMb: 0,
     preferencesReadFailed: false,
     ...overrides,
+  }
+  return {
+    ...snapshot,
+    cleanOrigin:
+      overrides.cleanOrigin ??
+      (snapshot.sensitiveDataExists ? "dirty" : "confirmed-clean"),
   }
 }
 
@@ -61,31 +68,123 @@ describe("App boot gate", () => {
     setTestOnlineStatus(true)
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe,
       readDecision: async () => decision({ sensitiveDataExists: false }),
     })
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("Only PWA installation is available while online"),
+      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
     ).toBeInTheDocument()
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(performWipe).not.toHaveBeenCalled()
     controller.stop()
   })
 
+  it("keeps the relay absent while the destructive decision is pending", async () => {
+    setTestOnlineStatus(true)
+    let resolveDecision: ((value: BootDecisionSnapshot) => void) | undefined
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      readDecision: () =>
+        new Promise((resolve) => {
+          resolveDecision = resolve
+        }),
+    })
+    await renderApp("/encrypt", { bootController: controller })
+
+    await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    resolveDecision?.(decision())
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeInTheDocument()
+    controller.stop()
+  })
+
+  it.each([
+    [
+      "maintenance-token survival",
+      {
+        maintenanceTokenArmed: true,
+        sensitiveDataExists: true,
+        wipeOnOnline: true,
+      },
+    ],
+    ["wipeOnOnline=false with rows", { sensitiveDataExists: true, wipeOnOnline: false }],
+    [
+      "indeterminate cleanliness",
+      {
+        cleanOrigin: "indeterminate" as const,
+        sensitiveDataExists: false,
+      },
+    ],
+  ])("keeps the relay absent after %s", async (_label, overrides) => {
+    setTestOnlineStatus(true)
+    const controller = createBootController({
+      consumeMaintenanceToken: vi.fn(async () => true),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      readDecision: async () => decision(overrides),
+    })
+    await renderApp("/encrypt", { bootController: controller })
+
+    await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    controller.stop()
+  })
+
+  it("does not expose the relay in the transient offline-confirmed plus display-online render", async () => {
+    setTestOnlineStatus(true)
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("offline", 503)),
+      readDecision: async () => decision(),
+    })
+    await renderApp("/encrypt", { bootController: controller })
+
+    await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
+    expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    controller.stop()
+  })
+
+  it("removes the relay before a destructive wipe remains pending", async () => {
+    setTestOnlineStatus(true)
+    let finishWipe: ((report: BestEffortResetReport) => void) | undefined
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      performWipe: vi.fn(
+        () =>
+          new Promise<BestEffortResetReport>((resolve) => {
+            finishWipe = resolve
+          }),
+      ),
+      readDecision: async () => decision({ sensitiveDataExists: true }),
+    })
+    await renderApp("/encrypt", { bootController: controller })
+
+    expect(await screen.findByText("Resetting local data")).toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    finishWipe?.({ ok: true, failedSteps: [] })
+    await screen.findByText(
+      "Local data was reset after an online connection was detected",
+    )
+    controller.stop()
+  })
+
   it("shows the reset completion copy after a successful wipe", async () => {
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({ ok: true, failedSteps: [] })),
       readDecision: async () => decision({ sensitiveDataExists: true }),
     })
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("Local data was reset after an online connection was detected"),
+      await screen.findByText(
+        "Local data was reset after an online connection was detected",
+      ),
     ).toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     expect(
       screen.getByText(
         "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
@@ -96,7 +195,7 @@ describe("App boot gate", () => {
 
   it("shows RESET_FAILED and honest deletion wording after a partial failure", async () => {
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({
         ok: false,
         failedSteps: ["database-verification"],
@@ -106,6 +205,7 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     expect(
       screen.getByText("Some operations did not finish while resetting local data."),
     ).toBeInTheDocument()

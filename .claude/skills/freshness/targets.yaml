@@ -92,19 +92,29 @@ units:
   - id: ci-actions
     category: dependencies
     cadence_days: 60
-    last_checked: 2026-07-24
+    last_checked: 2026-07-25
     files:
       - .github/workflows/cloudflare-pages.yml
+      - .github/workflows/github-release.yml
     why: >
-      Floating major tags (actions/checkout@v7, jdx/mise-action@v4,
-      cloudflare/wrangler-action@v4) accumulate drift; majors move.
+      CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
+      image, and GitHub runner/CLI behavior all drift with upstream releases.
     method: |
-      Check each action repo for newer majors; bump the uses: lines.
-      Keep mise-action reading mise.toml. VITE_BUILD_SHA stays ${{ github.sha }}.
+      Review both workflows. Check each action repository for newer majors and
+      security advisories. Keep release-workflow actions pinned to full SHAs;
+      verify each SHA still matches the documented tag. Review the pinned
+      Cosign release, verifier image digest, and verification contract. Keep
+      mise-action reading mise.toml and VITE_BUILD_SHA sourced from
+      ${{ github.sha }}.
     verify: |
       Local only — a freshness sweep must not push:
-      rg -n 'uses:' .github/workflows/cloudflare-pages.yml, then
-      git ls-remote --exit-code <action repo> <tag> for each pinned tag.
+      mise x \
+        github:rhysd/actionlint@v1.7.12 \
+        github:koalaman/shellcheck@v0.11.0 -- \
+        actionlint .github/workflows/*.yml, then
+      rg -n 'uses:|cosign-release:' .github/workflows/*.yml, then
+      git ls-remote --exit-code <action repo> <tag> for every referenced tag
+      and confirm pinned release-workflow SHAs match.
       If a recent user-authorized CI run exists, confirm it is green.
       Otherwise report the unit as blocked and leave last_checked unchanged.
 
@@ -197,12 +207,12 @@ units:
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
     last_checked: 2026-07-25
     files:
-      - src/lib/limits.ts # dated measured CBOR/OCF2 size comments
+      - src/lib/limits.ts # measured CBOR/OCF2 sizes and uniform 100–900B density grid/minimum
       - src/lib/frame-interval.ts # persisted/displayed QR interval policy grid
-      - tests/pq/maximum-artifact-size.golden.test.ts
-      - src/schemas/env-schema.ts # MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES mirrors the golden
-      - .env.prod # runtime crypto/framing policy defaults
-      - .env.example # same framing defaults, kept in step with .env.prod
+      - tests/pq/maximum-artifact-size.golden.test.ts # uniform density/clamp/off-grid fixtures
+      - src/schemas/env-schema.ts # golden size guard at the maximum selectable density
+      - .env.prod # runtime crypto/framing policy and shipped 200B density default
+      - .env.example # same density default, kept in step with .env.prod
     why: >
       Measured byte/frame tables (dated 2026-07-23) are cited by
       security-review and limits comments; env-schema.ts carries the
@@ -213,10 +223,12 @@ units:
       comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
       env-schema.ts, and the .env.prod/.env.example defaults together, then
       sync the copy of the table in docs/security-review.md.
-      OCI2 balanced count mode (target 100B, clamp 40–50; 4,402B fixture → 45
-      frames) and PQ_KEY_QR_FRAME_BYTES (OCP2/OCS2 fixed 140B → 13/20 frames,
-      2026-07-25) in limits.ts are mirrored in docs/qr-protocol-v2.md,
-      docs/security-review.md, and the golden test — keep all four in agreement.
+      Verify the uniform preference-controlled 100–900B density for messages,
+      OCI2, OCP2, and OCS2; the 100B fullscreen grid; acceptance of stored
+      off-grid values; the grid-rounded per-artifact minimum; and the 200B
+      shipped default. Keep limits.ts, env-schema.ts, both env files,
+      docs/qr-protocol-v2.md, docs/security-review.md, and the golden test in
+      agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [security-review]
 
@@ -270,6 +282,7 @@ units:
       - README.md
       - README.ja.md
       - SECURITY.md # duplicates release-status claims (repo-public ≠ release-approved)
+      - index.html # static meta description; must stay aligned with product claims, never relay-derived
     why: >
       Dated PQ bench table (2026-07-23), experimental/audit status claims,
       release checklist, supply-chain history, managed-deviation dates, and
@@ -286,7 +299,6 @@ units:
     last_checked: 2026-07-25
     files:
       - components.json # https://ui.shadcn.com/schema.json
-      - design-system/offline-cipher/MASTER.md # Google Fonts URLs (archival)
       - design-system/PROVENANCE.md # plugin path/version provenance
       - src/lib/best-effort-zip.ts # fflate provenance/version claim in header
       - tests/pq-vectors/acvp-fixtures.ts # upstream repo URLs
@@ -351,7 +363,7 @@ invariants:
       - vite.config.ts # SW must NEVER precache/cache the sentinel
       - public/_headers # sentinel route stays no-store
     rule: >
-      Sentinel body ("QRYPT-REACHABLE") and REACHABILITY_SENTINEL_BODY/_PATH
+      Sentinel body ("QR-CRYPT-REACHABLE") and REACHABILITY_SENTINEL_BODY/_PATH
       change only together, with a coordinated deploy — the sentinel gates the
       wipe path. The service worker must never serve it from cache: the
       vite.config.ts runtimeCaching route for it stays NetworkOnly, the

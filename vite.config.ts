@@ -18,9 +18,10 @@ export default defineConfig(() => {
         registerType: "prompt",
         includeAssets: ["favicon.svg", "icons/apple-touch-icon-180.png"],
         manifest: {
-          name: "Qrypt",
-          short_name: "Qrypt",
-          description: "Offline-only encrypted QR code tool for on-device use.",
+          name: "QR Crypt",
+          short_name: "QR Crypt",
+          description:
+            "Offline encryption with a dedicated clean-origin OCF2 message-header QR relay.",
           lang: "en",
           start_url: "/",
           scope: "/",

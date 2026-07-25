@@ -7,7 +7,7 @@ export type FrameIntervalMs = (typeof FRAME_INTERVAL_MS_VALUES)[number]
 export const FRAME_INTERVAL_MS_MIN = FRAME_INTERVAL_MS_VALUES[0]
 export const FRAME_INTERVAL_MS_MAX = FRAME_INTERVAL_MS_VALUES[4]
 export const FRAME_INTERVAL_MS_STEP = 500
-export const FRAME_INTERVAL_MS_DEFAULT = 1_000
+export const FRAME_INTERVAL_MS_DEFAULT = 2_000
 
 // Range that an older PWA may have stored. Keep boot-time reading append-only
 // and separate it from the current grid.

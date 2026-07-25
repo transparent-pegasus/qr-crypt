@@ -11,6 +11,9 @@ coverage/
 # CodeGraph local index (generated)
 .codegraph/
 
+# Local git worktrees
+.worktrees/
+
 # Private agent tooling (local only; freshness skill stays tracked)
 .claude/skills/herdr/
 .claude/skills/orchestration/

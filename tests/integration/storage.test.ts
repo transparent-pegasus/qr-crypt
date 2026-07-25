@@ -80,7 +80,7 @@ describe("database creation", () => {
 
   it("upgrades a pre-existing v2 DB by wiping stores and creating the current schema", async () => {
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open("qrypt", 2)
+      const request = indexedDB.open("qr-crypt", 2)
       request.onupgradeneeded = () => {
         const db = request.result
         if (!db.objectStoreNames.contains("legacyDummyStore")) {
@@ -187,7 +187,7 @@ describe("preferences and plaintext non-persistence", () => {
       qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
-      frameIntervalMs: 1_000,
+      frameIntervalMs: 2_000,
     })
     expect(
       await updatePreferences({

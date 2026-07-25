@@ -1,4 +1,4 @@
-# Qrypt
+# QR Crypt
 
 日本語版: [README.ja.md](README.ja.md)
 
@@ -8,20 +8,20 @@ Offline-encryption QR PWA. A Progressive Web App that encrypts plaintext on-devi
 
 **What it does not do**: transmit plaintext or private keys off the device, store keys in the cloud, use custom cryptographic algorithms, depend on CDNs at runtime, treat an offline indicator as proof of safety, or persist message ciphertext inside the app (maintainer requirement; session display and user-initiated export only).
 
-## How Qrypt differs from other encryption apps
+## How QR Crypt differs from other encryption apps
 
-There are plenty of apps that merely "encrypt and decrypt strings". What Qrypt aims for is not novelty in cryptographic algorithms but **closing off, at the design stage, the very paths by which plaintext and keys leave the device**. Even with correct encryption, holes in key and plaintext handling, delivery paths, or the execution environment make the result insecure. Qrypt puts its focus exactly there.
+There are plenty of apps that merely "encrypt and decrypt strings". What QR Crypt aims for is not novelty in cryptographic algorithms but **closing off, at the design stage, the very paths by which plaintext and keys leave the device**. Even with correct encryption, holes in key and plaintext handling, delivery paths, or the execution environment make the result insecure. QR Crypt puts its focus exactly there.
 
-* **Data-exfiltration paths eliminated from the runtime** — The app has no external networking as an application feature (no third-party or cross-origin clients). Its only runtime request is the same-origin `GET /reachability-sentinel.txt` probe that gates wipe-on-online; the probe carries no user data. It loads no external fonts, CDNs, analytics, error-reporting SDKs, or remote configuration. CSP (`connect-src 'self'` and more) blocks outbound traffic at the browser level as well. Where a typical "encryption web app" loads CDNs, fonts, and measurement tags — a latent exfiltration surface — Qrypt reduces that external surface to zero.
-* **Offline-only operation with an install-only online gate** — While online, the app shows only installation-related screens and blocks all functionality, including encryption, decryption, and key management. wipe-on-online (default ON) fires only when network-confirmed (reachability sentinel body match) and attempts best-effort logical deletion of local data (physical erasure is not guaranteed). The app blocks operation while the network is connected by design; residual risk is documented in the threat model ([docs/threat-model.md](docs/threat-model.md), T18: probe false-negative window).
-* **Air-gapped key exchange with no server in between** — Keys, public keys, and ciphertext are all handled as QR codes; there is no cloud key escrow and no account sync. Keys live only in the device's IndexedDB; the app itself never transmits or stores them externally, and the only way key material leaves the device is a deliberate, strongly-confirmed user export of a key QR (see threat model T3). Message ciphertext is never persisted to app-managed IndexedDB/localStorage — only transient on-screen display and user-initiated PNG/SVG/ZIP or clipboard export (the latter may remain in the OS, browser, or sync targets and are outside the scope of wipe/purge).
+* **Data-exfiltration paths eliminated from the runtime** — The app has no external networking as an application feature (no third-party or cross-origin clients). Permitted runtime requests are the same-origin `GET /reachability-sentinel.txt` probe that gates wipe-on-online, the recurring same-origin `HEAD /manifest.webmanifest?reach=…` display probe, and static/PWA asset fetch/revalidation — none carries user or frame data. It loads no external fonts, CDNs, analytics, error-reporting SDKs, or remote configuration. CSP (`connect-src 'self'` and more) blocks outbound traffic at the browser level as well. Where a typical "encryption web app" loads CDNs, fonts, and measurement tags — a latent exfiltration surface — QR Crypt keeps requests same-origin and non-payload-bearing.
+* **Offline-only crypto with a narrow online gate** — While online, encryption, decryption, key management, storage, and settings stay blocked. The online screen covers PWA installation and, on a logically clean origin whose sensitive-store scan completed without error, an optical relay that forwards exact canonical OCF2 strings whose untrusted outer header declares `pq-message` (no assembly, no decryption, no frame-derived app persistence, no frame-bearing network request; see [docs/threat-model.md](docs/threat-model.md) T19). wipe-on-online (default ON) fires only when network-confirmed (reachability sentinel body match) and attempts best-effort logical deletion of local data (physical erasure is not guaranteed). Residual risk is documented in the threat model (T18: probe false-negative window; T19: untrusted relay hop).
+* **Air-gapped key exchange with no server in between** — Keys and public keys are exchanged as QR codes face-to-face; message ciphertext is also QR-framed and may additionally pass through a dedicated online relay as verbatim OCF2 text. There is no cloud key escrow and no account sync. Keys live only in the device's IndexedDB; the app itself never transmits or stores them externally, and the only way key material leaves the device is a deliberate, strongly-confirmed user export of a key QR (see threat model T3). Message ciphertext is never persisted to app-managed IndexedDB/localStorage — only transient on-screen display and user-initiated PNG/SVG/ZIP or clipboard export (the latter may remain in the OS, browser, or sync targets and are outside the scope of wipe/purge).
 * **Authenticated encryption with strict failure behavior** — AEAD (AES-GCM) with AAD provides tamper detection; on authentication failure, no partial plaintext is ever shown. Internal decryption exceptions are normalized into fixed user-facing messages; key material and stack traces never reach the screen or logs. This rules out the "unauthenticated mode" and "partial output on failure" common in naive crypto apps.
 * **No plaintext left behind** — Plaintext and decryption results are never persisted; they exist only in React memory. Auto-clear after successful encryption and auto-clear after the app moves to the background are enabled by default. Plaintext is never passed to the QR generation library; only post-encryption ciphertext is handled.
 * **Standard algorithms only, no custom crypto** — Randomness comes from a CSPRNG (`crypto.getRandomValues`), cryptographic operations are built on Web Crypto, and IV reuse, fixed IVs, and ad-hoc key combination are forbidden. Crypto code is isolated in dedicated modules (`src/crypto/*`); UI pages invoke those modules' high-level operations and never touch Web Crypto primitives or key material directly.
 * **Defense that extends to the delivery path (supply chain)** — Dependency lockfiles are committed, CI installs with a frozen lockfile, and registry vulnerability advisories and provenance are checked to keep dangerous packages out (for an incident actually detected and handled, see [docs/threat-model.md](docs/threat-model.md) §5.1). No configuration fetches crypto code from a CDN at runtime.
 * **Verifiability and an honest threat model** — The source code, the QR protocol specification, and the threat model are public, and round-trips, tampering, wrong keys, IV uniqueness, and more are covered by tests. And **what is not defended is stated explicitly** (see "Security assumptions and disclaimers" below). Not overclaiming safety is itself a design policy.
 
-None of this is a claim that "the algorithm is stronger". The differentiation rests on the view that **the operational model — offline, air-gapped, no exfiltration, honest about its limits — is what determines practical security when plaintext is handled in the real world**. Always consult the next section for the limitations.
+None of this is a claim that "the algorithm is stronger". The differentiation rests on the view that **the operational model — offline crypto on devices that hold protected material, air-gapped key exchange, no user/frame-data-bearing network requests, honest about its limits — is what determines practical security when plaintext is handled in the real world**. A dedicated clean-origin relay device is not a key/plaintext-bearing endpoint; it may stay online only to forward outer-header-declared `pq-message` OCF2 strings. Always consult the next section for the limitations.
 
 ## Security assumptions and disclaimers
 
@@ -41,20 +41,20 @@ The following are outside the scope of defense and are stated explicitly in the 
 
 Plaintext is auto-cleared after successful encryption by default. Auto-clear after the app moves to the background is also enabled by default, and the only configurable choice is ON/OFF. The delay uses the fixed value `VITE_AUTO_CLEAR_SECONDS=300` (about 5 minutes).
 
-**The online state exists solely for fresh PWA installation.** While online, the app shows only installation status, offline-readiness status, and guidance for switching to airplane mode, and blocks all encryption, decryption, key-management, storage, and settings functionality. If the app transitions to online during use, plaintext, decryption results, and result payloads are cleared immediately.
+**The online state is for fresh PWA installation plus a narrow clean-origin optical relay.** While online, encryption, decryption, key management, storage, and settings stay blocked. The install screen may also offer an optical relay that forwards exact canonical OCF2 strings whose untrusted outer header declares `pq-message` — only when a sensitive-store scan has completed without error and the origin holds no key rows, PQ identity rows, or Vault key. The relay does not assemble or verify the artifact, total hash, inner type, AEAD, or signature; it writes no frame-derived value to app-managed storage or CacheStorage and makes no frame-bearing network request. Explicit clipboard copy/paste may persist or sync outside the app; displayed QR images can be captured by the browser or OS. If the app transitions to online during use, plaintext, decryption results, and result payloads are cleared immediately.
 
 **wipe-on-online** (setting default ON) does not fire on the display-level online heuristic; it fires only when network-confirmed (the body of `/reachability-sentinel.txt` matches). It does not fire on the install-gate path (which holds no sensitive data). The runtime wording is "attempts best-effort logical deletion of local data; physical erasure is not guaranteed" (LevelDB is append-only; SSDs use wear leveling). Even a full device format does not guarantee erasure on flash/SSD media; when assurance matters, use a media-appropriate sanitization procedure (e.g. NIST SP 800-88) or destroy the media. Details: [docs/boot-and-reset-v2.md](docs/boot-and-reset-v2.md).
 
 ## Post-quantum cryptography (v2, experimental)
 
-v2 is **experimental**. We distinguish `implementation-complete` — the implementation, tests, and documentation are all present in the repository — from `release-approved` — reached only after an independent third party has reviewed the pinned versions and the app as a whole and the review has been recorded ([docs/security-review.md](docs/security-review.md)). Because the project is not independently audited, `release-approved` has not been reached, and the UI, README, and CI keep the experimental / not-independently-audited labeling. Qrypt adopts implementations of the FIPS 203/204 algorithms; it does not claim to be "FIPS certified" or "perfectly secure".
+v2 is **experimental**. We distinguish `implementation-complete` — the implementation, tests, and documentation are all present in the repository — from `release-approved` — reached only after an independent third party has reviewed the pinned versions and the app as a whole and the review has been recorded ([docs/security-review.md](docs/security-review.md)). Because the project is not independently audited, `release-approved` has not been reached, and the UI, README, and CI keep the experimental / not-independently-audited labeling. QR Crypt adopts implementations of the FIPS 203/204 algorithms; it does not claim to be "FIPS certified" or "perfectly secure".
 
 ### Available suites
 
 | Suite | Contents | Notes |
 | --- | --- | --- |
-| AES-256-GCM | Symmetric encryption only | Existing path |
-| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | Post-quantum KEM hybrid | **Default** (`MLKEM1024_A256GCM`) |
+| AES-256-GCM | Symmetric encryption only | **Default** (`A256GCM`) |
+| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | Post-quantum KEM hybrid | Selectable (`MLKEM1024_A256GCM`) |
 | The above + ML-DSA-87 signature | sign-then-encrypt | Signed messages |
 
 The current active policy is **maximum** (1024/87) only. The wire contract keeps 4 suites
@@ -64,17 +64,17 @@ operational boundary with `UNSUPPORTED_ALGORITHM`.
 
 ### PQ benchmark reference values
 
-Values from a single run of `aube bench:pq` on 2026-07-24 (Vitest 4.1.10, Linux x86_64,
+Values from a single run of `aube bench:pq` on 2026-07-25 (Vitest 4.1.10, Linux x86_64,
 Intel Core i7-10870H). `hz` is operations per second;
 mean is the average milliseconds per operation.
 
 | Operation | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| ML-KEM-1024 keygen | 1,053.52 | 0.9492 | 1,075.08 | 0.9302 |
-| ML-KEM-1024 encapsulate | 969.86 | 1.0311 | 959.56 | 1.0421 |
-| ML-KEM-1024 decapsulate | 711.05 | 1.4064 | 743.56 | 1.3449 |
-| ML-DSA-87 sign | 87.8268 | 11.3860 | 89.0098 | 11.2347 |
-| ML-DSA-87 verify | 274.85 | 3.6384 | 259.16 | 3.8587 |
+| ML-KEM-1024 keygen | 939.51 | 1.0644 | 1,028.91 | 0.9719 |
+| ML-KEM-1024 encapsulate | 845.64 | 1.1825 | 937.59 | 1.0666 |
+| ML-KEM-1024 decapsulate | 635.18 | 1.5744 | 744.56 | 1.3431 |
+| ML-DSA-87 sign | 76.6329 | 13.0492 | 82.7556 | 12.0838 |
+| ML-DSA-87 verify | 238.58 | 4.1914 | 265.85 | 3.7615 |
 
 These are reference values from a development machine; they are not a substitute for
 measurements in real browsers or on low-end devices, nor for the `release-approved` determination.
@@ -120,7 +120,7 @@ mise install
 
 ```bash
 git clone <repository-url>
-cd qrypt
+cd qr-crypt
 mise install
 aube ci          # or, first time only, aube install
 ```
@@ -191,14 +191,24 @@ This is not run in parallel with GitHub's Cloudflare Git Integration. GitHub Act
 2. Register the GitHub Repository Secrets (an API token with the minimum permissions required for Pages deploys):
    * `CLOUDFLARE_ACCOUNT_ID`
    * `CLOUDFLARE_API_TOKEN`
-3. Register the GitHub Repository Variable:
-   * `CLOUDFLARE_PAGES_PROJECT`
+3. Register the GitHub Repository Variables:
+   * `CLOUDFLARE_PAGES_PROJECT` — the production project deployed from `main`
+   * `CLOUDFLARE_PAGES_PROJECT_DEV` — the development project deployed from `dev`
 
 ### CI flow
 
-* `pull_request` / `push` to `main` runs validation via `.github/workflows/cloudflare-pages.yml`
-* A `push` to `main` deploys to Cloudflare Pages after validation succeeds
-* An independent `e2e` job also runs, but it **does not block deployment**
+`.github/workflows/cloudflare-pages.yml` runs on every branch and on every pull
+request targeting `main` or `dev`:
+
+* The `validate` job (type check, lint, unit, post-quantum, multipart QR,
+  production build) and the `e2e` job always run
+* The `deploy` job requires **both** to pass, and only runs on a `push`:
+  `main` deploys to `CLOUDFLARE_PAGES_PROJECT`, `dev` deploys to
+  `CLOUDFLARE_PAGES_PROJECT_DEV`. It publishes the artifact `validate` built
+  rather than rebuilding, so the deployed bytes are the validated ones
+* Every other branch and every pull request runs the checks only
+* A `push` to `main` additionally publishes a signed prerelease via
+  `.github/workflows/github-release.yml`
 
 ### `public/_headers` / `public/_redirects`
 
@@ -215,7 +225,18 @@ This is not run in parallel with GitHub's Cloudflare Git Integration. GitHub Act
 
 The installed app's metadata (PWA manifest name/description) is fixed in English, while the in-app UI language is switchable between English and Japanese.
 
-**This app has no update mechanism.** To use a new version, sanitize the device (a full format alone does not guarantee erasure on flash/SSD media — see the wipe note above) and perform a fresh offline installation. Never bring an installed device back online without sanitizing it first.
+**This app has no update mechanism.** To use a new version, sanitize the device (a full format alone does not guarantee erasure on flash/SSD media — see the wipe note above) and perform a fresh offline installation. Never bring a device that holds or has held keys, PQ identities, a Vault key, or plaintext-bearing session state back online without sanitizing it first. A dedicated clean-origin relay device is the exception: it should ideally never have held QR Crypt keys and stays online only for the optical relay below.
+
+### Using the online optical relay
+
+When two offline devices cannot show QR codes to each other, a third **online** device can carry frame strings through any messenger:
+
+1. **Sender offline device** — encrypts as usual and displays the animated OCF2 frames.
+2. **Sender-side online relay** — on a clean origin (post-decision, no key/identity/Vault rows), uses **Scan → text**, collects every frame, then copies the `\n`-joined blob. That clipboard copy can persist or sync outside the app and outside any wipe.
+3. **Recipient-side online relay** — pastes the blob into **Text → QR** and plays the same frame strings for the recipient's camera. There are no app-provided file-download controls in the relay UI.
+4. **Recipient offline device** — scans and completes the transfer; only this offline endpoint performs authoritative assembly and cryptographic validation (AEAD, and signature when present).
+
+The relay forwards exact canonical OCF2 strings whose untrusted outer header declares `pq-message`. It does not assemble, decrypt, re-encrypt, or touch key material. Public-key and identity exchange stays a face-to-face workflow — the outer-header filter is not an enforcement guarantee that only ciphertext is carried. Prefer a relay device that has never held QR Crypt keys.
 
 ### Breaking changes in the v2 update (caution)
 
@@ -267,9 +288,9 @@ Android Chrome and iOS Safari) and an independent audit record are in place.
 | `@zxing/library` added | For DOM-independent unit tests. `@zxing/browser` is used in the UI layer only |
 | `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` reserved only | The env vars remain, but there are no UI or module branches |
 | Supply-chain pins and overrides (`react-hook-form@7.82.0` / `eslint-config-prettier@10.1.8` / rollup OMT via `aube.overrides`) | Responses to advisories and a trust downgrade during initial setup. Full list: [docs/threat-model.md](docs/threat-model.md) §5.1 |
-| Withdrawal of the originally planned in-app update notification | Maintainer decision: no in-app update mechanism; after installation the device runs offline permanently. New versions require a full device format followed by a fresh offline installation |
+| Withdrawal of the originally planned in-app update notification | Maintainer decision: no in-app update mechanism; after installation, devices that hold or have held protected material run offline permanently. New versions require a full device format followed by a fresh offline installation |
 | Withdrawal of the original keep-plaintext-after-encryption default | Maintainer decision: "auto-clear plaintext after encryption" is now default ON. Background auto-clear is also default ON, and the delay uses the fixed env value (300 seconds) |
-| Withdrawal of normal online use | Maintainer decision: the online state is reserved for fresh PWA installation, and all app functionality is blocked by the OnlineGate. On the offline→online transition, in-memory transient data is cleared immediately |
+| Withdrawal of normal online use (relay exception) | Maintainer decision: online encryption/decryption/key-management/storage/settings stay blocked. Fresh PWA installation remains the primary online purpose; a fail-closed clean-origin optical relay may forward exact canonical OCF2 strings whose untrusted outer header declares `pq-message` (threat model T19). On the offline→online transition, in-memory transient data is cleared immediately |
 | ML-KEM-512 / ML-DSA-44 not implemented | Not supported, including for interoperability testing. The active policy covers only maximum (1024/87); balanced (768/65) exists as reserved types and suite codes only |
 | balanced demoted, maximum mainlined | A deliberate, maintainer-approved deviation (2026-07-23) from the originally recommended initial suite range. Only maximum (1024/87) is operated; recognized balanced (768/65) input is rejected with `UNSUPPORTED_ALGORITHM` |
 | `pq-kem-public-key` / `pq-dsa-public-key` added to `QrFrameV2.artifactType` | An extension beyond the three originally specified values (for single-public-key frames) |

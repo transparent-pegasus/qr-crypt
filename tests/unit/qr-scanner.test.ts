@@ -190,6 +190,35 @@ describe("camera scanner lifecycle", () => {
     expect(track.stop).toHaveBeenCalledTimes(1)
   })
 
+  it("retains abort ownership through the fulfilled scanner handoff", async () => {
+    const order: string[] = []
+    const track = new FakeTrack()
+    track.stop.mockImplementation(() => {
+      track.readyState = "ended"
+      order.push("track-stop")
+    })
+    scanner.controlsStop.mockImplementation(() => {
+      order.push("handle-stop")
+    })
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    const controller = new AbortController()
+
+    const handle = await startQrScan(videoElement(), vi.fn(), vi.fn(), {
+      once: false,
+      signal: controller.signal,
+    }).then((readyHandle) => {
+      controller.abort()
+      order.push("barrier")
+      return readyHandle
+    })
+    const orderAtBoundary = [...order]
+    handle.stop()
+
+    expect(orderAtBoundary).toEqual(["handle-stop", "track-stop", "barrier"])
+    expect(scanner.controlsStop).toHaveBeenCalledTimes(1)
+    expect(track.stop).toHaveBeenCalledTimes(1)
+  })
+
   it("keeps scanning for transient decode misses", async () => {
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))

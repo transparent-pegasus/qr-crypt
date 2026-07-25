@@ -37,7 +37,7 @@ test("the cryptographic flow sends nothing externally, leaves no secrets or mess
   const keyMaterial = await page.evaluate(async () => {
     const records = await new Promise<Array<{ symmetricKey?: CryptoKey }>>(
       (resolve, reject) => {
-        const open = indexedDB.open("qrypt")
+        const open = indexedDB.open("qr-crypt")
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const database = open.result

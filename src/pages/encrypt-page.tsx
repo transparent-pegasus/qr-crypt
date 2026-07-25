@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router"
 import {
   AlertCircle,
@@ -55,6 +55,7 @@ import {
 } from "@/features/presentation"
 import { useAutoClear } from "@/hooks/use-auto-clear"
 import { useKeys } from "@/hooks/use-keys"
+import { useFrameSplit } from "@/hooks/use-frame-split"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
@@ -65,6 +66,11 @@ import {
   type LocalizedMessage,
 } from "@/i18n"
 import { bytesToUtf8, sha256Hex, utf8ToBytes } from "@/lib/bytes"
+import {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
+  minimumFrameBytesForArtifact,
+} from "@/lib/limits"
 import { ecLevelFor, payloadFits } from "@/qr/encode"
 import {
   buildExportFileName,
@@ -73,14 +79,13 @@ import {
   qrSvgBlob,
   triggerDownload,
 } from "@/qr/export-image"
-import { splitIntoFrames } from "@/qr/multipart/split"
 import { buildV2Payload } from "@/qr/payload-v2"
 import { decodePayload, encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
 import type {
   MlKemMessageEnvelopeV2,
   PostQuantumIdentity,
   PqPublicBundleRecord,
-  QrFrameV2,
+  Preferences,
   StoredKeyRecord,
   UiAlgorithm,
   WireSuite,
@@ -107,7 +112,10 @@ type EncryptionResult =
       kind: "pq"
       payload: string
       envelope: MlKemMessageEnvelopeV2
-      frames: QrFrameV2[]
+      artifactType: "pq-message"
+      artifactBytes: Uint8Array
+      frameBytes: number
+      generation: number
       recipient: PqPublicBundleRecord
       sender?: PostQuantumIdentity
       createdAt: number
@@ -125,6 +133,8 @@ type DecryptionResult =
     }
   | { kind: "signed-key-unknown"; senderSigningKeyId: string }
   | { kind: "aes"; text: string }
+
+const EMPTY_ARTIFACT_BYTES = new Uint8Array()
 
 function algorithmOptions(requireSignature: boolean): UiAlgorithm[] {
   const options: UiAlgorithm[] = ["A256GCM"]
@@ -177,7 +187,7 @@ export function EncryptPage() {
     error: pqError,
     refresh: refreshPq,
   } = usePqRecords()
-  const { preferences, error: preferencesError } = usePreferences()
+  const { preferences, error: preferencesError, updatePreferences } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const { camera } = useFeatureSupport()
   const { nonce } = useTransientClear()
@@ -197,9 +207,17 @@ export function EncryptPage() {
   const [outputName, setOutputName] = useState("")
   const [decryptInput, setDecryptInput] = useState("")
   const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
-  const [clearStatus, setClearStatus] = useState<
-    "encrypt.toast.autoCleared" | null
-  >(null)
+  const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
+  const resultGenerationRef = useRef(0)
+  const pqResult = result?.kind === "pq" ? result : null
+  const frameSplit = useFrameSplit({
+    bytes: pqResult?.artifactBytes ?? EMPTY_ARTIFACT_BYTES,
+    artifactType: pqResult?.artifactType ?? "pq-message",
+    frameBytes: pqResult?.frameBytes ?? FRAME_BYTES_MIN,
+    enabled: pqResult !== null,
+    generation: pqResult?.generation ?? 0,
+  })
+  const localizedFrameError = useLocalizedMessage(frameSplit.error)
 
   const algorithms = useMemo(
     () => algorithmOptions(preferences.requireSignature),
@@ -324,6 +342,20 @@ export function EncryptPage() {
     clearNonce: nonce,
   })
 
+  const saveDisplayPreference = useCallback(
+    async (patch: Partial<Pick<Preferences, "frameBytes" | "frameIntervalMs">>) => {
+      setError(null)
+      try {
+        await updatePreferences(patch)
+        toast.success(t("settings.toast.saved"))
+      } catch {
+        setError("settings.error.saveFailed")
+        toast.error(t("settings.error.saveFailed"))
+      }
+    },
+    [t, updatePreferences],
+  )
+
   const handleEncrypt = async () => {
     if (!canEncrypt) return
     setBusy(true)
@@ -365,16 +397,19 @@ export function EncryptPage() {
           now,
         })
         const artifactBytes = encodeMlKemEnvelopeV2(envelope)
-        const frames = await splitIntoFrames({
-          artifactType: "pq-message",
-          artifactBytes,
-          frameBytes: preferences.frameBytes,
-        })
+        const minimumFrameBytes = minimumFrameBytesForArtifact(artifactBytes.byteLength)
+        if (minimumFrameBytes > FRAME_BYTES_MAX) {
+          throw new AppError("QR_TOO_LARGE")
+        }
+        resultGenerationRef.current += 1
         setResult({
           kind: "pq",
           payload: buildV2Payload("pq-message", artifactBytes),
           envelope,
-          frames,
+          artifactType: "pq-message",
+          artifactBytes,
+          frameBytes: Math.max(preferences.frameBytes, minimumFrameBytes),
+          generation: resultGenerationRef.current,
           recipient: selectedRecipient,
           ...(sender === undefined ? {} : { sender }),
           createdAt: now,
@@ -520,9 +555,7 @@ export function EncryptPage() {
       {mode === "encrypt" ? (
         <>
           <div className="space-y-2">
-            <Label htmlFor="algorithm-select">
-              {t("encrypt.algorithmLabel")}
-            </Label>
+            <Label htmlFor="algorithm-select">{t("encrypt.algorithmLabel")}</Label>
             <Select
               value={algorithm}
               onValueChange={(value) => {
@@ -646,11 +679,7 @@ export function EncryptPage() {
             ) : (
               <Lock aria-hidden="true" />
             )}
-            {t(
-              busy
-                ? "encrypt.encryptButton.busy"
-                : "encrypt.encryptButton.idle",
-            )}
+            {t(busy ? "encrypt.encryptButton.busy" : "encrypt.encryptButton.idle")}
           </Button>
         </>
       ) : (
@@ -725,9 +754,7 @@ export function EncryptPage() {
               {decryptInputInvalid && (
                 <Alert variant="destructive" role="alert">
                   <AlertTitle>{t("encrypt.decrypt.invalidTitle")}</AlertTitle>
-                  <AlertDescription>
-                    {t("encrypt.decrypt.invalidBody")}
-                  </AlertDescription>
+                  <AlertDescription>{t("encrypt.decrypt.invalidBody")}</AlertDescription>
                 </Alert>
               )}
               {parsedDecrypt && (
@@ -754,9 +781,7 @@ export function EncryptPage() {
               {parsedPqUnsupported && (
                 <Alert variant="destructive" role="alert">
                   <AlertTitle>{t("keyDetail.badge.legacyProfile")}</AlertTitle>
-                  <AlertDescription>
-                    {t("encrypt.pqUnsupported.body")}
-                  </AlertDescription>
+                  <AlertDescription>{t("encrypt.pqUnsupported.body")}</AlertDescription>
                 </Alert>
               )}
               {parsedDecrypt && !parsedPqUnsupported && !canDecrypt && (
@@ -772,11 +797,7 @@ export function EncryptPage() {
                 onClick={() => void handleDecrypt()}
               >
                 {busy && <LoaderCircle aria-hidden="true" className="animate-spin" />}
-                {t(
-                  busy
-                    ? "encrypt.decryptButton.busy"
-                    : "encrypt.decryptButton.idle",
-                )}
+                {t(busy ? "encrypt.decryptButton.busy" : "encrypt.decryptButton.idle")}
               </Button>
             </CardContent>
           </Card>
@@ -806,14 +827,10 @@ export function EncryptPage() {
               </CardHeader>
               <CardContent className="space-y-3 p-4 pt-0">
                 {decrypted.kind === "unsigned" && (
-                  <p className="text-sm font-medium">
-                    {t("encrypt.result.unsigned")}
-                  </p>
+                  <p className="text-sm font-medium">{t("encrypt.result.unsigned")}</p>
                 )}
                 {decrypted.kind === "aes" && (
-                  <p className="text-sm font-medium">
-                    {t("encrypt.result.aesUnsigned")}
-                  </p>
+                  <p className="text-sm font-medium">{t("encrypt.result.aesUnsigned")}</p>
                 )}
                 {decrypted.kind === "signed-valid" && (
                   <div className="space-y-1 text-sm">
@@ -866,10 +883,7 @@ export function EncryptPage() {
       </p>
 
       {result && mode === "encrypt" && (
-        <section
-          aria-label={t("encrypt.result.sectionAria")}
-          className="space-y-5"
-        >
+        <section aria-label={t("encrypt.result.sectionAria")} className="space-y-5">
           <Card>
             <CardHeader className="p-4 pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -901,18 +915,42 @@ export function EncryptPage() {
               title={t("encrypt.result.qrTitle")}
             />
           ) : (
-            <AnimatedQrFrames
-              frames={result.frames}
-              frameIntervalMs={preferences.frameIntervalMs}
-              outputName={outputName || "pq-message"}
-              title={t("encrypt.result.pqTitle")}
-            />
+            <>
+              {frameSplit.error && (
+                <Alert variant="destructive" role="alert">
+                  <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>
+                  <AlertDescription>{localizedFrameError}</AlertDescription>
+                </Alert>
+              )}
+              {frameSplit.frames.length === 0 && frameSplit.splitting && (
+                <p aria-live="polite" className="text-sm text-muted-foreground">
+                  {t("qrDisplay.generating")}
+                </p>
+              )}
+              {frameSplit.frames.length > 0 && (
+                <AnimatedQrFrames
+                  frames={frameSplit.frames}
+                  frameIntervalMs={preferences.frameIntervalMs}
+                  outputName={outputName || "pq-message"}
+                  title={t("encrypt.result.pqTitle")}
+                  frameBytes={result.frameBytes}
+                  splitting={frameSplit.splitting}
+                  onFrameBytesChange={(frameBytes) => {
+                    setResult((current) =>
+                      current?.kind === "pq" ? { ...current, frameBytes } : current,
+                    )
+                    void saveDisplayPreference({ frameBytes })
+                  }}
+                  onFrameIntervalMsChange={(frameIntervalMs) =>
+                    void saveDisplayPreference({ frameIntervalMs })
+                  }
+                />
+              )}
+            </>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="output-name">
-              {t("encrypt.result.outputNameLabel")}
-            </Label>
+            <Label htmlFor="output-name">{t("encrypt.result.outputNameLabel")}</Label>
             <Input
               id="output-name"
               value={outputName}
@@ -982,7 +1020,7 @@ export function EncryptPage() {
               <DetailRow
                 label={t("encrypt.detail.frameCount")}
                 value={t("encrypt.detail.frameCountValue", {
-                  count: result.kind === "pq" ? result.frames.length : 1,
+                  count: result.kind === "pq" ? frameSplit.frames.length : 1,
                 })}
                 mono
               />
@@ -993,9 +1031,7 @@ export function EncryptPage() {
               <DetailRow
                 label={t("encrypt.detail.signature")}
                 value={
-                  result.kind === "pq" && result.sender
-                    ? t("common.yes")
-                    : t("common.na")
+                  result.kind === "pq" && result.sender ? t("common.yes") : t("common.na")
                 }
               />
               <DetailRow
@@ -1015,7 +1051,6 @@ export function EncryptPage() {
           </Card>
         </section>
       )}
-
     </section>
   )
 }

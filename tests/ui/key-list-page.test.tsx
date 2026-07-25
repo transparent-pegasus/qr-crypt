@@ -1,12 +1,17 @@
 import "./helpers/module-mocks"
-import { screen, waitFor, within } from "@testing-library/react"
+import { useState } from "react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { AppProviders, useSensitiveSession } from "@/app/providers"
+import { KeyDetailDialog, type KeySelection } from "@/components/key-detail-dialog"
+import { LanguageProvider } from "@/i18n"
 import {
   deleteBundle,
   deleteIdentity,
   deleteKeyRecord,
   fakeBundles,
+  fakeFeatures,
   fakeIdentities,
   fakeKeys,
   listIdentities,
@@ -26,6 +31,33 @@ function rowFor(text: string): HTMLButtonElement {
 async function renderKeyList(): Promise<void> {
   await renderApp("/saved")
   await screen.findByRole("heading", { name: "Key list" })
+}
+
+function SensitiveStateProbe() {
+  const { secretVisible } = useSensitiveSession()
+  return <output data-testid="secret-visible">{String(secretVisible)}</output>
+}
+
+function SymmetricDetailHarness() {
+  const [selection, setSelection] = useState<KeySelection | null>({
+    kind: "symmetric",
+    id: fakeKeys[0]!.id,
+  })
+  return (
+    <>
+      <SensitiveStateProbe />
+      <KeyDetailDialog
+        selection={selection}
+        identity={undefined}
+        previous={undefined}
+        symmetric={selection === null ? undefined : fakeKeys[0]}
+        onOpenChange={(open) => {
+          if (!open) setSelection(null)
+        }}
+        onChanged={async () => undefined}
+      />
+    </>
+  )
 }
 
 describe("key list page", () => {
@@ -125,44 +157,96 @@ describe("key list page", () => {
     await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
     dialog = await screen.findByRole("dialog", { name: /public-key bundle/ })
     expect(within(dialog).getByText(/OCF2 frames/)).toBeInTheDocument()
-    expect(within(dialog).getByRole("button", { name: "Back to details" })).toBeInTheDocument()
-    expect(within(dialog).queryByRole("button", { name: "View full screen" })).toBeNull()
+    expect(
+      within(dialog).getByRole("button", { name: "Back to details" }),
+    ).toBeInTheDocument()
+    const bundleFullscreen = await within(dialog).findByRole("button", {
+      name: "View full screen",
+    })
+    expect(bundleFullscreen).toBeEnabled()
     expect(within(dialog).queryByText(/Saved/)).toBeNull()
-    expect(splitIntoFrames).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        artifactType: "pq-public-identity",
-        frameCount: 40,
-      }),
-    )
-    expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameBytes")
-
-    await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
-    await user.click(within(dialog).getByRole("button", { name: "Encryption public-key QR" }))
-    expect(splitIntoFrames).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        artifactType: "pq-kem-public-key",
-        frameBytes: 140,
-      }),
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-public-identity",
+          frameBytes: 200,
+        }),
+      ),
     )
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
+    await user.click(bundleFullscreen)
+    let fullscreen = await screen.findByRole("dialog", {
+      name: /View .*public-key bundle.* full screen/,
+    })
+    expect(within(fullscreen).getByLabelText("Frame density")).toBeInTheDocument()
+    expect(within(fullscreen).getByLabelText("Display speed")).toBeInTheDocument()
+    await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
+    expect(screen.getByRole("dialog", { name: /public-key bundle/ })).toBeInTheDocument()
 
     await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
     await user.click(
-      within(dialog).getByRole("button", { name: "Signature-verification public-key QR" }),
+      within(dialog).getByRole("button", { name: "Encryption public-key QR" }),
     )
-    expect(splitIntoFrames).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        artifactType: "pq-dsa-public-key",
-        frameBytes: 140,
-      }),
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-kem-public-key",
+          frameBytes: 200,
+        }),
+      ),
     )
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
+    await user.click(
+      await within(dialog).findByRole("button", { name: "View full screen" }),
+    )
+    fullscreen = await screen.findByRole("dialog", {
+      name: /View .*encryption public key.* full screen/,
+    })
+    await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
+
+    await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "Signature-verification public-key QR",
+      }),
+    )
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-dsa-public-key",
+          frameBytes: 200,
+        }),
+      ),
+    )
+    expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
+    await user.click(
+      await within(dialog).findByRole("button", { name: "View full screen" }),
+    )
+    fullscreen = await screen.findByRole("dialog", {
+      name: /View .*signature-verification public key.* full screen/,
+    })
+    await user.click(within(fullscreen).getAllByRole("button", { name: "Close" })[0]!)
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
     await user.click(rowFor("共通鍵A"))
     dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
     dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    await user.click(
+      await within(dialog).findByRole("button", { name: "View full screen" }),
+    )
+    fullscreen = await screen.findByRole("dialog", {
+      name: /View Symmetric-key QR full screen/,
+    })
+    expect(within(fullscreen).getByText("Sensitive information")).toBeInTheDocument()
+    expect(fullscreen.querySelector("svg.lucide-triangle-alert")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    )
+    expect(within(fullscreen).queryByRole("button", { name: "PNG" })).toBeNull()
+    await user.keyboard("{Escape}")
+    expect(screen.getByRole("dialog", { name: "Symmetric-key QR" })).toBeInTheDocument()
+    expect(within(dialog).getByText("Sensitive information")).toBeInTheDocument()
     const png = within(dialog).getByRole("button", { name: "PNG" })
     const svg = within(dialog).getByRole("button", { name: "SVG" })
     const copy = within(dialog).getByRole("button", { name: "Copy" })
@@ -176,6 +260,36 @@ describe("key list page", () => {
     expect(svg).toBeEnabled()
     expect(copy).toBeEnabled()
     expect(within(dialog).queryByText(/Saved/)).toBeNull()
+  })
+
+  it("retains secretVisible across fullscreen close and clears it only with the detail dialog", async () => {
+    const user = userEvent.setup()
+    render(
+      <LanguageProvider initialLanguage="en">
+        <AppProviders features={fakeFeatures} pwaHook={undefined}>
+          <SymmetricDetailHarness />
+        </AppProviders>
+      </LanguageProvider>,
+    )
+    expect(screen.getByTestId("secret-visible")).toHaveTextContent("false")
+    let dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
+    await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
+    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    await waitFor(() =>
+      expect(screen.getByTestId("secret-visible")).toHaveTextContent("true"),
+    )
+    await user.click(
+      await within(dialog).findByRole("button", { name: "View full screen" }),
+    )
+    expect(screen.getByTestId("secret-visible")).toHaveTextContent("true")
+    await user.keyboard("{Escape}")
+    expect(screen.getByRole("dialog", { name: "Symmetric-key QR" })).toBeInTheDocument()
+    expect(screen.getByTestId("secret-visible")).toHaveTextContent("true")
+
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+    await waitFor(() =>
+      expect(screen.getByTestId("secret-visible")).toHaveTextContent("false"),
+    )
   })
 
   it("retargets selection to the new head after rotate and re-derives after revoke", async () => {
@@ -196,7 +310,9 @@ describe("key list page", () => {
     ).toBeInTheDocument()
 
     const newId = fakeIdentities[0]!.id
-    await user.click(within(dialog).getByRole("button", { name: "Revoke on this device" }))
+    await user.click(
+      within(dialog).getByRole("button", { name: "Revoke on this device" }),
+    )
     await waitFor(() =>
       expect(revokeIdentity).toHaveBeenCalledWith(newId, expect.any(Number)),
     )
@@ -289,7 +405,9 @@ describe("key list page", () => {
     resetUi()
     listKeyRecords.mockRejectedValueOnce(new Error("key read failed"))
     await renderKeyList()
-    expect(await screen.findByText("Symmetric keys could not be loaded")).toBeInTheDocument()
+    expect(
+      await screen.findByText("Symmetric keys could not be loaded"),
+    ).toBeInTheDocument()
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
   })
 
@@ -301,9 +419,13 @@ describe("key list page", () => {
     await user.click(rowFor("自分のPQ ID"))
     const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
     expect(
-      within(dialog).getByText(/cryptographic operations and QR re-export are unavailable/),
+      within(dialog).getByText(
+        /cryptographic operations and QR re-export are unavailable/,
+      ),
     ).toBeInTheDocument()
-    expect(within(dialog).queryByRole("button", { name: "Public-key bundle QR" })).toBeNull()
+    expect(
+      within(dialog).queryByRole("button", { name: "Public-key bundle QR" }),
+    ).toBeNull()
     expect(within(dialog).queryByRole("button", { name: "Rotate" })).toBeNull()
     expect(
       within(dialog).queryByRole("button", { name: "Revoke on this device" }),

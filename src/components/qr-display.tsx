@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AlertCircle, Expand, X } from "lucide-react"
 import { renderQrDataUrl } from "@/qr/encode"
 import type { QrEcLevel } from "@/schemas/domain"
-import { isQryptPayload } from "@/features/presentation"
+import { isQrCryptPayload } from "@/features/presentation"
 import { toAppError } from "@/crypto/errors"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -14,11 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  useI18n,
-  useLocalizedMessage,
-  type LocalizedMessage,
-} from "@/i18n"
+import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
 
 export interface QrDisplayProps {
   payload: string
@@ -27,6 +23,9 @@ export interface QrDisplayProps {
   title?: string
   onRendered?: () => void
   fullscreenEnabled?: boolean
+  fullscreenControls?: ReactNode
+  fullscreenOpen?: boolean
+  onFullscreenOpenChange?: (open: boolean) => void
 }
 
 export function QrDisplay({
@@ -36,6 +35,9 @@ export function QrDisplay({
   title: titleProp,
   onRendered,
   fullscreenEnabled = true,
+  fullscreenControls,
+  fullscreenOpen,
+  onFullscreenOpenChange,
 }: QrDisplayProps) {
   const { t } = useI18n()
   const title = titleProp ?? t("qrDisplay.defaultTitle")
@@ -45,7 +47,12 @@ export function QrDisplay({
     dataUrl: string | null
     error: LocalizedMessage | null
   }>({ identity: "", dataUrl: null, error: null })
-  const [fullscreen, setFullscreen] = useState(false)
+  const [uncontrolledFullscreen, setUncontrolledFullscreen] = useState(false)
+  const fullscreen = fullscreenOpen ?? uncontrolledFullscreen
+  const changeFullscreen = (open: boolean) => {
+    if (fullscreenOpen === undefined) setUncontrolledFullscreen(open)
+    onFullscreenOpenChange?.(open)
+  }
   const renderedCallbackRef = useRef(onRendered)
   useEffect(() => {
     renderedCallbackRef.current = onRendered
@@ -53,13 +60,13 @@ export function QrDisplay({
 
   useEffect(() => {
     let active = true
-    if (!isQryptPayload(payload)) {
+    if (!isQrCryptPayload(payload)) {
       queueMicrotask(() => {
         if (active) {
           setRendered({
             identity,
             dataUrl: null,
-            error: "qrDisplay.notQryptPayload",
+            error: "qrDisplay.notQrCryptPayload",
           })
         }
       })
@@ -134,7 +141,7 @@ export function QrDisplay({
             variant="outline"
             className="h-11 cursor-pointer focus-visible:ring-2"
             disabled={!dataUrl}
-            onClick={() => setFullscreen(true)}
+            onClick={() => changeFullscreen(true)}
           >
             <Expand aria-hidden="true" />
             {t("qrDisplay.fullscreen.button")}
@@ -143,40 +150,40 @@ export function QrDisplay({
       </div>
 
       {fullscreenEnabled && (
-        <Dialog open={fullscreen} onOpenChange={setFullscreen}>
-          <DialogContent className="h-dvh max-w-none border-0 bg-white p-4 text-slate-950 sm:rounded-none [&>button.absolute]:hidden">
+        <Dialog open={fullscreen} onOpenChange={changeFullscreen}>
+          <DialogContent className="grid h-dvh min-w-0 max-w-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] gap-3 overflow-hidden border-0 bg-white text-slate-950 [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))] landscape:grid-cols-[minmax(0,1fr)_auto] landscape:grid-rows-1 sm:rounded-none [&>button.absolute]:hidden">
             <DialogHeader className="sr-only">
-              <DialogTitle>
-                {t("qrDisplay.fullscreen.title", { title })}
-              </DialogTitle>
-              <DialogDescription>
-                {t("qrDisplay.fullscreen.desc")}
-              </DialogDescription>
+              <DialogTitle>{t("qrDisplay.fullscreen.title", { title })}</DialogTitle>
+              <DialogDescription>{t("qrDisplay.fullscreen.desc")}</DialogDescription>
             </DialogHeader>
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4">
+            <div className="grid min-h-0 min-w-0 place-items-center overflow-hidden">
               {dataUrl && (
                 <img
                   src={dataUrl}
                   alt={t("qrDisplay.fullscreen.imageAlt", { title })}
                   width={size}
                   height={size}
-                  className="h-auto w-[min(90vw,512px)] bg-white"
+                  className="h-full min-h-0 min-w-0 max-h-full w-auto max-w-full object-contain bg-white"
                 />
               )}
-              <p className="text-center text-sm text-slate-700">
-                {t("qrDisplay.fullscreen.brightnessHint")}
-              </p>
-              <DialogClose asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 min-w-32 cursor-pointer border-slate-300 bg-white text-slate-950 focus-visible:ring-2"
-                >
-                  <X aria-hidden="true" />
-                  {t("common.close")}
-                </Button>
-              </DialogClose>
             </div>
+            {fullscreenControls ?? (
+              <div className="flex shrink-0 flex-col items-center justify-center gap-3 landscape:w-72">
+                <p className="text-center text-sm text-slate-700">
+                  {t("qrDisplay.fullscreen.brightnessHint")}
+                </p>
+                <DialogClose asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 min-w-32 cursor-pointer border-slate-300 bg-white text-slate-950 focus-visible:ring-2"
+                  >
+                    <X aria-hidden="true" />
+                    {t("common.close")}
+                  </Button>
+                </DialogClose>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       )}

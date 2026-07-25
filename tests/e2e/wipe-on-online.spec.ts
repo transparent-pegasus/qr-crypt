@@ -25,14 +25,14 @@ async function controlSentinel(page: Page, control: SentinelControl): Promise<vo
       status: 200,
       contentType: "text/plain; charset=utf-8",
       headers: { "cache-control": "no-store" },
-      body: "QRYPT-REACHABLE",
+      body: "QR-CRYPT-REACHABLE",
     })
   })
 }
 
 async function installDatabaseDeleteProbe(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const key = "__qrypt_e2e_delete_database_calls"
+    const key = "__qr_crypt_e2e_delete_database_calls"
     const nativeDelete = IDBFactory.prototype.deleteDatabase
     IDBFactory.prototype.deleteDatabase = function deleteDatabase(name: string) {
       const calls = JSON.parse(sessionStorage.getItem(key) ?? "[]") as string[]
@@ -46,7 +46,7 @@ async function databaseDeleteCalls(page: Page): Promise<string[]> {
   return page.evaluate(
     () =>
       JSON.parse(
-        sessionStorage.getItem("__qrypt_e2e_delete_database_calls") ?? "[]",
+        sessionStorage.getItem("__qr_crypt_e2e_delete_database_calls") ?? "[]",
       ) as string[],
   )
 }
@@ -89,7 +89,7 @@ test("returning online to a reachable sentinel after key creation resets data an
     name: "Local data was reset after an online connection was detected",
   })
   await expect(wipedHeading).toBeVisible({ timeout: 45_000 })
-  expect(await databaseDeleteCalls(page)).toContain("qrypt")
+  expect(await databaseDeleteCalls(page)).toContain("qr-crypt")
   await expect(mainNavigation(page)).toBeHidden()
 
   sentinel.reachable = false
@@ -172,7 +172,7 @@ test("preserves pending when a two-tab reset broadcast races a peer online-marke
 
     await peer.evaluate(() => {
       sessionStorage.setItem("__peer_marker_writes", "0")
-      const channel = new BroadcastChannel("qrypt-wipe")
+      const channel = new BroadcastChannel("qr-crypt-wipe")
       channel.addEventListener("message", () => {
         const count = Number(sessionStorage.getItem("__peer_wipe_messages") ?? "0")
         sessionStorage.setItem("__peer_wipe_messages", String(count + 1))
