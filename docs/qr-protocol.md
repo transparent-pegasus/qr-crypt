@@ -89,7 +89,8 @@ All decryption-time failures (AAD mismatch, tag mismatch, wrong key) are normali
 | Kind | EC | quiet zone | Size |
 |---|---|---|---|
 | Ciphertext (OCM1) | Q (default; configurable in settings) | 4 | 512px |
-| Keys (OCK1/OCP1) | **H, fixed** | 4 | 512px |
+| Symmetric key (OCK1) | **H, fixed** | 4 | 512px |
+| Frames (OCF2: ciphertext, public key, identity) | **Q, fixed** | 4 | 512px |
 
 Capacity (QR v40, byte mode): L=2953 / M=2331 / Q=1663 / H=1273 bytes. Oversize payloads fail with `QR_TOO_LARGE` (caught both by a pre-generation check and by trapping the generation exception). The expected size is shown to the user in advance via `estimatePayloadChars(plaintextBytes, alg)` (tests guarantee it stays within ±10% of measured values).
 
