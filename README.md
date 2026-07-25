@@ -211,7 +211,7 @@ request targeting `main` or `dev`:
 * A `push` to `main` additionally publishes a signed prerelease via
   `.github/workflows/github-release.yml`
 
-`.github/workflows/dev-to-main-pr.yml` opens a `dev` → `main` promotion pull request on a `dev` push, or on an intentional `workflow_dispatch`, when no matching open PR exists, `dev` has commits ahead of `main`, and `main` does not already have `dev`'s commit tree. It never merges or pushes.
+`.github/workflows/dev-to-main-pr.yml` opens the pull request titled `release: promote dev to production` on a `dev` push, or on an intentional `workflow_dispatch`, when no matching open PR exists, `dev` has commits ahead of `main`, and `main` does not already have `dev`'s commit tree. It never merges or pushes. The title says release rather than merge because merging it is what deploys production and publishes the signed release.
 
 * Closing this PR without merging is a pause, not a permanent veto: the next push to `dev` opens a new one because a new dev commit is new information; `workflow_dispatch` also opens one as a deliberate human action, so it cannot conflict with a human veto
 * This is a real production gate only while `main`'s ruleset requires `validate` and `e2e` with strict up-to-date status checks. If those required checks are removed, even a red dev push becomes an openly mergeable production promotion

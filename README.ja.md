@@ -211,7 +211,7 @@ GitHub の Cloudflare Git Integration とは二重運用しません。GitHub Ac
 * `main` への `push` では追加で `.github/workflows/github-release.yml` が署名付き
   prerelease を発行する
 
-`.github/workflows/dev-to-main-pr.yml` は `dev` への push、または意図的な `workflow_dispatch` で、対応する open PR がなく、`dev` が `main` より先行するコミットを持ち、`main` に `dev` のコミットツリーがまだない場合に `dev` → `main` 昇格 PR を開く。マージも push もしない。
+`.github/workflows/dev-to-main-pr.yml` は `dev` への push、または意図的な `workflow_dispatch` で、対応する open PR がなく、`dev` が `main` より先行するコミットを持ち、`main` に `dev` のコミットツリーがまだない場合に `release: promote dev to production` という PR を開く。マージも push もしない。マージが本番デプロイと署名付きリリースの発行そのものであるため、タイトルは merge ではなく release と表現する。
 
 * この PR をマージせずに閉じるのは永久的な拒否ではなく一時停止である。次の `dev` push は新しい情報なので新しい PR を開く。`workflow_dispatch` も人が意図して行う操作であり、人による拒否と競合しない
 * これは `main` の ruleset が `validate` と `e2e` を strict up-to-date で必須にしている間だけ実効性のある本番ゲートである。必須チェックを削除すると、チェックに失敗した dev push であっても本番昇格を誰でもマージできる
