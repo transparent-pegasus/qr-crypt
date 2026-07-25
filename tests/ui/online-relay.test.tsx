@@ -885,7 +885,7 @@ describe("online relay UI", () => {
         "There is too much data to generate a QR code at this error-correction level.",
       ),
     ).not.toBeInTheDocument()
-    expect(screen.getByText("Ciphertext QR relay")).toBeInTheDocument()
+    expect(screen.getByText("OCF2 message-header QR relay")).toBeInTheDocument()
   })
 
   it("ignores a deferred render rejection after eligibility loss", async () => {
@@ -899,14 +899,14 @@ describe("online relay UI", () => {
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
 
     rendered.rerender(relayElement({ eligible: false }))
-    expect(screen.queryByText("Ciphertext QR relay")).not.toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     await act(async () => {
       pendingRender.reject(new Error("ineligible render failure"))
       await pendingRender.promise.catch(() => undefined)
     })
     rendered.rerender(relayElement({ eligible: true }))
 
-    expect(screen.getByText("Ciphertext QR relay")).toBeInTheDocument()
+    expect(screen.getByText("OCF2 message-header QR relay")).toBeInTheDocument()
     expect(
       screen.queryByText(
         "There is too much data to generate a QR code at this error-correction level.",
