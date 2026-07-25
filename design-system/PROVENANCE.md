@@ -39,7 +39,7 @@ spec §5「ui-ux-pro-max-skill の使用」の実施記録。
 
 ページ別規則は `design-system/pages/{encrypt,keys,saved-qr,settings}.md`(spec §5 の指定 5 ファイル構成)。
 
-その後プロダクト名は Qrypt へ改名(2026-07-21)
+その後プロダクト名は Qrypt へ改名(2026-07-21)、さらに QR Crypt へ改名(2026-07-25)
 
 ## 4. License
 

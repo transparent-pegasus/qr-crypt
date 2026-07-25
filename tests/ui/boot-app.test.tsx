@@ -68,7 +68,7 @@ describe("App boot gate", () => {
     setTestOnlineStatus(true)
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe,
       readDecision: async () => decision({ sensitiveDataExists: false }),
     })
@@ -87,7 +87,7 @@ describe("App boot gate", () => {
     setTestOnlineStatus(true)
     let resolveDecision: ((value: BootDecisionSnapshot) => void) | undefined
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: () =>
         new Promise((resolve) => {
           resolveDecision = resolve
@@ -123,7 +123,7 @@ describe("App boot gate", () => {
     setTestOnlineStatus(true)
     const controller = createBootController({
       consumeMaintenanceToken: vi.fn(async () => true),
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: async () => decision(overrides),
     })
     await renderApp("/encrypt", { bootController: controller })
@@ -151,7 +151,7 @@ describe("App boot gate", () => {
     setTestOnlineStatus(true)
     let finishWipe: ((report: BestEffortResetReport) => void) | undefined
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(
         () =>
           new Promise<BestEffortResetReport>((resolve) => {
@@ -173,7 +173,7 @@ describe("App boot gate", () => {
 
   it("shows the reset completion copy after a successful wipe", async () => {
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({ ok: true, failedSteps: [] })),
       readDecision: async () => decision({ sensitiveDataExists: true }),
     })
@@ -195,7 +195,7 @@ describe("App boot gate", () => {
 
   it("shows RESET_FAILED and honest deletion wording after a partial failure", async () => {
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({
         ok: false,
         failedSteps: ["database-verification"],

@@ -70,7 +70,7 @@ async function assertNoRelayPersistence(
 
     const databaseValues: string[] = []
     await new Promise<void>((resolve, reject) => {
-      const opening = indexedDB.open("qrypt")
+      const opening = indexedDB.open("qr-crypt")
       opening.onerror = () => reject(opening.error)
       opening.onsuccess = () => {
         const database = opening.result

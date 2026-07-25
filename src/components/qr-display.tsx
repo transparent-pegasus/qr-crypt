@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react"
 import { AlertCircle, Expand, X } from "lucide-react"
 import { renderQrDataUrl } from "@/qr/encode"
 import type { QrEcLevel } from "@/schemas/domain"
-import { isQryptPayload } from "@/features/presentation"
+import { isQrCryptPayload } from "@/features/presentation"
 import { toAppError } from "@/crypto/errors"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -60,13 +60,13 @@ export function QrDisplay({
 
   useEffect(() => {
     let active = true
-    if (!isQryptPayload(payload)) {
+    if (!isQrCryptPayload(payload)) {
       queueMicrotask(() => {
         if (active) {
           setRendered({
             identity,
             dataUrl: null,
-            error: "qrDisplay.notQryptPayload",
+            error: "qrDisplay.notQrCryptPayload",
           })
         }
       })

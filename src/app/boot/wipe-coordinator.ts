@@ -11,7 +11,7 @@ import { closeDb, engageDatabaseAccessBarrier } from "@/storage/database"
 export const WIPE_LOCK_NAME = `${WIPE_BROADCAST_CHANNEL}-exclusive`
 export const WIPE_COORDINATION_TIMEOUT_MS = 3_000
 
-const WIPE_REQUEST_TYPE = "qrypt-wipe-request"
+const WIPE_REQUEST_TYPE = "qr-crypt-wipe-request"
 
 interface WipeRequestMessage {
   type: typeof WIPE_REQUEST_TYPE

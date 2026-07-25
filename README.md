@@ -1,4 +1,4 @@
-# Qrypt
+# QR Crypt
 
 日本語版: [README.ja.md](README.ja.md)
 
@@ -8,11 +8,11 @@ Offline-encryption QR PWA. A Progressive Web App that encrypts plaintext on-devi
 
 **What it does not do**: transmit plaintext or private keys off the device, store keys in the cloud, use custom cryptographic algorithms, depend on CDNs at runtime, treat an offline indicator as proof of safety, or persist message ciphertext inside the app (maintainer requirement; session display and user-initiated export only).
 
-## How Qrypt differs from other encryption apps
+## How QR Crypt differs from other encryption apps
 
-There are plenty of apps that merely "encrypt and decrypt strings". What Qrypt aims for is not novelty in cryptographic algorithms but **closing off, at the design stage, the very paths by which plaintext and keys leave the device**. Even with correct encryption, holes in key and plaintext handling, delivery paths, or the execution environment make the result insecure. Qrypt puts its focus exactly there.
+There are plenty of apps that merely "encrypt and decrypt strings". What QR Crypt aims for is not novelty in cryptographic algorithms but **closing off, at the design stage, the very paths by which plaintext and keys leave the device**. Even with correct encryption, holes in key and plaintext handling, delivery paths, or the execution environment make the result insecure. QR Crypt puts its focus exactly there.
 
-* **Data-exfiltration paths eliminated from the runtime** — The app has no external networking as an application feature (no third-party or cross-origin clients). Permitted runtime requests are the same-origin `GET /reachability-sentinel.txt` probe that gates wipe-on-online, the recurring same-origin `HEAD /manifest.webmanifest?reach=…` display probe, and static/PWA asset fetch/revalidation — none carries user or frame data. It loads no external fonts, CDNs, analytics, error-reporting SDKs, or remote configuration. CSP (`connect-src 'self'` and more) blocks outbound traffic at the browser level as well. Where a typical "encryption web app" loads CDNs, fonts, and measurement tags — a latent exfiltration surface — Qrypt keeps requests same-origin and non-payload-bearing.
+* **Data-exfiltration paths eliminated from the runtime** — The app has no external networking as an application feature (no third-party or cross-origin clients). Permitted runtime requests are the same-origin `GET /reachability-sentinel.txt` probe that gates wipe-on-online, the recurring same-origin `HEAD /manifest.webmanifest?reach=…` display probe, and static/PWA asset fetch/revalidation — none carries user or frame data. It loads no external fonts, CDNs, analytics, error-reporting SDKs, or remote configuration. CSP (`connect-src 'self'` and more) blocks outbound traffic at the browser level as well. Where a typical "encryption web app" loads CDNs, fonts, and measurement tags — a latent exfiltration surface — QR Crypt keeps requests same-origin and non-payload-bearing.
 * **Offline-only crypto with a narrow online gate** — While online, encryption, decryption, key management, storage, and settings stay blocked. The online screen covers PWA installation and, on a logically clean origin whose sensitive-store scan completed without error, an optical relay that forwards exact canonical OCF2 strings whose untrusted outer header declares `pq-message` (no assembly, no decryption, no frame-derived app persistence, no frame-bearing network request; see [docs/threat-model.md](docs/threat-model.md) T19). wipe-on-online (default ON) fires only when network-confirmed (reachability sentinel body match) and attempts best-effort logical deletion of local data (physical erasure is not guaranteed). Residual risk is documented in the threat model (T18: probe false-negative window; T19: untrusted relay hop).
 * **Air-gapped key exchange with no server in between** — Keys and public keys are exchanged as QR codes face-to-face; message ciphertext is also QR-framed and may additionally pass through a dedicated online relay as verbatim OCF2 text. There is no cloud key escrow and no account sync. Keys live only in the device's IndexedDB; the app itself never transmits or stores them externally, and the only way key material leaves the device is a deliberate, strongly-confirmed user export of a key QR (see threat model T3). Message ciphertext is never persisted to app-managed IndexedDB/localStorage — only transient on-screen display and user-initiated PNG/SVG/ZIP or clipboard export (the latter may remain in the OS, browser, or sync targets and are outside the scope of wipe/purge).
 * **Authenticated encryption with strict failure behavior** — AEAD (AES-GCM) with AAD provides tamper detection; on authentication failure, no partial plaintext is ever shown. Internal decryption exceptions are normalized into fixed user-facing messages; key material and stack traces never reach the screen or logs. This rules out the "unauthenticated mode" and "partial output on failure" common in naive crypto apps.
@@ -47,7 +47,7 @@ Plaintext is auto-cleared after successful encryption by default. Auto-clear aft
 
 ## Post-quantum cryptography (v2, experimental)
 
-v2 is **experimental**. We distinguish `implementation-complete` — the implementation, tests, and documentation are all present in the repository — from `release-approved` — reached only after an independent third party has reviewed the pinned versions and the app as a whole and the review has been recorded ([docs/security-review.md](docs/security-review.md)). Because the project is not independently audited, `release-approved` has not been reached, and the UI, README, and CI keep the experimental / not-independently-audited labeling. Qrypt adopts implementations of the FIPS 203/204 algorithms; it does not claim to be "FIPS certified" or "perfectly secure".
+v2 is **experimental**. We distinguish `implementation-complete` — the implementation, tests, and documentation are all present in the repository — from `release-approved` — reached only after an independent third party has reviewed the pinned versions and the app as a whole and the review has been recorded ([docs/security-review.md](docs/security-review.md)). Because the project is not independently audited, `release-approved` has not been reached, and the UI, README, and CI keep the experimental / not-independently-audited labeling. QR Crypt adopts implementations of the FIPS 203/204 algorithms; it does not claim to be "FIPS certified" or "perfectly secure".
 
 ### Available suites
 
@@ -120,7 +120,7 @@ mise install
 
 ```bash
 git clone <repository-url>
-cd qrypt
+cd qr-crypt
 mise install
 aube ci          # or, first time only, aube install
 ```
@@ -215,7 +215,7 @@ This is not run in parallel with GitHub's Cloudflare Git Integration. GitHub Act
 
 The installed app's metadata (PWA manifest name/description) is fixed in English, while the in-app UI language is switchable between English and Japanese.
 
-**This app has no update mechanism.** To use a new version, sanitize the device (a full format alone does not guarantee erasure on flash/SSD media — see the wipe note above) and perform a fresh offline installation. Never bring a device that holds or has held keys, PQ identities, a Vault key, or plaintext-bearing session state back online without sanitizing it first. A dedicated clean-origin relay device is the exception: it should ideally never have held Qrypt keys and stays online only for the optical relay below.
+**This app has no update mechanism.** To use a new version, sanitize the device (a full format alone does not guarantee erasure on flash/SSD media — see the wipe note above) and perform a fresh offline installation. Never bring a device that holds or has held keys, PQ identities, a Vault key, or plaintext-bearing session state back online without sanitizing it first. A dedicated clean-origin relay device is the exception: it should ideally never have held QR Crypt keys and stays online only for the optical relay below.
 
 ### Using the online optical relay
 
@@ -226,7 +226,7 @@ When two offline devices cannot show QR codes to each other, a third **online** 
 3. **Recipient-side online relay** — pastes the blob into **Text → QR** and plays the same frame strings for the recipient's camera. There are no app-provided file-download controls in the relay UI.
 4. **Recipient offline device** — scans and completes the transfer; only this offline endpoint performs authoritative assembly and cryptographic validation (AEAD, and signature when present).
 
-The relay forwards exact canonical OCF2 strings whose untrusted outer header declares `pq-message`. It does not assemble, decrypt, re-encrypt, or touch key material. Public-key and identity exchange stays a face-to-face workflow — the outer-header filter is not an enforcement guarantee that only ciphertext is carried. Prefer a relay device that has never held Qrypt keys.
+The relay forwards exact canonical OCF2 strings whose untrusted outer header declares `pq-message`. It does not assemble, decrypt, re-encrypt, or touch key material. Public-key and identity exchange stays a face-to-face workflow — the outer-header filter is not an enforcement guarantee that only ciphertext is carried. Prefer a relay device that has never held QR Crypt keys.
 
 ### Breaking changes in the v2 update (caution)
 

@@ -284,7 +284,7 @@ describe("signed composition golden", () => {
         "7e7cc499f2d0f3bb0bb7aa61a3705c83bfc5cf2446b6bc81a1aa4badd2ea25ae",
       )
       expect(await sha256Hex(encodeMlKemEnvelopeV2(fixture.envelope))).toBe(
-        "5986a6b363df30bc95dfa668b03359315df88d3b7f67593dbe62bf61cc4b2f18",
+        "a921a13f77a1312a39730dafb51b26eb6c828da3cfa9c1cc79bf42c0c665ef7b",
       )
       const inner = await fixture.client.openPqEnvelope(recipient(fixture))
       if (inner.kind !== "signed") throw new Error("expected signed inner")
@@ -293,7 +293,7 @@ describe("signed composition golden", () => {
       expect(signed.body.createdAt).toBe(CREATED_AT)
       expect(signed.body.plaintext).toEqual(fixture.plaintext)
       expect(await sha256Hex(signed.signature.value)).toBe(
-        "e14ce55d6babde5635701fcf79566b8b064fc353ccbbdc7b8de50ade1385fcb2",
+        "73d9d5c706e2190bdccc2cdb2b1fd6c5139a02ce520552556ee5f043c4a27784",
       )
     } finally {
       fixture.client.dispose()

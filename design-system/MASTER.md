@@ -1,4 +1,4 @@
-# Qrypt — Design System MASTER
+# QR Crypt — Design System MASTER
 
 > ページ実装時は先に `design-system/pages/<page>.md` を参照し、存在すればそちらが本ファイルを上書きする。
 > 本ファイルは ui-ux-pro-max-skill の生成結果(`design-system/offline-cipher/MASTER.md`、検索クエリは spec §5 の 3 件)を基に、

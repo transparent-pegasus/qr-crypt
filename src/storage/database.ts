@@ -10,7 +10,7 @@ import type {
   StoredKeyRecord,
 } from "@/schemas/domain"
 
-export const DB_NAME = "qrypt"
+export const DB_NAME = "qr-crypt"
 export const DB_VERSION = 3
 
 export const STORE_KEYS = "keys"

@@ -82,6 +82,6 @@ export function shortTechnicalId(value: string | undefined): string {
   return value.length > 8 ? `${value.slice(0, 8)}…` : value
 }
 
-export function isQryptPayload(payload: string): boolean {
+export function isQrCryptPayload(payload: string): boolean {
   return /^OC(?:M1|K1|P1|B1|M2|P2|S2|I2|B2|F2):/.test(payload)
 }

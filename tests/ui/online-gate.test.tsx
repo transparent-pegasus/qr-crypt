@@ -44,7 +44,7 @@ describe("OnlineGate", () => {
     const controller = createBootController({
       fetchImpl: vi.fn(async () => ({
         status: 200,
-        text: vi.fn(async () => "QRYPT-REACHABLE"),
+        text: vi.fn(async () => "QR-CRYPT-REACHABLE"),
       })) as unknown as typeof fetch,
       readDecision: async () => ({
         wipeOnOnline: true,

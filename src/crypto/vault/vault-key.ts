@@ -12,7 +12,7 @@ import { getDb, STORE_APP_METADATA, type KeyValueRow } from "@/storage/database"
 
 export const VAULT_KEY_METADATA_KEY = "vault-key"
 
-const VAULT_LOCK_NAME = "qrypt-vault-key"
+const VAULT_LOCK_NAME = "qr-crypt-vault-key"
 
 let vaultKeyPromise: Promise<CryptoKey> | undefined
 

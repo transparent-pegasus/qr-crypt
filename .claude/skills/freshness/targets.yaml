@@ -354,7 +354,7 @@ invariants:
       - vite.config.ts # SW must NEVER precache/cache the sentinel
       - public/_headers # sentinel route stays no-store
     rule: >
-      Sentinel body ("QRYPT-REACHABLE") and REACHABILITY_SENTINEL_BODY/_PATH
+      Sentinel body ("QR-CRYPT-REACHABLE") and REACHABILITY_SENTINEL_BODY/_PATH
       change only together, with a coordinated deploy — the sentinel gates the
       wipe path. The service worker must never serve it from cache: the
       vite.config.ts runtimeCaching route for it stays NetworkOnly, the

@@ -1,4 +1,4 @@
-# Qrypt QR Protocol Specification v1
+# QR Crypt QR Protocol Specification v1
 
 This document is the authoritative specification of the v1 payloads exchanged via QR codes. The implementation (`src/qr/payload.ts`, `src/crypto/*`) and the unit tests follow this document.
 

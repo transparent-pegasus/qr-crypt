@@ -191,7 +191,7 @@ const en = {
     "Signed post-quantum ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
 
   "qrDisplay.defaultTitle": "QR code",
-  "qrDisplay.notQryptPayload":
+  "qrDisplay.notQrCryptPayload":
     "A QR code cannot be generated because this is not an app payload.",
   "qrDisplay.error.title": "The QR code could not be generated",
   "qrDisplay.image.alt": "{title} image",
@@ -820,7 +820,7 @@ const ja = {
     "署名付きポスト量子 ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
 
   "qrDisplay.defaultTitle": "QRコード",
-  "qrDisplay.notQryptPayload":
+  "qrDisplay.notQrCryptPayload":
     "本アプリのペイロードではないためQRコードを生成できません。",
   "qrDisplay.error.title": "QRコードを生成できません",
   "qrDisplay.image.alt": "{title}の画像",

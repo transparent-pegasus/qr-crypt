@@ -160,7 +160,7 @@ describe("offline acknowledgement shell", () => {
       }),
     )
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: async () => decision(),
     })
 
@@ -257,7 +257,7 @@ describe("offline acknowledgement shell", () => {
       const consumeMaintenanceToken = vi.fn(async () => true)
       const controller = createBootController({
         consumeMaintenanceToken,
-        fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+        fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
         performWipe,
         readDecision: async () =>
           decision({
@@ -293,7 +293,7 @@ describe("offline acknowledgement shell", () => {
     const user = userEvent.setup()
     const reloadPage = vi.fn()
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({ ok: true, failedSteps: [] })),
       readDecision: async () => decision({ sensitiveDataExists: true }),
     })
@@ -329,7 +329,7 @@ describe("offline acknowledgement shell", () => {
   it("[acceptance 6] gives partial failure no acknowledgement or resume path", async () => {
     setTestOnlineStatus(true)
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({
         ok: false,
         failedSteps: ["database-verification"],
@@ -359,7 +359,7 @@ describe("offline acknowledgement shell", () => {
 
   it("reconciles an eventless offline/online round trip exactly once", async () => {
     setTestOnlineStatus(true)
-    const sentinelFetch = vi.fn(async () => response("QRYPT-REACHABLE"))
+    const sentinelFetch = vi.fn(async () => response("QR-CRYPT-REACHABLE"))
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const consumeMaintenanceToken = vi.fn(async () => false)
     const readDecision = vi
@@ -408,7 +408,7 @@ describe("offline acknowledgement shell", () => {
   it("persists pending across reload and clears it only on acceptance", async () => {
     setTestOnlineStatus(true)
     const onlineController = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: onlineController })
@@ -516,7 +516,7 @@ describe("offline acknowledgement shell", () => {
     })
     setTestOnlineStatus(true)
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: controller })
@@ -609,7 +609,7 @@ describe("offline acknowledgement shell", () => {
     let displayReachable = true
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).startsWith("/reachability-sentinel.txt")) {
-        return response("QRYPT-REACHABLE")
+        return response("QR-CRYPT-REACHABLE")
       }
       if (!displayReachable) throw new TypeError("offline")
       return response("manifest", 200)

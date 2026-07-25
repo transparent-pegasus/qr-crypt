@@ -24,8 +24,8 @@
 // StrictMode's double mount.
 
 export const REACHABILITY_SENTINEL_PATH = "/reachability-sentinel.txt"
-export const REACHABILITY_SENTINEL_BODY = "QRYPT-REACHABLE"
-export const WIPE_BROADCAST_CHANNEL = "qrypt-wipe"
+export const REACHABILITY_SENTINEL_BODY = "QR-CRYPT-REACHABLE"
+export const WIPE_BROADCAST_CHANNEL = "qr-crypt-wipe"
 
 export type CleanOriginProof = "confirmed-clean" | "dirty" | "indeterminate"
 export type RelayEligibility = "pending" | "eligible" | "ineligible"

@@ -81,8 +81,8 @@ function maximumSignedArtifactBytes(plaintextBytes: number): number {
 }
 
 const rawSchema = z.object({
-  VITE_APP_NAME: z.string().min(1).default("Qrypt"),
-  VITE_APP_SHORT_NAME: z.string().min(1).default("Qrypt"),
+  VITE_APP_NAME: z.string().min(1).default("QR Crypt"),
+  VITE_APP_SHORT_NAME: z.string().min(1).default("QR Crypt"),
   VITE_DEFAULT_ALGORITHM: z
     .enum(["A256GCM", "MLKEM1024_A256GCM", "MLKEM1024_MLDSA87_A256GCM"])
     .default("A256GCM"),

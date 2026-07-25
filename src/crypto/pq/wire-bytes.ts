@@ -18,7 +18,7 @@ import { concatBytes, sha256Hex, utf8ToBytes } from "@/lib/bytes"
 import { KEY_ID_PATTERN, KEY_ID_RAW_BYTES } from "@/lib/limits"
 
 // Domain-separation labels are part of the wire protocol.
-export const PQ_MESSAGE_DOMAIN_V2 = "QRYPT-MESSAGE-V2"
+export const PQ_MESSAGE_DOMAIN_V2 = "QR-CRYPT-MESSAGE-V2"
 
 // ML-DSA signing context (fixed; FIPS 204 context, at most 255B).
 export function mlDsaContextV2(): Uint8Array {
@@ -39,7 +39,7 @@ export function keyIdRawBytes(keyId: string): Uint8Array {
 }
 
 // HKDF info (frozen wire contract):
-//   info = UTF8("QRYPT-MESSAGE-V2") || 0x00 || UTF8(wireSuite) || 0x00
+//   info = UTF8("QR-CRYPT-MESSAGE-V2") || 0x00 || UTF8(wireSuite) || 0x00
 //          || kemKeyIdRaw(16 bytes) || 0x02
 // The trailing 0x02 is the protocol version. Salt is 32 CSPRNG bytes per encryption
 // (HKDF_SALT_BYTES).
@@ -84,7 +84,7 @@ export function buildVaultAadV2(fields: VaultAadFieldsV2): Uint8Array {
   if (!roleMatchesAlgorithm) throw new AppError("ENCRYPTION_FAILED")
   const value: CanonicalCborValue = {
     version: 2,
-    type: "qrypt-vault-aad",
+    type: "qr-crypt-vault-aad",
     identityId: fields.identityId,
     role: fields.role,
     algorithm: fields.algorithm,
@@ -97,15 +97,15 @@ export function buildVaultAadV2(fields: VaultAadFieldsV2): Uint8Array {
 // ---------------------------------------------------------------------------
 // PQ fingerprints:
 //   individual key = SHA-256(UTF8(domain) || 0x00 || UTF8(algorithm) || 0x00 || publicKey)
-//   identity = SHA-256(UTF8("QRYPT-FP-ID-V2") || 0x00
+//   identity = SHA-256(UTF8("QR-CRYPT-FP-ID-V2") || 0x00
 //              || canonicalCbor(tuple from bundle excluding name))
 // The display format reuses the existing formatFingerprint in features/presentation.
 // ---------------------------------------------------------------------------
 
 export const PQ_FINGERPRINT_DOMAINS = {
-  kem: "QRYPT-FP-KEM-V2",
-  signing: "QRYPT-FP-DSA-V2",
-  identity: "QRYPT-FP-ID-V2",
+  kem: "QR-CRYPT-FP-KEM-V2",
+  signing: "QR-CRYPT-FP-DSA-V2",
+  identity: "QR-CRYPT-FP-ID-V2",
 } as const
 
 export async function pqKeyFingerprint(

@@ -127,7 +127,7 @@ afterEach(() => {
 
 describe("destructive reachability probe", () => {
   it("requires status 200 and an exact, untrimmed sentinel body", async () => {
-    const fetchImpl = vi.fn(async () => response("QRYPT-REACHABLE"))
+    const fetchImpl = vi.fn(async () => response("QR-CRYPT-REACHABLE"))
     await expect(
       probeNetworkSentinel({ fetchImpl, nonce: "fixed", timeoutMs: 50 }),
     ).resolves.toBe(true)
@@ -138,14 +138,14 @@ describe("destructive reachability probe", () => {
 
     await expect(
       probeNetworkSentinel({
-        fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE\n")),
+        fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE\n")),
         timeoutMs: 50,
       }),
     ).resolves.toBe(false)
   })
 
   it.each([
-    ["non-200", vi.fn(async () => response("QRYPT-REACHABLE", 204))],
+    ["non-200", vi.fn(async () => response("QR-CRYPT-REACHABLE", 204))],
     ["body mismatch", vi.fn(async () => response("captive portal"))],
     ["fetch rejection", vi.fn(async () => Promise.reject(new TypeError("offline")))],
   ])("treats %s as offline", async (_name, fetchImpl) => {
@@ -186,7 +186,7 @@ describe("destructive reachability probe", () => {
     const second = controller.probe()
     resolvers[1]?.(response("not-the-sentinel"))
     await second
-    resolvers[0]?.(response("QRYPT-REACHABLE"))
+    resolvers[0]?.(response("QR-CRYPT-REACHABLE"))
     await first
     expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
   })
@@ -254,7 +254,7 @@ describe("boot decisions", () => {
         preferencesReadFailed: true,
       })
       const controller = createBootController({
-        fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+        fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
         readDecision: async () => snapshot,
       })
       await controller.probe()
@@ -297,7 +297,7 @@ describe("boot decisions", () => {
       const resetTransient = vi.fn()
       const controller = createBootController({
         consumeMaintenanceToken,
-        fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+        fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
         performWipe,
         readDecision: async () =>
           decision({ maintenanceTokenArmed: true, sensitiveDataExists: true }),
@@ -338,7 +338,7 @@ describe("boot decisions", () => {
       originalSetItem(key, value)
     })
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: async () => decision(),
     })
     controller.subscribe(() => {
@@ -397,7 +397,7 @@ describe("boot decisions", () => {
         }),
     )
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe,
       readDecision: async () => decision({ sensitiveDataExists: true }),
     })
@@ -416,7 +416,7 @@ describe("boot decisions", () => {
   it("does not wipe the install path when no sensitive row exists", async () => {
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe,
       readDecision: async () => decision({ sensitiveDataExists: false }),
     })
@@ -432,7 +432,7 @@ describe("boot decisions", () => {
     const resetTransient = vi.fn()
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe,
       readDecision: async () =>
         decision({ sensitiveDataExists: true, wipeOnOnline: false }),
@@ -446,7 +446,7 @@ describe("boot decisions", () => {
   it("fails safe to wipe when preferences failed and sensitive data is confirmed", async () => {
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe,
       readDecision: async () =>
         decision({
@@ -466,7 +466,7 @@ describe("boot decisions", () => {
     const resetTransient = vi.fn()
     const controller = createBootController({
       consumeMaintenanceToken,
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe,
       readDecision: async () =>
         decision({ maintenanceTokenArmed: true, sensitiveDataExists: true }),
@@ -494,7 +494,7 @@ describe("boot decisions", () => {
           }),
       )
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision,
     })
     const endSession = vi.fn()
@@ -528,7 +528,7 @@ describe("boot decisions", () => {
 
   it("invalidates an eligible state synchronously on the peer-wipe boundary", async () => {
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: async () => decision(),
     })
     const endSession = vi.fn()
@@ -550,7 +550,7 @@ describe("boot decisions", () => {
   it("does not republish eligibility when a peer wipe arrives during a deferred decision", async () => {
     let resolveDecision: ((value: BootDecisionSnapshot) => void) | undefined
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: () =>
         new Promise((resolve) => {
           resolveDecision = resolve
@@ -587,7 +587,7 @@ describe("boot decisions", () => {
     expect(controller.getState().kind).toBe("probing")
 
     controller.endRelaySession("peer-wipe")
-    resolveFetch?.(response("QRYPT-REACHABLE"))
+    resolveFetch?.(response("QR-CRYPT-REACHABLE"))
     await pendingProbe
 
     expect(controller.getState()).toEqual({
@@ -600,7 +600,7 @@ describe("boot decisions", () => {
     const order: string[] = []
     let stopped = false
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async ({ endSession }) => {
         order.push("barrier")
         expect(stopped).toBe(true)
@@ -620,7 +620,7 @@ describe("boot decisions", () => {
   })
 
   it("is idempotent across React StrictMode's double effect mount", async () => {
-    const fetchImpl = vi.fn(async () => response("QRYPT-REACHABLE"))
+    const fetchImpl = vi.fn(async () => response("QR-CRYPT-REACHABLE"))
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const controller = createBootController({
       fetchImpl,
@@ -727,7 +727,7 @@ describe("WipeCoordinator order", () => {
 
     messageHandler?.(
       new MessageEvent("message", {
-        data: { type: "qrypt-wipe-request", version: 1 },
+        data: { type: "qr-crypt-wipe-request", version: 1 },
       }),
     )
     expect(order.indexOf("relay-stop")).toBe(0)

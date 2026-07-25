@@ -1,4 +1,4 @@
-# Qrypt Threat Model
+# QR Crypt Threat Model
 
 ## 1. Protected assets
 

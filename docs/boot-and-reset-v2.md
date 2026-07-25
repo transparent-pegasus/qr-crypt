@@ -9,7 +9,7 @@ Types and constants are frozen in `src/app/boot/boot-contract.ts`.
 | Purpose                         | Basis                                                                                                                                | Use                                                                                                                                                                  |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Display                         | `navigator.onLine` + the existing probe (HEAD of `/manifest.webmanifest`)                                                            | Switches the OnlineGate display and requests boot reconciliation. **The display edge itself is never the basis for, or a direct trigger of, destructive operations** |
-| Destructive (network-confirmed) | `GET /reachability-sentinel.txt?n=<nonce>` (`cache:"no-store"`), **confirmed only when the response body matches `QRYPT-REACHABLE`** | The sole trigger of wipe-on-online                                                                                                                                   |
+| Destructive (network-confirmed) | `GET /reachability-sentinel.txt?n=<nonce>` (`cache:"no-store"`), **confirmed only when the response body matches `QR-CRYPT-REACHABLE`** | The sole trigger of wipe-on-online                                                                                                                                   |
 
 - The sentinel is excluded from the SW precache, served via a `NetworkOnly`
   runtime route (vite.config.ts), and delivered with
@@ -102,7 +102,7 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    references.
 3. Hide and reset transient/SensitiveSession state.
 4. Request stop/close in all tabs via `navigator.locks` (with a fallback) +
-   `BroadcastChannel("qrypt-wipe")`.
+   `BroadcastChannel("qr-crypt-wipe")`.
 5. **Delete the `EncryptedSecret` records under the Vault first → then delete
    the Vault key record** (crypto-shredding; overwriting the bytes of a
    non-extractable `CryptoKey` is impossible and is not claimed).
