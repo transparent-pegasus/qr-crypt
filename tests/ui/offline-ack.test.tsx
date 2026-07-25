@@ -21,7 +21,7 @@ import { memoryLocalStorage, renderApp, resetUi } from "./helpers/render-app"
 
 const ACK_TITLE = "Confirm before continuing"
 const JA_ACK_TITLE = "続行前の確認"
-const INSTALL_TITLE = "Install the PWA or relay ciphertext QR frames"
+const INSTALL_TITLE = "Install the PWA or relay OCF2 message-header QR frames"
 
 function response(body: string, status = 200): Response {
   return { status, text: vi.fn(async () => body) } as unknown as Response
