@@ -26,7 +26,12 @@ function textNodes() {
 function collectEnglish() {
   const english = new Map()
   for (const el of textNodes()) {
-    english.set(el.getAttribute("data-i18n"), el.textContent.replace(/\s+/g, " ").trim())
+    english.set(
+      el.getAttribute("data-i18n"),
+      // Collapse the source indentation but keep any deliberate no-break space,
+      // which is load-bearing copy rather than formatting.
+      el.textContent.replace(/[^\S\u00a0]+/g, " ").trim(),
+    )
   }
   for (const [hook, attribute] of Object.entries(ATTRIBUTE_HOOKS)) {
     for (const el of document.querySelectorAll(`[${hook}]`)) {
