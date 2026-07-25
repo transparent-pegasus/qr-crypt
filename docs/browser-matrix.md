@@ -12,6 +12,10 @@ This table maps the target browser environments to the primary verification item
 | Encryption | automated (e2e) | automated (e2e) | automated (e2e) | automated (e2e) | manual-pending |
 | QR display | automated (e2e) | automated (e2e) | automated (e2e) | automated (e2e) | manual-pending |
 | QR scanning | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Camera decoder WebAssembly instantiation on first use **while offline** (zxing-wasm reader, precached same-origin) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Camera decode latency at 100B and 200B frame densities | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Camera decode peak memory and long-task behaviour (p95 decode below a 50ms long task) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Scanner teardown responsiveness with a decode in flight (close / background / wipe) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Non-extractable CryptoKey persistence in IndexedDB (generate → close tab → restore → decrypt) | automated (e2e) | manual-pending | automated (e2e) | automated (e2e) | manual-pending |
 | Online relay: camera scan → text (getUserMedia start on explicit action only) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: text → QR playback (verbatim OCF2 re-display) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |

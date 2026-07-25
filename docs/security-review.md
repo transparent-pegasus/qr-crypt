@@ -91,6 +91,34 @@ being misclassified while still rejecting stored/new 2,250ms.
   implementations, but the active policy does not use them for cryptographic
   processing
 
+### zxing-wasm 3.1.2 (exact pin; camera QR reading, reader-only build)
+
+- Replaces `@zxing/browser` (removed). `@zxing/library` remains a **devDependency**
+  only, used by unit and Playwright helpers to decode generated PNG pixels; it is not
+  in the shipped bundle
+- npm provenance ✓. Upstream is ZXing-C++ compiled to WebAssembly via Emscripten;
+  the packaged reader binary is built from zxing-cpp commit
+  `179be6ac9c1b2a75ff0017a237c6546fea3c7d12`
+- Shipped artifact: `zxing-wasm/reader/zxing_reader.wasm`, 1,065,866 bytes,
+  SHA-256 `0e8d688d71932ebb6b8b33f700d43d3cb997f59ed9cab3c05102d7f10288a392`
+  (recomputed from `node_modules` on 2026-07-26). Vite emits it as a hashed
+  same-origin asset and Workbox precaches it; the library's default CDN fetch is
+  overridden by a module-scope `locateFile`. **No CDN, no runtime network request**
+- **The published binary has not been independently reproduced from source in this
+  repository.** Trust rests on the lockfile pin, the npm provenance attestation, and
+  the recorded SHA-256 — not on a from-source rebuild
+- **Not independently audited**; no advisories at the pinned version as of 2026-07-26
+- Consequence for CSP: `WebAssembly.instantiate` is refused under a bare
+  `script-src 'self'`, so `public/_headers` now ships
+  `script-src 'self' 'wasm-unsafe-eval'`. That grants origin-wide permission to
+  compile arbitrary WebAssembly for any script that already executes. It is
+  materially narrower than `'unsafe-eval'`, which is **not** enabled and which would
+  additionally permit JavaScript string evaluation
+- Attacker-controlled camera pixels now reach a C++/Emscripten parser. See
+  `docs/threat-model.md` T5 for the resulting denial-of-service residual
+- Phone-side cost (decode latency, peak memory, long tasks, teardown responsiveness)
+  is **not yet measured**; see `docs/browser-matrix.md`
+
 ### Supply Chain
 
 - Locked in `aube-lock.yaml` (must be committed). For the v1-era supply-chain

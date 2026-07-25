@@ -23,11 +23,13 @@ units:
   - id: deps
     category: dependencies
     cadence_days: 14
-    last_checked: 2026-07-25
+    last_checked: 2026-07-26
     files:
       - package.json
       - aube-lock.yaml
-      - vite.config.ts # PWA/workbox options reviewed on plugin bumps
+      - vite.config.ts # PWA/workbox options reviewed on plugin bumps; globPatterns must keep `wasm`
+      - public/_headers # script-src carries 'wasm-unsafe-eval' for the zxing-wasm reader
+      - src/qr/decode.ts # same-origin locateFile routing for the reader wasm
     why: >
       Dependency ranges, exact security pins, aube.overrides, and the frozen
       lock graph fall behind registry releases and advisories.
@@ -38,6 +40,12 @@ units:
       commit the resulting aube-lock.yaml.
       Exact pins stay exact until re-vetted:
         - "@noble/post-quantum" — handled ONLY via unit crypto-noble.
+        - zxing-wasm — on any bump, recompute the reader wasm SHA-256 and size,
+          re-check the upstream zxing-cpp commit, and update the record in
+          docs/security-review.md §1. Confirm the asset still resolves
+          same-origin (no CDN) and stays precached, and that
+          tests/e2e/security.spec.ts still pins 'wasm-unsafe-eval' present and
+          bare 'unsafe-eval' absent.
         - react-hook-form 7.82.0, eslint-config-prettier 10.1.8 — supply-chain
           incident history in docs/threat-model.md §5.1; re-check advisories
           before moving.
@@ -136,7 +144,7 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-07-25
+    last_checked: 2026-07-26
     files:
       - docs/threat-model.md
     why: >
@@ -161,8 +169,11 @@ units:
     last_checked: 2026-07-26
     files:
       - docs/security-review.md
+      - public/_headers # CSP claims recorded in §1 (script-src tokens)
+      - tests/e2e/security.spec.ts # executable half of the CSP claims
     why: >
-      Point-in-time snapshot: noble 0.6.1 facts as of 2026-07-22, independent
+      Point-in-time snapshot: noble 0.6.1 facts as of 2026-07-22, the
+      zxing-wasm reader pin/hash/provenance, independent
       audit 未了, release-approved blocker, FIPS errata checklist, artifact
       size table. All of it is dated by construction.
     method: |
@@ -186,7 +197,11 @@ units:
       claims, and feature-detection assumptions.
     method: |
       Re-measure on at least Android Chrome + iOS Safari with current browser
-      versions and VITE_BUILD_SHA; fill matrix rows. Re-check
+      versions and VITE_BUILD_SHA; fill matrix rows. The zxing-wasm scanner
+      rows (offline first-use instantiation, decode latency, peak memory and
+      long tasks, teardown with a decode in flight) are the gate for keeping
+      decoding on the main thread — if p95 decode is a long task, move it to a
+      dedicated Worker. Re-check
       detectFeatures() assumptions against MDN/caniuse for target browsers;
       update gate copy if reality moved. Align profile names in the matrix
       with the active profile.

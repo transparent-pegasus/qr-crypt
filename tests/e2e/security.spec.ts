@@ -27,8 +27,12 @@ test("the cryptographic flow sends nothing externally, leaves no secrets or mess
   expect(deployedHeaders).toContain("connect-src 'self'")
   expect(deployedHeaders).toContain("worker-src 'self' blob:")
   expect(deployedHeaders).toContain("object-src 'none'")
-  expect(deployedHeaders).not.toContain("unsafe-eval")
-  expect(deployedHeaders).not.toContain("wasm-unsafe-eval")
+  const scriptSrcTokens = deployedHeaders
+    .split(";")
+    .map((directive) => directive.trim().split(/\s+/))
+    .find(([name]) => name === "script-src")
+  expect(scriptSrcTokens).toContain("'wasm-unsafe-eval'")
+  expect(scriptSrcTokens).not.toContain("'unsafe-eval'")
   await switchToOfflineApp(page, context)
 
   const keyName = "セキュリティ確認鍵"
