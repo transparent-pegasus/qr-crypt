@@ -10,17 +10,21 @@ import {
 } from "react"
 import { cn } from "@/lib/utils"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  LANGUAGES,
   isMessageKey,
   translate,
   type InterpolationValues,
   type Language,
   type MessageKey,
 } from "@/i18n/messages"
-import {
-  errorMessageKey,
-  isErrorCode,
-  type ErrorCode,
-} from "@/crypto/errors"
+import { errorMessageKey, isErrorCode, type ErrorCode } from "@/crypto/errors"
 import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
 
 export const LANGUAGE_STORAGE_KEY = "oc-lang"
@@ -28,7 +32,11 @@ export const DELETE_ALL_CONFIRMATION = "DELETE ALL"
 export const KEEP_KEYS_CONFIRMATION = "KEEP KEYS"
 
 export function isLanguage(value: unknown): value is Language {
-  return value === "en" || value === "ja"
+  return LANGUAGES.some((language) => language === value)
+}
+
+function languageNameKey(language: Language): MessageKey {
+  return `language.${language}`
 }
 
 export function readStoredLanguage(): Language {
@@ -114,10 +122,7 @@ export function LanguageProvider({
     (key, values) => translate(language, key, values),
     [language],
   )
-  const value = useMemo(
-    () => ({ language, setLanguage, t }),
-    [language, setLanguage, t],
-  )
+  const value = useMemo(() => ({ language, setLanguage, t }), [language, setLanguage, t])
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>
 }
@@ -126,10 +131,7 @@ export function useI18n(): LanguageContextValue {
   return useContext(LanguageContext)
 }
 
-export function messageKeyOrFallback(
-  message: unknown,
-  fallback: MessageKey,
-): MessageKey {
+export function messageKeyOrFallback(message: unknown, fallback: MessageKey): MessageKey {
   return isMessageKey(message) ? message : fallback
 }
 
@@ -142,41 +144,30 @@ export function useLocalizedMessage(
   return t(message)
 }
 
-export function LanguageToggle({ className }: { className?: string }) {
+export function LanguageSelect({ id, className }: { id?: string; className?: string }) {
   const { language, setLanguage, t } = useI18n()
 
   return (
-    <div
-      role="group"
-      aria-label={t("language.toggle.ariaLabel")}
-      className={cn(
-        "inline-flex min-h-11 items-center rounded-lg border bg-background p-1 text-sm shadow-sm",
-        className,
-      )}
+    <Select
+      value={language}
+      onValueChange={(value) => setLanguage(isLanguage(value) ? value : "en")}
     >
-      <button
-        type="button"
-        aria-pressed={language === "en"}
-        className={cn(
-          "min-h-9 rounded-md px-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          language === "en" && "bg-primary text-primary-foreground",
-        )}
-        onClick={() => setLanguage("en")}
+      <SelectTrigger
+        id={id}
+        // Callers that pass an id render their own visible <label>.
+        aria-label={id ? undefined : t("language.field")}
+        className={cn("h-11 w-auto min-w-40 text-base", className)}
       >
-        {t("language.en.short")}
-      </button>
-      <button
-        type="button"
-        aria-pressed={language === "ja"}
-        className={cn(
-          "min-h-9 rounded-md px-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          language === "ja" && "bg-primary text-primary-foreground",
-        )}
-        onClick={() => setLanguage("ja")}
-      >
-        {t("language.ja.short")}
-      </button>
-    </div>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {LANGUAGES.map((option) => (
+          <SelectItem key={option} value={option}>
+            {t(languageNameKey(option))}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 

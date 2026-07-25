@@ -1,13 +1,11 @@
-export type Language = "en" | "ja"
+export const LANGUAGES = ["en", "ja"] as const
+export type Language = (typeof LANGUAGES)[number]
 
 export type InterpolationValue = string | number
 export type InterpolationValues = Readonly<Record<string, InterpolationValue>>
 
 const en = {
-  "language.toggle.ariaLabel": "Language",
   "language.field": "Language",
-  "language.en.short": "EN",
-  "language.ja.short": "日本語",
   "language.en": "English",
   "language.ja": "日本語",
 
@@ -578,10 +576,7 @@ export type MessageCatalog = Readonly<Record<MessageKey, string>>
 const MESSAGE_KEY_SET: ReadonlySet<string> = new Set(Object.keys(en))
 
 const ja = {
-  "language.toggle.ariaLabel": "言語",
   "language.field": "言語",
-  "language.en.short": "EN",
-  "language.ja.short": "日本語",
   "language.en": "English",
   "language.ja": "日本語",
 

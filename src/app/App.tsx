@@ -15,7 +15,7 @@ import { OfflineAckShell } from "@/components/offline-ack-shell"
 import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
 import {
   LanguageProvider,
-  LanguageToggle,
+  LanguageSelect,
   useI18n,
   type Language,
 } from "@/i18n"
@@ -41,7 +41,7 @@ function UnsupportedBrowser({ features }: { features: FeatureSupport }) {
     <main className="grid min-h-dvh place-items-center bg-background p-4 text-foreground">
       <section className="w-full max-w-lg space-y-5 rounded-xl border bg-card p-6 shadow-sm">
         <div className="flex justify-end">
-          <LanguageToggle />
+          <LanguageSelect />
         </div>
         <div className="flex items-start gap-3">
           <AlertTriangle
@@ -86,7 +86,7 @@ function BootStatusScreen({ children }: { children: ReactNode }) {
     <main className="grid min-h-dvh place-items-center bg-background p-4 text-foreground">
       <section className="w-full max-w-md space-y-3 rounded-xl border bg-card p-6 shadow-sm">
         <div className="flex justify-end">
-          <LanguageToggle />
+          <LanguageSelect />
         </div>
         {children}
       </section>

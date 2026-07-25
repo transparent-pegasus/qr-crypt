@@ -53,6 +53,7 @@ import { usePreferences } from "@/hooks/use-preferences"
 import {
   DELETE_ALL_CONFIRMATION,
   KEEP_KEYS_CONFIRMATION,
+  LanguageSelect,
   useI18n,
   type MessageKey,
 } from "@/i18n"
@@ -77,7 +78,7 @@ import { clearAllIdentities } from "@/storage/pq-identity-repository"
 type TypedDeleteAction = "keys" | "reset"
 
 export function SettingsPage() {
-  const { language, setLanguage, t } = useI18n()
+  const { t } = useI18n()
   const features = useFeatureSupport()
   const { theme, setTheme } = useTheme()
   const { clearTransient } = useTransientClear()
@@ -200,9 +201,7 @@ export function SettingsPage() {
 
   return (
     <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={working}>
-      <h2 className="text-[1.375rem] font-bold tracking-tight">
-        {t("settings.title")}
-      </h2>
+      <h2 className="text-[1.375rem] font-bold tracking-tight">{t("settings.title")}</h2>
 
       {(error || preferencesError || pwa.error) && (
         <Alert variant="destructive" role="alert">
@@ -216,18 +215,7 @@ export function SettingsPage() {
 
       <SettingsCard title={t("settings.card.display")}>
         <SettingField label={t("language.field")} htmlFor="language-select">
-          <Select
-            value={language}
-            onValueChange={(value) => setLanguage(value === "ja" ? "ja" : "en")}
-          >
-            <SelectTrigger id="language-select" className="h-11 text-base">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="en">{t("language.en")}</SelectItem>
-              <SelectItem value="ja">{t("language.ja")}</SelectItem>
-            </SelectContent>
-          </Select>
+          <LanguageSelect id="language-select" className="w-full" />
         </SettingField>
         <SettingField label={t("settings.field.theme")} htmlFor="theme-select">
           <Select value={theme} onValueChange={(value) => setTheme(value as Theme)}>
@@ -449,9 +437,7 @@ export function SettingsPage() {
       <SettingsCard title={t("settings.card.onlineProtection")}>
         <div className="flex min-h-11 items-center justify-between gap-4">
           <div className="space-y-1">
-            <Label htmlFor="wipe-on-online">
-              {t("settings.wipeOnOnline.label")}
-            </Label>
+            <Label htmlFor="wipe-on-online">{t("settings.wipeOnOnline.label")}</Label>
             <p className="text-xs text-muted-foreground">
               {t("settings.wipeOnOnline.hint")}
             </p>
@@ -483,9 +469,7 @@ export function SettingsPage() {
         >
           {t("settings.maintenance.button")}
         </Button>
-        <p className="text-xs text-muted-foreground">
-          {t("settings.maintenance.hint")}
-        </p>
+        <p className="text-xs text-muted-foreground">{t("settings.maintenance.hint")}</p>
         {navigatorOnline && (
           <p className="text-xs text-destructive">
             {t("settings.maintenance.onlineDisabled")}
@@ -536,9 +520,7 @@ export function SettingsPage() {
                 />
               </SettingField>
               <Alert variant="destructive">
-                <AlertDescription>
-                  {t("settings.resetChurn.warning")}
-                </AlertDescription>
+                <AlertDescription>{t("settings.resetChurn.warning")}</AlertDescription>
               </Alert>
             </CardContent>
           </CollapsibleContent>
@@ -587,9 +569,7 @@ export function SettingsPage() {
         <InfoRow
           label={t("pwa.installState.label")}
           value={
-            standalone
-              ? t("pwa.installState.installed")
-              : t("settings.pwa.browserView")
+            standalone ? t("pwa.installState.installed") : t("settings.pwa.browserView")
           }
         />
         <InfoRow
@@ -611,7 +591,11 @@ export function SettingsPage() {
         </p>
         <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
           <InfoRow label={t("settings.info.version")} value={__APP_VERSION__} mono />
-          <InfoRow label={t("settings.info.build")} value={env.buildSha.slice(0, 7)} mono />
+          <InfoRow
+            label={t("settings.info.build")}
+            value={env.buildSha.slice(0, 7)}
+            mono
+          />
         </div>
         <p className="text-xs leading-relaxed text-muted-foreground">
           {t("settings.pwa.offlineReadyNote")}
@@ -654,13 +638,9 @@ export function SettingsPage() {
           </CardHeader>
           <CollapsibleContent>
             <CardContent className="space-y-4 p-4 pt-0 text-sm leading-relaxed">
-              <p className="font-medium">
-                {t("settings.security.scope")}
-              </p>
+              <p className="font-medium">{t("settings.security.scope")}</p>
               <div>
-                <p className="font-medium">
-                  {t("settings.security.outOfScope.heading")}
-                </p>
+                <p className="font-medium">{t("settings.security.outOfScope.heading")}</p>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
                   <li>{t("settings.security.outOfScope.1")}</li>
                   <li>{t("settings.security.outOfScope.2")}</li>

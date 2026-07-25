@@ -4,7 +4,7 @@ import { useDisplayGate } from "@/app/display-gate"
 import { NetworkStatusBadge } from "@/components/network-status"
 import { usePwaOfflineReady } from "@/components/pwa-offline-ready"
 import { Button } from "@/components/ui/button"
-import { LanguageToggle, useI18n, type MessageKey } from "@/i18n"
+import { LanguageSelect, useI18n, type MessageKey } from "@/i18n"
 import { env } from "@/schemas/env-schema"
 
 interface BeforeInstallPromptEvent extends Event {
@@ -81,7 +81,7 @@ export function OnlineInstallScreen() {
     >
       <section className="mx-auto w-full max-w-md space-y-6">
         <div className="flex justify-end">
-          <LanguageToggle />
+          <LanguageSelect />
         </div>
         <header className="flex items-center gap-3">
           <img

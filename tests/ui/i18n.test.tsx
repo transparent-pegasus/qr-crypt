@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
   LANGUAGE_STORAGE_KEY,
   LanguageProvider,
-  LanguageToggle,
+  LanguageSelect,
   readStoredLanguage,
   useI18n,
   useLocalizedMessage,
@@ -46,20 +46,22 @@ describe("LanguageProvider", () => {
     const user = userEvent.setup()
     render(
       <LanguageProvider>
-        <LanguageToggle />
+        <LanguageSelect />
         <LanguageProbe />
         <ErrorProbe />
       </LanguageProvider>,
     )
 
     expect(screen.getByText("The storage operation failed.")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "日本語" }))
+    await user.click(screen.getByRole("combobox", { name: "Language" }))
+    await user.click(screen.getByRole("option", { name: "日本語" }))
     expect(screen.getByText("このブラウザーでは利用できません")).toBeInTheDocument()
     expect(screen.getByText("保存領域の操作に失敗しました。")).toBeInTheDocument()
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("ja")
     expect(document.documentElement.lang).toBe("ja")
 
-    await user.click(screen.getByRole("button", { name: "EN" }))
+    await user.click(screen.getByRole("combobox", { name: "言語" }))
+    await user.click(screen.getByRole("option", { name: "English" }))
     expect(screen.getByText("This browser is not supported")).toBeInTheDocument()
     expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("en")
     expect(document.documentElement.lang).toBe("en")

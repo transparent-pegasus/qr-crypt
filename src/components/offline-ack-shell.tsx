@@ -2,7 +2,7 @@ import { useState } from "react"
 import { AlertTriangle, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { LanguageToggle, useI18n } from "@/i18n"
+import { LanguageSelect, useI18n } from "@/i18n"
 
 export interface OfflineAckShellProps {
   generation: number
@@ -19,6 +19,7 @@ export function OfflineAckShell({
   const [checked, setChecked] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const checkboxId = `offline-risk-ack-${generation}`
+  const languageSelectId = `offline-ack-language-${generation}`
   const wiped = variant === "wiped"
 
   const continueOffline = () => {
@@ -37,10 +38,13 @@ export function OfflineAckShell({
     >
       <section className="mx-auto w-full max-w-2xl space-y-5 rounded-xl border bg-card p-5 shadow-sm sm:p-6">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-medium text-muted-foreground">
+          <label
+            htmlFor={languageSelectId}
+            className="text-sm font-medium text-muted-foreground"
+          >
             {t("language.field")}
-          </span>
-          <LanguageToggle />
+          </label>
+          <LanguageSelect id={languageSelectId} />
         </div>
         {wiped && (
           <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-4">
@@ -51,9 +55,7 @@ export function OfflineAckShell({
               />
               <div className="space-y-1">
                 <h2 className="font-semibold">{t("boot.wiped.title")}</h2>
-                <p className="text-sm text-muted-foreground">
-                  {t("boot.wiped.body")}
-                </p>
+                <p className="text-sm text-muted-foreground">{t("boot.wiped.body")}</p>
               </div>
             </div>
           </div>
@@ -63,11 +65,11 @@ export function OfflineAckShell({
           <AlertTriangle
             aria-hidden="true"
             className="size-11 shrink-0 text-warning sm:size-12"
-            />
-            <div className="min-w-0 flex-1 space-y-1">
-              <p role="status" className="text-xs font-medium text-muted-foreground">
-                {t("offlineAck.status")}
-              </p>
+          />
+          <div className="min-w-0 flex-1 space-y-1">
+            <p role="status" className="text-xs font-medium text-muted-foreground">
+              {t("offlineAck.status")}
+            </p>
             <h1
               id="offline-ack-title"
               className="text-xl font-bold tracking-tight sm:text-2xl"

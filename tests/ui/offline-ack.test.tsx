@@ -122,9 +122,7 @@ describe("offline acknowledgement shell", () => {
     expect(button).toBeDisabled()
 
     await user.tab()
-    expect(screen.getByRole("button", { name: "EN" })).toHaveFocus()
-    await user.tab()
-    expect(screen.getByRole("button", { name: "日本語" })).toHaveFocus()
+    expect(screen.getByRole("combobox", { name: "言語" })).toHaveFocus()
     await user.tab()
     expect(checkbox).toHaveFocus()
     await user.keyboard(" ")
