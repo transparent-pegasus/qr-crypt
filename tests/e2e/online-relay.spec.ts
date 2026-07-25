@@ -185,6 +185,14 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await context.grantPermissions(["camera", "clipboard-read", "clipboard-write"])
   await loadOnlineGate(page)
 
+  const relayNavigationButton = page.getByRole("button", {
+    name: "Relay",
+    exact: true,
+  })
+  await expect(
+    page.getByRole("navigation", { name: "Online navigation" }),
+  ).toBeVisible()
+  await relayNavigationButton.click()
   const scanButton = page.getByRole("button", { name: "Scan → text" })
   await scanButton.click()
   const capture = page.getByRole("dialog", {
@@ -214,6 +222,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await capture.getByRole("button", { name: "Copy relay text" }).click()
   await capture.getByRole("button", { name: "Close" }).click()
 
+  await relayNavigationButton.click()
   await page.getByRole("button", { name: "Text → QR" }).click()
   const playback = page.getByRole("dialog", {
     name: "Turn relay text into QR frames",
@@ -248,6 +257,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
         ...args,
       )) as typeof window.setTimeout
   })
+  await relayNavigationButton.click()
   await scanButton.click()
   await page
     .getByRole("dialog", { name: "Scan QR frames to text" })

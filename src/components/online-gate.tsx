@@ -1,11 +1,24 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { CheckCircle2, Download, Share2, WifiOff } from "lucide-react"
+import {
+  CheckCircle2,
+  Download,
+  Home,
+  MessageSquareText,
+  Share2,
+  WifiOff,
+} from "lucide-react"
 import { useDisplayGate } from "@/app/display-gate"
+import {
+  BottomNavigationShell,
+  NAV_ITEM_ACTIVE_CLASS,
+  NAV_ITEM_CLASS,
+} from "@/components/bottom-navigation"
 import { NetworkStatusBadge } from "@/components/network-status"
 import { OnlineRelay, type OnlineRelayProps } from "@/components/online-relay"
 import { usePwaOfflineReady } from "@/components/pwa-offline-ready"
 import { Button } from "@/components/ui/button"
 import { LanguageSelect, useI18n, type MessageKey } from "@/i18n"
+import { cn } from "@/lib/utils"
 import { env } from "@/schemas/env-schema"
 
 interface BeforeInstallPromptEvent extends Event {
@@ -38,6 +51,8 @@ export interface OnlineInstallScreenProps {
   registerRelaySessionEndHandler?: OnlineRelayProps["registerRelaySessionEndHandler"]
 }
 
+type OnlineTab = "top" | "relay"
+
 export function OnlineInstallScreen({
   relayEligible = false,
   onRelayEligibilityRefresh,
@@ -51,6 +66,9 @@ export function OnlineInstallScreen({
   )
   const [installing, setInstalling] = useState(false)
   const [installError, setInstallError] = useState<MessageKey | null>(null)
+  const [tab, setTab] = useState<OnlineTab>("top")
+  const activeTab: OnlineTab = relayEligible ? tab : "top"
+  const navVisible = relayEligible || tab === "relay"
 
   useEffect(() => {
     const capturePrompt = (event: Event) => {
@@ -88,7 +106,10 @@ export function OnlineInstallScreen({
   return (
     <main
       aria-labelledby="online-gate-title"
-      className="min-h-dvh bg-background px-4 py-6 text-foreground"
+      className={cn(
+        "min-h-dvh bg-background px-4 py-6 text-foreground",
+        navVisible && "pb-content-safe",
+      )}
     >
       <section className="mx-auto w-full max-w-md space-y-6">
         <div className="flex justify-end">
@@ -113,82 +134,116 @@ export function OnlineInstallScreen({
           <NetworkStatusBadge />
         </header>
 
-        <div className="space-y-3 rounded-xl border bg-card p-5 shadow-sm">
-          <div className="flex items-start gap-3">
-            <Download aria-hidden="true" className="mt-0.5 size-6 shrink-0" />
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold">{t("gate.heading")}</h2>
+        <div hidden={activeTab !== "top"} className="space-y-6">
+          <div className="space-y-3 rounded-xl border bg-card p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <Download aria-hidden="true" className="mt-0.5 size-6 shrink-0" />
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold">{t("gate.heading")}</h2>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {t("gate.description")}
+                </p>
+              </div>
+            </div>
+
+            <StatusRow
+              label={t("pwa.installState.label")}
+              value={
+                installed
+                  ? t("pwa.installState.installed")
+                  : t("pwa.installState.notInstalled")
+              }
+              ready={installed}
+            />
+            <StatusRow
+              label={t("pwa.offlineReady.label")}
+              value={
+                offlineReady
+                  ? t("pwa.offlineReady.ready")
+                  : t("pwa.offlineReady.preparing")
+              }
+              ready={offlineReady}
+            />
+
+            {!installed && installPrompt && (
+              <Button
+                type="button"
+                className="h-11 w-full cursor-pointer focus-visible:ring-2"
+                disabled={installing}
+                onClick={() => void requestInstall()}
+              >
+                <Download aria-hidden="true" />
+                {installing ? t("gate.install.progress") : t("gate.install.button")}
+              </Button>
+            )}
+
+            {!installed && !installPrompt && isIosSafari() && (
+              <p className="flex gap-2 text-sm leading-relaxed text-muted-foreground">
+                <Share2 aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+                {t("gate.install.iosHint")}
+              </p>
+            )}
+            {!installed && !installPrompt && !isIosSafari() && (
               <p className="text-sm leading-relaxed text-muted-foreground">
-                {t("gate.description")}
+                {t("gate.install.otherHint")}
+              </p>
+            )}
+            {(registrationError || installError) && (
+              <p role="alert" className="text-sm text-destructive">
+                {t(registrationError ?? installError ?? "gate.install.error")}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border border-primary/40 bg-primary/5 p-5">
+            <WifiOff
+              aria-hidden="true"
+              className="mt-0.5 size-6 shrink-0 text-primary"
+            />
+            <div className="space-y-1">
+              <h2 className="font-semibold">{t("gate.switchOffline.title")}</h2>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                {t("gate.switchOffline.body")}
               </p>
             </div>
           </div>
-
-          <StatusRow
-            label={t("pwa.installState.label")}
-            value={
-              installed
-                ? t("pwa.installState.installed")
-                : t("pwa.installState.notInstalled")
-            }
-            ready={installed}
-          />
-          <StatusRow
-            label={t("pwa.offlineReady.label")}
-            value={
-              offlineReady ? t("pwa.offlineReady.ready") : t("pwa.offlineReady.preparing")
-            }
-            ready={offlineReady}
-          />
-
-          {!installed && installPrompt && (
-            <Button
-              type="button"
-              className="h-11 w-full cursor-pointer focus-visible:ring-2"
-              disabled={installing}
-              onClick={() => void requestInstall()}
-            >
-              <Download aria-hidden="true" />
-              {installing ? t("gate.install.progress") : t("gate.install.button")}
-            </Button>
-          )}
-
-          {!installed && !installPrompt && isIosSafari() && (
-            <p className="flex gap-2 text-sm leading-relaxed text-muted-foreground">
-              <Share2 aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-              {t("gate.install.iosHint")}
-            </p>
-          )}
-          {!installed && !installPrompt && !isIosSafari() && (
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {t("gate.install.otherHint")}
-            </p>
-          )}
-          {(registrationError || installError) && (
-            <p role="alert" className="text-sm text-destructive">
-              {t(registrationError ?? installError ?? "gate.install.error")}
-            </p>
-          )}
         </div>
 
-        <OnlineRelay
-          eligible={relayEligible}
-          {...(onRelayEligibilityRefresh
-            ? { onEligibilityRefresh: onRelayEligibilityRefresh }
-            : {})}
-          {...(registerRelaySessionEndHandler ? { registerRelaySessionEndHandler } : {})}
-        />
-
-        <div className="flex items-start gap-3 rounded-xl border border-primary/40 bg-primary/5 p-5">
-          <WifiOff aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-primary" />
-          <div className="space-y-1">
-            <h2 className="font-semibold">{t("gate.switchOffline.title")}</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              {t("gate.switchOffline.body")}
-            </p>
-          </div>
+        <div hidden={activeTab !== "relay"}>
+          <OnlineRelay
+            eligible={relayEligible}
+            {...(onRelayEligibilityRefresh
+              ? { onEligibilityRefresh: onRelayEligibilityRefresh }
+              : {})}
+            {...(registerRelaySessionEndHandler
+              ? { registerRelaySessionEndHandler }
+              : {})}
+          />
         </div>
       </section>
+
+      {navVisible && (
+        <BottomNavigationShell ariaLabel={t("nav.onlineAriaLabel")}>
+          <button
+            type="button"
+            aria-label={t("nav.top")}
+            aria-current={activeTab === "top" ? "page" : undefined}
+            className={cn(NAV_ITEM_CLASS, activeTab === "top" && NAV_ITEM_ACTIVE_CLASS)}
+            onClick={() => setTab("top")}
+          >
+            <Home aria-hidden="true" className="size-6" />
+          </button>
+          <button
+            type="button"
+            aria-label={t("nav.relay")}
+            aria-current={activeTab === "relay" ? "page" : undefined}
+            className={cn(NAV_ITEM_CLASS, activeTab === "relay" && NAV_ITEM_ACTIVE_CLASS)}
+            onClick={() => setTab("relay")}
+          >
+            <MessageSquareText aria-hidden="true" className="size-6" />
+          </button>
+        </BottomNavigationShell>
+      )}
     </main>
   )
 }

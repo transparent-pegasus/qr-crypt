@@ -102,7 +102,8 @@ describe("encrypt page v2", () => {
     }
     expect(within(result).getByText("maximum")).toBeInTheDocument()
     expect(within(result).getByRole("button", { name: "Pause" })).toBeInTheDocument()
-    expect(within(result).getByRole("button", { name: "Next frame" })).toBeInTheDocument()
+    expect(within(result).getByRole("button", { name: "Next" })).toBeInTheDocument()
+    expect(within(result).getByLabelText("Frame density")).toBeInTheDocument()
     expect(within(result).getByLabelText("Display speed")).toBeInTheDocument()
     expect(
       within(result).getByRole("button", { name: /Export all PNGs/ }),
@@ -111,7 +112,7 @@ describe("encrypt page v2", () => {
     expect(
       within(result).getByRole("button", { name: "View full screen" }),
     ).toBeInTheDocument()
-    await user.click(within(result).getByRole("button", { name: "Next frame" }))
+    await user.click(within(result).getByRole("button", { name: "Next" }))
     expect(within(result).getByText(/^2 \/ /)).toBeInTheDocument()
     await user.click(within(result).getByRole("button", { name: "Pause" }))
     expect(within(result).getByRole("button", { name: "Play" })).toBeInTheDocument()
@@ -141,6 +142,7 @@ describe("encrypt page v2", () => {
     await waitFor(() =>
       expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 3_000 }),
     )
+    expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
     expect(splitIntoFrames).toHaveBeenCalledTimes(splitCallsBeforeSpeed)
     fireEvent.change(within(fullscreenDialog).getByLabelText("Frame density"), {
       target: { value: "300" },
@@ -164,9 +166,7 @@ describe("encrypt page v2", () => {
           .length,
       ).toBeGreaterThan(0),
     )
-    await user.click(
-      within(fullscreenDialog).getAllByRole("button", { name: "Close" })[0]!,
-    )
+    await user.click(within(fullscreenDialog).getByRole("button", { name: "Close" }))
 
     expect(within(result).queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
     expect(

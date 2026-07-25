@@ -55,7 +55,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
       ),
     ).toBeVisible(),
     expectOnline(page.getByText("Online", { exact: true })).toBeVisible(),
-    expectOnline(page.getByRole("navigation")).toBeHidden(),
+    expectOnline(mainNavigation(page)).toBeHidden(),
   ])
 }
 
@@ -724,7 +724,7 @@ export async function collectAnimatedFramePayloads(scope: Locator): Promise<stri
     if (payloads.size === total) break
     const before = await counter.innerText()
     const beforeSource = source
-    await scope.getByRole("button", { name: "Next frame" }).click()
+    await scope.getByRole("button", { name: "Next" }).click()
     await expect(counter).not.toHaveText(before)
     await expect(image).not.toHaveAttribute("src", beforeSource)
   }

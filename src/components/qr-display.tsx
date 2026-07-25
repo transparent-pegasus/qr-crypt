@@ -4,6 +4,7 @@ import { renderQrDataUrl } from "@/qr/encode"
 import type { QrEcLevel } from "@/schemas/domain"
 import { isQrCryptPayload } from "@/features/presentation"
 import { toAppError } from "@/crypto/errors"
+import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,6 +24,7 @@ export interface QrDisplayProps {
   title?: string
   onRendered?: () => void
   fullscreenEnabled?: boolean
+  showFullscreenTrigger?: boolean
   fullscreenControls?: ReactNode
   fullscreenOpen?: boolean
   onFullscreenOpenChange?: (open: boolean) => void
@@ -35,6 +37,7 @@ export function QrDisplay({
   title: titleProp,
   onRendered,
   fullscreenEnabled = true,
+  showFullscreenTrigger = true,
   fullscreenControls,
   fullscreenOpen,
   onFullscreenOpenChange,
@@ -49,6 +52,7 @@ export function QrDisplay({
   }>({ identity: "", dataUrl: null, error: null })
   const [uncontrolledFullscreen, setUncontrolledFullscreen] = useState(false)
   const fullscreen = fullscreenOpen ?? uncontrolledFullscreen
+  const hasFullscreenControls = fullscreenControls != null
   const changeFullscreen = (open: boolean) => {
     if (fullscreenOpen === undefined) setUncontrolledFullscreen(open)
     onFullscreenOpenChange?.(open)
@@ -135,7 +139,7 @@ export function QrDisplay({
             ecLevel,
           })}
         </span>
-        {fullscreenEnabled && (
+        {fullscreenEnabled && showFullscreenTrigger && (
           <Button
             type="button"
             variant="outline"
@@ -151,11 +155,32 @@ export function QrDisplay({
 
       {fullscreenEnabled && (
         <Dialog open={fullscreen} onOpenChange={changeFullscreen}>
-          <DialogContent className="grid h-dvh min-w-0 max-w-none grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] gap-3 overflow-hidden border-0 bg-white text-slate-950 [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))] landscape:grid-cols-[minmax(0,1fr)_auto] landscape:grid-rows-1 sm:rounded-none [&>button.absolute]:hidden">
+          <DialogContent
+            hideCloseButton
+            className={cn(
+              "grid h-dvh min-w-0 max-w-none grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden border-0 bg-white text-slate-950 [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))] sm:rounded-none [&>button.absolute]:hidden",
+              hasFullscreenControls
+                ? "grid-rows-[minmax(0,1fr)_auto] landscape:grid-cols-[minmax(0,1fr)_auto] landscape:grid-rows-1"
+                : "grid-rows-[minmax(0,1fr)] landscape:grid-rows-[minmax(0,1fr)]",
+            )}
+          >
             <DialogHeader className="sr-only">
               <DialogTitle>{t("qrDisplay.fullscreen.title", { title })}</DialogTitle>
               <DialogDescription>{t("qrDisplay.fullscreen.desc")}</DialogDescription>
             </DialogHeader>
+            <div className="pointer-events-none absolute inset-0">
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="pointer-events-auto absolute z-10 size-11 cursor-pointer border border-slate-300 bg-white text-slate-950 [right:max(0.5rem,env(safe-area-inset-right))] [top:max(0.5rem,env(safe-area-inset-top))] hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2"
+                  aria-label={t("common.close")}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </DialogClose>
+            </div>
             <div className="grid min-h-0 min-w-0 place-items-center overflow-hidden">
               {dataUrl && (
                 <img
@@ -167,23 +192,7 @@ export function QrDisplay({
                 />
               )}
             </div>
-            {fullscreenControls ?? (
-              <div className="flex shrink-0 flex-col items-center justify-center gap-3 landscape:w-72">
-                <p className="text-center text-sm text-slate-700">
-                  {t("qrDisplay.fullscreen.brightnessHint")}
-                </p>
-                <DialogClose asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 min-w-32 cursor-pointer border-slate-300 bg-white text-slate-950 focus-visible:ring-2"
-                  >
-                    <X aria-hidden="true" />
-                    {t("common.close")}
-                  </Button>
-                </DialogClose>
-              </div>
-            )}
+            {fullscreenControls}
           </DialogContent>
         </Dialog>
       )}

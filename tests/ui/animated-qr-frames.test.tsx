@@ -107,6 +107,8 @@ describe("AnimatedQrFrames", () => {
     expect(within(dialog).getByText("1 / 2")).toBeInTheDocument()
     expect(screen.getAllByLabelText("Display speed")).toHaveLength(1)
     expect(screen.getAllByLabelText("Frame density")).toHaveLength(1)
+    expect(within(dialog).getByLabelText("Display speed").id).toMatch(/-fullscreen$/)
+    expect(within(dialog).getByLabelText("Frame density").id).toMatch(/-fullscreen$/)
     const ids = Array.from(dialog.querySelectorAll("input[id]")).map((input) => input.id)
     expect(new Set(ids).size).toBe(ids.length)
     for (const id of ids) {
@@ -126,9 +128,23 @@ describe("AnimatedQrFrames", () => {
     })
     expect(onFrameBytesChange).toHaveBeenCalledWith(200)
 
-    fireEvent.click(within(dialog).getAllByRole("button", { name: "Close" })[0]!)
-    expect(screen.getByLabelText("Display speed")).toHaveValue("1500")
-    expect(screen.queryByLabelText("Frame density")).not.toBeInTheDocument()
+    const fullscreenClose = within(dialog).getAllByRole("button", { name: "Close" })
+    expect(fullscreenClose).toHaveLength(1)
+    fireEvent.click(fullscreenClose[0]!)
+    const closingInputs = screen.getAllByRole("slider")
+    expect(new Set(closingInputs.map((input) => input.id)).size).toBe(
+      closingInputs.length,
+    )
+    expect(
+      screen
+        .getAllByLabelText("Display speed")
+        .find((input) => input.id.endsWith("-inline")),
+    ).toHaveValue("1500")
+    expect(
+      screen
+        .getAllByLabelText("Frame density")
+        .some((input) => input.id.endsWith("-inline")),
+    ).toBe(true)
   })
 
   it("raises the density minimum when 100B cannot fit the artifact", async () => {
@@ -160,7 +176,7 @@ describe("AnimatedQrFrames", () => {
         outputName="test"
       />,
     )
-    fireEvent.click(screen.getByRole("button", { name: "Next frame" }))
+    fireEvent.click(screen.getByRole("button", { name: "Next" }))
     expect(screen.getByText("2 / 2")).toBeInTheDocument()
 
     rerender(
@@ -171,6 +187,68 @@ describe("AnimatedQrFrames", () => {
       />,
     )
     await waitFor(() => expect(screen.getByText("1 / 2")).toBeInTheDocument())
+  })
+
+  it("uses accessible export descriptions while showing three bare format nouns in one row", () => {
+    render(
+      <AnimatedQrFrames
+        frames={[frame(0, 2), frame(1, 2)]}
+        frameIntervalMs={2_000}
+        outputName="test"
+      />,
+    )
+
+    const png = screen.getByRole("button", { name: "Export all PNGs" })
+    const zip = screen.getByRole("button", { name: "Export ZIP" })
+    const svg = screen.getByRole("button", { name: "Current SVG" })
+    expect(png).toHaveTextContent(/^PNG$/)
+    expect(zip).toHaveTextContent(/^ZIP$/)
+    expect(svg).toHaveTextContent(/^SVG$/)
+    expect(png.parentElement).toBe(zip.parentElement)
+    expect(png.parentElement).toBe(svg.parentElement)
+    expect(png.parentElement).toHaveClass("grid", "grid-cols-3")
+  })
+
+  it("stays parent-controlled until fullscreenOpen is rerendered", async () => {
+    const onFullscreenOpenChange = vi.fn()
+    const props = {
+      frames: [frame(0, 2), frame(1, 2)],
+      frameIntervalMs: 2_000,
+      outputName: "controlled",
+      onFullscreenOpenChange,
+    } as const
+    const { rerender } = render(
+      <AnimatedQrFrames {...props} fullscreenOpen={false} />,
+    )
+    const trigger = screen.getByRole("button", { name: "View full screen" })
+    await waitFor(() => expect(trigger).toBeEnabled())
+
+    fireEvent.click(trigger)
+    expect(onFullscreenOpenChange).toHaveBeenLastCalledWith(true)
+    expect(
+      screen.queryByRole("dialog", {
+        name: /View Multi-frame QR 1 \/ 2 full screen/,
+      }),
+    ).not.toBeInTheDocument()
+
+    rerender(<AnimatedQrFrames {...props} fullscreenOpen />)
+    const dialog = screen.getByRole("dialog", {
+      name: /View Multi-frame QR 1 \/ 2 full screen/,
+    })
+    const close = within(dialog).getAllByRole("button", { name: "Close" })
+    expect(close).toHaveLength(1)
+    fireEvent.click(close[0]!)
+    expect(onFullscreenOpenChange).toHaveBeenLastCalledWith(false)
+    expect(dialog).toHaveAttribute("data-state", "open")
+
+    rerender(<AnimatedQrFrames {...props} fullscreenOpen={false} />)
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", {
+          name: /View Multi-frame QR 1 \/ 2 full screen/,
+        }),
+      ).not.toBeInTheDocument(),
+    )
   })
 
   it("omits every export control and never calls export helpers when disabled", () => {
