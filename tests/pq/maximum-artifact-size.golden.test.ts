@@ -17,6 +17,7 @@ import {
   PQ_IDENTITY_QR_TARGET_FRAME_BYTES,
   PQ_KEY_QR_FRAME_BYTES,
   pqIdentityQrFrameCount,
+  PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
 import { payloadFits, renderQrSvgString } from "@/qr/encode"
 import { splitIntoFrames } from "@/qr/multipart/split"
@@ -26,7 +27,7 @@ import { env, parseAppEnv } from "@/schemas/env-schema"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 const CREATED_AT = 1_700_000_000_000
-const FRAME_BYTES = [400, 600, 900] as const
+const FRAME_BYTES = [200, 300, 400, 600, 900] as const
 
 interface ArtifactFixture {
   label: string
@@ -148,56 +149,56 @@ function artifactFixtures(): ArtifactFixture[] {
       artifactType: "pq-message",
       bytes: messageArtifact(false, 0),
       expectedBytes: 1887,
-      expectedFrames: { 400: 5, 600: 4, 900: 3 },
+      expectedFrames: { 200: 10, 300: 7, 400: 5, 600: 4, 900: 3 },
     },
     {
       label: "unsigned / maximum plaintext",
       artifactType: "pq-message",
       bytes: messageArtifact(false, MAX_PLAINTEXT_BYTES),
       expectedBytes: 5986,
-      expectedFrames: { 400: 15, 600: 10, 900: 7 },
+      expectedFrames: { 200: 30, 300: 20, 400: 15, 600: 10, 900: 7 },
     },
     {
       label: "signed / empty plaintext",
       artifactType: "pq-message",
       bytes: messageArtifact(true, 0),
       expectedBytes: 6613,
-      expectedFrames: { 400: 17, 600: 12, 900: 8 },
+      expectedFrames: { 200: 34, 300: 23, 400: 17, 600: 12, 900: 8 },
     },
     {
       label: "signed / maximum plaintext",
       artifactType: "pq-message",
       bytes: messageArtifact(true, MAX_PLAINTEXT_BYTES),
       expectedBytes: 10711,
-      expectedFrames: { 400: 27, 600: 18, 900: 12 },
+      expectedFrames: { 200: 54, 300: 36, 400: 27, 600: 18, 900: 12 },
     },
     {
       label: "OCI2 public bundle",
       artifactType: "pq-public-identity",
       bytes: publicIdentityArtifact("テスト"),
       expectedBytes: 4402,
-      expectedFrames: { 400: 12, 600: 8, 900: 5 },
+      expectedFrames: { 200: 23, 300: 15, 400: 12, 600: 8, 900: 5 },
     },
     {
       label: "OCP2 ML-KEM public key",
       artifactType: "pq-kem-public-key",
       bytes: encodeKemPublicKeyEnvelopeV2(kemKey),
       expectedBytes: 1733,
-      expectedFrames: { 400: 5, 600: 3, 900: 2 },
+      expectedFrames: { 200: 9, 300: 6, 400: 5, 600: 3, 900: 2 },
     },
     {
       label: "OCS2 ML-DSA public key",
       artifactType: "pq-dsa-public-key",
       bytes: encodeDsaPublicKeyEnvelopeV2(dsaKey),
       expectedBytes: 2755,
-      expectedFrames: { 400: 7, 600: 5, 900: 4 },
+      expectedFrames: { 200: 14, 300: 10, 400: 7, 600: 5, 900: 4 },
     },
     {
       label: "OCB2 encrypted-seed-backup reserved fixture",
       artifactType: "encrypted-seed-backup",
       bytes: encryptedSeedBackup,
       expectedBytes: 4637,
-      expectedFrames: { 400: 12, 600: 8, 900: 6 },
+      expectedFrames: { 200: 24, 300: 16, 400: 12, 600: 8, 900: 6 },
     },
   ]
 }
@@ -263,6 +264,9 @@ describe("maximum canonical CBOR artifact sizing", () => {
       const signedArtifactBytes = messageArtifact(true, plaintextBytes).byteLength
       for (const frameBytes of FRAME_BYTES) {
         const requiredFrames = Math.ceil(signedArtifactBytes / frameBytes)
+        // Combinations needing more than the protocol ceiling cannot be expressed by
+        // VITE_QR_MAX_FRAMES at all, so the capacity guard has nothing to compare.
+        if (requiredFrames > PROTOCOL_MAX_FRAMES) continue
         expect(
           parseAppEnv({
             VITE_MAX_PLAINTEXT_BYTES: String(plaintextBytes),
@@ -319,30 +323,35 @@ describe("maximum canonical CBOR artifact sizing", () => {
     60_000,
   )
 
-  it("clamps the semantic OCI2 target to 20–25 frames", () => {
-    expect(pqIdentityQrFrameCount(PQ_IDENTITY_QR_TARGET_FRAME_BYTES)).toBe(20)
+  it("clamps the semantic OCI2 target to 40–50 frames", () => {
+    expect(PQ_IDENTITY_QR_TARGET_FRAME_BYTES).toBe(100)
+    expect(PQ_IDENTITY_QR_FRAME_COUNT_MIN).toBe(40)
+    expect(PQ_IDENTITY_QR_FRAME_COUNT_MAX).toBe(50)
+    expect(pqIdentityQrFrameCount(PQ_IDENTITY_QR_TARGET_FRAME_BYTES)).toBe(
+      PQ_IDENTITY_QR_FRAME_COUNT_MIN,
+    )
     expect(
       pqIdentityQrFrameCount(
         PQ_IDENTITY_QR_FRAME_COUNT_MIN * PQ_IDENTITY_QR_TARGET_FRAME_BYTES + 1,
       ),
-    ).toBe(21)
+    ).toBe(PQ_IDENTITY_QR_FRAME_COUNT_MIN + 1)
     expect(
       pqIdentityQrFrameCount(
         PQ_IDENTITY_QR_FRAME_COUNT_MAX * PQ_IDENTITY_QR_TARGET_FRAME_BYTES,
       ),
-    ).toBe(25)
+    ).toBe(PQ_IDENTITY_QR_FRAME_COUNT_MAX)
     expect(
       pqIdentityQrFrameCount(
         (PQ_IDENTITY_QR_FRAME_COUNT_MAX + 1) *
           PQ_IDENTITY_QR_TARGET_FRAME_BYTES,
       ),
-    ).toBe(25)
+    ).toBe(PQ_IDENTITY_QR_FRAME_COUNT_MAX)
   })
 
   it("fails closed when VITE_QR_MAX_FRAMES is below the selected OCI2 count", async () => {
     const artifactBytes = publicIdentityArtifact("テスト")
     const frameCount = pqIdentityQrFrameCount(artifactBytes.byteLength)
-    expect(frameCount).toBe(23)
+    expect(frameCount).toBe(45)
     const originalMaximum = env.qrMaxFrames
     try {
       env.qrMaxFrames = frameCount - 1
@@ -360,8 +369,8 @@ describe("maximum canonical CBOR artifact sizing", () => {
 
   it("single-key artifacts retain PQ_KEY_QR_FRAME_BYTES with EC-Q-fit frames", async () => {
     const expectedByType = {
-      "pq-kem-public-key": 7,
-      "pq-dsa-public-key": 10,
+      "pq-kem-public-key": 13,
+      "pq-dsa-public-key": 20,
     } as const
     for (const fixture of artifactFixtures()) {
       if (!(fixture.artifactType in expectedByType)) continue

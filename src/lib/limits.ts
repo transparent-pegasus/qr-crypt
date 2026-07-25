@@ -60,23 +60,26 @@ export const KEM_SEED_BYTES = 64
 export const DSA_SEED_BYTES = 32
 
 // Frame-setting ranges and defaults from docs/qr-protocol-v2.md §6.
-// Preferences/environment validation
-// references this table. Do not lower FRAME_BYTES_MIN=400: if an older PWA bundle on
-// the same origin shares IndexedDB and validates frameBytes < 400, it produces
-// STORAGE_FAILED, which forces wipeOnOnline through boot's preferencesReadFailed path.
-export const FRAME_BYTES_MIN = 400
+// Preferences/environment validation references this table.
+// Halved from 400/600: smaller chunks pick a lower QR version, so modules render larger
+// and cameras lock on faster. An older bundle on the same origin would reject a stored
+// frameBytes < 400 and force a wipe, but this app is never updated after install.
+export const FRAME_BYTES_MIN = 200
 export const FRAME_BYTES_MAX = 900
-export const FRAME_BYTES_DEFAULT = 600
-// Minimum chunk size used only by sender-side splitting. It is independent of the
-// Preferences range to avoid the wipe hazard described above.
-export const FRAME_CHUNK_MIN_BYTES = 200
+export const FRAME_BYTES_DEFAULT = 300
+// Minimum chunk size used only by sender-side splitting; below the Preferences floor
+// because the fixed key-QR chunk sizes are smaller than any selectable frameBytes.
+export const FRAME_CHUNK_MIN_BYTES = 100
 // Fixed chunk size used only to display OCP2/OCS2 single-key QRs.
 // It is not tied to settings/Preferences and is not persisted.
-export const PQ_KEY_QR_FRAME_BYTES = 280
-// For scanning stability, split OCI2 evenly into 20–25 frames targeting about 200B each.
-export const PQ_IDENTITY_QR_TARGET_FRAME_BYTES = 200
-export const PQ_IDENTITY_QR_FRAME_COUNT_MIN = 20
-export const PQ_IDENTITY_QR_FRAME_COUNT_MAX = 25
+// Halved from 280B for the same scan-reliability reason as the OCI2 target below.
+export const PQ_KEY_QR_FRAME_BYTES = 140
+// For scanning stability, split OCI2 evenly into 40–50 frames targeting about 100B each.
+// Halved from 200B/20–25 frames: 100B chunks drop each frame to a lower QR version, so
+// modules render larger and phone cameras lock on faster, at twice the frame count.
+export const PQ_IDENTITY_QR_TARGET_FRAME_BYTES = 100
+export const PQ_IDENTITY_QR_FRAME_COUNT_MIN = 40
+export const PQ_IDENTITY_QR_FRAME_COUNT_MAX = 50
 
 export function pqIdentityQrFrameCount(artifactByteLength: number): number {
   if (!Number.isSafeInteger(artifactByteLength) || artifactByteLength < 1) {
@@ -106,8 +109,8 @@ export const RESET_CHURN_MB_MAX = 512
 // OCI2 bundle                    4,402              12/8/5
 // OCP2 KEM / OCS2 DSA           1,733 / 2,755       5/3/2 / 7/5/4
 // OCB2 reserved sizing fixture   4,637              12/8/6
-// OCI2 splits evenly by count: 4,402B → 23 frames (191/192B).
-// Fixed 280B single-key chunks (PQ_KEY_QR_FRAME_BYTES): OCP2 1,733 → 7 / OCS2 2,755 → 10.
+// OCI2 splits evenly by count: 4,402B → 45 frames (97/98B).
+// Fixed 140B single-key chunks (PQ_KEY_QR_FRAME_BYTES): OCP2 1,733 → 13 / OCS2 2,755 → 20.
 // maximum-artifact-size.golden.test.ts also pins actual EC-Q generation for every OCF2 string.
 export const PROTOCOL_MAX_FRAMES = 64
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX

@@ -314,7 +314,7 @@ describe("settings v2", () => {
     const frameBytes = await screen.findByLabelText(/Raw data per frame/)
     const frameInterval = screen.getByLabelText(/Frame interval/)
     const transferTimeout = screen.getByLabelText(/Scan-state lifetime/)
-    expect(frameBytes).toHaveAttribute("min", "400")
+    expect(frameBytes).toHaveAttribute("min", "200")
     expect(frameBytes).toHaveAttribute("max", "900")
     expect(frameInterval).toHaveAttribute("min", "1000")
     expect(frameInterval).toHaveAttribute("max", "3000")

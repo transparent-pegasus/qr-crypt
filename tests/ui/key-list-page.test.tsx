@@ -58,10 +58,12 @@ describe("key list page", () => {
     expect(rows[1]).toHaveTextContent("共通鍵A")
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
     expect(screen.getByText(/Post-quantum identity ·/)).toBeInTheDocument()
-    expect(screen.getByText("active")).toBeInTheDocument()
     expect(screen.getByText("共通鍵A")).toBeInTheDocument()
     expect(screen.getByText(/Symmetric key ·/)).toBeInTheDocument()
-    expect(screen.getByText("AES-256-GCM")).toBeInTheDocument()
+    // Both badges report lifecycle state, never key type.
+    expect(within(rows[0]!).getByText("Active")).toBeInTheDocument()
+    expect(within(rows[1]!).getByText("Active")).toBeInTheDocument()
+    expect(within(screen.getByRole("tabpanel")).queryByText("AES-256-GCM")).toBeNull()
     expect(screen.queryByText("Public")).not.toBeInTheDocument()
     expect(screen.queryByText("Secret")).not.toBeInTheDocument()
     expect(screen.queryByText("受信鍵B")).not.toBeInTheDocument()
@@ -129,7 +131,7 @@ describe("key list page", () => {
     expect(splitIntoFrames).toHaveBeenLastCalledWith(
       expect.objectContaining({
         artifactType: "pq-public-identity",
-        frameCount: 20,
+        frameCount: 40,
       }),
     )
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameBytes")
@@ -139,7 +141,7 @@ describe("key list page", () => {
     expect(splitIntoFrames).toHaveBeenLastCalledWith(
       expect.objectContaining({
         artifactType: "pq-kem-public-key",
-        frameBytes: 280,
+        frameBytes: 140,
       }),
     )
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
@@ -151,7 +153,7 @@ describe("key list page", () => {
     expect(splitIntoFrames).toHaveBeenLastCalledWith(
       expect.objectContaining({
         artifactType: "pq-dsa-public-key",
-        frameBytes: 280,
+        frameBytes: 140,
       }),
     )
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
@@ -199,7 +201,7 @@ describe("key list page", () => {
       expect(revokeIdentity).toHaveBeenCalledWith(newId, expect.any(Number)),
     )
     dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    expect(within(dialog).getByText("revoked")).toBeInTheDocument()
+    expect(within(dialog).getByText("Revoked")).toBeInTheDocument()
     expect(
       within(dialog).queryByRole("button", { name: "Rotate" }),
     ).not.toBeInTheDocument()

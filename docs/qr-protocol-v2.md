@@ -188,16 +188,16 @@ QrFrameV2 = {
   `VITE_QR_MAX_FRAMES` or the artifact byte length, and any result whose
   largest chunk exceeds 900B. Every chunk is non-empty and largest/smallest
   lengths differ by at most one byte
-- Defaults: chunk 600B / 1,000ms interval / max 64 frames. Message chunks are
-  configurable from 400–900B. The current interval values are exactly
+- Defaults: chunk 300B / 1,000ms interval / max 64 frames. Message chunks are
+  configurable from 200–900B. The current interval values are exactly
   1,000/1,500/2,000/2,500/3,000ms (UI step 500ms); off-grid env values and
   new preference writes are rejected
 - OCI2 display uses balanced count mode with
-  `clamp(ceil(artifactBytes / 200), 20, 25)`. The 4,402B measured fixture
-  therefore uses 23 chunks of 191/192B. A custom `VITE_QR_MAX_FRAMES` below
+  `clamp(ceil(artifactBytes / 100), 40, 50)`. The 4,402B measured fixture
+  therefore uses 45 chunks of 97/98B. A custom `VITE_QR_MAX_FRAMES` below
   the selected count fails closed as `QR_TOO_LARGE`; the selection is not
   silently reduced
-- OCP2/OCS2 single-key display retains the fixed 280B chunk
+- OCP2/OCS2 single-key display uses the fixed 140B chunk
   (`PQ_KEY_QR_FRAME_BYTES`, not user-configurable)
 - Assembly invariants: the first frame freezes the immutable metadata
   (transferId/artifactType/frameCount/totalByteLength/payloadSha256).

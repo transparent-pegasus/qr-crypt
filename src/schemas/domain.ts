@@ -310,7 +310,7 @@ export interface Preferences {
   qrErrorCorrection: QrEcLevel
   autoClearPlaintextAfterEncrypt: boolean
   backgroundClearEnabled: boolean
-  frameBytes: number // 400–900; limits.ts is the single derivation source.
+  frameBytes: number // 200–900; limits.ts is the single derivation source.
   frameIntervalMs: number // 1000–3000 in 500ms steps; limits.ts is the single derivation source.
   transferTimeoutMinutes: number // Default 10.
   wipeOnOnline: boolean // Default true.
@@ -322,7 +322,7 @@ export interface Preferences {
 export const PQ_PREFERENCE_DEFAULTS = {
   defaultPqProfile: "maximum",
   requireSignature: false,
-  frameBytes: 600,
+  frameBytes: 300,
   frameIntervalMs: 1000,
   transferTimeoutMinutes: 10,
   wipeOnOnline: true,

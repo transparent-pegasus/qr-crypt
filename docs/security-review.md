@@ -23,7 +23,7 @@ the active policy and is rejected at the operational boundary as
     maximum while preserving `wipeOnOnline=false`.
   - `tests/pq/maximum-artifact-size.golden.test.ts` pins the canonical CBOR raw
     byte counts in the table below, the OCF2 frame counts at chunk sizes
-    400/600/900B, real EC-Q generation for every frame, and boundary agreement
+    200/300/400/600/900B, real EC-Q generation for every frame, and boundary agreement
     with the env capacity guard.
   - The ML-KEM-1024 / ML-DSA-87 KATs and `aube test` / `aube typecheck` pass,
     and the `aube bench:pq` maximum reference figures plus the README and
@@ -39,23 +39,23 @@ substitute for independent review and do not close the blocker.
 Measured maximum fixture (`maxPlaintext=4,096B`, `name="テスト"` — the literal
 fixture string):
 
-| artifact | canonical CBOR (bytes) | OCF2 frames (400 / 600 / 900B) |
+| artifact | canonical CBOR (bytes) | OCF2 frames (200 / 300 / 400 / 600 / 900B) |
 |---|---:|---:|
-| unsigned empty / max | 1,887 / 5,986 | 5/4/3 / 15/10/7 |
-| signed empty / max | 6,613 / 10,711 | 17/12/8 / 27/18/12 |
-| OCI2 bundle | 4,402 | 12/8/5 |
-| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 5/3/2 / 7/5/4 |
-| OCB2 reserved sizing fixture | 4,637 | 12/8/6 |
+| unsigned empty / max | 1,887 / 5,986 | 10/7/5/4/3 / 30/20/15/10/7 |
+| signed empty / max | 6,613 / 10,711 | 34/23/17/12/8 / 54/36/27/18/12 |
+| OCI2 bundle | 4,402 | 23/15/12/8/5 |
+| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 9/6/5/3/2 / 14/10/7/5/4 |
+| OCB2 reserved sizing fixture | 4,637 | 24/16/12/8/6 |
 
 OCI2 display uses balanced count mode:
-`clamp(ceil(artifactBytes / 200), 20, 25)`. The 4,402B fixture selects 23
-frames whose chunks are 191/192B. Tests cover short names through the maximum
+`clamp(ceil(artifactBytes / 100), 40, 50)`. The 4,402B fixture selects 45
+frames whose chunks are 97/98B. Tests cover short names through the maximum
 80-character name, byte-exact reconstruction, non-empty chunks whose sizes
 differ by at most 1 byte, and real EC-Q generation. If `VITE_QR_MAX_FRAMES` is below the selected count,
-generation fails closed as `QR_TOO_LARGE`. OCP2/OCS2 retain the fixed 280B
-chunk (`PQ_KEY_QR_FRAME_BYTES`), producing 7/10 frames for the measured
-fixtures. The 400/600/900 figures above remain message-class measurements
-across the configurable range.
+generation fails closed as `QR_TOO_LARGE`. OCP2/OCS2 use the fixed 140B
+chunk (`PQ_KEY_QR_FRAME_BYTES`), producing 13/20 frames for the measured
+fixtures. The 200/300/400/600/900 figures above remain message-class measurements
+across the configurable range; 300B is the default.
 
 The current multipart transition interval is exactly
 1,000/1,500/2,000/2,500/3,000ms, defaulting to 1,000ms. New preferences and

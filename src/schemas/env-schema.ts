@@ -98,7 +98,7 @@ const rawSchema = z.object({
   VITE_REQUIRE_SIGNATURE: boolFromString("false"),
   VITE_ENABLE_PRIVATE_KEY_EXPORT: boolFromString("false"),
   VITE_ENABLE_ENCRYPTED_SEED_BACKUP: boolFromString("false"),
-  VITE_QR_FRAME_BYTES: intFromString(600, 400, 900),
+  VITE_QR_FRAME_BYTES: intFromString(300, 200, 900),
   VITE_QR_FRAME_INTERVAL_MS: frameIntervalMsFromString,
   VITE_QR_MAX_FRAMES: intFromString(64, 1, 64),
   // Unknown provider names are startup errors.

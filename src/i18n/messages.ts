@@ -224,6 +224,10 @@ const en = {
   "keyDetail.symmetric.fingerprintLabel": "Key fingerprint",
   "keyDetail.button.showSecretQr": "Show secret-key QR",
 
+  "keyStatus.active": "Active",
+  "keyStatus.rotated": "Rotated",
+  "keyStatus.revoked": "Revoked",
+
   "keyList.title": "Key list",
   "keyList.subtitle": "Message ciphertext is not stored in the app.",
   "keyList.error.identity": "Post-quantum identities could not be loaded",
@@ -795,6 +799,10 @@ const ja = {
   "keyDetail.previous.toggle": "旧世代 {count} 件、復号専用",
   "keyDetail.symmetric.fingerprintLabel": "鍵指紋",
   "keyDetail.button.showSecretQr": "秘密鍵QRを表示",
+
+  "keyStatus.active": "有効",
+  "keyStatus.rotated": "更新済み",
+  "keyStatus.revoked": "失効",
 
   "keyList.title": "鍵一覧",
   "keyList.subtitle": "メッセージ暗号文はアプリ内へ保存しません。",

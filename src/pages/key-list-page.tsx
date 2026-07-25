@@ -266,7 +266,7 @@ export function KeyListPage() {
                       }
                     >
                       {supported
-                        ? head.status
+                        ? t(`keyStatus.${head.status}`)
                         : t("keyDetail.badge.legacyProfile")}
                     </Badge>
                   </div>
@@ -291,7 +291,9 @@ export function KeyListPage() {
                       })}
                     </p>
                   </div>
-                  <Badge>AES-256-GCM</Badge>
+                  {/* Symmetric records carry no lifecycle state; the badge column is
+                      state everywhere, and the algorithm already shows in the meta line. */}
+                  <Badge>{t("keyStatus.active")}</Badge>
                 </div>
               </button>
             )

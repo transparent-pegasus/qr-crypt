@@ -575,7 +575,9 @@ function IdentityDetails({
       <div className="flex items-start justify-between gap-3">
         <p className="font-mono text-xs text-muted-foreground">{identity.id}</p>
         <Badge variant={old || !supported ? "secondary" : "default"}>
-          {supported ? identity.status : t("keyDetail.badge.legacyProfile")}
+          {supported
+            ? t(`keyStatus.${identity.status}`)
+            : t("keyDetail.badge.legacyProfile")}
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground">

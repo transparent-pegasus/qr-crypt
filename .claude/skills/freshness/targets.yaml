@@ -202,6 +202,7 @@ units:
       - tests/pq/maximum-artifact-size.golden.test.ts
       - src/schemas/env-schema.ts # MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES mirrors the golden
       - .env.prod # runtime crypto/framing policy defaults
+      - .env.example # same framing defaults, kept in step with .env.prod
     why: >
       Measured byte/frame tables (dated 2026-07-23) are cited by
       security-review and limits comments; env-schema.ts carries the
@@ -212,9 +213,9 @@ units:
       comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
       env-schema.ts, and the .env.prod/.env.example defaults together, then
       sync the copy of the table in docs/security-review.md.
-      OCI2 balanced count mode (target 200B, clamp 20–25; 4,402B fixture → 23
-      frames) and PQ_KEY_QR_FRAME_BYTES (OCP2/OCS2 fixed 280B → 7/10 frames,
-      2026-07-24) in limits.ts are mirrored in docs/qr-protocol-v2.md,
+      OCI2 balanced count mode (target 100B, clamp 40–50; 4,402B fixture → 45
+      frames) and PQ_KEY_QR_FRAME_BYTES (OCP2/OCS2 fixed 140B → 13/20 frames,
+      2026-07-25) in limits.ts are mirrored in docs/qr-protocol-v2.md,
       docs/security-review.md, and the golden test — keep all four in agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [security-review]
