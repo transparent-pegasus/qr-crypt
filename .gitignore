@@ -15,6 +15,5 @@ coverage/
 .worktrees/
 
 # Private agent tooling (local only; freshness skill stays tracked)
-.claude/skills/herdr/
-.claude/skills/orchestration/
-.claude/skills/using-herdr-sibling-panes/
+.claude/skills/*
+!.claude/skills/freshness/
