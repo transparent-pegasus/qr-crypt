@@ -70,11 +70,11 @@ mean is the average milliseconds per operation.
 
 | Operation | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| ML-KEM-1024 keygen | 1,197.87 | 0.8348 | 1,148.86 | 0.8704 |
-| ML-KEM-1024 encapsulate | 1,060.88 | 0.9426 | 1,014.37 | 0.9858 |
-| ML-KEM-1024 decapsulate | 821.14 | 1.2178 | 802.63 | 1.2459 |
-| ML-DSA-87 sign | 74.1783 | 13.4810 | 76.7252 | 13.0335 |
-| ML-DSA-87 verify | 308.45 | 3.2421 | 294.58 | 3.3947 |
+| ML-KEM-1024 keygen | 1,090.15 | 0.9173 | 1,031.95 | 0.9690 |
+| ML-KEM-1024 encapsulate | 1,025.61 | 0.9750 | 979.89 | 1.0205 |
+| ML-KEM-1024 decapsulate | 787.64 | 1.2696 | 781.58 | 1.2795 |
+| ML-DSA-87 sign | 83.4877 | 11.9778 | 96.8792 | 10.3221 |
+| ML-DSA-87 verify | 295.14 | 3.3883 | 285.53 | 3.5025 |
 
 These are reference values from a development machine; they are not a substitute for
 measurements in real browsers or on low-end devices, nor for the `release-approved` determination.
@@ -194,6 +194,7 @@ This is not run in parallel with GitHub's Cloudflare Git Integration. GitHub Act
 3. Register the GitHub Repository Variables:
    * `CLOUDFLARE_PAGES_PROJECT` — the production project deployed from `main`
    * `CLOUDFLARE_PAGES_PROJECT_DEV` — the development project deployed from `dev`
+4. In Settings > Actions > General, enable **Allow GitHub Actions to create and approve pull requests**. This repo-wide setting is required by the promotion workflow and also grants review-approval capability to every workflow with `pull-requests: write`. The approval half is unused here because the ruleset requires 0 approvals.
 
 ### CI flow
 
@@ -209,6 +210,14 @@ request targeting `main` or `dev`:
 * Every other branch and every pull request runs the checks only
 * A `push` to `main` additionally publishes a signed prerelease via
   `.github/workflows/github-release.yml`
+
+`.github/workflows/dev-to-main-pr.yml` opens a `dev` → `main` promotion pull request on a `dev` push, or on an intentional `workflow_dispatch`, when no matching open PR exists, `dev` has commits ahead of `main`, and `main` does not already have `dev`'s commit tree. It never merges or pushes.
+
+* Closing this PR without merging is a pause, not a permanent veto: the next push to `dev` opens a new one because a new dev commit is new information; `workflow_dispatch` also opens one as a deliberate human action, so it cannot conflict with a human veto
+* This is a real production gate only while `main`'s ruleset requires `validate` and `e2e` with strict up-to-date status checks. If those required checks are removed, even a red dev push becomes an openly mergeable production promotion
+* If `dev` is behind or diverged from `main`, strict required status checks block the merge until `dev` contains `main`; resolve that human sync problem before merging
+* A PR opened by Actions may show **"Approve workflows to run"** for its pull-request checks; approve it when shown. The push-event `validate` and `e2e` checks on the same head SHA have already run
+* Force-pushing `dev` is blocked by the ruleset's `non_fast_forward` rule and empty `bypass_actors`, so the workflow needs no separate force-push guard
 
 ### `public/_headers` / `public/_redirects`
 

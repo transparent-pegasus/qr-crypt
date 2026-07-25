@@ -95,23 +95,38 @@ units:
     last_checked: 2026-07-25
     files:
       - .github/workflows/cloudflare-pages.yml
+      - .github/workflows/dev-to-main-pr.yml
       - .github/workflows/github-release.yml
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
       image, and GitHub runner/CLI behavior all drift with upstream releases.
     method: |
-      Review both workflows. Check each action repository for newer majors and
+      Review all three workflows. Check each action repository for newer majors and
       security advisories. Keep release-workflow actions pinned to full SHAs;
       verify each SHA still matches the documented tag. Review the pinned
       Cosign release, verifier image digest, and verification contract. Keep
       mise-action reading mise.toml and VITE_BUILD_SHA sourced from
-      ${{ github.sha }}.
+      ${{ github.sha }}. For dev-to-main-pr.yml, review the checkout-free gh
+      usage, the REST --input payload and already-exists handling, its
+      contents: read and pull-requests: write scopes, the workflow_dispatch ref
+      guard, and the ahead_by plus commit-tree-SHA promotion guards. Reconfirm
+      that a GITHUB_TOKEN-created PR triggers pull_request workflows but may
+      leave them held at "Approve workflows to run", and that gh pr create reads
+      local branch configuration (so this workflow must use gh api --input
+      without checkout). Reconfirm that the repository-wide setting allowing
+      Actions to create and approve pull requests is enabled.
     verify: |
       Local only — a freshness sweep must not push:
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \
-        actionlint .github/workflows/*.yml, then
+        actionlint .github/workflows/*.yml
+      Extract the run block from .github/workflows/dev-to-main-pr.yml without
+      YAML indentation and pipe it to:
+      mise x \
+        github:rhysd/actionlint@v1.7.12 \
+        github:koalaman/shellcheck@v0.11.0 -- \
+        shellcheck -s bash -
       rg -n 'uses:|cosign-release:' .github/workflows/*.yml, then
       git ls-remote --exit-code <action repo> <tag> for every referenced tag
       and confirm pinned release-workflow SHAs match.
