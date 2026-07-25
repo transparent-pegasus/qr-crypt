@@ -245,6 +245,8 @@ a {
 }
 
 .lang__button {
+  display: inline-flex;
+  align-items: center;
   min-height: 2rem;
   padding: 0 0.875rem;
   border: 0;
@@ -254,10 +256,11 @@ a {
   font-family: var(--mono);
   font-size: 0.75rem;
   letter-spacing: 0.04em;
+  text-decoration: none;
   cursor: pointer;
 }
 
-.lang__button[aria-pressed="true"] {
+.lang__button[aria-current="page"] {
   background: var(--paper);
   color: var(--void);
 }

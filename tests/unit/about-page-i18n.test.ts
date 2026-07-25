@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath, URL } from "node:url"
 import { describe, expect, it } from "vitest"
+import { parseDocument } from "../../scripts/build-about-locales.mjs"
 
 const ABOUT_DIR = new URL("../../public/about/", import.meta.url)
 
@@ -52,10 +53,25 @@ describe("about page i18n", () => {
     },
   )
 
-  it("names every locale so the switcher can label it", () => {
-    expect(messages.DEFAULT_LOCALE.label.trim()).not.toBe("")
-    for (const locale of Object.values(messages.LOCALES)) {
-      expect(locale.label.trim()).not.toBe("")
+  it("links every locale from the switcher, under the name messages.js gives it", async () => {
+    // The switcher is static markup so it works without JavaScript, which puts
+    // the locale names in two places. This is what keeps the two in step.
+    const doc = await parseDocument(html)
+    const links = [...doc.querySelectorAll(".lang__button[lang]")]
+    const linked = Object.fromEntries(
+      links.map((link) => [
+        link.getAttribute("lang"),
+        { label: link.textContent?.trim(), href: link.getAttribute("href") },
+      ]),
+    )
+
+    expect(linked[messages.DEFAULT_LOCALE.code]).toEqual({
+      label: messages.DEFAULT_LOCALE.label,
+      href: "/about/",
+    })
+    for (const [code, locale] of Object.entries(messages.LOCALES)) {
+      expect(linked[code]).toEqual({ label: locale.label, href: `/about/${code}/` })
     }
+    expect(links).toHaveLength(Object.keys(messages.LOCALES).length + 1)
   })
 })
