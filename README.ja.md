@@ -99,7 +99,7 @@ mean は 1 処理あたりの平均ミリ秒です。
 * Vite / TypeScript / Tailwind CSS v4
 * shadcn/ui（Radix UI）+ sonner
 * Web Crypto API / IndexedDB（idb）
-* Zod / cbor-x / qrcode / @zxing/browser・@zxing/library
+* Zod / cbor-x / qrcode / zxing-wasm（reader-only・カメラ読取）
 * vite-plugin-pwa / workbox-window
 * Vitest / Testing Library / Playwright（@playwright/test）
 * Aube（パッケージマネージャ）/ mise（ツールバージョン固定）
@@ -292,7 +292,8 @@ Android Chrome・iOS Safari）と独立監査記録が揃うまで `release-appr
 | shadcn 追加コンポーネント `checkbox` / `radio-group` / `collapsible` | 強確認・読取対象選択・詳細折りたたみに必要 |
 | `_headers` へ `/sw.js`・`/registerSW.js`・`/manifest.webmanifest` の `Cache-Control: no-cache` 追加 | SW / manifest の鮮度担保。デプロイヘッダーへの管理された追加 |
 | CI へ独立 `e2e` job 追加 | `validate-and-deploy` はそのまま。e2e は deploy をブロックしない |
-| `@zxing/library` 追加 | DOM 非依存の unit テスト用。`@zxing/browser` は UI 層のみ |
+| カメラ QR 読取を `zxing-wasm`（reader-only）へ移行 | `@zxing/browser` は削除。WebAssembly バイナリは same-origin 配信＋precache。そのため `script-src` に `'wasm-unsafe-eval'` を追加。[docs/security-review.md](docs/security-review.md) §1 参照 |
+| `@zxing/library` は devDependency として保持 | unit / Playwright ヘルパーでの生成 PNG のピクセル復号のみ。配布バンドルには含まれない |
 | `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` は予約のみ | env は残すが UI・モジュール分岐なし |
 | 供給網ピン・override（`react-hook-form@7.82.0` / `eslint-config-prettier@10.1.8` / `aube.overrides` で rollup OMT） | 初期構築時の advisory・trust-downgrade 対応。一覧は [docs/threat-model.md](docs/threat-model.md) §5.1 |
 | 当初計画のアプリ内更新通知の撤回 | オーナー決定によりアプリ内の更新機能を設けず、保護素材を持つ（または持っていた）端末は導入後オフラインで恒久運用する。新バージョンは端末の完全フォーマット後に新規導入する |

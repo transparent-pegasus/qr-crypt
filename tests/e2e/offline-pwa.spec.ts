@@ -14,6 +14,111 @@ import {
   workerObservations,
 } from "./helpers"
 
+test("initializes the precached same-origin reader WASM on its first offline camera use", async ({
+  context,
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await loadOnlineGate(page, "/keys")
+  await waitForServiceWorkerControl(page)
+
+  const appOrigin = new URL(page.url()).origin
+  const cached = await precachedUrls(page)
+  const readerWasmUrls = cached.filter((url) => {
+    const parsed = new URL(url)
+    return /^\/assets\/zxing_reader-[A-Za-z0-9_-]{6,}\.wasm$/.test(
+      parsed.pathname,
+    )
+  })
+  expect(readerWasmUrls).toHaveLength(1)
+  const readerWasmUrl = readerWasmUrls[0]!
+  const readerWasm = new URL(readerWasmUrl)
+  expect(readerWasm.origin).toBe(appOrigin)
+  expect(
+    await page.evaluate(async (url) => {
+      for (const cacheName of await caches.keys()) {
+        if ((await (await caches.open(cacheName)).match(url)) !== undefined) return true
+      }
+      return false
+    }, readerWasmUrl),
+  ).toBe(true)
+  expect(
+    await page.evaluate((wasmPath) =>
+      performance
+        .getEntriesByType("resource")
+        .some((entry) => new URL(entry.name).pathname === wasmPath),
+    readerWasm.pathname),
+  ).toBe(false)
+
+  await context.setOffline(true)
+  await expectOfflineAcknowledgement(page)
+  await acknowledgeOfflineRisk(page)
+  await expect(mainNavigation(page)).toBeVisible()
+
+  const runtimeRequests: string[] = []
+  const externalRequests: string[] = []
+  const readerRequestFailures: string[] = []
+  page.on("request", (request) => {
+    const url = request.url()
+    runtimeRequests.push(url)
+    const parsed = new URL(url)
+    if (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.origin !== appOrigin
+    ) {
+      externalRequests.push(url)
+    }
+  })
+  page.on("requestfailed", (request) => {
+    if (new URL(request.url()).pathname !== readerWasm.pathname) return
+    readerRequestFailures.push(
+      `${request.url()} ${request.failure()?.errorText ?? "unknown"}`,
+    )
+  })
+
+  const importTab = page.getByRole("tab", { name: "Import", exact: true })
+  await importTab.click()
+  await expect(importTab).toHaveAttribute("data-state", "active")
+  await page
+    .getByRole("button", {
+      name: "Scan a key QR code",
+      exact: true,
+    })
+    .click()
+
+  const dialog = page.getByRole("dialog", { name: "Scan a key QR code" })
+  await expect(dialog).toBeVisible()
+  await expect(
+    dialog.getByText("QR codes can be read in any order", { exact: true }),
+  ).toBeVisible({ timeout: 30_000 })
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const video = document.querySelector(
+          'video[aria-label="Camera video for QR scanning"]',
+        )
+        if (!(video instanceof HTMLVideoElement)) return false
+        const stream = video.srcObject
+        return (
+          stream instanceof MediaStream &&
+          stream.getTracks().some((track) => track.readyState === "live")
+        )
+      }),
+    )
+    .toBe(true)
+
+  expect(
+    runtimeRequests.filter(
+      (url) => new URL(url).pathname === readerWasm.pathname,
+    ),
+  ).toHaveLength(1)
+  expect(externalRequests).toEqual([])
+  expect(readerRequestFailures).toEqual([])
+
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  await expect(dialog).toBeHidden()
+})
+
 test("completes offline PQ keygen, Encaps, Decaps, and signature verification using only precached Workers", async ({
   context,
   page,

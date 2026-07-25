@@ -82,7 +82,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
-          globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
+          globPatterns: ["**/*.{js,css,html,svg,png,wasm,webmanifest}"],
           // The landing page under /about/ is an online-only surface. Keep its
           // bytes out of the offline bundle, and stop the SPA navigation
           // fallback from serving the app shell in its place.

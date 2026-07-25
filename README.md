@@ -99,7 +99,7 @@ Post-quantum identities never persist expanded private keys; only the **seeds** 
 * Vite / TypeScript / Tailwind CSS v4
 * shadcn/ui (Radix UI) + sonner
 * Web Crypto API / IndexedDB (idb)
-* Zod / cbor-x / qrcode / @zxing/browser and @zxing/library
+* Zod / cbor-x / qrcode / zxing-wasm (reader-only, camera scanning)
 * vite-plugin-pwa / workbox-window
 * Vitest / Testing Library / Playwright (@playwright/test)
 * Aube (package manager) / mise (pinned tool versions)
@@ -294,7 +294,8 @@ Android Chrome and iOS Safari) and an independent audit record are in place.
 | Additional shadcn components `checkbox` / `radio-group` / `collapsible` | Needed for strong confirmation, scan-target selection, and collapsible detail views |
 | `Cache-Control: no-cache` added to `_headers` for `/sw.js`, `/registerSW.js`, and `/manifest.webmanifest` | Keeps the SW / manifest fresh. A managed addition to the deployment headers |
 | Independent `e2e` job added to CI | `validate-and-deploy` is unchanged; e2e does not block deployment |
-| `@zxing/library` added | For DOM-independent unit tests. `@zxing/browser` is used in the UI layer only |
+| Camera QR reading moved to `zxing-wasm` (reader-only build) | Replaces `@zxing/browser`, which is removed. The WebAssembly binary is served same-origin and precached; `script-src` therefore gains `'wasm-unsafe-eval'`. See [docs/security-review.md](docs/security-review.md) §1 |
+| `@zxing/library` kept as a devDependency | Pixel decode of generated PNGs in unit and Playwright helpers only. Not in the shipped bundle |
 | `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` reserved only | The env vars remain, but there are no UI or module branches |
 | Supply-chain pins and overrides (`react-hook-form@7.82.0` / `eslint-config-prettier@10.1.8` / rollup OMT via `aube.overrides`) | Responses to advisories and a trust downgrade during initial setup. Full list: [docs/threat-model.md](docs/threat-model.md) §5.1 |
 | Withdrawal of the originally planned in-app update notification | Maintainer decision: no in-app update mechanism; after installation, devices that hold or have held protected material run offline permanently. New versions require a full device format followed by a fresh offline installation |
