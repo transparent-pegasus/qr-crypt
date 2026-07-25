@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#0E0E12" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="./about.css" />
+
+    <!-- The English wording lives here and nowhere else; about.js reads it out of
+         the document and messages.js supplies only the other languages. -->
+    <title data-i18n="meta.title">
+      QR Crypt — encrypt where the network cannot reach
+    </title>
+    <meta
+      name="description"
+      data-i18n-content="meta.description"
+      content="Encrypt and decrypt on a device that stays offline. Only scrambled text ever goes onto the network."
+    />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://qr-crypt.pages.dev/about/" />
+    <meta
+      property="og:title"
+      content="QR Crypt — encrypt where the network cannot reach"
+    />
+    <meta
+      property="og:description"
+      content="Encrypt and decrypt on a device that stays offline. Only scrambled text ever goes onto the network."
+    />
+    <meta property="og:image" content="https://qr-crypt.pages.dev/icons/icon-512.png" />
+
+    <script type="module" src="./about.js"></script>
+  </head>
+
+  <body>
+    <a class="skip" href="#main" data-i18n="a11y.skip">Skip to content</a>
+
+    <nav
+      class="lang"
+      id="lang"
+      data-i18n-label="a11y.language"
+      aria-label="Language"
+    ></nav>
+
+    <!-- ONLINE WORLD ------------------------------------------------------- -->
+    <header class="hero">
+      <p class="wrap mark">QR&nbsp;CRYPT</p>
+      <div class="wrap hero__stack">
+        <p class="eyebrow eyebrow--amber" data-i18n="hero.eyebrow">The premise</p>
+        <h1 class="thesis">
+          <span class="thesis__line" data-i18n="hero.line1"
+            >Any device that has ever connected to a network</span
+          >
+          <span class="thesis__line thesis__line--turn" data-i18n="hero.line2"
+            >may already be compromised.</span
+          >
+        </h1>
+        <p class="answer" data-i18n="hero.answer">
+          So you encrypt and decrypt on a device that stays fully offline. The only thing
+          that goes onto the network is scrambled text nobody else can read.
+        </p>
+      </div>
+      <p class="wrap scroll-cue">
+        <span data-i18n="hero.scroll">Keep reading</span>
+      </p>
+    </header>
+
+    <!-- THE CROSSING ------------------------------------------------------- -->
+    <div class="seam">
+      <div class="seam__modules" role="presentation"></div>
+      <div class="wrap seam__text">
+        <p class="eyebrow" data-i18n="seam.label">Where the network stops</p>
+        <p class="seam__body">
+          <span class="seam__line" data-i18n="seam.body1"
+            >Nothing crosses this line but light&nbsp;—</span
+          >
+          <span class="seam__line" data-i18n="seam.body2"
+            >a QR code on one screen, a camera on the other.</span
+          >
+        </p>
+      </div>
+    </div>
+
+    <!-- OFFLINE WORLD ------------------------------------------------------ -->
+    <main id="main">
+      <section class="band">
+        <div class="wrap">
+          <p class="eyebrow" data-i18n="what.eyebrow">What this is</p>
+          <h2 class="h2" data-i18n="what.heading">
+            Encrypt offline, carry it by QR code
+          </h2>
+          <p class="prose" data-i18n="what.body">
+            QR Crypt is a small app that runs on a device you keep permanently offline.
+            You type a message; the app encrypts it and shows the result on screen as a QR
+            code. Your everyday phone scans that code, converts it to a text string, and
+            sends it through any ordinary messenger. The person receiving it does the same
+            in reverse. Only the two offline devices ever see the real message. The phones
+            in between carry scrambled text, though anyone watching can still see how big
+            it is and how many pieces it came in.
+          </p>
+          <ul class="facts">
+            <li class="facts__item" data-i18n="what.fact1">
+              No accounts. No servers. No request ever carries your message or your keys.
+            </li>
+            <li class="facts__item" data-i18n="what.fact2">
+              Two devices per person. One offline, one online.
+            </li>
+            <li class="facts__item" data-i18n="what.fact3">
+              Open source, Apache-2.0, and not independently audited.
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="band">
+        <div class="wrap">
+          <p class="eyebrow" data-i18n="locks.eyebrow">Encryption</p>
+          <h2 class="h2" data-i18n="locks.heading">
+            Convenience, or&nbsp;long&#8209;term&nbsp;strength
+          </h2>
+          <p class="prose" data-i18n="locks.lede">
+            Pick the one that matches how long the message has to stay private.
+          </p>
+          <div class="locks">
+            <article class="lock">
+              <p class="lock__name" data-i18n="locks.aes.name">AES-256</p>
+              <p class="lock__when" data-i18n="locks.aes.when">For everyday messages</p>
+              <p class="lock__body" data-i18n="locks.aes.body">
+                The encryption standard in use almost everywhere today. As of 2026 there
+                is no known practical way to break it. QR Crypt uses it by default: one QR
+                code, and a key you hand over in person.
+              </p>
+            </article>
+            <article class="lock lock--pq">
+              <p class="lock__name" data-i18n="locks.pq.name">ML-KEM-1024</p>
+              <p class="lock__when" data-i18n="locks.pq.when">
+                For messages that must stay private for decades
+              </p>
+              <p class="lock__body" data-i18n="locks.pq.body">
+                A big enough quantum computer will eventually break the way keys are
+                shared today. ML-KEM-1024 is built to resist that, so even against a
+                state-level attacker a message is expected to stay unreadable for decades.
+                It is heavier: the message becomes a sequence of QR codes.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="band">
+        <div class="wrap">
+          <p class="eyebrow" data-i18n="install.eyebrow">Getting it</p>
+          <h2 class="h2" data-i18n="install.heading">Two ways to install it</h2>
+
+          <div class="route">
+            <p class="route__tag" data-i18n="install.a.tag">Route A</p>
+            <div class="route__main">
+              <h3 class="h3" data-i18n="install.a.heading">
+                Install it, then keep this device offline
+              </h3>
+              <p class="prose" data-i18n="install.a.body">
+                On the device you will keep offline, open the site in a browser and choose
+                Install or Add to Home Screen. Then disconnect that device from every
+                network and leave it that way. Airplane mode is not enough.
+              </p>
+              <p class="route__link">
+                <a class="cta" href="https://qr-crypt.pages.dev/">
+                  <span data-i18n="install.a.link">Open the app</span>
+                  <span class="cta__url">qr-crypt.pages.dev</span>
+                </a>
+              </p>
+            </div>
+            <figure class="route__qr">
+              <img
+                src="./install-qr.svg"
+                width="148"
+                height="148"
+                alt="QR code that opens qr-crypt.pages.dev"
+                data-i18n-alt="a11y.installQr"
+              />
+              <figcaption data-i18n="install.a.qrHint">
+                Scan this with the device you will keep offline.
+              </figcaption>
+            </figure>
+          </div>
+
+          <div class="route">
+            <p class="route__tag" data-i18n="install.b.tag">Route B</p>
+            <div class="route__main">
+              <h3 class="h3" data-i18n="install.b.heading">Install from a ZIP file</h3>
+              <p class="prose" data-i18n="install.b.body">
+                On a computer you trust, download the signed release and verify its
+                signature and checksum there, using values you obtained some other way.
+                Move it to the offline device, unzip it, and serve the folder from a local
+                web server; opening index.html straight from a file path does not work.
+                Whatever you carry it on, a USB stick or an SD card, has to be trusted
+                too: anything that can alter the storage can alter the app.
+              </p>
+              <p class="route__link">
+                <a
+                  class="cta"
+                  href="https://github.com/transparent-pegasus/qr-crypt/releases/latest"
+                >
+                  <span data-i18n="install.b.link">Get the latest release</span>
+                  <span class="cta__url">github.com/transparent-pegasus/qr-crypt</span>
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- THE SIGNATURE: the air gap runs down the middle and the message
+           crosses it exactly twice. -->
+      <section class="band band--flow">
+        <div class="wrap">
+          <p class="eyebrow" data-i18n="flow.eyebrow">Using it</p>
+          <h2 class="h2" data-i18n="flow.heading">How a message travels</h2>
+          <p class="prose" data-i18n="flow.lede">
+            Six steps. Colour and placement tell you which device each one happens on.
+            This is the ML-KEM-1024 route.
+          </p>
+
+          <div class="flow">
+            <div class="flow__heads" aria-hidden="true">
+              <p class="flow__head flow__head--online">
+                <span class="flow__headName" data-i18n="flow.online">Online</span>
+                <span class="flow__headSub" data-i18n="flow.onlineSub"
+                  >assume it is breached</span
+                >
+              </p>
+              <p class="flow__head flow__head--offline">
+                <span class="flow__headName" data-i18n="flow.offline">Offline</span>
+                <span class="flow__headSub" data-i18n="flow.offlineSub"
+                  >only you can read it</span
+                >
+              </p>
+            </div>
+
+            <div class="channel" role="presentation"><i class="channel__light"></i></div>
+
+            <ol class="flow__list">
+              <li class="step step--offline">
+                <p class="step__n"></p>
+                <h3 class="step__title" data-i18n="flow.s1.title">
+                  Each person creates their own key
+                </h3>
+                <p class="step__where">
+                  <svg
+                    class="step__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    role="img"
+                    aria-label="Keys page"
+                    data-i18n-label="flow.page.keys"
+                  >
+                    <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
+                    <path
+                      d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"
+                    /></svg
+                  ><span class="step__sep" aria-hidden="true">&gt;</span
+                  ><span data-i18n="flow.s1.where">Create tab</span>
+                </p>
+              </li>
+
+              <li class="step step--offline">
+                <p class="step__n"></p>
+                <h3 class="step__title" data-i18n="flow.s2.title">
+                  Each person loads the other's key
+                </h3>
+                <p class="step__where">
+                  <svg
+                    class="step__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    role="img"
+                    aria-label="Keys page"
+                    data-i18n-label="flow.page.keys"
+                  >
+                    <circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />
+                    <path
+                      d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"
+                    /></svg
+                  ><span class="step__sep" aria-hidden="true">&gt;</span
+                  ><span data-i18n="flow.s2.where">Import tab</span>
+                </p>
+                <p class="step__note" data-i18n="flow.s2.note">
+                  Do this face to face and compare the fingerprints on screen. Nothing in
+                  the app can check that a key belongs to the person you think it does.
+                </p>
+              </li>
+
+              <li class="step step--offline">
+                <p class="step__n"></p>
+                <h3 class="step__title" data-i18n="flow.s3.title">
+                  The sender encrypts the message
+                </h3>
+                <p class="step__where">
+                  <svg
+                    class="step__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    role="img"
+                    aria-label="Encrypt / decrypt page"
+                    data-i18n-label="flow.page.encrypt"
+                  >
+                    <circle cx="12" cy="16" r="1" />
+                    <rect x="3" y="10" width="18" height="12" rx="2" />
+                    <path d="M7 10V7a5 5 0 0 1 10 0v3" /></svg
+                  ><span class="step__sep" aria-hidden="true">&gt;</span
+                  ><span data-i18n="flow.s3.where">Encrypt tab</span>
+                </p>
+                <p class="step__note" data-i18n="flow.s3.note">
+                  Encrypt it with the recipient's key. If you picked a signed suite, your
+                  own key marks it as yours.
+                </p>
+              </li>
+
+              <li class="step step--online">
+                <p class="step__n"></p>
+                <p class="cross cross__left">
+                  <span data-i18n="flow.s4.cross"
+                    >The online device scans the QR code from the offline screen.</span
+                  >
+                </p>
+                <h3 class="step__title" data-i18n="flow.s4.title">
+                  Scan the QR code and send the text
+                </h3>
+                <p class="step__where">
+                  <span data-i18n="flow.s4.where">Online mode</span
+                  ><span class="step__sep" aria-hidden="true">&gt;</span
+                  ><svg
+                    class="step__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    role="img"
+                    aria-label="Relay page"
+                    data-i18n-label="flow.page.relay"
+                  >
+                    <path
+                      d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"
+                    />
+                    <path d="M7 11h10" />
+                    <path d="M7 15h6" />
+                    <path d="M7 7h8" />
+                  </svg>
+                </p>
+              </li>
+
+              <li class="step step--online">
+                <p class="step__n"></p>
+                <h3 class="step__title" data-i18n="flow.s5.title">
+                  The recipient turns the text back into a QR code
+                </h3>
+                <p class="step__where">
+                  <span data-i18n="flow.s5.where">Online mode</span
+                  ><span class="step__sep" aria-hidden="true">&gt;</span
+                  ><svg
+                    class="step__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    role="img"
+                    aria-label="Relay page"
+                    data-i18n-label="flow.page.relay"
+                  >
+                    <path
+                      d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"
+                    />
+                    <path d="M7 11h10" />
+                    <path d="M7 15h6" />
+                    <path d="M7 7h8" />
+                  </svg>
+                </p>
+              </li>
+
+              <li class="step step--offline">
+                <p class="step__n"></p>
+                <p class="cross cross__right">
+                  <span data-i18n="flow.s6.cross"
+                    >The offline device scans the QR code from the online screen.</span
+                  >
+                </p>
+                <h3 class="step__title" data-i18n="flow.s6.title">
+                  The recipient decrypts and reads it
+                </h3>
+                <p class="step__where">
+                  <svg
+                    class="step__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    role="img"
+                    aria-label="Encrypt / decrypt page"
+                    data-i18n-label="flow.page.encrypt"
+                  >
+                    <circle cx="12" cy="16" r="1" />
+                    <rect x="3" y="10" width="18" height="12" rx="2" />
+                    <path d="M7 10V7a5 5 0 0 1 10 0v3" /></svg
+                  ><span class="step__sep" aria-hidden="true">&gt;</span
+                  ><span data-i18n="flow.s6.where">Decrypt tab</span>
+                </p>
+                <p class="step__note" data-i18n="flow.s6.note">
+                  The readable message never leaves this device.
+                </p>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- BACK INTO THE DANGEROUS WORLD -------------------------------------- -->
+    <section class="warn">
+      <div class="wrap">
+        <p class="eyebrow eyebrow--red" data-i18n="warn.eyebrow">Warnings</p>
+        <h2 class="h2 h2--void" data-i18n="warn.heading">
+          Read this before you rely on it
+        </h2>
+        <div class="warn__items">
+          <article class="warn__item">
+            <h3 class="warn__title" data-i18n="warn.one.title">
+              Once a device has been online, you can never fully trust it again
+            </h3>
+            <p class="warn__body" data-i18n="warn.one.body">
+              Airplane mode is only a setting. Software on a compromised device can make
+              it look offline when it is not. Treat a device as offline only once it is
+              disconnected for good and stays that way.
+            </p>
+          </article>
+          <article class="warn__item">
+            <h3 class="warn__title" data-i18n="warn.two.title">
+              If the offline device goes online, the app erases what it is holding
+            </h3>
+            <p class="warn__body" data-i18n="warn.two.body">
+              It deletes the keys and data it stores, but deleted is not gone: traces can
+              often be pulled back off the hardware. If it truly has to be unrecoverable,
+              wipe the storage with a method suited to the medium (NIST SP 800-88) or
+              destroy the device.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <div class="wrap foot__row">
+        <a class="foot__link" href="https://github.com/transparent-pegasus/qr-crypt">
+          <span data-i18n="foot.repo">Source on GitHub</span>
+        </a>
+        <a
+          class="foot__link"
+          href="https://github.com/transparent-pegasus/qr-crypt/blob/main/LICENSE"
+        >
+          <span data-i18n="foot.license">Apache-2.0</span>
+        </a>
+        <p class="foot__note" data-i18n="foot.noTrackers">
+          This page does not track you and does not connect to anything outside it.
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
