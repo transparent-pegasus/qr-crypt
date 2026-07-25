@@ -122,6 +122,7 @@ const en = {
   "gate.switchOffline.title": "Switch to offline mode",
   "gate.switchOffline.body":
     "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
+  "gate.about.link": "What this app does",
 
   "relay.card.title": "OCF2 message-header QR relay",
   "relay.card.description":
@@ -129,10 +130,10 @@ const en = {
   "relay.boundary.title": "Untrusted relay boundary",
   "relay.boundary.body":
     "The relay accepts frames whose untrusted outer header declares pq-message. It does not assemble the artifact or verify its total hash, inner type, AEAD, signature, sender, or safety; the receiving offline device is authoritative. Face-to-face key exchange is the supported workflow.",
-  "relay.capture.open": "Scan → text",
+  "relay.capture.open": "QR → text",
   "relay.capture.unavailable":
     "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
-  "relay.capture.title": "Scan QR frames to text",
+  "relay.capture.title": "QR frames to text",
   "relay.capture.description":
     "Start the camera explicitly, then scan every frame from the offline device. Malformed or mismatched frames are rejected without replacing accepted frames.",
   "relay.capture.video.ariaLabel": "OCF2 message-header relay camera preview",
@@ -750,6 +751,7 @@ const ja = {
   "gate.switchOffline.title": "オフラインに切り替えてください",
   "gate.switchOffline.body":
     "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。",
+  "gate.about.link": "このアプリが何をするか",
 
   "relay.card.title": "OCF2メッセージヘッダーQRリレー",
   "relay.card.description":
@@ -757,7 +759,7 @@ const ja = {
   "relay.boundary.title": "信頼しない中継境界",
   "relay.boundary.body":
     "外側の信頼できないヘッダーがpq-messageと表明するフレームを受け入れます。成果物の組立、全体ハッシュ、内側の種類、AEAD、署名、送信者、安全性は検証しません。受信側のオフライン端末が最終判断者です。鍵交換は対面で行う運用を前提とします。",
-  "relay.capture.open": "スキャン → テキスト",
+  "relay.capture.open": "QR → テキスト",
   "relay.capture.unavailable":
     "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",
   "relay.capture.title": "QRフレームをテキスト化",
