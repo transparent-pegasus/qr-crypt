@@ -190,7 +190,7 @@ QrFrameV2 = {
   lengths differ by at most one byte
 - Defaults: chunk 200B / 2,000ms interval / max 64 frames. OCF2 chunks are
   preference-controlled from 100–900B for messages, identity bundles, and
-  individual public keys. The fullscreen density control uses a 100B step,
+  individual public keys. The density range control uses a 100B step,
   while stored off-grid integers such as 250B remain valid and are not
   coerced. The current interval values are exactly
   1,000/1,500/2,000/2,500/3,000ms (UI step 500ms); off-grid env values and

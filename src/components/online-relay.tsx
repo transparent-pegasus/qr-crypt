@@ -647,9 +647,11 @@ export function OnlineRelay({
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <MessageSquareText aria-hidden="true" className="size-5" />
-            {t("relay.card.title")}
+          <CardTitle>
+            <h2 className="flex items-center gap-2">
+              <MessageSquareText aria-hidden="true" className="size-5" />
+              {t("relay.card.title")}
+            </h2>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">

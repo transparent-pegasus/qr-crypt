@@ -59,14 +59,14 @@ export const MESSAGE_ID_BYTES = 16
 export const KEM_SEED_BYTES = 64
 export const DSA_SEED_BYTES = 32
 
-// Frame-setting range and fullscreen density grid from docs/qr-protocol-v2.md §6.
+// Frame-setting range and density grid from docs/qr-protocol-v2.md §6.
 // Preferences/environment validation references this table. Stored off-grid integers
-// remain readable; FRAME_BYTES_STEP applies only to the fullscreen range control.
+// remain readable; FRAME_BYTES_STEP applies to the density range control.
 export const FRAME_BYTES_MIN = 100
 export const FRAME_BYTES_MAX = 900
 export const FRAME_BYTES_STEP = 100
 
-// Round the per-artifact floor onto the fullscreen density grid. The renderer clamps
+// Round the per-artifact floor onto the density grid. The renderer clamps
 // to this value before its first split, while leaving the stored preference unchanged.
 export function minimumFrameBytesForArtifact(
   artifactByteLength: number,

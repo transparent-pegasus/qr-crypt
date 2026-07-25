@@ -5,13 +5,12 @@ import {
   ChevronDown,
   Clipboard,
   Download,
+  Expand,
   FileCode2,
   QrCode,
   RefreshCw,
-  Sun,
   Trash2,
   TriangleAlert,
-  X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useSensitiveSession } from "@/app/providers"
@@ -155,6 +154,7 @@ export function KeyDetailDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const [fullscreenOpen, setFullscreenOpen] = useState(false)
+  const [qrReady, setQrReady] = useState(false)
   const [qrHost, setQrHost] = useState<HTMLDivElement | null>(null)
   const qrGenerationRef = useRef(0)
   const localizedError = useLocalizedMessage(error)
@@ -194,6 +194,7 @@ export function KeyDetailDialog({
     if (!changed) return
     qrGenerationRef.current += 1
     setFullscreenOpen(false)
+    setQrReady(false)
     setView({ kind: "detail" })
     setPendingDelete(null)
     setError(null)
@@ -205,7 +206,6 @@ export function KeyDetailDialog({
       setError(null)
       try {
         await updatePreferences(patch)
-        toast.success(t("settings.toast.saved"))
       } catch {
         setError("settings.error.saveFailed")
         toast.error(t("settings.error.saveFailed"))
@@ -217,6 +217,7 @@ export function KeyDetailDialog({
   const leaveQrView = () => {
     qrGenerationRef.current += 1
     setFullscreenOpen(false)
+    setQrReady(false)
     setView({ kind: "detail" })
     setError(null)
     setSensitiveSession({ secretVisible: false })
@@ -225,6 +226,7 @@ export function KeyDetailDialog({
   const close = () => {
     qrGenerationRef.current += 1
     setFullscreenOpen(false)
+    setQrReady(false)
     setView({ kind: "detail" })
     setPendingDelete(null)
     setBusy(false)
@@ -237,6 +239,7 @@ export function KeyDetailDialog({
     target: PostQuantumIdentity,
     kind: "bundle" | "kem" | "signing",
   ) => {
+    setQrReady(false)
     setBusy(true)
     setError(null)
     try {
@@ -296,6 +299,7 @@ export function KeyDetailDialog({
   const showSymmetricQr = async (target: StoredKeyRecord) => {
     const generation = qrGenerationRef.current + 1
     qrGenerationRef.current = generation
+    setQrReady(false)
     setBusy(true)
     setError(null)
     try {
@@ -409,23 +413,10 @@ export function KeyDetailDialog({
       data-fullscreen-controls
       className="mx-auto flex w-full max-w-md flex-col items-stretch gap-3 landscape:my-auto landscape:w-[min(42vw,18rem)]"
     >
-      <p className="flex min-w-0 items-center justify-center gap-1.5 truncate text-sm text-slate-700">
-        <Sun aria-hidden="true" className="size-4 shrink-0" />
-        <span className="truncate">{t("qrDisplay.fullscreen.brightnessHint")}</span>
-      </p>
       <div className="flex items-start gap-2 rounded-md border border-destructive/60 p-3 text-sm text-destructive">
         <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
         <span className="font-medium">{t("keyDetail.symmetricQr.secretTitle")}</span>
       </div>
-      <Button
-        type="button"
-        variant="outline"
-        className="h-11 w-full cursor-pointer border-slate-300 bg-white text-slate-950 focus-visible:ring-2"
-        onClick={() => setFullscreenOpen(false)}
-      >
-        <X aria-hidden="true" />
-        {t("common.close")}
-      </Button>
     </div>
   )
 
@@ -467,16 +458,29 @@ export function KeyDetailDialog({
           )}
 
           {view.kind !== "detail" && (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-fit"
-              disabled={busy}
-              onClick={leaveQrView}
-            >
-              <ArrowLeft aria-hidden="true" />
-              {t("keyDetail.backToDetail")}
-            </Button>
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-fit"
+                disabled={busy}
+                onClick={leaveQrView}
+              >
+                <ArrowLeft aria-hidden="true" />
+                {t("keyDetail.backToDetail")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="size-11 shrink-0"
+                aria-label={t("qrDisplay.fullscreen.button")}
+                disabled={!qrReady}
+                onClick={() => setFullscreenOpen(true)}
+              >
+                <Expand aria-hidden="true" />
+              </Button>
+            </div>
           )}
 
           {view.kind === "detail" && identity && (
@@ -579,6 +583,9 @@ export function KeyDetailDialog({
             title={identityQrTitle ?? ""}
             frameIntervalMs={preferences.frameIntervalMs}
             enabled={open}
+            fullscreenOpen={fullscreenOpen}
+            showFullscreenTrigger={false}
+            onFirstRendered={() => setQrReady(true)}
             onFullscreenOpenChange={setFullscreenOpen}
             onFrameBytesChange={(frameBytes) => {
               setView((current) =>
@@ -603,6 +610,8 @@ export function KeyDetailDialog({
             title={t("keyDetail.symmetricQr.title")}
             fullscreenControls={symmetricFullscreenControls}
             fullscreenOpen={fullscreenOpen}
+            showFullscreenTrigger={false}
+            onRendered={() => setQrReady(true)}
             onFullscreenOpenChange={setFullscreenOpen}
           />,
           qrHost,
@@ -648,6 +657,9 @@ function IdentityQrSession({
   title,
   frameIntervalMs,
   enabled,
+  fullscreenOpen,
+  showFullscreenTrigger,
+  onFirstRendered,
   onFullscreenOpenChange,
   onFrameBytesChange,
   onFrameIntervalMsChange,
@@ -656,6 +668,9 @@ function IdentityQrSession({
   title: string
   frameIntervalMs: number
   enabled: boolean
+  fullscreenOpen: boolean
+  showFullscreenTrigger: boolean
+  onFirstRendered: () => void
   onFullscreenOpenChange: (open: boolean) => void
   onFrameBytesChange: (frameBytes: number) => void
   onFrameIntervalMsChange: (frameIntervalMs: number) => void
@@ -694,6 +709,9 @@ function IdentityQrSession({
           title={title}
           frameBytes={view.frameBytes}
           splitting={split.splitting}
+          fullscreenOpen={fullscreenOpen}
+          showFullscreenTrigger={showFullscreenTrigger}
+          onFirstRendered={onFirstRendered}
           onFrameBytesChange={onFrameBytesChange}
           onFrameIntervalMsChange={onFrameIntervalMsChange}
           onFullscreenOpenChange={onFullscreenOpenChange}

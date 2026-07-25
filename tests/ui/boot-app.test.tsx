@@ -1,5 +1,6 @@
 import "./helpers/module-mocks"
 import { act, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   createBootController,
@@ -66,6 +67,7 @@ describe("App boot gate", () => {
 
   it("keeps the install route and skips wipe when no sensitive data exists", async () => {
     setTestOnlineStatus(true)
+    const user = userEvent.setup()
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const controller = createBootController({
       fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
@@ -76,15 +78,19 @@ describe("App boot gate", () => {
 
     expect(
       await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
-    ).toBeInTheDocument()
-    expect(await screen.findByText("OCF2 message-header QR relay")).toBeInTheDocument()
-    expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
+    ).toBeVisible()
+    expect(
+      await screen.findByRole("navigation", { name: "Online navigation" }),
+    ).toBeVisible()
+    await user.click(screen.getByRole("button", { name: "Relay" }))
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
     expect(performWipe).not.toHaveBeenCalled()
     controller.stop()
   })
 
   it("keeps the relay absent while the destructive decision is pending", async () => {
     setTestOnlineStatus(true)
+    const user = userEvent.setup()
     let resolveDecision: ((value: BootDecisionSnapshot) => void) | undefined
     const controller = createBootController({
       fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
@@ -98,7 +104,10 @@ describe("App boot gate", () => {
     await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
     expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
     resolveDecision?.(decision())
-    expect(await screen.findByText("OCF2 message-header QR relay")).toBeInTheDocument()
+    await user.click(
+      await screen.findByRole("button", { name: "Relay" }),
+    )
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
     controller.stop()
   })
 

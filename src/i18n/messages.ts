@@ -50,6 +50,9 @@ const en = {
   "nav.keyList": "Key list",
   "nav.settings": "Settings",
   "nav.ariaLabel": "Main navigation",
+  "nav.top": "Top",
+  "nav.relay": "Relay",
+  "nav.onlineAriaLabel": "Online navigation",
 
   "errors.UNSUPPORTED_BROWSER":
     "This browser does not provide the required features. Open the app in a supported browser.",
@@ -212,11 +215,9 @@ const en = {
   "animatedQr.missing.body":
     "Missing frames: {indexes}. Recovery is not possible while frames are missing.",
   "animatedQr.frameTitle": "{title} {current} / {total}",
-  "animatedQr.prev.ariaLabel": "Previous frame",
   "animatedQr.prev": "Previous",
   "animatedQr.play": "Play",
   "animatedQr.pause": "Pause",
-  "animatedQr.next.ariaLabel": "Next frame",
   "animatedQr.next": "Next",
   "animatedQr.speed.label": "Display speed",
   "animatedQr.density.label": "Frame density",
@@ -512,7 +513,6 @@ const en = {
   "scanner.closed.integrityImported":
     "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
 
-  "settings.toast.saved": "Settings saved",
   "settings.error.saveFailed":
     "Settings could not be saved. Check the device storage.",
   "settings.toast.plaintextCleared": "All plaintext was cleared",
@@ -677,6 +677,9 @@ const ja = {
   "nav.keyList": "鍵一覧",
   "nav.settings": "設定",
   "nav.ariaLabel": "メインナビゲーション",
+  "nav.top": "トップ",
+  "nav.relay": "リレー",
+  "nav.onlineAriaLabel": "オンラインナビゲーション",
 
   "errors.UNSUPPORTED_BROWSER":
     "このブラウザーでは必要な機能を利用できません。対応ブラウザーで開いてください。",
@@ -841,11 +844,9 @@ const ja = {
   "animatedQr.missing.body":
     "欠損フレーム: {indexes}。欠損したままでは復元できません。",
   "animatedQr.frameTitle": "{title} {current} / {total}",
-  "animatedQr.prev.ariaLabel": "前のフレーム",
   "animatedQr.prev": "前へ",
   "animatedQr.play": "再生",
   "animatedQr.pause": "一時停止",
-  "animatedQr.next.ariaLabel": "次のフレーム",
   "animatedQr.next": "次へ",
   "animatedQr.speed.label": "表示速度",
   "animatedQr.density.label": "フレーム密度",
@@ -1143,7 +1144,6 @@ const ja = {
   "scanner.closed.integrityImported":
     "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
 
-  "settings.toast.saved": "設定を保存しました",
   "settings.error.saveFailed":
     "設定を保存できませんでした。保存領域を確認してください。",
   "settings.toast.plaintextCleared": "すべての平文を消去しました",

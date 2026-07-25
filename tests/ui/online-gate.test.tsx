@@ -38,6 +38,28 @@ describe("OnlineGate", () => {
     }
   })
 
+  it("shows no navigation or relay when relay is not eligible", async () => {
+    setTestOnlineStatus(true)
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen relayEligible={false} />
+      </AppProviders>,
+    )
+
+    expect(
+      await screen.findByText("Online installation and OCF2 message-header relay"),
+    ).toBeVisible()
+    expect(
+      screen.getByText(
+        "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
+      ),
+    ).toBeVisible()
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+  })
+
   it("shows installation and eligible relay guidance while online and handles beforeinstallprompt", async () => {
     setTestOnlineStatus(true)
     const user = userEvent.setup()
@@ -59,32 +81,35 @@ describe("OnlineGate", () => {
 
     expect(
       await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
-    ).toBeInTheDocument()
+    ).toBeVisible()
     expect(
       screen.getByText("Online installation and OCF2 message-header relay"),
-    ).toBeInTheDocument()
+    ).toBeVisible()
     expect(
       screen.getByText(
         "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, without using local keys.",
       ),
-    ).toBeInTheDocument()
-    expect(await screen.findByText("OCF2 message-header QR relay")).toBeInTheDocument()
-    expect(screen.getByRole("img", { name: /app icon/ })).toBeInTheDocument()
+    ).toBeVisible()
+    const onlineNavigation = await screen.findByRole("navigation", {
+      name: "Online navigation",
+    })
+    expect(onlineNavigation).toBeVisible()
+    expect(screen.getByText("OCF2 message-header QR relay")).not.toBeVisible()
+    expect(screen.getByRole("img", { name: /app icon/ })).toBeVisible()
     expect(screen.getByText("PWA installation status").parentElement).toHaveTextContent(
       "Not installed",
     )
-    expect(screen.getByText("Offline-use readiness")).toBeInTheDocument()
+    expect(screen.getByText("Offline-use readiness")).toBeVisible()
     expect(
       screen.getByText(
         "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
       ),
-    ).toBeInTheDocument()
+    ).toBeVisible()
     expect(
       screen.queryByText("Switching to offline mode makes every feature available."),
     ).not.toBeInTheDocument()
-    expect(screen.getByText("Online", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Online", { exact: true })).toBeVisible()
     expect(screen.queryByLabelText("Plaintext")).not.toBeInTheDocument()
-    expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
 
     const prompt = vi.fn(async () => undefined)
     const installEvent = new Event("beforeinstallprompt", {
@@ -107,6 +132,11 @@ describe("OnlineGate", () => {
         "Installed",
       ),
     )
+    await user.click(screen.getByRole("button", { name: "Relay" }))
+    expect(screen.getByText("OCF2 message-header QR relay")).toBeVisible()
+    expect(
+      screen.getByText("Install the PWA or relay OCF2 message-header QR frames"),
+    ).not.toBeVisible()
     controller.stop()
   })
 

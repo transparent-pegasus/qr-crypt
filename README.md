@@ -70,11 +70,11 @@ mean is the average milliseconds per operation.
 
 | Operation | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| ML-KEM-1024 keygen | 939.51 | 1.0644 | 1,028.91 | 0.9719 |
-| ML-KEM-1024 encapsulate | 845.64 | 1.1825 | 937.59 | 1.0666 |
-| ML-KEM-1024 decapsulate | 635.18 | 1.5744 | 744.56 | 1.3431 |
-| ML-DSA-87 sign | 76.6329 | 13.0492 | 82.7556 | 12.0838 |
-| ML-DSA-87 verify | 238.58 | 4.1914 | 265.85 | 3.7615 |
+| ML-KEM-1024 keygen | 1,197.87 | 0.8348 | 1,148.86 | 0.8704 |
+| ML-KEM-1024 encapsulate | 1,060.88 | 0.9426 | 1,014.37 | 0.9858 |
+| ML-KEM-1024 decapsulate | 821.14 | 1.2178 | 802.63 | 1.2459 |
+| ML-DSA-87 sign | 74.1783 | 13.4810 | 76.7252 | 13.0335 |
+| ML-DSA-87 verify | 308.45 | 3.2421 | 294.58 | 3.3947 |
 
 These are reference values from a development machine; they are not a substitute for
 measurements in real browsers or on low-end devices, nor for the `release-approved` determination.
@@ -232,8 +232,8 @@ The installed app's metadata (PWA manifest name/description) is fixed in English
 When two offline devices cannot show QR codes to each other, a third **online** device can carry frame strings through any messenger:
 
 1. **Sender offline device** — encrypts as usual and displays the animated OCF2 frames.
-2. **Sender-side online relay** — on a clean origin (post-decision, no key/identity/Vault rows), uses **Scan → text**, collects every frame, then copies the `\n`-joined blob. That clipboard copy can persist or sync outside the app and outside any wipe.
-3. **Recipient-side online relay** — pastes the blob into **Text → QR** and plays the same frame strings for the recipient's camera. There are no app-provided file-download controls in the relay UI.
+2. **Sender-side online relay** — on a clean origin (post-decision, no key/identity/Vault rows), opens the **Relay** page, uses **Scan → text**, collects every frame, then copies the `\n`-joined blob. That clipboard copy can persist or sync outside the app and outside any wipe.
+3. **Recipient-side online relay** — opens the **Relay** page, pastes the blob into **Text → QR**, and plays the same frame strings for the recipient's camera. There are no app-provided file-download controls in the relay UI.
 4. **Recipient offline device** — scans and completes the transfer; only this offline endpoint performs authoritative assembly and cryptographic validation (AEAD, and signature when present).
 
 The relay forwards exact canonical OCF2 strings whose untrusted outer header declares `pq-message`. It does not assemble, decrypt, re-encrypt, or touch key material. Public-key and identity exchange stays a face-to-face workflow — the outer-header filter is not an enforcement guarantee that only ciphertext is carried. Prefer a relay device that has never held QR Crypt keys.
