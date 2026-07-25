@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react"
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react"
 import { RouterProvider } from "react-router"
 import { getDefaultBootController, type BootController } from "@/app/boot/boot-controller"
@@ -131,6 +138,14 @@ function BootGate({
   })
   const nudgedDisplayGeneration = useRef<number | null>(null)
   const reconciledOnlineGeneration = useRef<number | null>(null)
+  const previousDisplayOnline = useRef(display.online)
+
+  useLayoutEffect(() => {
+    if (previousDisplayOnline.current && !display.online) {
+      resolvedController.endRelaySession("display-offline")
+    }
+    previousDisplayOnline.current = display.online
+  }, [display.online, resolvedController])
 
   useEffect(() => {
     if (
@@ -192,7 +207,7 @@ function BootGate({
         </BootStatusScreen>
       )
     case "offline-confirmed":
-      if (display.online) return <OnlineInstallScreen />
+      if (display.online) return <OnlineInstallScreen relayEligible={false} />
       if (routerEligible) {
         return <OfflineApplication routerFactory={routerFactory} />
       }
@@ -204,7 +219,15 @@ function BootGate({
         />
       )
     case "network-confirmed":
-      return <OnlineInstallScreen />
+      return (
+        <OnlineInstallScreen
+          relayEligible={display.online && state.relayEligibility === "eligible"}
+          onRelayEligibilityRefresh={() => resolvedController.refreshRelayEligibility()}
+          registerRelaySessionEndHandler={
+            resolvedController.registerRelaySessionEndHandler
+          }
+        />
+      )
     case "wiping":
       return (
         <BootStatusScreen>

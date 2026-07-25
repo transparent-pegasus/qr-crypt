@@ -38,7 +38,7 @@ describe("OnlineGate", () => {
     }
   })
 
-  it("shows only installation guidance while online and handles beforeinstallprompt", async () => {
+  it("shows installation and eligible relay guidance while online and handles beforeinstallprompt", async () => {
     setTestOnlineStatus(true)
     const user = userEvent.setup()
     const controller = createBootController({
@@ -49,6 +49,7 @@ describe("OnlineGate", () => {
       readDecision: async () => ({
         wipeOnOnline: true,
         sensitiveDataExists: false,
+        cleanOrigin: "confirmed-clean",
         maintenanceTokenArmed: false,
         resetChurnMb: 0,
         preferencesReadFailed: false,
@@ -57,8 +58,17 @@ describe("OnlineGate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("Only PWA installation is available while online"),
+      await screen.findByText("Install the PWA or relay ciphertext QR frames"),
     ).toBeInTheDocument()
+    expect(
+      screen.getByText("Online installation and ciphertext relay"),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Encryption, decryption, key creation, key lists, and settings remain offline-only. A clean origin may also relay header-declared message frames without using local keys.",
+      ),
+    ).toBeInTheDocument()
+    expect(await screen.findByText("Ciphertext QR relay")).toBeInTheDocument()
     expect(screen.getByRole("img", { name: /app icon/ })).toBeInTheDocument()
     expect(screen.getByText("PWA installation status").parentElement).toHaveTextContent(
       "Not installed",
@@ -120,14 +130,14 @@ describe("OnlineGate", () => {
 
     act(() => setTestOnlineStatus(true, { emit: true }))
     expect(
-      await screen.findByText("Only PWA installation is available while online"),
+      await screen.findByText("Install the PWA or relay ciphertext QR frames"),
     ).toBeInTheDocument()
     expect(screen.queryByText(/Regular feature nonce=/)).not.toBeInTheDocument()
 
     act(() => setTestOnlineStatus(false, { emit: true }))
     expect(await screen.findByText("Regular feature nonce=1")).toBeInTheDocument()
     expect(
-      screen.queryByText("Only PWA installation is available while online"),
+      screen.queryByText("Install the PWA or relay ciphertext QR frames"),
     ).not.toBeInTheDocument()
   })
 })

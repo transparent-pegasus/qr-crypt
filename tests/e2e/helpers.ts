@@ -36,11 +36,17 @@ function escapeRegex(value: string): string {
 export async function expectOnlineGate(page: Page): Promise<void> {
   await Promise.all([
     expectOnline(
-      page.getByText("Only PWA installation is available while online"),
+      page.getByText("Install the PWA or relay ciphertext QR frames"),
     ).toBeVisible(),
     expectOnline(
-      page.getByRole("img", { name: /app icon/ }),
+      page.getByText("Online installation and ciphertext relay"),
     ).toBeVisible(),
+    expectOnline(
+      page.getByText(
+        "Encryption, decryption, key creation, key lists, and settings remain offline-only. A clean origin may also relay header-declared message frames without using local keys.",
+      ),
+    ).toBeVisible(),
+    expectOnline(page.getByRole("img", { name: /app icon/ })).toBeVisible(),
     expectOnline(page.getByText("PWA installation status")).toBeVisible(),
     expectOnline(page.getByText("Offline-use readiness")).toBeVisible(),
     expectOnline(
@@ -134,7 +140,7 @@ export async function switchToOfflineApp(
   await context.setOffline(true)
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
-    page.getByText("Only PWA installation is available while online"),
+    page.getByText("Install the PWA or relay ciphertext QR frames"),
   ).toBeHidden()
   await expectOfflineAcknowledgement(page)
   await acknowledgeOfflineRisk(page)

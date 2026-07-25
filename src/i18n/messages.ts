@@ -99,10 +99,10 @@ const en = {
   "gate.install.error":
     "Installation could not be started. Use the browser menu instead.",
   "gate.appIcon.alt": "{appName} app icon",
-  "gate.mode.label": "Online installation mode",
-  "gate.heading": "Only PWA installation is available while online",
+  "gate.mode.label": "Online installation and ciphertext relay",
+  "gate.heading": "Install the PWA or relay ciphertext QR frames",
   "gate.description":
-    "Encryption, decryption, key creation, key lists, and settings are shown only while offline.",
+    "Encryption, decryption, key creation, key lists, and settings remain offline-only. A clean origin may also relay header-declared message frames without using local keys.",
   "pwa.installState.label": "PWA installation status",
   "pwa.installState.installed": "Installed",
   "pwa.installState.notInstalled": "Not installed",
@@ -119,6 +119,53 @@ const en = {
   "gate.switchOffline.title": "Switch to offline mode",
   "gate.switchOffline.body":
     "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
+
+  "relay.card.title": "Ciphertext QR relay",
+  "relay.card.description":
+    "Move canonical OCF2 frame text between a messenger and an offline device. The relay does not intentionally place frame-derived values in app-managed storage or frame-bearing network requests.",
+  "relay.boundary.title": "Untrusted relay boundary",
+  "relay.boundary.body":
+    "The relay accepts frames whose untrusted outer header declares pq-message. It does not assemble the artifact or verify its total hash, inner type, AEAD, signature, sender, or safety; the receiving offline device is authoritative. Face-to-face key exchange is the supported workflow.",
+  "relay.capture.open": "Scan → text",
+  "relay.capture.unavailable":
+    "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
+  "relay.capture.title": "Scan QR frames to text",
+  "relay.capture.description":
+    "Start the camera explicitly, then scan every frame from the offline device. Malformed or mismatched frames are rejected without replacing accepted frames.",
+  "relay.capture.video.ariaLabel": "Ciphertext relay camera preview",
+  "relay.capture.startCamera": "Start camera",
+  "relay.capture.cameraActive": "Camera active",
+  "relay.capture.progress": "{collected} / {total} frames collected",
+  "relay.capture.missing": "Missing frames: {indexes}",
+  "relay.capture.output.label": "Relay text",
+  "relay.capture.copy": "Copy relay text",
+  "relay.copy.warning":
+    "Copying exports the relay text to the system clipboard. Clipboard contents may persist or sync outside this app and are not cleared by an app reset.",
+  "relay.playback.open": "Text → QR",
+  "relay.playback.title": "Turn relay text into QR frames",
+  "relay.playback.description":
+    "Paste a complete canonical frame set. Lines may use LF or CRLF; order does not matter.",
+  "relay.playback.input.label": "Relay text",
+  "relay.playback.show": "Show QR frames",
+  "relay.playback.missing": "Missing frames: {indexes}",
+  "relay.playback.screenCaptureWarning":
+    "Displayed QR images can still be saved by long-press, printing, screenshots, or screen recording.",
+  "relay.playback.qrTitle": "Relayed ciphertext frames",
+  "relay.playback.noDownloadControls":
+    "This relay provides no app file-download controls.",
+  "relay.error.title": "Relay input rejected",
+  "relay.error.empty": "Enter or scan at least one frame.",
+  "relay.error.prefix": "Only canonical OCF2 frame strings are accepted.",
+  "relay.error.outerType": "The frame's outer header does not declare pq-message.",
+  "relay.error.invalidFrame": "The frame is not a canonical OCF2 frame.",
+  "relay.error.mismatch": "The frame does not belong to the accepted frame set.",
+  "relay.error.length": "The frame set has inconsistent declared and collected lengths.",
+  "relay.error.incomplete":
+    "The frame set is incomplete. Add every missing frame before playback.",
+  "relay.error.inputSize": "The relay text exceeds the protocol limit.",
+  "relay.error.timeout":
+    "The relay session timed out and its app-held frame references were cleared.",
+  "relay.error.copy": "The relay text could not be copied.",
 
   "offlineAck.status": "The device is now offline",
   "offlineAck.title": "Confirm before continuing",
@@ -679,10 +726,10 @@ const ja = {
   "gate.install.error":
     "インストールを開始できませんでした。ブラウザーのメニューから操作してください。",
   "gate.appIcon.alt": "{appName}のアプリアイコン",
-  "gate.mode.label": "オンライン導入モード",
-  "gate.heading": "オンラインではPWAの導入のみ利用できます",
+  "gate.mode.label": "オンライン導入・暗号文リレーモード",
+  "gate.heading": "PWAの導入または暗号文QRフレームの中継",
   "gate.description":
-    "暗号・復号、鍵追加、鍵一覧、設定はオフライン時だけ表示します。",
+    "暗号・復号、鍵作成、鍵一覧、設定は引き続きオフライン専用です。保存領域が空であることを確認できた場合に限り、メッセージと外部表明されたフレームを鍵を使わず中継できます。",
   "pwa.installState.label": "PWAインストール状態",
   "pwa.installState.installed": "インストール済み",
   "pwa.installState.notInstalled": "未インストール",
@@ -700,6 +747,53 @@ const ja = {
   "gate.switchOffline.title": "オフラインに切り替えてください",
   "gate.switchOffline.body":
     "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。",
+
+  "relay.card.title": "暗号文QRリレー",
+  "relay.card.description":
+    "メッセンジャーとオフライン端末の間で、正規OCF2フレーム文字列を中継します。フレーム由来の値をアプリ管理の保存領域やフレームを含むネットワーク要求へ意図的に書き込みません。",
+  "relay.boundary.title": "信頼しない中継境界",
+  "relay.boundary.body":
+    "外側の信頼できないヘッダーがpq-messageと表明するフレームを受け入れます。成果物の組立、全体ハッシュ、内側の種類、AEAD、署名、送信者、安全性は検証しません。受信側のオフライン端末が最終判断者です。鍵交換は対面で行う運用を前提とします。",
+  "relay.capture.open": "スキャン → テキスト",
+  "relay.capture.unavailable":
+    "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",
+  "relay.capture.title": "QRフレームをテキスト化",
+  "relay.capture.description":
+    "明示的にカメラを開始し、オフライン端末の全フレームを読み取ってください。不正または不一致のフレームは、受理済みフレームを置き換えず拒否します。",
+  "relay.capture.video.ariaLabel": "暗号文リレーのカメラプレビュー",
+  "relay.capture.startCamera": "カメラを開始",
+  "relay.capture.cameraActive": "カメラ動作中",
+  "relay.capture.progress": "{collected} / {total} フレーム収集済み",
+  "relay.capture.missing": "不足フレーム: {indexes}",
+  "relay.capture.output.label": "中継テキスト",
+  "relay.capture.copy": "中継テキストをコピー",
+  "relay.copy.warning":
+    "コピーすると中継テキストをシステムのクリップボードへ書き出します。内容はアプリ外に残存・同期する可能性があり、アプリのresetでは消去されません。",
+  "relay.playback.open": "テキスト → QR",
+  "relay.playback.title": "中継テキストをQRフレーム化",
+  "relay.playback.description":
+    "正規フレーム一式をすべて貼り付けてください。改行はLF・CRLFのどちらでもよく、順序は問いません。",
+  "relay.playback.input.label": "中継テキスト",
+  "relay.playback.show": "QRフレームを表示",
+  "relay.playback.missing": "不足フレーム: {indexes}",
+  "relay.playback.screenCaptureWarning":
+    "表示したQR画像は長押し保存、印刷、スクリーンショット、画面録画で保存される可能性があります。",
+  "relay.playback.qrTitle": "中継された暗号文フレーム",
+  "relay.playback.noDownloadControls":
+    "このリレーはアプリによるファイルダウンロード操作を提供しません。",
+  "relay.error.title": "中継入力を拒否しました",
+  "relay.error.empty": "1つ以上のフレームを入力またはスキャンしてください。",
+  "relay.error.prefix": "正規OCF2フレーム文字列だけを受け入れます。",
+  "relay.error.outerType": "フレームの外側ヘッダーがpq-messageを表明していません。",
+  "relay.error.invalidFrame": "正規OCF2フレームではありません。",
+  "relay.error.mismatch": "受理済みのフレーム一式に属さないフレームです。",
+  "relay.error.length": "表明された長さと収集した長さが一致しません。",
+  "relay.error.incomplete":
+    "フレーム一式が不完全です。再生前に不足フレームをすべて追加してください。",
+  "relay.error.inputSize": "中継テキストがプロトコル上限を超えています。",
+  "relay.error.timeout":
+    "中継セッションが時間切れになり、アプリが保持していたフレーム参照を解放しました。",
+  "relay.error.copy": "中継テキストをコピーできませんでした。",
 
   "offlineAck.status": "オフラインへ切り替わりました",
   "offlineAck.title": "続行前の確認",

@@ -19,6 +19,7 @@ interface WipeRequestMessage {
 }
 
 export interface WipeCoordinatorArgs extends BestEffortResetArgs {
+  endSession?: () => void
   resetTransient: () => void
 }
 
@@ -159,7 +160,15 @@ async function executeWipe(
     }
   }
 
-  // §B3 order is security-significant. Do not reorder these calls.
+  // Relay teardown precedes the one-way barrier. This synchronous callback aborts a
+  // pending camera acquisition and stops an already-live handle before storage work.
+  try {
+    args.endSession?.()
+  } catch {
+    failedSteps.push("relay-session")
+  }
+
+  // The remaining order is security-significant. Do not reorder these calls.
   await attempt("barrier", dependencies.engageBarrier)
   await attempt("crypto", dependencies.disposeCrypto)
   await attempt("vault-key-cache", dependencies.dropVaultKeyCache)
@@ -202,33 +211,59 @@ export function wipeOnOnline(args: WipeCoordinatorArgs): Promise<BestEffortReset
 }
 
 export interface WipeBroadcastListenerOptions {
+  endSession?: () => void
   resetTransient: () => void
+}
+
+export interface WipeBroadcastListenerDependencies {
+  closeDatabase: () => void
+  disposeCrypto: () => void
+  dropVaultKeyCache: () => Promise<void>
+  engageBarrier: () => void
+}
+
+const DEFAULT_BROADCAST_LISTENER_DEPENDENCIES: WipeBroadcastListenerDependencies = {
+  closeDatabase: closeDb,
+  disposeCrypto,
+  dropVaultKeyCache,
+  engageBarrier,
 }
 
 /** Installs the peer side of step 4: fail closed, clear secrets, then close DB. */
 export function installWipeBroadcastListener(
   options: WipeBroadcastListenerOptions,
+  overrides: Partial<WipeBroadcastListenerDependencies> = {},
 ): () => void {
   if (typeof BroadcastChannel !== "function") return () => undefined
+  const dependencies = {
+    ...DEFAULT_BROADCAST_LISTENER_DEPENDENCIES,
+    ...overrides,
+  }
   const channel = new BroadcastChannel(WIPE_BROADCAST_CHANNEL)
   const handleMessage = (event: MessageEvent<unknown>) => {
     if (!isWipeRequest(event.data)) return
+    // This must be the first peer-wipe action, before the barrier or any await.
+    try {
+      options.endSession?.()
+    } catch {
+      // Continue into the fail-closed wipe path.
+    }
     void (async () => {
-      engageBarrier()
+      dependencies.engageBarrier()
       try {
-        disposeCrypto()
+        dependencies.disposeCrypto()
       } catch {
         // Continue clearing other secret holders.
       }
       try {
-        await dropVaultKeyCache()
+        await dependencies.dropVaultKeyCache()
       } catch {
         // The sender will report its own reset status; this tab must still close.
       }
       try {
         options.resetTransient()
       } finally {
-        closeDb()
+        dependencies.closeDatabase()
       }
     })()
   }

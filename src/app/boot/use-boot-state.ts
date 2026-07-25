@@ -25,8 +25,11 @@ export function useBootState(options: UseBootStateOptions = {}): BootState {
 
   useEffect(() => {
     if (!options.resetTransient) return
-    return installWipeBroadcastListener({ resetTransient: options.resetTransient })
-  }, [options.resetTransient])
+    return installWipeBroadcastListener({
+      endSession: () => controller.endRelaySession("peer-wipe"),
+      resetTransient: options.resetTransient,
+    })
+  }, [controller, options.resetTransient])
 
   useEffect(() => {
     controller.acquire()

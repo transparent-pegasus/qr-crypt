@@ -15,20 +15,26 @@
 //
 // Do not mount the Router, usePreferences, or any repository until the state is
 // offline-confirmed. Only the boot controller opens the database first and reads the wipe
-// setting and whether sensitive data exists (the wipe path provides the fail-safe behavior
-// if reading preferences fails). Only network-confirmed may trigger destruction. Generation
-// numbers plus AbortSignal may invalidate stale probes only before sentinel confirmation.
-// Execute once per transition and remain idempotent under StrictMode's double mount.
+// setting and whether sensitive data exists in one readonly transaction (the wipe path
+// provides the fail-safe behavior if reading preferences fails). Relay authorization is
+// separate and fail-closed: only a confirmed-clean transaction may move the immutable
+// network-confirmed state from pending to eligible. Only network-confirmed may trigger
+// destruction. Generation numbers plus AbortSignal may invalidate stale probes only before
+// sentinel confirmation. Execute once per transition and remain idempotent under
+// StrictMode's double mount.
 
 export const REACHABILITY_SENTINEL_PATH = "/reachability-sentinel.txt"
 export const REACHABILITY_SENTINEL_BODY = "QRYPT-REACHABLE"
 export const WIPE_BROADCAST_CHANNEL = "qrypt-wipe"
 
+export type CleanOriginProof = "confirmed-clean" | "dirty" | "indeterminate"
+export type RelayEligibility = "pending" | "eligible" | "ineligible"
+
 export type BootState =
   | { kind: "unknown" }
   | { kind: "probing"; generation: number }
   | { kind: "offline-confirmed" }
-  | { kind: "network-confirmed" }
+  | { kind: "network-confirmed"; relayEligibility: RelayEligibility }
   | { kind: "wiping" }
   | { kind: "wiped" }
   | { kind: "partial-failure"; failedSteps: readonly string[] }
@@ -39,5 +45,6 @@ export type BootState =
 export interface WipeDecisionInput {
   wipeOnOnline: boolean
   sensitiveDataExists: boolean
+  cleanOrigin: CleanOriginProof
   maintenanceTokenArmed: boolean
 }

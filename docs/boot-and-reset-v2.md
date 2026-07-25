@@ -6,10 +6,10 @@ Types and constants are frozen in `src/app/boot/boot-contract.ts`.
 
 ## 1. Separating Display Online State from Destructive Reachability
 
-| Purpose                        | Basis                                                                                                                       | Use                                                                                                                                              |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Display                        | `navigator.onLine` + the existing probe (HEAD of `/manifest.webmanifest`)                                                    | Switches the OnlineGate display and requests boot reconciliation. **The display edge itself is never the basis for, or a direct trigger of, destructive operations** |
-| Destructive (network-confirmed) | `GET /reachability-sentinel.txt?n=<nonce>` (`cache:"no-store"`), **confirmed only when the response body matches `QRYPT-REACHABLE`** | The sole trigger of wipe-on-online                                                                                                                |
+| Purpose                         | Basis                                                                                                                                | Use                                                                                                                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Display                         | `navigator.onLine` + the existing probe (HEAD of `/manifest.webmanifest`)                                                            | Switches the OnlineGate display and requests boot reconciliation. **The display edge itself is never the basis for, or a direct trigger of, destructive operations** |
+| Destructive (network-confirmed) | `GET /reachability-sentinel.txt?n=<nonce>` (`cache:"no-store"`), **confirmed only when the response body matches `QRYPT-REACHABLE`** | The sole trigger of wipe-on-online                                                                                                                                   |
 
 - The sentinel is excluded from the SW precache, served via a `NetworkOnly`
   runtime route (vite.config.ts), and delivered with
@@ -28,10 +28,12 @@ Types and constants are frozen in `src/app/boot/boot-contract.ts`.
 
 ```
 unknown → probing → offline-confirmed
-                  → network-confirmed → wiping → wiped | partial-failure
-                                      ↘ offline-confirmed (display offline nudge;
-                                         only after non-destructive post-commit
-                                         processing has completed)
+                  → network-confirmed(pending)
+                       → network-confirmed(eligible | ineligible)
+                       → wiping → wiped | partial-failure
+                       ↘ offline-confirmed (display offline nudge;
+                          only after non-destructive post-commit processing
+                          has completed)
 offline-confirmed -- display online re-commit --> probing (at most once)
 ```
 
@@ -46,6 +48,25 @@ offline-confirmed -- display online re-commit --> probing (at most once)
   `pqIdentities` / the Vault key exists; a DB open/count/lookup failure alone
   must never be taken as evidence of sensitive data and used to trigger a
   reset.
+- Relay authorization uses a separate fail-closed proof:
+  `cleanOrigin = confirmed-clean | dirty | indeterminate`. The boot controller
+  reads `keys`, `pqIdentities`, the Vault-key metadata, the maintenance token,
+  and preferences in one read-only transaction. DB-open failure, an unusable
+  DB, any required missing store, a count/get failure, or transaction failure
+  yields `indeterminate`. Only `confirmed-clean` can authorize the relay;
+  `dirty` and `indeterminate` are identical at the UI boundary.
+- Sentinel success first publishes a fresh immutable
+  `network-confirmed { relayEligibility: "pending" }`. Only after the decision
+  completes may it publish another fresh state with `eligible` or
+  `ineligible`. Maintenance-token survival and `wipeOnOnline:false` with
+  sensitive rows therefore publish `ineligible`; they never reuse an earlier
+  state object. Every probe, offline request, destructive/terminal transition,
+  and peer wipe invalidates relay eligibility.
+- An eligible relay proof is re-read with the same boot scanner before a relay
+  dialog opens and whenever the document becomes visible. No cross-tab
+  mutation-exclusion lease is held. A second tab can therefore create a key
+  after a successful proof and before the next re-check; this residual race is
+  a stale policy signal, not a relay read of or disclosure from the database.
 - As of 2026-07-24 the boot read-compatibility allowlist is algorithm
   (`A256GCM`, `RSA-HYBRID`, `MLKEM768_A256GCM`,
   `MLKEM768_MLDSA65_A256GCM`, `MLKEM1024_A256GCM`,
@@ -70,6 +91,10 @@ offline-confirmed -- display online re-commit --> probing (at most once)
 
 ## 4. WipeCoordinator Order (Single Instance, Owned by the Boot Layer)
 
+0. Synchronously invoke the relay's one idempotent `endSession` handle. It
+   aborts pending camera startup, stops a live scan handle, cancels relay
+   lifetime/display work, detaches the video, and releases app references
+   before the barrier. A peer broadcast performs this as its first action.
 1. Fail-close all new UI/crypto/storage operations (subsequent
    repository/worker calls error immediately).
 2. Cancel/terminate the Workers. Drop (zeroize) the app-owned
@@ -91,6 +116,11 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    `deleteDB({blocked})`/`openDB({blocking,blocked})` carry a timeout + UI.
    Partial failure is never presented with success wording; it is surfaced as
    `RESET_FAILED`.
+
+The display-online status edge is not a destructive trigger, but a
+display-offline edge synchronously invokes the same relay `endSession` handle
+and removes relay eligibility. React unmount remains a secondary cleanup path,
+not the ordering proof for camera teardown.
 
 ## 5. Honest Naming and Wording (Forbidden: "secure erase" / "permanent deletion")
 
@@ -144,12 +174,12 @@ current tab's in-progress pending. Persistent acknowledgement is per origin,
 while the in-tab generation remains per tab as before; under contention,
 redundant re-acknowledgement is allowed but skipping acknowledgement is not.
 
-| boot / wipe outcome         | Behavior after an offline edge / reload                                                                                                                                  | Marker                                                                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| no wipe                     | The Router is mounted only after the per-generation acknowledgement                                                                                                       | Deletion attempted on acknowledgement                                                                                                                      |
+| boot / wipe outcome         | Behavior after an offline edge / reload                                                                                                                                                  | Marker                                                                                                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| no wipe                     | The Router is mounted only after the per-generation acknowledgement                                                                                                                      | Deletion attempted on acknowledgement                                                                                                                                              |
 | `wiped` (`online-detected`) | The result and the acknowledgement are shown in the same full-screen shell; the "reload to continue" action performs a full reload. The Router is not mounted in the current JS lifetime | Re-set after the `oc-*` deletion and before publishing `wiped`. Reloading without acknowledging shows the shell again; reloading after acknowledging is a marker-absent cold start |
-| `partial-failure`           | Shows only `RESET_FAILED` plus guidance to close the tab / fully format the device; no resume path is provided                                                            | Kept re-set as evidence of online contact                                                                                                                  |
-| `user-requested`            | Normal flow after a manual reset                                                                                                                                          | Not re-set after the `oc-*` deletion                                                                                                                       |
+| `partial-failure`           | Shows only `RESET_FAILED` plus guidance to close the tab / fully format the device; no resume path is provided                                                                           | Kept re-set as evidence of online contact                                                                                                                                          |
+| `user-requested`            | Normal flow after a manual reset                                                                                                                                                         | Not re-set after the `oc-*` deletion                                                                                                                                               |
 
 A display offline commit issues no sentinel; only when boot is
 `network-confirmed` does it request the dedicated nudge, once. When the
