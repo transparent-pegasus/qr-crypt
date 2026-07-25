@@ -214,7 +214,7 @@ export function EncryptPage() {
     bytes: pqResult?.artifactBytes ?? EMPTY_ARTIFACT_BYTES,
     artifactType: pqResult?.artifactType ?? "pq-message",
     frameBytes: pqResult?.frameBytes ?? FRAME_BYTES_MIN,
-    enabled: pqResult !== null && mode === "encrypt",
+    enabled: pqResult !== null,
     generation: pqResult?.generation ?? 0,
   })
   const localizedFrameError = useLocalizedMessage(frameSplit.error)

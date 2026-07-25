@@ -174,6 +174,54 @@ describe("encrypt page v2", () => {
     ).not.toBeInTheDocument()
   })
 
+  it("keeps the PQ transfer ID stable across Encrypt and Decrypt tabs", async () => {
+    const user = userEvent.setup()
+    const defaultSplitIntoFrames = splitIntoFrames.getMockImplementation()!
+    splitIntoFrames.mockImplementationOnce(async (args) => {
+      const frames = await defaultSplitIntoFrames(args)
+      return frames.map((frame) => ({
+        ...frame,
+        transferId: new Uint8Array(16).fill(7),
+      }))
+    })
+
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "stable transfer")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const result = await screen.findByRole("region", { name: "Encryption result" })
+    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(renderQrDataUrl).toHaveBeenCalled())
+    await user.click(within(result).getByRole("button", { name: "Pause" }))
+    const initialPayload = renderQrDataUrl.mock.calls.at(-1)?.[0]
+    expect(initialPayload).toMatch(/^OCF2:/)
+    const initialTransferId = initialPayload!.split(":")[1]
+    const renderCallsBeforeTabSwitch = renderQrDataUrl.mock.calls.length
+
+    await user.click(screen.getByRole("tab", { name: "Decrypt" }))
+    expect(
+      screen.queryByRole("region", { name: "Encryption result" }),
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole("tab", { name: "Encrypt" }))
+    await screen.findByRole("region", { name: "Encryption result" })
+    await waitFor(() =>
+      expect(renderQrDataUrl.mock.calls.length).toBeGreaterThan(
+        renderCallsBeforeTabSwitch,
+      ),
+    )
+
+    expect(splitIntoFrames).toHaveBeenCalledTimes(1)
+    const resumedPayload = renderQrDataUrl.mock.calls.at(-1)?.[0]
+    expect(resumedPayload).toMatch(/^OCF2:/)
+    expect(resumedPayload!.split(":")[1]).toBe(initialTransferId)
+  })
+
   it("does not persist during scan decryption success", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
