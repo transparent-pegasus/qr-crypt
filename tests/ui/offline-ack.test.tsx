@@ -21,20 +21,26 @@ import { memoryLocalStorage, renderApp, resetUi } from "./helpers/render-app"
 
 const ACK_TITLE = "Confirm before continuing"
 const JA_ACK_TITLE = "続行前の確認"
-const INSTALL_TITLE = "Only PWA installation is available while online"
+const INSTALL_TITLE = "Install the PWA or relay ciphertext QR frames"
 
 function response(body: string, status = 200): Response {
   return { status, text: vi.fn(async () => body) } as unknown as Response
 }
 
 function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSnapshot {
-  return {
+  const snapshot = {
     wipeOnOnline: true,
     sensitiveDataExists: false,
     maintenanceTokenArmed: false,
     resetChurnMb: 0,
     preferencesReadFailed: false,
     ...overrides,
+  }
+  return {
+    ...snapshot,
+    cleanOrigin:
+      overrides.cleanOrigin ??
+      (snapshot.sensitiveDataExists ? "dirty" : "confirmed-clean"),
   }
 }
 

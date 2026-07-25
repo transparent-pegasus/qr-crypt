@@ -56,6 +56,7 @@ export interface AnimatedQrFramesProps {
   onFrameBytesChange?: (bytes: number) => void
   splitting?: boolean
   onFullscreenOpenChange?: (open: boolean) => void
+  animationSignal?: AbortSignal
 }
 
 interface FrameSlot {
@@ -88,6 +89,7 @@ export function AnimatedQrFrames({
   onFrameBytesChange,
   splitting = false,
   onFullscreenOpenChange,
+  animationSignal,
 }: AnimatedQrFramesProps) {
   const { language, t } = useI18n()
   const title = titleProp ?? t("animatedQr.defaultTitle")
@@ -160,7 +162,9 @@ export function AnimatedQrFrames({
     }
   }, [availableIndexes.length, frameGeneration, position])
   useEffect(() => {
-    if (paused || availableIndexes.length < 2) return
+    if (paused || availableIndexes.length < 2 || animationSignal?.aborted) {
+      return
+    }
     const timer = window.setInterval(
       () =>
         setCursor((current) => ({
@@ -171,8 +175,13 @@ export function AnimatedQrFrames({
         })),
       speed,
     )
-    return () => window.clearInterval(timer)
-  }, [availableIndexes.length, frameGeneration, paused, speed])
+    const stopAnimation = () => window.clearInterval(timer)
+    animationSignal?.addEventListener("abort", stopAnimation, { once: true })
+    return () => {
+      stopAnimation()
+      animationSignal?.removeEventListener("abort", stopAnimation)
+    }
+  }, [animationSignal, availableIndexes.length, frameGeneration, paused, speed])
 
   const currentIndex = availableIndexes[position]
   const current = currentIndex === undefined ? undefined : slots.get(currentIndex)
@@ -513,7 +522,7 @@ export function AnimatedQrFrames({
         </>
       )}
 
-      {error && (
+      {exportsEnabled && error && (
         <Alert variant="destructive" role="alert">
           <AlertTitle>{t("animatedQr.export.error.title")}</AlertTitle>
           <AlertDescription>{localizedError}</AlertDescription>

@@ -5,10 +5,14 @@ import {
   BOOT_PROBE_TIMEOUT_MS,
   createBootController,
   probeNetworkSentinel,
+  readBootDecision,
   type BootDecisionSnapshot,
 } from "@/app/boot/boot-controller"
 import { useBootState } from "@/app/boot/use-boot-state"
-import { createWipeCoordinator } from "@/app/boot/wipe-coordinator"
+import {
+  createWipeCoordinator,
+  installWipeBroadcastListener,
+} from "@/app/boot/wipe-coordinator"
 
 class MemoryStorage implements Storage {
   readonly values = new Map<string, string>()
@@ -43,13 +47,73 @@ function response(body: string, status = 200): Response {
 }
 
 function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSnapshot {
-  return {
+  const snapshot = {
     wipeOnOnline: true,
     sensitiveDataExists: false,
     maintenanceTokenArmed: false,
     resetChurnMb: 0,
     preferencesReadFailed: false,
     ...overrides,
+  }
+  return {
+    ...snapshot,
+    cleanOrigin:
+      overrides.cleanOrigin ??
+      (snapshot.sensitiveDataExists ? "dirty" : "confirmed-clean"),
+  }
+}
+
+interface FakeBootDatabaseOptions {
+  countFailure?: "keys" | "pqIdentities"
+  missingStore?: "keys" | "preferences" | "appMetadata" | "pqIdentities"
+  transactionFailure?: "create" | "done"
+  vaultGetFailure?: boolean
+}
+
+function fakeBootDatabase(options: FakeBootDatabaseOptions = {}) {
+  const storeNames = new Set(["keys", "preferences", "appMetadata", "pqIdentities"])
+  if (options.missingStore) storeNames.delete(options.missingStore)
+  const transaction = vi.fn((requestedStores: readonly string[], mode: "readonly") => {
+    if (options.transactionFailure === "create") {
+      throw new DOMException("transaction failed", "InvalidStateError")
+    }
+    return {
+      objectStore(name: string) {
+        return {
+          async count() {
+            if (options.countFailure === name) {
+              throw new DOMException("count failed", "UnknownError")
+            }
+            return 0
+          },
+          async get(key: IDBValidKey) {
+            if (
+              name === "appMetadata" &&
+              key === "vault-key" &&
+              options.vaultGetFailure
+            ) {
+              throw new DOMException("get failed", "UnknownError")
+            }
+            return undefined
+          },
+        }
+      },
+      done:
+        options.transactionFailure === "done"
+          ? Promise.reject(new DOMException("transaction aborted", "AbortError"))
+          : Promise.resolve(),
+      requestedStores,
+      mode,
+    }
+  })
+  return {
+    database: {
+      objectStoreNames: {
+        contains: (name: string) => storeNames.has(name),
+      },
+      transaction,
+    },
+    transaction,
   }
 }
 
@@ -58,6 +122,7 @@ afterEach(() => {
   window.localStorage.clear()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe("destructive reachability probe", () => {
@@ -129,6 +194,93 @@ describe("destructive reachability probe", () => {
 
 describe("boot decisions", () => {
   it.each([
+    [
+      "DB open failure",
+      async () =>
+        readBootDecision({
+          getDatabase: async () => {
+            throw new DOMException("open failed", "UnknownError")
+          },
+        }),
+    ],
+    [
+      "unusable DB object",
+      async () => readBootDecision({ getDatabase: async () => ({}) }),
+    ],
+    ...(["keys", "preferences", "appMetadata", "pqIdentities"] as const).map(
+      (missingStore) =>
+        [
+          `missing ${missingStore} store`,
+          async () =>
+            readBootDecision({
+              getDatabase: async () => fakeBootDatabase({ missingStore }).database,
+            }),
+        ] as const,
+    ),
+    ...(["keys", "pqIdentities"] as const).map(
+      (countFailure) =>
+        [
+          `${countFailure} count failure`,
+          async () =>
+            readBootDecision({
+              getDatabase: async () => fakeBootDatabase({ countFailure }).database,
+            }),
+        ] as const,
+    ),
+    [
+      "Vault lookup failure",
+      async () =>
+        readBootDecision({
+          getDatabase: async () => fakeBootDatabase({ vaultGetFailure: true }).database,
+        }),
+    ],
+    ...(["create", "done"] as const).map(
+      (transactionFailure) =>
+        [
+          `transaction ${transactionFailure} failure`,
+          async () =>
+            readBootDecision({
+              getDatabase: async () => fakeBootDatabase({ transactionFailure }).database,
+            }),
+        ] as const,
+    ),
+  ] as Array<[string, () => Promise<BootDecisionSnapshot>]>)(
+    "keeps the relay ineligible after %s",
+    async (_label, readFailure) => {
+      const snapshot = await readFailure()
+      expect(snapshot).toMatchObject({
+        cleanOrigin: "indeterminate",
+        sensitiveDataExists: false,
+        preferencesReadFailed: true,
+      })
+      const controller = createBootController({
+        fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+        readDecision: async () => snapshot,
+      })
+      await controller.probe()
+      expect(controller.getState()).toEqual({
+        kind: "network-confirmed",
+        relayEligibility: "ineligible",
+      })
+    },
+  )
+
+  it("proves all sensitive stores clean in one readonly transaction", async () => {
+    const { database, transaction } = fakeBootDatabase()
+    await expect(
+      readBootDecision({ getDatabase: async () => database }),
+    ).resolves.toMatchObject({
+      cleanOrigin: "confirmed-clean",
+      sensitiveDataExists: false,
+    })
+    expect(transaction).toHaveBeenCalledOnce()
+    expect(transaction).toHaveBeenCalledWith(
+      ["keys", "preferences", "appMetadata", "pqIdentities"],
+      "readonly",
+    )
+  })
+
+  it.each([
     ["consume succeeds", true, "offline-confirmed"],
     ["consume fails and wipe qualifies", false, "wiped"],
   ] as const)(
@@ -154,11 +306,17 @@ describe("boot decisions", () => {
 
       const pendingProbe = controller.probe()
       await waitFor(() =>
-        expect(controller.getState()).toEqual({ kind: "network-confirmed" }),
+        expect(controller.getState()).toEqual({
+          kind: "network-confirmed",
+          relayEligibility: "pending",
+        }),
       )
       expect(controller.nudgeDisplayOffline()).toBe(true)
       expect(controller.nudgeDisplayOffline()).toBe(false)
-      expect(controller.getState()).toEqual({ kind: "network-confirmed" })
+      expect(controller.getState()).toEqual({
+        kind: "network-confirmed",
+        relayEligibility: "ineligible",
+      })
 
       resolveToken?.(tokenResult)
       await pendingProbe
@@ -184,12 +342,15 @@ describe("boot decisions", () => {
       readDecision: async () => decision(),
     })
     controller.subscribe(() => {
-      if (controller.getState().kind === "network-confirmed") order.push("publish")
+      const state = controller.getState()
+      if (state.kind === "network-confirmed") {
+        order.push(`publish-${state.relayEligibility}`)
+      }
     })
 
     await controller.probe()
 
-    expect(order).toEqual(["marker", "publish"])
+    expect(order).toEqual(["marker", "publish-pending", "publish-eligible"])
   })
 
   it("keeps nudge a strict no-op outside one network-confirmed episode", async () => {
@@ -260,7 +421,10 @@ describe("boot decisions", () => {
       readDecision: async () => decision({ sensitiveDataExists: false }),
     })
     await controller.probe()
-    expect(controller.getState()).toEqual({ kind: "network-confirmed" })
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "eligible",
+    })
     expect(performWipe).not.toHaveBeenCalled()
   })
 
@@ -312,7 +476,147 @@ describe("boot decisions", () => {
     expect(consumeMaintenanceToken).toHaveBeenCalledTimes(1)
     expect(performWipe).not.toHaveBeenCalled()
     expect(resetTransient).toHaveBeenCalledTimes(1)
-    expect(controller.getState()).toEqual({ kind: "network-confirmed" })
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "ineligible",
+    })
+  })
+
+  it("publishes pending during a refresh and revokes a stale clean proof", async () => {
+    let resolveRefresh: ((value: BootDecisionSnapshot) => void) | undefined
+    const readDecision = vi
+      .fn<() => Promise<BootDecisionSnapshot>>()
+      .mockResolvedValueOnce(decision())
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve
+          }),
+      )
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      readDecision,
+    })
+    const endSession = vi.fn()
+    controller.registerRelaySessionEndHandler(endSession)
+    await controller.probe()
+    const eligibleState = controller.getState()
+    expect(eligibleState).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "eligible",
+    })
+
+    const pendingRefresh = controller.refreshRelayEligibility()
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "pending",
+    })
+    resolveRefresh?.(
+      decision({
+        cleanOrigin: "indeterminate",
+        sensitiveDataExists: false,
+      }),
+    )
+    await expect(pendingRefresh).resolves.toBe(false)
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "ineligible",
+    })
+    expect(controller.getState()).not.toBe(eligibleState)
+    expect(endSession).toHaveBeenCalledWith("eligibility-loss")
+  })
+
+  it("invalidates an eligible state synchronously on the peer-wipe boundary", async () => {
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      readDecision: async () => decision(),
+    })
+    const endSession = vi.fn()
+    controller.registerRelaySessionEndHandler(endSession)
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "eligible",
+    })
+
+    controller.endRelaySession("peer-wipe")
+    expect(endSession).toHaveBeenCalledWith("peer-wipe")
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "ineligible",
+    })
+  })
+
+  it("does not republish eligibility when a peer wipe arrives during a deferred decision", async () => {
+    let resolveDecision: ((value: BootDecisionSnapshot) => void) | undefined
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      readDecision: () =>
+        new Promise((resolve) => {
+          resolveDecision = resolve
+        }),
+    })
+    const pendingProbe = controller.probe()
+    await waitFor(() =>
+      expect(controller.getState()).toEqual({
+        kind: "network-confirmed",
+        relayEligibility: "pending",
+      }),
+    )
+    controller.endRelaySession("peer-wipe")
+    resolveDecision?.(decision())
+    await pendingProbe
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "ineligible",
+    })
+  })
+
+  it("does not authorize from a proof started before a peer wipe", async () => {
+    let resolveFetch: ((value: Response) => void) | undefined
+    const controller = createBootController({
+      fetchImpl: vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve
+          }),
+      ),
+      readDecision: async () => decision(),
+    })
+    const pendingProbe = controller.probe()
+    expect(controller.getState().kind).toBe("probing")
+
+    controller.endRelaySession("peer-wipe")
+    resolveFetch?.(response("QRYPT-REACHABLE"))
+    await pendingProbe
+
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "ineligible",
+    })
+  })
+
+  it("stops the relay synchronously before invoking a local wipe executor", async () => {
+    const order: string[] = []
+    let stopped = false
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      performWipe: vi.fn(async ({ endSession }) => {
+        order.push("barrier")
+        expect(stopped).toBe(true)
+        endSession()
+        return { ok: true, failedSteps: [] }
+      }),
+      readDecision: async () => decision({ sensitiveDataExists: true }),
+    })
+    controller.registerRelaySessionEndHandler((reason) => {
+      if (reason !== "local-wipe") return
+      if (stopped) return
+      stopped = true
+      order.push("stop")
+    })
+    await controller.probe()
+    expect(order).toEqual(["stop", "barrier"])
   })
 
   it("is idempotent across React StrictMode's double effect mount", async () => {
@@ -369,16 +673,19 @@ describe("WipeCoordinator order", () => {
     const report = await coordinator.wipe({
       reason: "online-detected",
       resetChurnMb: 0,
+      endSession: () => order.push("0-relay"),
       resetTransient: () => order.push("3-transient"),
     })
     await coordinator.wipe({
       reason: "online-detected",
       resetChurnMb: 0,
+      endSession: () => order.push("unexpected-relay"),
       resetTransient: () => order.push("unexpected"),
     })
 
     expect(report).toEqual({ ok: true, failedSteps: [] })
     expect(order).toEqual([
+      "0-relay",
       "1-barrier",
       "2-worker",
       "2-vault-cache",
@@ -387,5 +694,54 @@ describe("WipeCoordinator order", () => {
       "4-lock",
       "5-7-reset",
     ])
+  })
+
+  it("stops a relay before the barrier on a peer wipe broadcast", async () => {
+    let messageHandler: ((event: MessageEvent<unknown>) => void) | undefined
+    class FakeBroadcastChannel {
+      addEventListener(type: string, listener: (event: MessageEvent<unknown>) => void) {
+        if (type === "message") messageHandler = listener
+      }
+      close() {}
+      postMessage() {}
+      removeEventListener() {
+        messageHandler = undefined
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel)
+    const order: string[] = []
+    const remove = installWipeBroadcastListener(
+      {
+        endSession: () => order.push("relay-stop"),
+        resetTransient: () => order.push("transient"),
+      },
+      {
+        closeDatabase: () => order.push("close-db"),
+        disposeCrypto: () => order.push("crypto"),
+        dropVaultKeyCache: async () => {
+          order.push("vault")
+        },
+        engageBarrier: () => order.push("barrier"),
+      },
+    )
+
+    messageHandler?.(
+      new MessageEvent("message", {
+        data: { type: "qrypt-wipe-request", version: 1 },
+      }),
+    )
+    expect(order.indexOf("relay-stop")).toBe(0)
+    expect(order.indexOf("relay-stop")).toBeLessThan(order.indexOf("barrier"))
+    await waitFor(() =>
+      expect(order).toEqual([
+        "relay-stop",
+        "barrier",
+        "crypto",
+        "vault",
+        "transient",
+        "close-db",
+      ]),
+    )
+    remove()
   })
 })
