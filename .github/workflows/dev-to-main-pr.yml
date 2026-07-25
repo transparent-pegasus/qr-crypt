@@ -1,9 +1,8 @@
 name: Promote dev
 
-# A push to dev opens the pull request that promotes dev to main, unless one is
-# already open or main already has dev's content. Merging that PR is what
-# deploys production and publishes the signed release, so this workflow never
-# merges, never pushes, and holds no deploy credential.
+# Every push to dev creates or updates the promotion pull request that ships
+# dev to main.  The body always lists every PR merged into dev since the last
+# dev->main merge so the reviewer sees what this release contains.
 on:
   push:
     branches:
@@ -20,46 +19,115 @@ concurrency:
 
 jobs:
   open-promotion-pr:
-    # workflow_dispatch lets a caller choose any ref, which would run that ref's
-    # copy of this file with pull-requests: write. Only dev may drive it.
     if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: Open the promotion pull request when one is missing
+      - name: Checkout for merge-base
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build the PR body with merged-PR manifest
+        id: body
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PR_TITLE: "merge: promote dev to main"
-          PR_BODY: |
-            Merging this pull request deploys production to `CLOUDFLARE_PAGES_PROJECT` and publishes the signed prerelease via `.github/workflows/github-release.yml`.
-
-            The commit list and diff update themselves as `dev` advances; the body is not regenerated.
-
-            The required checks on `main` are `validate` and `e2e`. The push-event runs on this same head SHA have already reported them.
-
-            If CI runs on this pull request show **"Approve workflows to run"**, approve them. GitHub holds pull-request workflow runs for pull requests opened by Actions.
-
-            Compare: https://github.com/transparent-pegasus/qr-crypt/compare/main...dev
         run: |
           set -euo pipefail
 
-          existing=$(gh pr list --base main --head dev --state open --json number --jq '.[].number')
-          if [[ -n "$existing" ]]; then
-            echo "::notice::promotion pull request already open: $existing"
+          # --- find the boundary: last commit reachable from both main and dev ---
+          base=$(git merge-base origin/main origin/dev)
+
+          # --- extract PR numbers from merge commits on dev since that boundary ---
+          pr_numbers=$(
+            git log "${base}..origin/dev" --merges --oneline |
+            grep -oP '#\K[0-9]+' |
+            sort -un
+          ) || true
+
+          if [[ -z "$pr_numbers" ]]; then
+            {
+              echo 'PR_BODY<<EOFBODY'
+              echo '_(No pull requests merged into dev since the last promotion.)_'
+              echo ''
+              echo '---'
+              echo ''
+              echo 'Merging this pull request deploys production and publishes the signed release.'
+              echo ''
+              echo 'Compare: https://github.com/'"${GH_REPO}"'/compare/main...dev'
+              echo 'EOFBODY'
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          # --- fetch title + labels for each PR, classify as content vs meta ---
+          content_lines=""
+          meta_lines=""
+
+          for num in $pr_numbers; do
+            pr_json=$(gh api "repos/${GH_REPO}/pulls/${num}" \
+              --jq '{title: .title, user: .user.login}' 2>/dev/null) || continue
+
+            title=$(echo "$pr_json" | jq -r '.title')
+            author=$(echo "$pr_json" | jq -r '.user')
+
+            line="- #${num} ${title} (@${author})"
+
+            # CI, docs, chore, release-process PRs go to the meta section
+            if echo "$title" | grep -qiE '^(ci|docs|chore|build|release)\b'; then
+              meta_lines="${meta_lines}${line}"$'\n'
+            else
+              content_lines="${content_lines}${line}"$'\n'
+            fi
+          done
+
+          # --- assemble the body ---
+          {
+            echo 'PR_BODY<<EOFBODY'
+
+            if [[ -n "$content_lines" ]]; then
+              echo '## What ships'
+              echo ''
+              printf '%s' "$content_lines"
+              echo ''
+            fi
+
+            if [[ -n "$meta_lines" ]]; then
+              echo '<details><summary>CI / docs / chore</summary>'
+              echo ''
+              printf '%s' "$meta_lines"
+              echo '</details>'
+              echo ''
+            fi
+
+            echo '---'
+            echo ''
+            echo 'Merging this pull request deploys production and publishes the signed release.'
+            echo ''
+            echo 'Required checks: `validate`, `e2e`.'
+            echo ''
+            echo 'Compare: https://github.com/'"${GH_REPO}"'/compare/main...dev'
+            echo 'EOFBODY'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update the promotion pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_TITLE: "release: promote dev to production"
+          PR_BODY: ${{ steps.body.outputs.PR_BODY }}
+        run: |
+          set -euo pipefail
+
+          # --- gate: anything to promote? ---
           ahead=$(gh api "repos/${GH_REPO}/compare/main...dev" --jq '.ahead_by')
           if [[ "$ahead" == "0" ]]; then
             echo "::notice::dev has no commits ahead of main; nothing to promote"
             exit 0
           fi
 
-          # Tree equality, not commit reachability: a squash or rebase merge of a
-          # previous promotion leaves dev's commits unreachable from main while the
-          # content is already shipped, and ahead_by would stay positive forever.
           main_tree=$(gh api "repos/${GH_REPO}/commits/main" --jq '.commit.tree.sha')
           dev_tree=$(gh api "repos/${GH_REPO}/commits/dev" --jq '.commit.tree.sha')
           if [[ "$main_tree" == "$dev_tree" ]]; then
@@ -67,6 +135,16 @@ jobs:
             exit 0
           fi
 
+          # --- if PR already open, update its body and exit ---
+          existing=$(gh pr list --base main --head dev --state open --json number --jq '.[].number')
+          if [[ -n "$existing" ]]; then
+            gh api --method PATCH "repos/${GH_REPO}/pulls/${existing}" \
+              -f body="$PR_BODY" > /dev/null
+            echo "::notice::updated body of promotion pull request #${existing}"
+            exit 0
+          fi
+
+          # --- create ---
           jq -n \
             --arg base main \
             --arg head dev \
@@ -74,8 +152,6 @@ jobs:
             --arg body "$PR_BODY" \
             '{base: $base, head: $head, title: $title, body: $body}' > payload.json
 
-          # `if !` rather than a bare call: under set -e a failing gh would exit
-          # before any diagnostic could run.
           if ! response=$(gh api --method POST "repos/${GH_REPO}/pulls" --input payload.json 2>&1); then
             case "$response" in
               *"pull request already exists"*)
@@ -94,9 +170,7 @@ jobs:
                 ;;
             esac
           fi
-          # The pull request already exists at this point, so a stderr line mixed
-          # into the captured response must not turn a successful create into a
-          # failed run.
+
           printf '%s\n' "$response" |
             jq -r '"::notice::opened promotion pull request #\(.number)"' ||
             echo "::notice::opened the promotion pull request"
