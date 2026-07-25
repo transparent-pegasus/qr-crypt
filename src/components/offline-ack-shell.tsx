@@ -36,7 +36,10 @@ export function OfflineAckShell({
       className="fixed inset-0 max-h-dvh overflow-y-auto bg-background text-foreground [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))]"
     >
       <section className="mx-auto w-full max-w-2xl space-y-5 rounded-xl border bg-card p-5 shadow-sm sm:p-6">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-muted-foreground">
+            {t("language.field")}
+          </span>
           <LanguageToggle />
         </div>
         {wiped && (
