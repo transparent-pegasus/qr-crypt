@@ -58,7 +58,7 @@ fixtures. The 200/300/400/600/900 figures above remain message-class measurement
 across the configurable range; 300B is the default.
 
 The current multipart transition interval is exactly
-1,000/1,500/2,000/2,500/3,000ms, defaulting to 1,000ms. New preferences and
+1,000/1,500/2,000/2,500/3,000ms, defaulting to 2,000ms. New preferences and
 environment values off that grid are rejected. Boot reads the exact union of
 legacy safe integers 150–2,000ms and the current grid, then the preferences
 repository normalizes only persisted legacy values to the nearest

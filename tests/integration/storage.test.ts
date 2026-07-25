@@ -187,7 +187,7 @@ describe("preferences and plaintext non-persistence", () => {
       qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
-      frameIntervalMs: 1_000,
+      frameIntervalMs: 2_000,
     })
     expect(
       await updatePreferences({

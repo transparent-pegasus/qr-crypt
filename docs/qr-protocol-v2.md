@@ -188,7 +188,7 @@ QrFrameV2 = {
   `VITE_QR_MAX_FRAMES` or the artifact byte length, and any result whose
   largest chunk exceeds 900B. Every chunk is non-empty and largest/smallest
   lengths differ by at most one byte
-- Defaults: chunk 300B / 1,000ms interval / max 64 frames. Message chunks are
+- Defaults: chunk 300B / 2,000ms interval / max 64 frames. Message chunks are
   configurable from 200–900B. The current interval values are exactly
   1,000/1,500/2,000/2,500/3,000ms (UI step 500ms); off-grid env values and
   new preference writes are rejected
