@@ -338,3 +338,28 @@ contract; they do not imply availability under the active policy.
 Note: an earlier draft used the provisional name `WIPE_FAILED`; in line with
 the honest-naming policy (no "wipe" / "secure erase" wording), it was
 finalized as `RESET_FAILED`.
+
+## 10. Online optical relay transport (verbatim OCF2 text)
+
+This section describes the **transport contract** for the clean-origin online
+relay. The relay is an untrusted hop: it forwards frame strings; it does not
+assemble artifacts, verify `payloadSha256`, check inner CBOR type, AEAD, or
+signatures. Authoritative completion remains §6 (offline assembler).
+
+- Every displayed frame string is
+  `OCF2:<unpadded-base64url(canonical CBOR frame)>`: after the 5-character
+  `OCF2:` prefix the body is pure ASCII over `[A-Za-z0-9_-]` with no
+  whitespace, CR, or LF. Therefore `frames.join("\n")` followed by
+  `split("\n")` round-trips character-for-character.
+- On paste, the receiver strips a single trailing `\r` per line (an
+  intermediary may have converted LF to CRLF) and drops empty lines so a
+  trailing newline cannot invent a bogus frame.
+- The relay accepts only frames whose **untrusted outer header declares**
+  `artifactType === "pq-message"`. It performs no assembly and cannot detect
+  a public-key or identity artifact that an attacker re-chunked and
+  relabeled; the offline assembler rejects inner-type mismatches
+  (`src/qr/multipart/assemble.ts`). Face-to-face key exchange is the
+  supported workflow, not an enforcement guarantee of this hop.
+- `payloadSha256` on each frame is transfer integrity, **not** sender
+  authenticity (§6). A relay can drop, reorder, replay, or substitute an
+  entire well-formed frame set.
