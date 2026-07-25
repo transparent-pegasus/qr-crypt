@@ -43,12 +43,36 @@ import { encryptSecret } from "@/crypto/vault/encrypt-secret"
 import { bytesEqual, sha256, toOwnedArrayBuffer } from "@/lib/bytes"
 import { HKDF_SALT_BYTES, IV_BYTES } from "@/lib/limits"
 import type {
+  EncryptedSecret,
   MlDsaAlgorithm,
   MlKemAlgorithm,
   SignedMessageBodyV2,
 } from "@/schemas/domain"
 
 const providers = resolveProviders("noble")
+
+type IdentityKeyStage = "seed" | "keygen" | "public-key-digest" | "seed-encryption"
+
+// Every failure inside an operation collapses to one public code (sanitizedCode),
+// which is the right boundary but leaves a failing run unable to say which stage
+// broke: a CSPRNG fault, noble keygen, SHA-256 and AES-GCM all arrive as
+// ENCRYPTION_FAILED, and the two innermost of those are already sanitized before
+// this frame sees them. Emit the stage under the test build only, and only
+// allowlisted values: the stage label plus the error's class name or AppError
+// code. Never the message, stack, cause, request payload or any byte array —
+// docs/security-review.md forbids those on every surface, console included, and
+// MODE is "test" only under vitest, so neither a production build nor a
+// `vite dev` session with real key material can reach this.
+function reportStage(stage: IdentityKeyStage, error: unknown): void {
+  if (import.meta.env.MODE !== "test") return
+  const kind =
+    error instanceof AppError
+      ? `AppError:${error.code}`
+      : error instanceof Error
+        ? error.name
+        : typeof error
+  console.error("[pq-worker-stage]", "generateIdentityKeys", stage, kind)
+}
 
 function kemProvider(algorithm: MlKemAlgorithm): MlKemProvider {
   return algorithm === "ML-KEM-768" ? providers.kem768 : providers.kem1024
@@ -98,19 +122,27 @@ async function generateIdentityKeys(
   let dsaSeed: Uint8Array | undefined
   let kemSecretKey: Uint8Array | undefined
   let dsaSecretKey: Uint8Array | undefined
+  let stage: IdentityKeyStage = "seed"
   try {
     // Independent CSPRNG calls. Sharing a seed between KEM and DSA is prohibited.
     kemSeed = generateKemSeed()
     dsaSeed = generateDsaSeed()
+    stage = "keygen"
     const kemKeys = kem.keygen(kemSeed)
     const dsaKeys = dsa.keygen(dsaSeed)
     kemSecretKey = kemKeys.secretKey
     dsaSecretKey = dsaKeys.secretKey
+    stage = "public-key-digest"
     const [kemPublicKeySha256, dsaPublicKeySha256] = await Promise.all([
       sha256(kemKeys.publicKey),
       sha256(dsaKeys.publicKey),
     ])
-    const [encryptedKemSeed, encryptedDsaSeed] = await Promise.all([
+    stage = "seed-encryption"
+    // allSettled, not all: `all` rejects on the first failure while the sibling
+    // encryption is still inside crypto.subtle, so the handler would return and
+    // the finally would zeroize with an operation still in flight, and a second
+    // rejection would surface as an unhandled rejection.
+    const encrypted = await Promise.allSettled([
       encryptSecret({
         vaultKey: request.vaultKey,
         plaintextSecret: kemSeed,
@@ -134,6 +166,11 @@ async function generateIdentityKeys(
         },
       }),
     ])
+    const rejected = encrypted.find((result) => result.status === "rejected")
+    if (rejected !== undefined) throw rejected.reason
+    const [encryptedKemSeed, encryptedDsaSeed] = encrypted.map(
+      (result) => (result as PromiseFulfilledResult<EncryptedSecret>).value,
+    ) as [EncryptedSecret, EncryptedSecret]
     return {
       kem: {
         publicKey: Uint8Array.from(kemKeys.publicKey),
@@ -144,6 +181,9 @@ async function generateIdentityKeys(
         encryptedSeed: encryptedDsaSeed,
       },
     }
+  } catch (error) {
+    reportStage(stage, error)
+    throw error
   } finally {
     zeroize(kemSeed, dsaSeed, kemSecretKey, dsaSecretKey)
   }
