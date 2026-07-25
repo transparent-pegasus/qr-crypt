@@ -1,0 +1,914 @@
+/* QR Crypt landing page.
+ *
+ * One idea drives the whole sheet: the page has two worlds. The online world is
+ * dark and marked amber; the offline world is cool paper marked navy. Between
+ * them is an air gap — a band of dissolving QR modules at the top of the page,
+ * and a literal empty channel running down the middle of the six-step diagram
+ * that the message crosses exactly twice.
+ *
+ * No external requests: system fonts only, and the two SVGs are same-origin.
+ */
+
+:root {
+  /* Online world */
+  --void: #0e0e12;
+  --void-2: #17171e;
+  --void-3: #2a2a35;
+  --amber: #f0a11a;
+  --dim: #9096a6;
+
+  /* Offline world */
+  --paper: #edf0f4;
+  --white: #ffffff;
+  --navy: #1e3a5f;
+  --ink: #0f172a;
+  --muted: #55606f;
+  --rule: #d3dae3;
+
+  --red: #c0362c;
+
+  --sans:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP",
+    "Yu Gothic UI", sans-serif;
+  --mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --display: clamp(2.3rem, 7.2vw, 5.75rem);
+  --h2: clamp(1.6rem, 3.6vw, 2.6rem);
+
+  --wrap: 68rem;
+  --pad: clamp(1.25rem, 5vw, 3.5rem);
+  --flow-channel: 6rem;
+  --step-pad: 1.125rem;
+
+  /* Shared by the wordmark and the fixed language switcher so both start on the
+     same line, and by the switcher's inset so it sits on the content edge. */
+  --head-top: clamp(2rem, 7vh, 4.5rem);
+  --head-height: 2.25rem;
+  --content-right: max(var(--pad), calc(50vw - var(--wrap) / 2 + var(--pad)));
+}
+
+/* Japanese leads with a Japanese face. Left to the Latin-first stack above, the
+   OS fallback picks whatever CJK font it likes — on some systems a mincho — and
+   the page reads as a different design in each language. */
+:lang(ja) {
+  --sans:
+    "Hiragino Sans", "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic UI", "Yu Gothic",
+    Meiryo, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+
+:lang(ja) body {
+  line-height: 1.9;
+  line-break: strict;
+}
+
+/* Break display type at phrase boundaries instead of mid-word, where supported. */
+:lang(ja) .thesis,
+:lang(ja) .h2,
+:lang(ja) .seam__body,
+:lang(ja) .step__title,
+:lang(ja) .warn__title {
+  word-break: auto-phrase;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+}
+
+.wrap {
+  /* width:100% matters inside .hero, a flex column: without it the auto inline
+     margins shrink-wrap each child to its content instead of the shared measure. */
+  width: 100%;
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding-inline: var(--pad);
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 20;
+  padding: 0.75rem 1rem;
+  background: var(--white);
+  color: var(--ink);
+}
+
+.skip:focus {
+  left: 0;
+}
+
+/* --- shared type ------------------------------------------------------- */
+
+.eyebrow {
+  margin: 0 0 1.25rem;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+:lang(ja) .eyebrow {
+  /* 11px mono is legible for Latin caps and not for kanji. */
+  font-size: 0.875rem;
+  letter-spacing: 0.14em;
+  text-transform: none;
+}
+
+:lang(ja) .route__tag,
+:lang(ja) .lock__when,
+:lang(ja) .flow__headName,
+:lang(ja) .scroll-cue {
+  font-size: 0.8125rem;
+}
+
+.eyebrow--amber {
+  color: var(--amber);
+}
+
+.eyebrow--red {
+  color: var(--red);
+}
+
+.h2 {
+  margin: 0 0 1.25rem;
+  max-width: 20ch;
+  font-size: var(--h2);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.06;
+  text-wrap: balance;
+  color: var(--navy);
+}
+
+:lang(ja) .h2 {
+  max-width: 24ch;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  /* Headings break at the 読点 and nowhere else, so a line never ends mid-phrase.
+     Safe because every JA heading's longest punctuation-free run still fits. */
+  word-break: keep-all;
+}
+
+.h2--void {
+  color: var(--white);
+}
+
+.h3 {
+  margin: 0 0 0.625rem;
+  font-size: 1.1875rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.prose {
+  margin: 0 0 1.5rem;
+  max-width: 60ch;
+  /* Keeps a last line from ending on one orphaned word or 「す。」 */
+  text-wrap: pretty;
+  color: var(--muted);
+}
+
+.lock__body,
+.step__note,
+.warn__body,
+.answer,
+.seam__body {
+  text-wrap: pretty;
+}
+
+/* Japanese copy carries its own sentence breaks so that, wherever the width
+   allows, a line ends at a 句点 rather than mid-sentence. English has no
+   newlines in its strings, so it is unaffected. */
+:lang(ja) .answer,
+:lang(ja) .seam__body {
+  white-space: pre-line;
+}
+
+/* `ch` is the width of "0", so a ch-based measure is far too narrow once the
+   glyphs are full-width — narrow enough that the sentence breaks above never
+   get to land. `em` is one full-width character, which is how a Japanese
+   measure is actually counted. */
+:lang(ja) .prose {
+  max-width: 40em;
+}
+
+:lang(ja) .answer {
+  max-width: 32em;
+}
+
+:lang(ja) .seam__body {
+  max-width: 27em;
+}
+
+/* --- language switcher ------------------------------------------------- */
+
+.lang {
+  position: fixed;
+  z-index: 10;
+  top: var(--head-top);
+  right: var(--content-right);
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--void-3);
+  border-radius: 999px;
+  background: var(--void);
+}
+
+.lang__button {
+  min-height: 2rem;
+  padding: 0 0.875rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.lang__button[aria-pressed="true"] {
+  background: var(--paper);
+  color: var(--void);
+}
+
+/* Narrow screens have no empty margin for it to float in, so it takes up as
+   little of the line it overlaps as possible. */
+@media (max-width: 52rem) {
+  :root {
+    --head-height: 1.875rem;
+  }
+
+  .lang__button {
+    min-height: 1.625rem;
+    padding: 0 0.625rem;
+    font-size: 0.6875rem;
+  }
+}
+
+/* --- hero: the premise, stated first and stated large ------------------ */
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: clamp(2rem, 6vh, 4rem);
+  min-height: 100vh;
+  min-height: 100svh;
+  padding-block: var(--head-top) clamp(3rem, 9vh, 6rem);
+  background: var(--void);
+  color: var(--paper);
+}
+
+.mark {
+  /* No `margin: 0` here: it would cancel .wrap's auto inline margins and drop
+     the wordmark to the viewport edge instead of the content edge. */
+  margin-block: 0;
+  /* Same box height as the switcher pill, so their top edges line up. */
+  min-height: var(--head-height);
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: var(--head-height);
+  letter-spacing: 0.34em;
+  color: var(--paper);
+}
+
+.thesis {
+  margin: 0 0 2.25rem;
+  max-width: 18ch;
+  font-size: var(--display);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+
+:lang(ja) .thesis {
+  max-width: 22ch;
+  letter-spacing: -0.015em;
+  line-height: 1.28;
+}
+
+.thesis__line {
+  display: block;
+  color: var(--dim);
+}
+
+.thesis__line--turn {
+  color: var(--white);
+}
+
+.answer {
+  margin: 0;
+  max-width: 46ch;
+  padding-left: 1.125rem;
+  border-left: 2px solid var(--amber);
+  color: var(--paper);
+}
+
+.scroll-cue {
+  margin-block: 0;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+:lang(ja) .scroll-cue {
+  letter-spacing: 0.12em;
+  text-transform: none;
+}
+
+.scroll-cue span::after {
+  content: "";
+  display: inline-block;
+  width: 3.5rem;
+  height: 1px;
+  margin-left: 0.75rem;
+  vertical-align: middle;
+  background: var(--void-3);
+}
+
+/* --- the crossing: the page itself leaves the dark world --------------- */
+
+.seam {
+  background: var(--paper);
+}
+
+.seam__modules {
+  height: clamp(3rem, 7vw, 5rem);
+  background-image: url("./seam.svg");
+  background-repeat: repeat-x;
+  background-position: top center;
+  background-size: auto 100%;
+}
+
+.seam__text {
+  padding-block: clamp(2.5rem, 7vw, 5rem) 0;
+}
+
+.seam__body {
+  margin: 0;
+  max-width: 30ch;
+  font-size: clamp(1.25rem, 2.6vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--navy);
+}
+
+:lang(ja) .seam__body {
+  letter-spacing: 0;
+  line-height: 1.5;
+}
+
+/* --- offline-world sections -------------------------------------------- */
+
+.band {
+  padding-block: clamp(3.5rem, 9vw, 7rem);
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+  margin: 0;
+  padding: 1.25rem 0 0;
+  border-top: 1px solid var(--rule);
+  list-style: none;
+}
+
+.facts__item {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--navy);
+}
+
+/* --- ciphers ----------------------------------------------------------- */
+
+.locks {
+  display: grid;
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+
+@media (min-width: 48rem) {
+  .locks {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.lock {
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+  background: var(--white);
+}
+
+.lock--pq {
+  background: var(--navy);
+  color: var(--white);
+}
+
+.lock__name {
+  margin: 0 0 0.25rem;
+  font-family: var(--mono);
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--navy);
+}
+
+.lock--pq .lock__name {
+  color: var(--white);
+}
+
+.lock__when {
+  margin: 0 0 1.125rem;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+:lang(ja) .lock__when {
+  letter-spacing: 0.12em;
+  text-transform: none;
+}
+
+.lock--pq .lock__when {
+  color: var(--amber);
+}
+
+.lock__body {
+  margin: 0;
+  color: var(--muted);
+}
+
+.lock--pq .lock__body {
+  color: #cdd8e6;
+}
+
+/* --- install routes ---------------------------------------------------- */
+
+.route {
+  display: grid;
+  gap: 0.75rem 2.5rem;
+  padding-block: clamp(1.75rem, 4vw, 2.75rem);
+  border-top: 1px solid var(--rule);
+}
+
+@media (min-width: 52rem) {
+  .route {
+    /* Fixed QR column so the code fills it and matches its own caption width. */
+    grid-template-columns: 7rem minmax(0, 1fr) 15rem;
+    align-items: start;
+  }
+}
+
+.route__tag {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--navy);
+}
+
+:lang(ja) .route__tag {
+  letter-spacing: 0.12em;
+  text-transform: none;
+}
+
+.route__link {
+  margin: 0;
+}
+
+.cta {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.4375rem;
+  /* Both routes get the same button, whatever their labels are. */
+  width: 100%;
+  max-width: 22rem;
+  min-height: 3rem;
+  padding: 0.625rem 1.25rem;
+  background: var(--navy);
+  color: var(--white);
+  font-weight: 700;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.cta:hover {
+  background: var(--ink);
+}
+
+.cta__url {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: #b9c6d8;
+}
+
+/* Narrow screens give the code the full column; the desktop grid caps it at the
+   width of its own caption. */
+.route__qr {
+  margin: 0.5rem 0 0;
+}
+
+.route__qr img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  padding: 0.75rem;
+  background: var(--white);
+}
+
+.route__qr figcaption {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+@media (min-width: 52rem) {
+  .route__qr {
+    margin: 0;
+  }
+}
+
+/* --- the signature: six steps across the air gap ----------------------- */
+
+.band--flow {
+  border-top: 1px solid var(--rule);
+}
+
+.flow {
+  position: relative;
+  margin-top: 1.5rem;
+}
+
+.flow__heads,
+.flow__list {
+  display: grid;
+  grid-template-columns: 1fr;
+  /* Stacked, the cards need real separation to read as separate steps; the wide
+     layout re-tightens this because the channel already separates them. */
+  gap: 1rem;
+}
+
+.flow__heads {
+  display: none;
+}
+
+.flow__head {
+  margin: 0 0 1rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.flow__headName {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+:lang(ja) .flow__headName {
+  letter-spacing: 0.12em;
+  text-transform: none;
+}
+
+.flow__head--online .flow__headName {
+  color: var(--amber);
+}
+
+.flow__head--offline .flow__headName {
+  color: var(--navy);
+}
+
+.flow__headSub {
+  display: block;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.flow__list {
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.channel {
+  display: none;
+}
+
+.step {
+  position: relative;
+  counter-increment: step;
+  padding: var(--step-pad);
+  border-left: 3px solid var(--navy);
+  background: var(--white);
+}
+
+.step--online {
+  border-left-color: var(--amber);
+  background: var(--void-2);
+  color: var(--paper);
+}
+
+.step__n {
+  margin: 0 0 0.25rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.step__n::before {
+  content: counter(step, decimal-leading-zero);
+}
+
+.step--online .step__n {
+  color: var(--dim);
+}
+
+.step__title {
+  margin: 0 0 0.375rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+}
+
+.step__where {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--navy);
+}
+
+/* The same lucide glyphs the app's own bottom navigation shows, so the step
+   points at the icon a reader will actually look for. */
+.step__icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+.step--online .step__where {
+  color: var(--amber);
+}
+
+.step__note {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.step--online .step__note {
+  color: var(--dim);
+}
+
+/* The two moments the message actually crosses the gap. */
+.cross {
+  position: relative;
+  margin: 0 0 0.625rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.step--online .cross {
+  color: var(--dim);
+}
+
+@media (min-width: 60rem) {
+  /* The wide layout has room to breathe; the stacked one does not. */
+  .flow {
+    --step-pad: 1.375rem;
+  }
+
+  .flow__heads {
+    display: grid;
+    grid-template-columns: 1fr var(--flow-channel) 1fr;
+  }
+
+  .flow__head--online {
+    grid-column: 1;
+  }
+
+  .flow__head--offline {
+    grid-column: 3;
+  }
+
+  .flow__list {
+    grid-template-columns: 1fr var(--flow-channel) 1fr;
+    gap: 1rem 0;
+  }
+
+  /* Explicit rows: auto-placement would let a left-column step share a row with
+     the right-column step above it. */
+  .step:nth-child(1) {
+    grid-row: 1;
+  }
+  .step:nth-child(2) {
+    grid-row: 2;
+  }
+  .step:nth-child(3) {
+    grid-row: 3;
+  }
+  .step:nth-child(4) {
+    grid-row: 4;
+  }
+  .step:nth-child(5) {
+    grid-row: 5;
+  }
+  .step:nth-child(6) {
+    grid-row: 6;
+  }
+
+  .step--online {
+    grid-column: 1;
+  }
+
+  .step--offline {
+    grid-column: 3;
+  }
+
+  /* The gap itself: nothing but light travels down it. */
+  .channel {
+    display: block;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    overflow: hidden;
+    background: var(--rule);
+  }
+
+  .channel__light {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 22%;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      var(--navy) 35%,
+      var(--navy) 65%,
+      transparent
+    );
+    animation: channel-travel 7s linear infinite;
+  }
+
+  /* The hairline that reaches from a crossing note out to the channel. */
+  .cross::after {
+    content: "";
+    position: absolute;
+    top: 0.75em;
+    width: calc(var(--flow-channel) / 2 + var(--step-pad));
+    height: 1px;
+    background: currentColor;
+    opacity: 0.55;
+  }
+
+  .cross__left::after {
+    left: 100%;
+  }
+
+  .cross__right::after {
+    right: 100%;
+  }
+}
+
+@keyframes channel-travel {
+  from {
+    top: -25%;
+  }
+  to {
+    top: 100%;
+  }
+}
+
+/* --- warnings: back into the dangerous world --------------------------- */
+
+.warn {
+  padding-block: clamp(3.5rem, 9vw, 7rem);
+  background: var(--void);
+  color: var(--paper);
+}
+
+.warn__items {
+  display: grid;
+  gap: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--void-3);
+}
+
+@media (min-width: 52rem) {
+  .warn__items {
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+  }
+}
+
+.warn__title {
+  margin: 0 0 0.75rem;
+  padding-left: 1rem;
+  border-left: 3px solid var(--red);
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--white);
+}
+
+.warn__body {
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--dim);
+}
+
+/* --- footer ------------------------------------------------------------ */
+
+.foot {
+  padding-block: 2.5rem;
+  background: var(--void);
+  color: var(--dim);
+  border-top: 1px solid var(--void-3);
+}
+
+.foot__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 2rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.foot__link {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  color: var(--paper);
+}
+
+.foot__note {
+  margin: 0;
+  flex: 1 1 20rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .channel__light {
+    animation: none;
+    top: 39%;
+  }
+}

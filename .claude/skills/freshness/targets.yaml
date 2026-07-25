@@ -271,23 +271,31 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-07-25
+    last_checked: 2026-07-26
     files:
       - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
       - src/pages/keys-page.tsx # experimental / not-independently-audited banners
       - src/components/online-gate.tsx # offline-switch compromise-assumption copy
       - src/components/offline-ack-shell.tsx # "a connected device can always be compromised" copy
+      - public/about/index.html # landing page, en source of record: AES-256 "as of 2026", PQ rationale, wipe honesty
+      - public/about/messages.js # ja translation of the same landing-page claims
     why: >
       In-app disclosures (noble unaudited, JS side-channel caveat, wipe
       honesty, feature rows) mirror docs; they stale when audit status,
       active policy, or threat model change. The copy itself lives in the
-      i18n catalog (both locales must move together).
+      i18n catalog (both locales must move together). The public landing page
+      states the same claims to non-engineers and carries a dated AES-256
+      assertion, so it moves with them.
     method: |
       Diff the disclosure copy (both locales in src/i18n/messages.ts) against
       docs/security-review.md and docs/threat-model.md; update banners when
-      audit/release status moves.
-    verify: aube test -- tests/ui/keys-settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx
+      audit/release status moves. Re-read the landing page's dated AES-256
+      sentence and PQ ("store now, open later") rationale against the same
+      docs, and keep public/about/index.html and messages.js in step — the
+      English text lives only in the HTML, the other locales only in
+      messages.js.
+    verify: aube test -- tests/ui/keys-settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
 
   - id: readme
     category: docs
@@ -317,14 +325,24 @@ units:
       - design-system/PROVENANCE.md # plugin path/version provenance
       - src/lib/best-effort-zip.ts # fflate provenance/version claim in header
       - tests/pq-vectors/acvp-fixtures.ts # upstream repo URLs
+      # https://qr-crypt.pages.dev/ answered 522 on 2026-07-25 (no production
+      # deployment attached yet; qr-crypt-dev.pages.dev answered 200). The page
+      # links and the QR encode it deliberately — recheck once main deploys.
+      - public/about/index.html # production app URL, GitHub repo and releases/latest, og:url and og:image
+      - public/about/install-qr.svg # encodes the production app URL; regenerate whenever that URL moves
     why: >
       External URLs rot; provenance paths/versions drift from reality.
       (README.md and docs/threat-model.md carry bare advisory IDs, not URLs —
       advisory-ID resolution belongs to the deps/threat-model units.)
+      The landing page's install QR is an opaque mirror of the production
+      URL: a stale one silently sends readers to the wrong origin.
     method: |
       HEAD-check the listed URLs (curl -I). design-system files are archival:
       fix only if regenerating, and keep external font URLs out of app CSS.
       Confirm provenance claims (fflate version, plugin path) still match reality.
+      Decode public/about/install-qr.svg (or regenerate it with
+      `aube run qrcode -- -t svg -e M -o public/about/install-qr.svg <url>`)
+      and confirm it still matches the production URL in the page's own link.
     verify: All checked URLs respond, or the entry is annotated as dead/archival.
 
 invariants:

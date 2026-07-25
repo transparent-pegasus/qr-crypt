@@ -24,10 +24,7 @@ export default tseslint.config(
     plugins: { "react-hooks": reactHooks, "react-refresh": reactRefresh },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      "react-refresh/only-export-components": [
-        "warn",
-        { allowConstantExport: true },
-      ],
+      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "no-console": ["error", { allow: ["warn", "error"] }],
       "@typescript-eslint/no-explicit-any": "error",
     },
@@ -40,6 +37,11 @@ export default tseslint.config(
       "playwright.config.ts",
     ],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    // Static landing page under public/: plain browser modules, no build step.
+    files: ["public/**/*.js"],
+    languageOptions: { globals: { ...globals.browser } },
   },
   prettier,
 )

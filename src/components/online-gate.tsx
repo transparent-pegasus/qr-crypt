@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import {
   CheckCircle2,
   Download,
+  ExternalLink,
   Home,
   MessageSquareText,
   Share2,
@@ -196,10 +197,7 @@ export function OnlineInstallScreen({
           </div>
 
           <div className="flex items-start gap-3 rounded-xl border border-primary/40 bg-primary/5 p-5">
-            <WifiOff
-              aria-hidden="true"
-              className="mt-0.5 size-6 shrink-0 text-primary"
-            />
+            <WifiOff aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-primary" />
             <div className="space-y-1">
               <h2 className="font-semibold">{t("gate.switchOffline.title")}</h2>
               <p className="text-sm leading-relaxed text-muted-foreground">
@@ -207,6 +205,18 @@ export function OnlineInstallScreen({
               </p>
             </div>
           </div>
+
+          {/* Opens in a browser tab so an installed standalone window is left
+              alone. Online-only surface: this screen never renders offline. */}
+          <a
+            href="/about/"
+            target="_blank"
+            rel="noreferrer"
+            className="flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-medium underline-offset-4 hover:underline"
+          >
+            <ExternalLink aria-hidden="true" className="size-5 shrink-0" />
+            {t("gate.about.link")}
+          </a>
         </div>
 
         <div hidden={activeTab !== "relay"}>
