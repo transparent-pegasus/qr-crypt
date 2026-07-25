@@ -289,7 +289,6 @@ units:
     last_checked: 2026-07-25
     files:
       - components.json # https://ui.shadcn.com/schema.json
-      - design-system/offline-cipher/MASTER.md # Google Fonts URLs (archival)
       - design-system/PROVENANCE.md # plugin path/version provenance
       - src/lib/best-effort-zip.ts # fflate provenance/version claim in header
       - tests/pq-vectors/acvp-fixtures.ts # upstream repo URLs
