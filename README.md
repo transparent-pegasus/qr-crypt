@@ -53,8 +53,8 @@ v2 is **experimental**. We distinguish `implementation-complete` — the impleme
 
 | Suite | Contents | Notes |
 | --- | --- | --- |
-| AES-256-GCM | Symmetric encryption only | **Default** (`A256GCM`) |
-| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | Post-quantum KEM hybrid | Selectable (`MLKEM1024_A256GCM`) |
+| AES-256-GCM | Symmetric encryption only | Existing path |
+| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | Post-quantum KEM hybrid | **Default** (`MLKEM1024_A256GCM`) |
 | The above + ML-DSA-87 signature | sign-then-encrypt | Signed messages |
 
 The current active policy is **maximum** (1024/87) only. The wire contract keeps 4 suites
