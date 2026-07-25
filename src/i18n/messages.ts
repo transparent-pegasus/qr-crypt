@@ -513,7 +513,6 @@ const en = {
   "scanner.closed.integrityImported":
     "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
 
-  "settings.toast.saved": "Settings saved",
   "settings.error.saveFailed":
     "Settings could not be saved. Check the device storage.",
   "settings.toast.plaintextCleared": "All plaintext was cleared",
@@ -1145,7 +1144,6 @@ const ja = {
   "scanner.closed.integrityImported":
     "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
 
-  "settings.toast.saved": "設定を保存しました",
   "settings.error.saveFailed":
     "設定を保存できませんでした。保存領域を確認してください。",
   "settings.toast.plaintextCleared": "すべての平文を消去しました",

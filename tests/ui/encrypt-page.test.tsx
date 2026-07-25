@@ -142,6 +142,7 @@ describe("encrypt page v2", () => {
     await waitFor(() =>
       expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 3_000 }),
     )
+    expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
     expect(splitIntoFrames).toHaveBeenCalledTimes(splitCallsBeforeSpeed)
     fireEvent.change(within(fullscreenDialog).getByLabelText("Frame density"), {
       target: { value: "300" },

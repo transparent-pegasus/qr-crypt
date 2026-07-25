@@ -114,7 +114,9 @@ export function SettingsPage() {
   const savePreference = async (patch: Partial<Preferences>) => {
     try {
       await updatePreferences(patch)
-      toast.success(t("settings.toast.saved"))
+      setError((current) =>
+        current === "settings.error.saveFailed" ? null : current,
+      )
     } catch {
       setError("settings.error.saveFailed")
     }

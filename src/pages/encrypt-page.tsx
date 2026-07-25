@@ -347,7 +347,6 @@ export function EncryptPage() {
       setError(null)
       try {
         await updatePreferences(patch)
-        toast.success(t("settings.toast.saved"))
       } catch {
         setError("settings.error.saveFailed")
         toast.error(t("settings.error.saveFailed"))

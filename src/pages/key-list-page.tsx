@@ -248,7 +248,7 @@ export function KeyListPage() {
                 <button
                   key={head.id}
                   type="button"
-                  className="w-full cursor-pointer rounded-xl border bg-card p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2"
+                  className="select-none touch-manipulation w-full cursor-pointer rounded-xl border bg-card p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2"
                   onClick={() => setSelection({ kind: "identity", id: head.id })}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -279,7 +279,7 @@ export function KeyListPage() {
               <button
                 key={record.id}
                 type="button"
-                className="w-full cursor-pointer rounded-xl border bg-card p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2"
+                className="select-none touch-manipulation w-full cursor-pointer rounded-xl border bg-card p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2"
                 onClick={() => setSelection({ kind: "symmetric", id: record.id })}
               >
                 <div className="flex items-start justify-between gap-3">

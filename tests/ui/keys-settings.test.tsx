@@ -238,6 +238,7 @@ describe("key management v2", () => {
             frameIntervalMs: 2_500,
           })
         })
+        expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
       }
       await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
       await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
@@ -431,6 +432,7 @@ describe("settings v2", () => {
       expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 3_000 })
       expect(updatePreferences).toHaveBeenCalledWith({ transferTimeoutMinutes: 120 })
     })
+    expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
 
     const wipe = screen.getByRole("switch", {
       name: "Reset local data after confirmed online connectivity",
@@ -454,6 +456,37 @@ describe("settings v2", () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByText(/Physical erasure is not guaranteed/)).toBeInTheDocument()
+  })
+
+  it("clears only a stale preference save error after a successful save", async () => {
+    const user = userEvent.setup()
+    await renderApp("/settings")
+    const frameBytes = await screen.findByLabelText(/Raw data per frame/)
+    const saveError = "Settings could not be saved. Check the device storage."
+    updatePreferences.mockRejectedValueOnce(new Error("storage failed"))
+
+    fireEvent.change(frameBytes, { target: { value: "900" } })
+    expect(await screen.findByText(saveError)).toBeInTheDocument()
+
+    fireEvent.change(frameBytes, { target: { value: "800" } })
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 800 }),
+    )
+    await waitFor(() => expect(screen.queryByText(saveError)).not.toBeInTheDocument())
+
+    clearAllKeys.mockRejectedValueOnce(new Error("delete failed"))
+    await user.click(screen.getByRole("button", { name: "Delete all keys" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Delete all keys" })
+    await user.type(within(dialog).getByLabelText("Confirmation text"), "DELETE ALL")
+    await user.click(within(dialog).getByRole("button", { name: "Run logical deletion" }))
+    const deleteError = "Data could not be deleted. Check the device storage."
+    expect(await screen.findByText(deleteError)).toBeInTheDocument()
+
+    fireEvent.change(frameBytes, { target: { value: "700" } })
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 700 }),
+    )
+    expect(screen.getByText(deleteError)).toBeInTheDocument()
   })
 
   it("enforces the environment signature floor", async () => {

@@ -98,13 +98,14 @@ QR コード表示面だけは例外: **常に白背景 `#FFFFFF`・黒セル `#
 
 ## 6. コンポーネント規約(shadcn/ui ベース)
 
+- **タップ対象**: Button、TabsTrigger、SelectTrigger、Label、オフライン確認の raw `<label>`、鍵一覧の raw key-row `<button>`、密度再起動警告の `<summary>` には、表示テキストの長押し選択とダブルタップズーム遅延を防ぐ `select-none touch-manipulation` を常に併記する。鍵行は主要なタップ対象なので鍵名の長押し選択性を意図的に失わせるが、鍵名の閲覧・コピーは詳細ダイアログで行う。非対話的な `buttonVariants` 適用 `role="note"` は `select-text touch-auto` で元に戻す。
 - **Button**: 高さ 44px(`size="lg"` 相当を既定)。primary=主操作(暗号化・生成)、secondary=補助、destructive=削除系、ghost=行内操作。アイコンのみボタンは 44×44 + `aria-label` 必須。`cursor-pointer`、遷移 150–200ms、`hover:opacity-90`。レイアウトが動く transform ホバー禁止。
 - **Card**: 面=`--card`、区切りは border 優先。ホバーで浮かせない(ツール UI。リスト行のみ `hover:bg-accent`)。
 - **Input/Textarea**: 高さ 44px(Textarea は min-h 120px)、フォントサイズ 16px(iOS ズーム防止)、`focus-visible:ring-2 ring-[--ring] ring-offset-2`。ラベルは `htmlFor` で必ず関連付け(placeholder をラベル代わりにしない)。
 - **Dialog / AlertDialog**: 破壊的・不可逆操作は必ず AlertDialog で確認(直接実行禁止)。確認強度 3 段階: (1) 通常=確認ボタン、(2) 強=「リスクを理解しました」チェックボックスで確認ボタン活性化、(3) 最強=「全削除」の完全一致入力で活性化。destructive ボタンは右側。Esc/オーバーレイで安全側へ閉じる。
 - **Badge(機密度)**: 公開=`secondary`+Globe / 機密=`--warning` 面+ShieldAlert / 最高機密=`--destructive` 面+TriangleAlert。**必ずアイコン+テキスト併記**(色のみ禁止)。最高機密は一覧・詳細で常時表示。
 - **ネットワーク状態バッジ**: オンライン=`--success` ドット+「オンライン」/ オフライン=`--muted-foreground` ドット+「オフライン」。**安全性の主張をしない**(「オフラインなので安全」等の文言禁止、spec §2)。
-- **トースト(sonner)**: 成功/情報のみ。エラーはインライン `role="alert"`(アイコン+文言)を優先。
+- **トースト(sonner)**: 暗黙の設定自動保存には成功トーストを出さず、コントロールが表示する新しい値をフィードバックとする。エラーはインライン `role="alert"`(アイコン+文言)を優先し、QR の全画面ダイアログ中はインライン alert が覆われるため、密度・速度の保存失敗に限りエラートーストを補助してよい。この非対称性は意図的である。
 - **QR 表示**: 白面パネル(padding 16px、白 `#FFFFFF` 固定、border `#E2E8F0`、rounded 12px)。サイズ既定 512px・`max-width:100%`。全画面表示は白全面・四辺 safe-area 対応・`h-dvh overflow-hidden` とし、QR は残り領域内で `max-height:100%; width:auto; object-fit:contain`。右上に safe-area 対応の44×44px以上のアイコンのみ閉じるボタンを常設する。単一画像 QR は操作列を置かず QR を最大化し、複数 QR はカウンター/テキスト付き44px再生操作/密度/速度だけを表示する。縦向きは QR 上・操作下、横向きは `minmax(0,1fr)` の QR と高さ300px以下の操作列を左右に置き、移動/再生操作は折り返して常にラベルを表示する。非全画面の複数 QR は密度/速度/転送再開警告/輝度ヒントを表示し、PNG/ZIP/SVG の3ボタンを1行に置く。データサイズ・EC レベル表示を添える。
 
 ## 7. アクセシビリティ / モーション

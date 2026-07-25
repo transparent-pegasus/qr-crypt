@@ -486,7 +486,7 @@ export function AnimatedQrFrames({
                 />
               </div>
               <details className="text-xs text-muted-foreground">
-                <summary className="flex cursor-pointer list-none items-center gap-1.5 focus-visible:ring-2">
+                <summary className="select-none touch-manipulation flex cursor-pointer list-none items-center gap-1.5 focus-visible:ring-2">
                   <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
                   <span>{t("animatedQr.density.restartWarning")}</span>
                 </summary>

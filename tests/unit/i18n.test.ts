@@ -71,6 +71,7 @@ describe("i18n catalog", () => {
     for (const removedKey of [
       "encrypt.decrypt.imageTitle",
       "settings.hooks.preferences.loadFailed",
+      "settings.toast.saved",
       "sensitive.secretQrWarning",
       "sensitive.title",
     ]) {
