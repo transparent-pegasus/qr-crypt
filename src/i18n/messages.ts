@@ -172,6 +172,11 @@ const en = {
   "animatedQr.next.ariaLabel": "Next frame",
   "animatedQr.next": "Next",
   "animatedQr.speed.label": "Display speed",
+  "animatedQr.density.label": "Frame density",
+  "animatedQr.density.restartWarning":
+    "Changing density starts a new transfer",
+  "animatedQr.density.restartDetail":
+    "A receiver that already scanned frames must discard them and restart.",
   "animatedQr.brightnessHint":
     "Increase the screen brightness and keep the device still for more reliable scanning.",
   "animatedQr.export.allPng": "Export all PNGs",
@@ -749,6 +754,11 @@ const ja = {
   "animatedQr.next.ariaLabel": "次のフレーム",
   "animatedQr.next": "次へ",
   "animatedQr.speed.label": "表示速度",
+  "animatedQr.density.label": "フレーム密度",
+  "animatedQr.density.restartWarning":
+    "密度を変更すると新しい転送が始まります",
+  "animatedQr.density.restartDetail":
+    "読取済みのフレームは破棄し、最初から読み直す必要があります。",
   "animatedQr.brightnessHint":
     "画面の輝度を上げ、端末を動かさずに読み取ると安定します。",
   "animatedQr.export.allPng": "PNGを一括出力",

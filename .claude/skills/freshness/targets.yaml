@@ -197,12 +197,12 @@ units:
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
     last_checked: 2026-07-25
     files:
-      - src/lib/limits.ts # dated measured CBOR/OCF2 size comments
+      - src/lib/limits.ts # measured CBOR/OCF2 sizes and uniform 100–900B density grid/minimum
       - src/lib/frame-interval.ts # persisted/displayed QR interval policy grid
-      - tests/pq/maximum-artifact-size.golden.test.ts
-      - src/schemas/env-schema.ts # MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES mirrors the golden
-      - .env.prod # runtime crypto/framing policy defaults
-      - .env.example # same framing defaults, kept in step with .env.prod
+      - tests/pq/maximum-artifact-size.golden.test.ts # uniform density/clamp/off-grid fixtures
+      - src/schemas/env-schema.ts # golden size guard at the maximum selectable density
+      - .env.prod # runtime crypto/framing policy and shipped 200B density default
+      - .env.example # same density default, kept in step with .env.prod
     why: >
       Measured byte/frame tables (dated 2026-07-23) are cited by
       security-review and limits comments; env-schema.ts carries the
@@ -213,10 +213,12 @@ units:
       comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
       env-schema.ts, and the .env.prod/.env.example defaults together, then
       sync the copy of the table in docs/security-review.md.
-      OCI2 balanced count mode (target 100B, clamp 40–50; 4,402B fixture → 45
-      frames) and PQ_KEY_QR_FRAME_BYTES (OCP2/OCS2 fixed 140B → 13/20 frames,
-      2026-07-25) in limits.ts are mirrored in docs/qr-protocol-v2.md,
-      docs/security-review.md, and the golden test — keep all four in agreement.
+      Verify the uniform preference-controlled 100–900B density for messages,
+      OCI2, OCP2, and OCS2; the 100B fullscreen grid; acceptance of stored
+      off-grid values; the grid-rounded per-artifact minimum; and the 200B
+      shipped default. Keep limits.ts, env-schema.ts, both env files,
+      docs/qr-protocol-v2.md, docs/security-review.md, and the golden test in
+      agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [security-review]
 
