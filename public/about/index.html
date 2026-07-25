@@ -8,8 +8,8 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="./about.css" />
 
-    <!-- The English wording lives here and nowhere else; about.js reads it out of
-         the document and messages.js supplies only the other languages. -->
+    <!-- The English wording lives here and nowhere else. Every other language is
+         a document built from this one and messages.js at /about/<code>/. -->
     <title data-i18n="meta.title">
       QR Crypt — encrypt where the network cannot reach
     </title>
@@ -29,9 +29,8 @@
       property="og:description"
       content="Encrypt and decrypt on a device that stays offline. Only scrambled text ever goes onto the network."
     />
-    <!-- Crawlers do not run the language switch and do not render SVG, so the
-         card is a PNG and it is the English one. og-ja.png is the same card in
-         Japanese, for sharing the page by hand. -->
+    <!-- Crawlers do not render SVG, so the card is a PNG. This document is the
+         English one; /about/ja/ carries the Japanese card. -->
     <meta property="og:image" content="https://qr-crypt.pages.dev/about/og-en.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
@@ -46,18 +45,28 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content="https://qr-crypt.pages.dev/about/og-en.png" />
 
+    <!-- Each language is its own address, so each one can say so. -->
+    <link rel="canonical" href="https://qr-crypt.pages.dev/about/" />
+    <link rel="alternate" hreflang="en" href="https://qr-crypt.pages.dev/about/" />
+    <link rel="alternate" hreflang="ja" href="https://qr-crypt.pages.dev/about/ja/" />
+    <link rel="alternate" hreflang="x-default" href="https://qr-crypt.pages.dev/about/" />
+
     <script type="module" src="./about.js"></script>
   </head>
 
   <body>
     <a class="skip" href="#main" data-i18n="a11y.skip">Skip to content</a>
 
-    <nav
-      class="lang"
-      id="lang"
-      data-i18n-label="a11y.language"
-      aria-label="Language"
-    ></nav>
+    <!-- Real links, not a client-side swap: every language is its own page, so
+         the switcher works without JavaScript and the address says which one
+         you are reading. The labels are the locale names in messages.js, and
+         a test keeps the two lists in step. -->
+    <nav class="lang" id="lang" data-i18n-label="a11y.language" aria-label="Language">
+      <a class="lang__button" href="/about/" lang="en" hreflang="en" aria-current="page"
+        >English</a
+      >
+      <a class="lang__button" href="/about/ja/" lang="ja" hreflang="ja">日本語</a>
+    </nav>
 
     <!-- ONLINE WORLD ------------------------------------------------------- -->
     <header class="hero">

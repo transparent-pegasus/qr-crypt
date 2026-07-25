@@ -1,19 +1,61 @@
 import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { fileURLToPath, URL } from "node:url"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig } from "vite"
+import { defineConfig, type Plugin } from "vite"
 import { VitePWA } from "vite-plugin-pwa"
+import { buildAboutLocales, renderAboutLocales } from "./scripts/build-about-locales.mjs"
 
 const pkg = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
 ) as { version: string }
+
+const ABOUT_DIR = fileURLToPath(new URL("./public/about", import.meta.url))
+
+/**
+ * The landing page is one document per language: /about/ is English and every
+ * other language is /about/<code>/, written from index.html and messages.js.
+ * Serving each language from its own address is what lets a shared link carry
+ * that language's card, which a crawler could never get from a switcher.
+ */
+function aboutLocales(): Plugin {
+  let outDir = "dist"
+  return {
+    name: "about-locales",
+    configResolved(config) {
+      outDir = config.build.outDir
+    },
+    // After writeBundle, so the copied public/ tree is already in place.
+    async closeBundle() {
+      await buildAboutLocales({ aboutDir: ABOUT_DIR, outDir: join(outDir, "about") })
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = req.url?.split("?")[0] ?? ""
+        const match = /^\/about\/([a-z-]+)\/(?:index\.html)?$/.exec(path)
+        if (!match) return next()
+        // Rendered per request rather than cached: an edit to messages.js or to
+        // index.html should show up on reload like every other source file.
+        renderAboutLocales({ aboutDir: ABOUT_DIR })
+          .then((pages) => {
+            const page = pages.find(({ code }) => code === match[1])
+            if (!page) return next()
+            res.setHeader("Content-Type", "text/html; charset=utf-8")
+            res.end(page.html)
+          })
+          .catch(next)
+      })
+    },
+  }
+}
 
 export default defineConfig(() => {
   return {
     plugins: [
       react(),
       tailwindcss(),
+      aboutLocales(),
       VitePWA({
         registerType: "prompt",
         includeAssets: ["favicon.svg", "icons/apple-touch-icon-180.png"],
