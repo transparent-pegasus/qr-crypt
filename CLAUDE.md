@@ -1,3 +1,5 @@
+@WORKFLOW.md
+
 # Project Goal
 
 Build fully offline encryption engineered against nation-state cryptanalysis and compromise; reject any transfer—including removable storage—that cannot meet this threat model.
