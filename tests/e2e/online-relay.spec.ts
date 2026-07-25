@@ -193,10 +193,10 @@ test("relays verbatim header-declared message frames without frame-bearing persi
     page.getByRole("navigation", { name: "Online navigation" }),
   ).toBeVisible()
   await relayNavigationButton.click()
-  const scanButton = page.getByRole("button", { name: "Scan → text" })
+  const scanButton = page.getByRole("button", { name: "QR → text" })
   await scanButton.click()
   const capture = page.getByRole("dialog", {
-    name: "Scan QR frames to text",
+    name: "QR frames to text",
   })
   await expect(capture).toBeVisible()
   expect(await injectedScanSnapshot(page)).toEqual([])
@@ -260,7 +260,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await relayNavigationButton.click()
   await scanButton.click()
   await page
-    .getByRole("dialog", { name: "Scan QR frames to text" })
+    .getByRole("dialog", { name: "QR frames to text" })
     .getByRole("button", { name: "Start camera" })
     .click()
   await emitInjectedQr(page, framePayloads[0]!)
