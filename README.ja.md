@@ -70,11 +70,11 @@ mean は 1 処理あたりの平均ミリ秒です。
 
 | 処理 | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| ML-KEM-1024 keygen | 1,197.87 | 0.8348 | 1,148.86 | 0.8704 |
-| ML-KEM-1024 encapsulate | 1,060.88 | 0.9426 | 1,014.37 | 0.9858 |
-| ML-KEM-1024 decapsulate | 821.14 | 1.2178 | 802.63 | 1.2459 |
-| ML-DSA-87 sign | 74.1783 | 13.4810 | 76.7252 | 13.0335 |
-| ML-DSA-87 verify | 308.45 | 3.2421 | 294.58 | 3.3947 |
+| ML-KEM-1024 keygen | 1,090.15 | 0.9173 | 1,031.95 | 0.9690 |
+| ML-KEM-1024 encapsulate | 1,025.61 | 0.9750 | 979.89 | 1.0205 |
+| ML-KEM-1024 decapsulate | 787.64 | 1.2696 | 781.58 | 1.2795 |
+| ML-DSA-87 sign | 83.4877 | 11.9778 | 96.8792 | 10.3221 |
+| ML-DSA-87 verify | 295.14 | 3.3883 | 285.53 | 3.5025 |
 
 これは開発機上の参考値であり、実ブラウザー・低性能端末での実測や
 `release-approved` 判定の代替ではありません。
@@ -194,6 +194,7 @@ GitHub の Cloudflare Git Integration とは二重運用しません。GitHub Ac
 3. GitHub Repository Variables を登録する:
    * `CLOUDFLARE_PAGES_PROJECT` — `main` から配信する本番プロジェクト
    * `CLOUDFLARE_PAGES_PROJECT_DEV` — `dev` から配信する開発プロジェクト
+4. Settings > Actions > General で **Allow GitHub Actions to create and approve pull requests** を有効にする。このリポジトリ全体の設定は昇格ワークフローの必須条件であり、`pull-requests: write` を持つすべてのワークフローにレビュー承認権限も与える。ただし ruleset は承認数 0 を要求するため、承認機能はここでは使用しない。
 
 ### CI の流れ
 
@@ -209,6 +210,14 @@ GitHub の Cloudflare Git Integration とは二重運用しません。GitHub Ac
 * それ以外のブランチと全 pull request は検証のみ
 * `main` への `push` では追加で `.github/workflows/github-release.yml` が署名付き
   prerelease を発行する
+
+`.github/workflows/dev-to-main-pr.yml` は `dev` への push、または意図的な `workflow_dispatch` で、対応する open PR がなく、`dev` が `main` より先行するコミットを持ち、`main` に `dev` のコミットツリーがまだない場合に `dev` → `main` 昇格 PR を開く。マージも push もしない。
+
+* この PR をマージせずに閉じるのは永久的な拒否ではなく一時停止である。次の `dev` push は新しい情報なので新しい PR を開く。`workflow_dispatch` も人が意図して行う操作であり、人による拒否と競合しない
+* これは `main` の ruleset が `validate` と `e2e` を strict up-to-date で必須にしている間だけ実効性のある本番ゲートである。必須チェックを削除すると、チェックに失敗した dev push であっても本番昇格を誰でもマージできる
+* `dev` が `main` より遅れている、または分岐している場合、strict な必須チェックにより `dev` が `main` を含むまでマージできない。これは人間が同期を解決する問題である
+* Actions が開いた PR では pull-request のチェックに **"Approve workflows to run"** と表示されることがある。表示されたら承認する。同じ head SHA の push-event による `validate` と `e2e` のチェックはすでに実行済みである
+* `dev` への force-push は ruleset の `non_fast_forward` と空の `bypass_actors` によりブロックされるため、このワークフローに個別の force-push ガードはない
 
 ### `public/_headers` / `public/_redirects`
 
