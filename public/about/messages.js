@@ -35,8 +35,8 @@ export const LOCALES = {
       "hero.scroll": "続きを読む",
 
       "seam.label": "ここが境目",
-      "seam.body":
-        "この線から先は、ネットワークの外。\n越えられるのは、画面に映したQRコードの光だけです。",
+      "seam.body1": "この線から先は、ネットワークの外。",
+      "seam.body2": "越えられるのは、画面に映したQRコードの光だけです。",
 
       "what.eyebrow": "概要",
       "what.heading": "オフラインで暗号にして、QRコードで運ぶ",

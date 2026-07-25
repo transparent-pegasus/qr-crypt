@@ -209,8 +209,7 @@ a {
 /* Japanese copy carries its own sentence breaks so that, wherever the width
    allows, a line ends at a 句点 rather than mid-sentence. English has no
    newlines in its strings, so it is unaffected. */
-:lang(ja) .answer,
-:lang(ja) .seam__body {
+:lang(ja) .answer {
   white-space: pre-line;
 }
 
@@ -382,10 +381,9 @@ a {
 
 .seam__body {
   margin: 0;
-  /* Wide enough that the line breaks straight after the dash rather than
-     stranding "but" at the end; the NBSP before the dash keeps it off the
-     start of a line at every narrower width. */
-  max-width: 34ch;
+  /* Each line is its own block, so the measure only decides whether a line
+     wraps further, never where the main break falls. */
+  max-width: 46ch;
   font-size: clamp(1.25rem, 2.6vw, 1.75rem);
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -396,6 +394,12 @@ a {
 :lang(ja) .seam__body {
   letter-spacing: 0;
   line-height: 1.5;
+}
+
+/* Each half of the seam sentence is its own line by structure, so the break
+   never depends on the measure or on which font `ch` was resolved against. */
+.seam__line {
+  display: block;
 }
 
 /* --- offline-world sections -------------------------------------------- */
