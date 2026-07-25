@@ -1,6 +1,22 @@
 // Single derivation table for size constraints.
 // Redefining these constraints in individual modules is prohibited.
+import {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
+  FRAME_BYTES_STEP,
+} from "@/lib/frame-bytes"
 import { env } from "@/schemas/env-schema"
+export {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
+  FRAME_BYTES_STEP,
+  FRAME_BYTES_VALUES,
+  isBootReadableFrameBytes,
+  isFrameBytes,
+  LEGACY_FRAME_BYTES_MAX,
+  LEGACY_FRAME_BYTES_MIN,
+  type FrameBytes,
+} from "@/lib/frame-bytes"
 export {
   FRAME_INTERVAL_MS_DEFAULT,
   FRAME_INTERVAL_MS_MAX,
@@ -59,13 +75,6 @@ export const MESSAGE_ID_BYTES = 16
 export const KEM_SEED_BYTES = 64
 export const DSA_SEED_BYTES = 32
 
-// Frame-setting range and density grid from docs/qr-protocol-v2.md §6.
-// Preferences/environment validation references this table. Stored off-grid integers
-// remain readable; FRAME_BYTES_STEP applies to the density range control.
-export const FRAME_BYTES_MIN = 100
-export const FRAME_BYTES_MAX = 900
-export const FRAME_BYTES_STEP = 100
-
 // Round the per-artifact floor onto the density grid. The renderer clamps
 // to this value before its first split, while leaving the stored preference unchanged.
 export function minimumFrameBytesForArtifact(
@@ -86,28 +95,29 @@ export function minimumFrameBytesForArtifact(
     Math.ceil(Math.ceil(artifactByteLength / maximumFrames) / FRAME_BYTES_STEP)
   )
 }
-export const TRANSFER_TIMEOUT_MINUTES_MIN = 1
+export const TRANSFER_TIMEOUT_MINUTES_MIN = 3
 export const TRANSFER_TIMEOUT_MINUTES_MAX = 120
 export const TRANSFER_TIMEOUT_MINUTES_DEFAULT = 10
 export const RESET_CHURN_MB_MIN = 0
 export const RESET_CHURN_MB_MAX = 512
 
 // Absolute protocol limit for receiver-side resource checks.
-// The sender generation limit is separately constrained by env.qrMaxFrames (≤64).
+// The sender generation limit is separately constrained by env.qrMaxFrames (≤128).
 // Measured maximum canonical CBOR on 2026-07-23 (maxPlaintext=4,096B,
 // name=<three-character, 9-byte non-ASCII UTF-8 fixture>):
-// artifact                         bytes   OCF2 frames (100 / 200 / 900B)
-// unsigned empty / max          1,887 / 5,986      19/10/3 / 60/30/7
-// signed empty / max            6,613 / 10,711     >64/34/8 / >64/54/12
-// OCI2 bundle                    4,402              45/23/5
-// OCP2 KEM / OCS2 DSA           1,733 / 2,755      18/9/2 / 28/14/4
-// OCB2 reserved sizing fixture   4,637              47/24/6
-// All displayed OCF2 artifacts use the preference-controlled density. A signed-empty
-// artifact is already 6,613B, so 100B cannot be the shipped default: 64×100=6,400B.
-// The 200B default carries every measured artifact (64×200=12,800B) while retaining
-// lower QR versions than the former 300B default for faster camera lock-on.
+// artifact                         bytes   OCF2 frames (100 / 200B)
+// unsigned empty / max          1,887 / 5,986      19/10 / 60/30
+// signed empty / max            6,613 / 10,711     67/34 / 108/54
+// OCI2 bundle                    4,402              45/23
+// OCP2 KEM / OCS2 DSA           1,733 / 2,755      18/9 / 28/14
+// OCB2 reserved sizing fixture   4,637              47/24
+// The 128-frame cap carries every measured artifact at the shipped 100B density;
+// 200B remains available for fewer, denser frames. A full capped cycle takes
+// 128 seconds at the 1,000ms interval and 384 seconds at the 3,000ms interval.
+// The 3-minute timeout floor covers the fastest cycle, and the 10-minute default
+// covers the slowest cycle.
 // maximum-artifact-size.golden.test.ts also pins actual EC-Q generation for every OCF2 string.
-export const PROTOCOL_MAX_FRAMES = 64
+export const PROTOCOL_MAX_FRAMES = 128
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX
 export const MAX_ARTIFACT_BYTES_ABSOLUTE = PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES
 

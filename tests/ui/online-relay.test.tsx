@@ -35,7 +35,11 @@ import {
 } from "@/components/online-relay"
 import { encodePublicIdentityBundleV2 } from "@/crypto/pq/canonical-cbor"
 import { LanguageProvider } from "@/i18n"
-import { PROTOCOL_MAX_FRAMES, TRANSFER_TIMEOUT_MINUTES_DEFAULT } from "@/lib/limits"
+import {
+  FRAME_BYTES_MAX,
+  PROTOCOL_MAX_FRAMES,
+  TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+} from "@/lib/limits"
 import { TransferAssembler } from "@/qr/multipart/assemble"
 import { splitIntoFrames } from "@/qr/multipart/split"
 import { decodeFramePayload, encodeFrameToPayload } from "@/qr/payload-v2"
@@ -272,7 +276,10 @@ describe("relay frame-set parser", () => {
   })
 
   it.each([
-    ["declared total above frame capacity", [payload(0, { totalByteLength: 1_801 })]],
+    [
+      "declared total above frame capacity",
+      [payload(0, { totalByteLength: FRAME_BYTES_MAX * 2 + 1 })],
+    ],
     [
       "single-frame chunk/total mismatch",
       [
@@ -299,9 +306,13 @@ describe("relay frame-set parser", () => {
     })
   })
 
-  it("rejects 65 non-empty lines and oversized raw text before decoding", () => {
+  it("rejects 129 non-empty lines and oversized raw text before decoding", () => {
     const valid = payload(0)
-    expect(parseRelayText(Array.from({ length: 65 }, () => valid).join("\n"))).toEqual({
+    expect(
+      parseRelayText(
+        Array.from({ length: PROTOCOL_MAX_FRAMES + 1 }, () => valid).join("\n"),
+      ),
+    ).toEqual({
       ok: false,
       code: "frame-count",
     })
@@ -309,7 +320,8 @@ describe("relay frame-set parser", () => {
       ok: false,
       code: "input-size",
     })
-    expect(PROTOCOL_MAX_FRAMES).toBe(64)
+    expect(PROTOCOL_MAX_FRAMES).toBe(128)
+    expect(RELAY_TEXT_MAX_CHARS).toBe(213_120)
   })
 
   it("accepts header-declared message frames around a public artifact but the offline assembler rejects the inner type", async () => {
@@ -333,7 +345,7 @@ describe("relay frame-set parser", () => {
     const relabeledFrames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes: publicArtifact,
-      frameBytes: 900,
+      frameBytes: 200,
     })
     const originals = relabeledFrames.map(encodeFrameToPayload)
     expect(parseRelayFrameSet(originals).ok).toBe(true)

@@ -255,6 +255,52 @@ describe("preferences and plaintext non-persistence", () => {
     }
   })
 
+  it.each([300, 900] as const)(
+    "keeps stored legacy frameBytes=%i boot-readable but rejects it on active writes",
+    async (frameBytes) => {
+      const database = await getDb()
+      await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
+      await database.put(STORE_PREFERENCES, {
+        key: "preferences",
+        value: { frameBytes, wipeOnOnline: false },
+      })
+
+      await expect(readBootDecision()).resolves.toMatchObject({
+        preferencesReadFailed: false,
+        sensitiveDataExists: true,
+        wipeOnOnline: false,
+      })
+      await expect(getPreferences()).resolves.toMatchObject({
+        frameBytes: 200,
+        wipeOnOnline: false,
+      })
+      await expect(
+        updatePreferences({ frameBytes }),
+      ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+    },
+  )
+
+  it.each([99, 901] as const)(
+    "fails closed for stored frameBytes=%i outside the boot-readable range",
+    async (frameBytes) => {
+      const database = await getDb()
+      await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
+      await database.put(STORE_PREFERENCES, {
+        key: "preferences",
+        value: { frameBytes, wipeOnOnline: false },
+      })
+
+      await expect(getPreferences()).rejects.toMatchObject({
+        code: "STORAGE_FAILED",
+      })
+      await expect(readBootDecision()).resolves.toMatchObject({
+        preferencesReadFailed: true,
+        sensitiveDataExists: true,
+        wipeOnOnline: true,
+      })
+    },
+  )
+
   it("normalizes only persisted legacy frame intervals before merging a current patch", async () => {
     const database = await getDb()
     for (const [legacyInterval, normalizedInterval] of [

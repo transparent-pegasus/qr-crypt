@@ -14,6 +14,7 @@ import {
   FRAME_BYTES_MAX,
   FRAME_BYTES_MIN,
   FRAME_BYTES_STEP,
+  FRAME_BYTES_VALUES,
   MAX_PLAINTEXT_BYTES,
   minimumFrameBytesForArtifact,
   PROTOCOL_MAX_FRAMES,
@@ -26,7 +27,7 @@ import { env, parseAppEnv } from "@/schemas/env-schema"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 const CREATED_AT = 1_700_000_000_000
-const FRAME_BYTES = [100, 200, 300, 400, 600, 900] as const
+const FRAME_BYTES = FRAME_BYTES_VALUES
 
 interface ArtifactFixture {
   label: string
@@ -148,63 +149,56 @@ function artifactFixtures(): ArtifactFixture[] {
       artifactType: "pq-message",
       bytes: messageArtifact(false, 0),
       expectedBytes: 1887,
-      expectedFrames: { 100: 19, 200: 10, 300: 7, 400: 5, 600: 4, 900: 3 },
+      expectedFrames: { 100: 19, 200: 10 },
     },
     {
       label: "unsigned / maximum plaintext",
       artifactType: "pq-message",
       bytes: messageArtifact(false, MAX_PLAINTEXT_BYTES),
       expectedBytes: 5986,
-      expectedFrames: { 100: 60, 200: 30, 300: 20, 400: 15, 600: 10, 900: 7 },
+      expectedFrames: { 100: 60, 200: 30 },
     },
     {
       label: "signed / empty plaintext",
       artifactType: "pq-message",
       bytes: messageArtifact(true, 0),
       expectedBytes: 6613,
-      expectedFrames: { 100: 67, 200: 34, 300: 23, 400: 17, 600: 12, 900: 8 },
+      expectedFrames: { 100: 67, 200: 34 },
     },
     {
       label: "signed / maximum plaintext",
       artifactType: "pq-message",
       bytes: messageArtifact(true, MAX_PLAINTEXT_BYTES),
       expectedBytes: 10711,
-      expectedFrames: {
-        100: 108,
-        200: 54,
-        300: 36,
-        400: 27,
-        600: 18,
-        900: 12,
-      },
+      expectedFrames: { 100: 108, 200: 54 },
     },
     {
       label: "OCI2 public bundle",
       artifactType: "pq-public-identity",
       bytes: publicIdentityArtifact("テスト"),
       expectedBytes: 4402,
-      expectedFrames: { 100: 45, 200: 23, 300: 15, 400: 12, 600: 8, 900: 5 },
+      expectedFrames: { 100: 45, 200: 23 },
     },
     {
       label: "OCP2 ML-KEM public key",
       artifactType: "pq-kem-public-key",
       bytes: encodeKemPublicKeyEnvelopeV2(kemKey),
       expectedBytes: 1733,
-      expectedFrames: { 100: 18, 200: 9, 300: 6, 400: 5, 600: 3, 900: 2 },
+      expectedFrames: { 100: 18, 200: 9 },
     },
     {
       label: "OCS2 ML-DSA public key",
       artifactType: "pq-dsa-public-key",
       bytes: encodeDsaPublicKeyEnvelopeV2(dsaKey),
       expectedBytes: 2755,
-      expectedFrames: { 100: 28, 200: 14, 300: 10, 400: 7, 600: 5, 900: 4 },
+      expectedFrames: { 100: 28, 200: 14 },
     },
     {
       label: "OCB2 encrypted-seed-backup reserved fixture",
       artifactType: "encrypted-seed-backup",
       bytes: encryptedSeedBackup,
       expectedBytes: 4637,
-      expectedFrames: { 100: 47, 200: 24, 300: 16, 400: 12, 600: 8, 900: 6 },
+      expectedFrames: { 100: 47, 200: 24 },
     },
   ]
 }
@@ -306,11 +300,11 @@ describe("maximum canonical CBOR artifact sizing", () => {
         )
       }
     }
-    expect(
+    expect(() =>
       parseAppEnv({
         VITE_QR_FRAME_BYTES: "250",
-      }).qrFrameBytes,
-    ).toBe(250)
+      }),
+    ).toThrow("Invalid environment variables")
   })
 
   it("uses the same preference-controlled density for identity and single-key artifacts", async () => {
@@ -333,49 +327,76 @@ describe("maximum canonical CBOR artifact sizing", () => {
   })
 
   it.each([
-    { caseName: "signed empty", plaintextBytes: 0, expectedFrames: 34 },
+    {
+      caseName: "signed empty",
+      plaintextBytes: 0,
+      qrMaxFrames: 64,
+      expectedFrames: 34,
+    },
     {
       caseName: "signed maximum",
       plaintextBytes: MAX_PLAINTEXT_BYTES,
+      qrMaxFrames: 64,
       expectedFrames: 54,
     },
   ])(
-    "clamps a stored 100B density before the first $caseName split",
-    async ({ plaintextBytes, expectedFrames }) => {
-      const artifactBytes = messageArtifact(true, plaintextBytes)
-      const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)
-      expect(minimum).toBe(200)
-      const frames = await splitIntoFrames({
-        artifactType: "pq-message",
-        artifactBytes,
-        frameBytes: Math.max(FRAME_BYTES_MIN, minimum),
-      })
-      expect(frames).toHaveLength(expectedFrames)
+    "raises a stored 100B density before the first $caseName split at a low frame ceiling",
+    async ({ plaintextBytes, qrMaxFrames, expectedFrames }) => {
+      const originalMaximum = env.qrMaxFrames
+      try {
+        env.qrMaxFrames = qrMaxFrames
+        const artifactBytes = messageArtifact(true, plaintextBytes)
+        const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)
+        expect(minimum).toBe(200)
+        const frames = await splitIntoFrames({
+          artifactType: "pq-message",
+          artifactBytes,
+          frameBytes: Math.max(FRAME_BYTES_MIN, minimum),
+        })
+        expect(frames).toHaveLength(expectedFrames)
+      } finally {
+        env.qrMaxFrames = originalMaximum
+      }
     },
   )
 
-  it("rounds the effective minimum on the 100B grid for a lower frame ceiling", async () => {
+  it("fails closed when the grid-rounded minimum exceeds the active density maximum", async () => {
     const artifactBytes = messageArtifact(true, MAX_PLAINTEXT_BYTES)
     const originalMaximum = env.qrMaxFrames
     try {
       env.qrMaxFrames = 16
       const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)
-      expect(minimum).toBe(700)
+      expect(minimum).toBeGreaterThan(FRAME_BYTES_MAX)
       expect(minimum % FRAME_BYTES_STEP).toBe(0)
-      const frames = await splitIntoFrames({
-        artifactType: "pq-message",
-        artifactBytes,
-        frameBytes: minimum,
-      })
-      expect(frames).toHaveLength(16)
+      await expect(
+        splitIntoFrames({
+          artifactType: "pq-message",
+          artifactBytes,
+          frameBytes: FRAME_BYTES_MAX,
+        }),
+      ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
     } finally {
       env.qrMaxFrames = originalMaximum
     }
   })
 
+  it("fits a 16KiB signed artifact in 115 frames at the 200B density", async () => {
+    const artifactBytes = messageArtifact(true, 16_384)
+    expect(artifactBytes).toHaveLength(22_999)
+    expect(minimumFrameBytesForArtifact(artifactBytes.byteLength)).toBe(
+      FRAME_BYTES_MAX,
+    )
+    const frames = await splitIntoFrames({
+      artifactType: "pq-message",
+      artifactBytes,
+      frameBytes: FRAME_BYTES_MAX,
+    })
+    expect(frames).toHaveLength(115)
+  })
+
   it("fails a genuine over-maximum artifact before generation", async () => {
     const artifactBytes = new Uint8Array(PROTOCOL_MAX_FRAMES * FRAME_BYTES_MAX + 1)
-    expect(minimumFrameBytesForArtifact(artifactBytes.byteLength)).toBe(1_000)
+    expect(minimumFrameBytesForArtifact(artifactBytes.byteLength)).toBe(300)
     await expect(
       splitIntoFrames({
         artifactType: "pq-message",

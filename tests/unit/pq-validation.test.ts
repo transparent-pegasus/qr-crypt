@@ -4,7 +4,12 @@ import {
   validatePublicIdentityBundleV2,
   validateQrFrameV2,
 } from "@/crypto/pq/validation"
-import { MAX_PLAINTEXT_BYTES } from "@/lib/limits"
+import {
+  FRAME_CHUNK_MAX_BYTES,
+  MAX_ARTIFACT_BYTES_ABSOLUTE,
+  MAX_PLAINTEXT_BYTES,
+  PROTOCOL_MAX_FRAMES,
+} from "@/lib/limits"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 
@@ -63,6 +68,34 @@ describe("PQ strict validation", () => {
     ).toThrow("INVALID_QR_PAYLOAD")
   })
 
+  it("accepts exact frame maxima and rejects each one-over boundary", () => {
+    const frame = {
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16),
+      artifactType: "pq-message",
+      frameIndex: PROTOCOL_MAX_FRAMES - 1,
+      frameCount: PROTOCOL_MAX_FRAMES,
+      totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE,
+      payloadSha256: new Uint8Array(32),
+      chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES),
+    } as const
+    expect(PROTOCOL_MAX_FRAMES).toBe(128)
+    expect(FRAME_CHUNK_MAX_BYTES).toBe(200)
+    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(25_600)
+    expect(validateQrFrameV2(frame)).toEqual(frame)
+
+    for (const changes of [
+      { frameCount: PROTOCOL_MAX_FRAMES + 1 },
+      { totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE + 1 },
+      { chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES + 1) },
+    ]) {
+      expect(() => validateQrFrameV2({ ...frame, ...changes })).toThrow(
+        "INVALID_QR_PAYLOAD",
+      )
+    }
+  })
+
   it("rejects frame metadata whose total cannot fit its declared frame count", () => {
     const frame = {
       version: 2,
@@ -71,7 +104,7 @@ describe("PQ strict validation", () => {
       artifactType: "pq-message",
       frameIndex: 0,
       frameCount: 2,
-      totalByteLength: 1_801,
+      totalByteLength: FRAME_CHUNK_MAX_BYTES * 2 + 1,
       payloadSha256: new Uint8Array(32),
       chunk: Uint8Array.of(1),
     } as const

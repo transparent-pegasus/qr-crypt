@@ -223,17 +223,19 @@ describe("key management v2", () => {
       fullscreen = await screen.findByRole("dialog", {
         name: new RegExp(`View .*${title.source}.* full screen`),
       })
-      expect(within(fullscreen).getByLabelText("Frame density")).toBeInTheDocument()
+      const density = within(fullscreen).getByRole("radiogroup", {
+        name: "Frame density",
+      })
+      expect(within(density).getByRole("radio", { name: "100 B" })).toBeEnabled()
+      expect(within(density).getByRole("radio", { name: "200 B" })).toBeEnabled()
       expect(within(fullscreen).getByLabelText("Display speed")).toBeInTheDocument()
       if (buttonName === "Public-key bundle QR") {
-        fireEvent.change(within(fullscreen).getByLabelText("Frame density"), {
-          target: { value: "300" },
-        })
+        await user.click(within(density).getByRole("radio", { name: "200 B" }))
         fireEvent.change(within(fullscreen).getByLabelText("Display speed"), {
           target: { value: "2500" },
         })
         await waitFor(() => {
-          expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 300 })
+          expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 200 })
           expect(updatePreferences).toHaveBeenCalledWith({
             frameIntervalMs: 2_500,
           })
@@ -248,7 +250,10 @@ describe("key management v2", () => {
     expect(
       within(dialog).getAllByRole("button", { name: "View full screen" }),
     ).toHaveLength(1)
-    expect(await within(dialog).findByLabelText("Frame density")).toBeInTheDocument()
+    const density = await within(dialog).findByRole("radiogroup", {
+      name: "Frame density",
+    })
+    expect(within(density).getByRole("radio", { name: "200 B" })).toBeChecked()
     expect(await within(dialog).findByLabelText("Display speed")).toHaveValue("2500")
   })
 
@@ -409,26 +414,34 @@ describe("settings v2", () => {
     resetUi()
   })
 
-  it("persists every numeric boundary and shows wipe/reset warnings", async () => {
+  it("persists selectable and numeric boundaries and shows wipe/reset warnings", async () => {
     const user = userEvent.setup()
     await renderApp("/settings")
     const frameBytes = await screen.findByLabelText(/Raw data per frame/)
     const frameInterval = screen.getByLabelText(/Frame interval/)
     const transferTimeout = screen.getByLabelText(/Scan-state lifetime/)
-    expect(frameBytes).toHaveAttribute("min", "100")
-    expect(frameBytes).toHaveAttribute("max", "900")
+    expect(frameBytes).toHaveRole("combobox")
+    expect(frameBytes).toHaveTextContent("100 B")
+    await user.click(frameBytes)
+    const frameByteOptions = screen.getAllByRole("option")
+    expect(frameByteOptions.map((option) => option.textContent)).toEqual([
+      "100 B",
+      "200 B",
+    ])
+    expect(frameByteOptions[0]).toBeEnabled()
+    expect(frameByteOptions[1]).toBeEnabled()
+    await user.click(screen.getByRole("option", { name: "200 B" }))
     expect(frameInterval).toHaveAttribute("min", "1000")
     expect(frameInterval).toHaveAttribute("max", "3000")
     expect(frameInterval).toHaveAttribute("step", "500")
-    expect(transferTimeout).toHaveAttribute("min", "1")
+    expect(transferTimeout).toHaveAttribute("min", "3")
     expect(transferTimeout).toHaveAttribute("max", "120")
-    fireEvent.change(frameBytes, { target: { value: "900" } })
     fireEvent.change(frameInterval, { target: { value: "2250" } })
     expect(updatePreferences).not.toHaveBeenCalledWith({ frameIntervalMs: 2_250 })
     fireEvent.change(frameInterval, { target: { value: "3000" } })
     fireEvent.change(transferTimeout, { target: { value: "120" } })
     await waitFor(() => {
-      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 900 })
+      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 200 })
       expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 3_000 })
       expect(updatePreferences).toHaveBeenCalledWith({ transferTimeoutMinutes: 120 })
     })
@@ -460,17 +473,20 @@ describe("settings v2", () => {
 
   it("clears only a stale preference save error after a successful save", async () => {
     const user = userEvent.setup()
+    fakePreferences.frameBytes = 200
     await renderApp("/settings")
     const frameBytes = await screen.findByLabelText(/Raw data per frame/)
+    const frameInterval = screen.getByLabelText(/Frame interval/)
     const saveError = "Settings could not be saved. Check the device storage."
     updatePreferences.mockRejectedValueOnce(new Error("storage failed"))
 
-    fireEvent.change(frameBytes, { target: { value: "900" } })
+    await user.click(frameBytes)
+    await user.click(screen.getByRole("option", { name: "100 B" }))
     expect(await screen.findByText(saveError)).toBeInTheDocument()
 
-    fireEvent.change(frameBytes, { target: { value: "800" } })
+    fireEvent.change(frameInterval, { target: { value: "3000" } })
     await waitFor(() =>
-      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 800 }),
+      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 3_000 }),
     )
     await waitFor(() => expect(screen.queryByText(saveError)).not.toBeInTheDocument())
 
@@ -482,9 +498,10 @@ describe("settings v2", () => {
     const deleteError = "Data could not be deleted. Check the device storage."
     expect(await screen.findByText(deleteError)).toBeInTheDocument()
 
-    fireEvent.change(frameBytes, { target: { value: "700" } })
+    await user.click(frameBytes)
+    await user.click(screen.getByRole("option", { name: "100 B" }))
     await waitFor(() =>
-      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 700 }),
+      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 100 }),
     )
     expect(screen.getByText(deleteError)).toBeInTheDocument()
   })

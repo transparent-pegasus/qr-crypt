@@ -101,8 +101,8 @@ describe("i18n catalog", () => {
       ),
     ).toBe("count=3; key=key-7; expires=12:30; file=ciphertext.png")
     expect(
-      translate("ja", "settings.field.frameBytes", { min: 120, max: 480 }),
-    ).toBe("1フレームの生データ 120〜480 bytes")
+      translate("ja", "settings.field.frameInterval", { min: 1000, max: 3000 }),
+    ).toBe("フレーム切替間隔 1000〜3000 ms")
     expect(interpolateMessage("unknown={missing}")).toBe("unknown={missing}")
   })
 

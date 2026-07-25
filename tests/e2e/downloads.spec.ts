@@ -190,31 +190,25 @@ test("exports a secret-key QR and public-key-bundle QR from the key-list modal",
   await frames.getByRole("button", { name: "Current SVG" }).click()
   const publicSvg = await publicSvgPromise
   expect(publicSvg.suggestedFilename()).toMatch(
-    /public-key bundle-.+-frame-\d{2}\.svg$/,
+    /public-key bundle-.+-frame-\d{2,3}\.svg$/,
   )
   expect((await downloadBuffer(publicSvg)).toString("utf8")).toContain("<svg")
 })
 
-test("controls signed multipart frames and exports the ZIP and every PNG as real files", async ({
+test("controls signed multipart frames and preserves every ZIP and bounded PNG frame", async ({
   context,
   page,
 }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(240_000)
   const identityName = "複数出力PQ-ID"
-  const plaintext = "署名付き複数フレームを一時停止し前後移動して出力確認する本文"
+  const plaintext = "x".repeat(4_096)
   await openOfflineApp(page, context, "/keys")
   await createPqIdentity(page, identityName)
   await seedSelfPublicBundle(page, identityName)
-  // Chromium suppresses individual downloads beyond 10 from one user action.
-  // Keep the maximum signed fixture within a frame count that allows every PNG
-  // to be verified.
-  await goToOfflinePage(page, "/settings")
-  const frameBytes = page.getByLabel(/Raw data per frame/)
-  await frameBytes.fill("900")
-  await expect(frameBytes).toHaveValue("900")
   const { result } = await encryptSignedPq(page, { identityName, plaintext })
   const frameCount = Number.parseInt(await detailValue(result, "QR frame count"), 10)
-  expect(frameCount).toBeGreaterThan(1)
+  expect(frameCount).toBeGreaterThan(99)
+  expect(frameCount).toBeLessThanOrEqual(128)
 
   const frames = result.getByRole("region", { name: "Ciphertext frame display" })
   const counter = frames.getByText(/^\d+ \/ \d+$/).last()
@@ -239,36 +233,75 @@ test("controls signed multipart frames and exports the ZIP and every PNG as real
   expect(framePayloads.every((payload) => payload.startsWith("OCF2:"))).toBe(true)
   await result.getByLabel("Output name", { exact: true }).fill("署名付き複数フレーム")
 
-  const pngDownloads: Download[] = []
-  const capturePng = (download: Download) => pngDownloads.push(download)
-  page.on("download", capturePng)
-  await frames.getByRole("button", { name: "Export all PNGs" }).click()
-  await expect.poll(() => pngDownloads.length, { timeout: 60_000 }).toBe(frameCount)
-  page.off("download", capturePng)
-
-  const downloadedPayloads: string[] = []
-  for (const download of pngDownloads) {
-    expect(download.suggestedFilename()).toMatch(/-frame-\d{2}\.png$/)
-    const bytes = await downloadBuffer(download)
-    expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a")
-    downloadedPayloads.push(decodePng(bytes))
-  }
-  expect(new Set(downloadedPayloads)).toEqual(new Set(framePayloads))
-
-  const zipPromise = page.waitForEvent("download")
+  const zipPromise = page.waitForEvent("download", { timeout: 180_000 })
   await frames.getByRole("button", { name: "Export ZIP" }).click()
   const zipDownload = await zipPromise
   expect(zipDownload.suggestedFilename()).toMatch(/-frames\.zip$/)
   const zip = parseStoreOnlyZip(await downloadBuffer(zipDownload))
   expect(zip.centralCount).toBe(frameCount)
   expect(zip.entries).toHaveLength(frameCount)
+  expect(zip.entries.every((entry) => /^frame-\d{2,3}\.png$/.test(entry.name))).toBe(
+    true,
+  )
   expect(zip.entries.map((entry) => entry.name)).toEqual(
     Array.from(
       { length: frameCount },
       (_, index) => `frame-${String(index + 1).padStart(2, "0")}.png`,
     ),
   )
+  expect(zip.entries.some((entry) => /^frame-\d{3}\.png$/.test(entry.name))).toBe(true)
   expect(new Set(zip.entries.map((entry) => decodePng(entry.data)))).toEqual(
     new Set(framePayloads),
   )
+
+  // Chromium suppresses individual downloads beyond 10 from one user action.
+  // Use the smaller encryption-public-key artifact at 200 B for that path,
+  // while the ZIP above remains the full maximum signed-artifact fidelity check.
+  await goToOfflinePage(page, "/saved")
+  await page.getByRole("button", { name: new RegExp(identityName) }).click()
+  const detail = page.getByRole("dialog", { name: identityName })
+  await detail
+    .getByRole("button", { name: "Encryption public-key QR", exact: true })
+    .click()
+  const publicKeyDialog = page.getByRole("dialog", {
+    name: `${identityName} encryption public key`,
+  })
+  const publicKeyFrames = publicKeyDialog.getByRole("region", {
+    name: `${identityName} encryption public key frame display`,
+  })
+  const density = publicKeyFrames.getByRole("radiogroup", {
+    name: "Frame density",
+    exact: true,
+  })
+  const density200 = density.getByRole("radio", { name: "200 B", exact: true })
+  await density.getByText("200 B", { exact: true }).click()
+  await expect(density200).toBeChecked()
+  const publicKeyCounter = publicKeyFrames.getByText(/^\d+ \/ \d+$/).last()
+  await expect
+    .poll(async () => {
+      const match = (await publicKeyCounter.innerText()).match(/^\d+ \/ (\d+)$/)
+      return match === null ? Number.POSITIVE_INFINITY : Number(match[1])
+    })
+    .toBeLessThanOrEqual(10)
+  const publicKeyPayloads = await collectAnimatedFramePayloads(publicKeyFrames)
+  expect(publicKeyPayloads.length).toBeGreaterThan(1)
+  expect(publicKeyPayloads.length).toBeLessThanOrEqual(10)
+
+  const pngDownloads: Download[] = []
+  const capturePng = (download: Download) => pngDownloads.push(download)
+  page.on("download", capturePng)
+  await publicKeyFrames.getByRole("button", { name: "Export all PNGs" }).click()
+  await expect
+    .poll(() => pngDownloads.length, { timeout: 60_000 })
+    .toBe(publicKeyPayloads.length)
+  page.off("download", capturePng)
+
+  const downloadedPayloads: string[] = []
+  for (const download of pngDownloads) {
+    expect(download.suggestedFilename()).toMatch(/-frame-\d{2,3}\.png$/)
+    const bytes = await downloadBuffer(download)
+    expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a")
+    downloadedPayloads.push(decodePng(bytes))
+  }
+  expect(new Set(downloadedPayloads)).toEqual(new Set(publicKeyPayloads))
 })

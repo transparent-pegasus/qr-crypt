@@ -26,6 +26,9 @@ export interface QrDisplayProps {
   fullscreenEnabled?: boolean
   showFullscreenTrigger?: boolean
   fullscreenControls?: ReactNode
+  // Set only when the supplied controls already render their own close button.
+  // Controls without one still need the overlay button, or the dialog has no exit.
+  fullscreenControlsIncludeClose?: boolean
   fullscreenOpen?: boolean
   onFullscreenOpenChange?: (open: boolean) => void
 }
@@ -39,6 +42,7 @@ export function QrDisplay({
   fullscreenEnabled = true,
   showFullscreenTrigger = true,
   fullscreenControls,
+  fullscreenControlsIncludeClose = false,
   fullscreenOpen,
   onFullscreenOpenChange,
 }: QrDisplayProps) {
@@ -168,19 +172,21 @@ export function QrDisplay({
               <DialogTitle>{t("qrDisplay.fullscreen.title", { title })}</DialogTitle>
               <DialogDescription>{t("qrDisplay.fullscreen.desc")}</DialogDescription>
             </DialogHeader>
-            <div className="pointer-events-none absolute inset-0">
-              <DialogClose asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="pointer-events-auto absolute z-10 size-11 cursor-pointer border border-slate-300 bg-white text-slate-950 [right:max(0.5rem,env(safe-area-inset-right))] [top:max(0.5rem,env(safe-area-inset-top))] hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2"
-                  aria-label={t("common.close")}
-                >
-                  <X aria-hidden="true" />
-                </Button>
-              </DialogClose>
-            </div>
+            {!fullscreenControlsIncludeClose && (
+              <div className="pointer-events-none absolute inset-0">
+                <DialogClose asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="pointer-events-auto absolute z-10 size-11 cursor-pointer border border-slate-300 bg-white text-slate-950 [right:max(0.5rem,env(safe-area-inset-right))] [top:max(0.5rem,env(safe-area-inset-top))] hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2"
+                    aria-label={t("common.close")}
+                  >
+                    <X aria-hidden="true" />
+                  </Button>
+                </DialogClose>
+              </div>
+            )}
             <div className="grid min-h-0 min-w-0 place-items-center overflow-hidden">
               {dataUrl && (
                 <img

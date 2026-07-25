@@ -22,8 +22,8 @@ the active policy and is rejected at the operational boundary as
     algorithms and of balanced; legacy preferences are normalized on read to
     maximum while preserving `wipeOnOnline=false`.
   - `tests/pq/maximum-artifact-size.golden.test.ts` pins the canonical CBOR raw
-    byte counts in the table below, the OCF2 frame counts at chunk sizes
-    100/200/300/400/600/900B, real EC-Q generation for every displayable frame, and boundary agreement
+    byte counts in the table below, the OCF2 frame counts at the active chunk
+    sizes 100/200B, real EC-Q generation for every displayable frame, and boundary agreement
     with the env capacity guard.
   - The ML-KEM-1024 / ML-DSA-87 KATs and `aube test` / `aube typecheck` pass,
     and the `aube bench:pq` maximum reference figures plus the README and
@@ -39,23 +39,32 @@ substitute for independent review and do not close the blocker.
 Measured maximum fixture (`maxPlaintext=4,096B`, `name="テスト"` — the literal
 fixture string):
 
-| artifact | canonical CBOR (bytes) | OCF2 frames (100 / 200 / 300 / 400 / 600 / 900B) |
+| artifact | canonical CBOR (bytes) | OCF2 frames (100 / 200B) |
 |---|---:|---:|
-| unsigned empty / max | 1,887 / 5,986 | 19/10/7/5/4/3 / 60/30/20/15/10/7 |
-| signed empty / max | 6,613 / 10,711 | >64/34/23/17/12/8 / >64/54/36/27/18/12 |
-| OCI2 bundle | 4,402 | 45/23/15/12/8/5 |
-| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 18/9/6/5/3/2 / 28/14/10/7/5/4 |
-| OCB2 reserved sizing fixture | 4,637 | 47/24/16/12/8/6 |
+| unsigned empty / max | 1,887 / 5,986 | 19/10 / 60/30 |
+| signed empty / max | 6,613 / 10,711 | 67/34 / 108/54 |
+| OCI2 bundle | 4,402 | 45/23 |
+| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 18/9 / 28/14 |
+| OCB2 reserved sizing fixture | 4,637 | 47/24 |
 
-All displayed OCF2 artifacts use the same preference-controlled 100–900B
-density. The renderer grid-rounds a per-artifact minimum from total bytes and
-`VITE_QR_MAX_FRAMES`, then uses the greater of that minimum and the stored
-preference without persisting an automatic clamp. Thus 100B remains a valid
-stored density and works for OCI2/OCP2/OCS2 and smaller messages, while both
-measured signed-message fixtures render at the automatic 200B minimum. A
-minimum above 900B fails closed as `QR_TOO_LARGE`. The density slider uses
-a 100B step; storage continues to accept off-grid integers such as 250B. The
-shipped default is 200B.
+All displayed OCF2 artifacts use the same active density set `{100, 200}`
+bytes (shipped default 100B). The renderer grid-rounds a per-artifact minimum
+from total bytes and `VITE_QR_MAX_FRAMES`, then uses the greater of that
+minimum and the stored preference without persisting an automatic clamp.
+Thus 100B is the shipped selectable density and works for every measured
+fixture under the 128-frame protocol cap (128×100 = 12,800B > 10,711B), while
+200B remains the denser escape hatch. A minimum above 200B fails closed as
+`QR_TOO_LARGE`. The density control is a two-option toggle; active writes
+reject off-grid integers such as 250B. The boot read path stays append-only
+and still accepts every previously storable integer from 100 through 900 so
+stored preferences never become unreadable and force `wipeOnOnline` true.
+Receiver ceilings follow `MAX_ARTIFACT_BYTES_ABSOLUTE` = 128 × 200 = 25,600B
+and a per-chunk wire maximum of 200B.
+
+A full 128-frame cycle takes 128 seconds at the 1,000ms interval and 384
+seconds at the 3,000ms interval. The assembly timeout default remains 10
+minutes; `TRANSFER_TIMEOUT_MINUTES_MIN` is 3 minutes so the legal floor covers
+one full worst-case-count cycle at the fastest interval.
 
 The current multipart transition interval is exactly
 1,000/1,500/2,000/2,500/3,000ms, defaulting to 2,000ms. New preferences and

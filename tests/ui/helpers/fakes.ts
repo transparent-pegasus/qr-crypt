@@ -140,6 +140,7 @@ export const fakeBundles: PqPublicBundleRecord[] = [
 export const fakePreferences: Preferences = {
   ...PQ_PREFERENCE_DEFAULTS,
   defaultAlgorithm: "A256GCM",
+  frameBytes: 100,
   qrErrorCorrection: "Q",
   autoClearPlaintextAfterEncrypt: true,
   backgroundClearEnabled: true,
@@ -884,6 +885,7 @@ export function resetFakes(): void {
   Object.assign(fakePreferences, {
     ...PQ_PREFERENCE_DEFAULTS,
     defaultAlgorithm: "A256GCM",
+    frameBytes: 100,
     qrErrorCorrection: "Q",
     autoClearPlaintextAfterEncrypt: true,
     backgroundClearEnabled: true,

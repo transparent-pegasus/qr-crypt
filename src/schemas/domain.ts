@@ -265,7 +265,7 @@ export interface QrFrameV2 {
   transferId: Uint8Array // 16 random bytes.
   artifactType: V2ArtifactType
   frameIndex: number // Zero-based (0..frameCount-1).
-  frameCount: number // 1..PROTOCOL_MAX_FRAMES(64)
+  frameCount: number // 1..PROTOCOL_MAX_FRAMES(128)
   totalByteLength: number // Total raw artifact-CBOR byte length.
   payloadSha256: Uint8Array // SHA-256 of raw artifact-CBOR bytes (transfer integrity).
   chunk: Uint8Array // Slice of raw artifact-CBOR bytes; double base64url is prohibited (§D1).
@@ -310,7 +310,7 @@ export interface Preferences {
   qrErrorCorrection: QrEcLevel
   autoClearPlaintextAfterEncrypt: boolean
   backgroundClearEnabled: boolean
-  frameBytes: number // 100–900; limits.ts is the single derivation source.
+  frameBytes: number // Active {100, 200}; boot reads legacy stored integers 100–900.
   frameIntervalMs: number // 1000–3000 in 500ms steps; limits.ts is the single derivation source.
   transferTimeoutMinutes: number // Default 10.
   wipeOnOnline: boolean // Default true.
@@ -322,10 +322,9 @@ export interface Preferences {
 export const PQ_PREFERENCE_DEFAULTS = {
   defaultPqProfile: "maximum",
   requireSignature: false,
-  // 100B cannot carry the measured 6,613B signed-empty artifact in 64 frames.
-  // 200B carries the measured 10,711B maximum while using lower QR versions
-  // than the former 300B default, which helps cameras lock on faster.
-  frameBytes: 200,
+  // The 128-frame cap carries the measured 10,711B maximum at 100B while
+  // keeping QR density low enough for faster camera lock-on.
+  frameBytes: 100,
   frameIntervalMs: 2000,
   transferTimeoutMinutes: 10,
   wipeOnOnline: true,

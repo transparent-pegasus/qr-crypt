@@ -8,8 +8,7 @@ import {
   type WipeDecisionInput,
 } from "@/app/boot/boot-contract"
 import {
-  FRAME_BYTES_MAX,
-  FRAME_BYTES_MIN,
+  isBootReadableFrameBytes,
   isBootReadableFrameIntervalMs,
   RESET_CHURN_MB_MAX,
   RESET_CHURN_MB_MIN,
@@ -256,7 +255,7 @@ function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
       correctionLevels.includes(value.qrErrorCorrection as string)) &&
     optionalBoolean(value.autoClearPlaintextAfterEncrypt) &&
     optionalBoolean(value.backgroundClearEnabled) &&
-    optionalIntegerInRange(value.frameBytes, FRAME_BYTES_MIN, FRAME_BYTES_MAX) &&
+    isBootReadableFrameBytes(value.frameBytes) &&
     (value.frameIntervalMs === undefined ||
       isBootReadableFrameIntervalMs(value.frameIntervalMs)) &&
     optionalIntegerInRange(

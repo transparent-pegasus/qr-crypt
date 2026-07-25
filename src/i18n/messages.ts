@@ -540,7 +540,7 @@ const en = {
     "This cannot be disabled because it is required by the environment configuration.",
   "settings.requireSignature.hint":
     "When enabled, unsigned post-quantum options are hidden.",
-  "settings.field.frameBytes": "Raw data per frame: {min}–{max} bytes",
+  "settings.field.frameBytes": "Raw data per frame",
   "settings.field.frameInterval": "Frame interval: {min}–{max} ms",
   "settings.field.transferTimeout": "Scan-state lifetime: {min}–{max} minutes",
   "settings.frameEc.hint": "OCF2 frames always use Q error correction.",
@@ -1171,8 +1171,7 @@ const ja = {
     "環境設定で必須化されているため解除できません。",
   "settings.requireSignature.hint":
     "有効時は非署名のポスト量子方式を選択肢から隠します。",
-  "settings.field.frameBytes":
-    "1フレームの生データ {min}〜{max} bytes",
+  "settings.field.frameBytes": "1フレームの生データ量",
   "settings.field.frameInterval":
     "フレーム切替間隔 {min}〜{max} ms",
   "settings.field.transferTimeout":
