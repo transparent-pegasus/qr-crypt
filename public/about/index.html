@@ -29,7 +29,22 @@
       property="og:description"
       content="Encrypt and decrypt on a device that stays offline. Only scrambled text ever goes onto the network."
     />
-    <meta property="og:image" content="https://qr-crypt.pages.dev/icons/icon-512.png" />
+    <!-- Crawlers do not run the language switch and do not render SVG, so the
+         card is a PNG and it is the English one. og-ja.png is the same card in
+         Japanese, for sharing the page by hand. -->
+    <meta property="og:image" content="https://qr-crypt.pages.dev/about/og-en.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="QR Crypt. Any device that has ever connected to a network may already be compromised. Exchange keys offline. Encrypt offline."
+    />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="ja_JP" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://qr-crypt.pages.dev/about/og-en.png" />
 
     <script type="module" src="./about.js"></script>
   </head>
