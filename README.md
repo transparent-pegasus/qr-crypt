@@ -191,14 +191,24 @@ This is not run in parallel with GitHub's Cloudflare Git Integration. GitHub Act
 2. Register the GitHub Repository Secrets (an API token with the minimum permissions required for Pages deploys):
    * `CLOUDFLARE_ACCOUNT_ID`
    * `CLOUDFLARE_API_TOKEN`
-3. Register the GitHub Repository Variable:
-   * `CLOUDFLARE_PAGES_PROJECT`
+3. Register the GitHub Repository Variables:
+   * `CLOUDFLARE_PAGES_PROJECT` — the production project deployed from `main`
+   * `CLOUDFLARE_PAGES_PROJECT_DEV` — the development project deployed from `dev`
 
 ### CI flow
 
-* `pull_request` / `push` to `main` runs validation via `.github/workflows/cloudflare-pages.yml`
-* A `push` to `main` deploys to Cloudflare Pages after validation succeeds
-* An independent `e2e` job also runs, but it **does not block deployment**
+`.github/workflows/cloudflare-pages.yml` runs on every branch and on every pull
+request targeting `main` or `dev`:
+
+* The `validate` job (type check, lint, unit, post-quantum, multipart QR,
+  production build) and the `e2e` job always run
+* The `deploy` job requires **both** to pass, and only runs on a `push`:
+  `main` deploys to `CLOUDFLARE_PAGES_PROJECT`, `dev` deploys to
+  `CLOUDFLARE_PAGES_PROJECT_DEV`. It publishes the artifact `validate` built
+  rather than rebuilding, so the deployed bytes are the validated ones
+* Every other branch and every pull request runs the checks only
+* A `push` to `main` additionally publishes a signed prerelease via
+  `.github/workflows/github-release.yml`
 
 ### `public/_headers` / `public/_redirects`
 

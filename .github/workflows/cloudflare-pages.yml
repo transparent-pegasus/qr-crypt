@@ -1,4 +1,4 @@
-name: Validate and Deploy
+name: CI
 
 # main pushes deploy production and, via github-release.yml, publish a signed
 # release. dev pushes deploy the dev Pages project. Every other branch and every

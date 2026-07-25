@@ -191,14 +191,24 @@ GitHub の Cloudflare Git Integration とは二重運用しません。GitHub Ac
 2. GitHub Repository Secrets を登録する（Pages デプロイに必要な最小権限の API Token）:
    * `CLOUDFLARE_ACCOUNT_ID`
    * `CLOUDFLARE_API_TOKEN`
-3. GitHub Repository Variable を登録する:
-   * `CLOUDFLARE_PAGES_PROJECT`
+3. GitHub Repository Variables を登録する:
+   * `CLOUDFLARE_PAGES_PROJECT` — `main` から配信する本番プロジェクト
+   * `CLOUDFLARE_PAGES_PROJECT_DEV` — `dev` から配信する開発プロジェクト
 
 ### CI の流れ
 
-* `pull_request` / `push` to `main` で `.github/workflows/cloudflare-pages.yml` が検証を実行
-* `main` への `push` で検証成功後に Cloudflare Pages へデプロイ
-* 独立した `e2e` job も走るが、**デプロイをブロックしない**
+`.github/workflows/cloudflare-pages.yml` は全ブランチ、および `main` / `dev`
+宛の全 pull request で実行される:
+
+* `validate` job（型検査・lint・unit・PQ・multipart QR・本番ビルド）と `e2e` job
+  は常に実行される
+* `deploy` job は**両方の成功**を必要とし、`push` のときだけ実行される。`main` は
+  `CLOUDFLARE_PAGES_PROJECT`、`dev` は `CLOUDFLARE_PAGES_PROJECT_DEV` へ配信する。
+  再ビルドせず `validate` が生成した artifact を配信するため、配信バイトは検証済み
+  バイトと一致する
+* それ以外のブランチと全 pull request は検証のみ
+* `main` への `push` では追加で `.github/workflows/github-release.yml` が署名付き
+  prerelease を発行する
 
 ### `public/_headers` / `public/_redirects`
 
