@@ -53,7 +53,6 @@ import { decodeFramePayload, encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 
 const TRANSFER_ID = new Uint8Array(16).fill(0x11)
-const PAYLOAD_HASH = new Uint8Array(32).fill(0x22)
 
 function frame(frameIndex: number, overrides: Partial<QrFrameV2> = {}): QrFrameV2 {
   return {
@@ -64,7 +63,6 @@ function frame(frameIndex: number, overrides: Partial<QrFrameV2> = {}): QrFrameV
     frameIndex,
     frameCount: 2,
     totalByteLength: 2,
-    payloadSha256: Uint8Array.from(PAYLOAD_HASH),
     chunk: new Uint8Array([frameIndex + 1]),
     ...overrides,
   }
@@ -93,7 +91,6 @@ function deferred<T>(): Deferred<T> {
 function playbackPayloads(marker: number): readonly [string, string] {
   const overrides = {
     transferId: new Uint8Array(16).fill(marker),
-    payloadSha256: new Uint8Array(32).fill(marker),
   } satisfies Partial<QrFrameV2>
   return [payload(0, overrides), payload(1, overrides)]
 }
@@ -249,13 +246,6 @@ describe("relay frame-set parser", () => {
       "totalByteLength",
       {
         totalByteLength: 3,
-      } satisfies Partial<QrFrameV2>,
-      "mismatch",
-    ],
-    [
-      "payloadSha256",
-      {
-        payloadSha256: new Uint8Array(32).fill(0x44),
       } satisfies Partial<QrFrameV2>,
       "mismatch",
     ],

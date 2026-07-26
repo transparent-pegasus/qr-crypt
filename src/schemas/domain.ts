@@ -267,7 +267,6 @@ export interface QrFrameV2 {
   frameIndex: number // Zero-based (0..frameCount-1).
   frameCount: number // 1..PROTOCOL_MAX_FRAMES(128)
   totalByteLength: number // Total raw artifact-CBOR byte length.
-  payloadSha256: Uint8Array // SHA-256 of raw artifact-CBOR bytes (transfer integrity).
   chunk: Uint8Array // Slice of raw artifact-CBOR bytes; double base64url is prohibited (§D1).
 }
 

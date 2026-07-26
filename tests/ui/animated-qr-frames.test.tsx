@@ -48,7 +48,6 @@ function frame(
     frameIndex,
     frameCount,
     totalByteLength,
-    payloadSha256: new Uint8Array(32),
     chunk: Uint8Array.of(frameIndex),
   }
 }

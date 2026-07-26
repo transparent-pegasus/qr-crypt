@@ -267,7 +267,7 @@ test("measures a maximum 120000-byte signed PQ message through ZIP production", 
     "Cryptographic algorithm",
     SIGNED_PQ_ALGORITHM_LABEL,
   )
-  await chooseOption(page, "Recipient ML-KEM public key", /^(Verified|Unverified): /)
+  await chooseOption(page, "Recipient ML-KEM public key", /^Verified: /)
   await chooseOption(page, "My ML-DSA signing identity", identityName)
 
   const plaintext = page.getByLabel("Plaintext", { exact: true })

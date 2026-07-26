@@ -2,21 +2,24 @@
 //
 // Invariants (frozen):
 //   - index is 0..frameCount-1. Freeze immutable metadata from the first frame:
-//     transferId, artifactType, frameCount, totalByteLength, and payloadSha256.
+//     transferId, artifactType, frameCount, and totalByteLength.
 //   - For the same index, ignore only an exact match as an idempotent duplicate.
 //     A difference of even one byte yields FRAME_MISMATCH and treats the session as tainted.
 //   - Mixing in another transferId yields FRAME_MISMATCH.
-//   - At completion, verify index coverage, total length = totalByteLength,
-//     SHA-256(raw artifact bytes) = payloadSha256, and that artifactType matches the
-//     restored artifact's type before transitioning to complete.
-//   - SHA-256 provides transfer integrity, not sender authenticity; the UI must make
-//     that distinction clear.
+//   - At completion, verify index coverage, total length = totalByteLength, and that
+//     artifactType matches the restored artifact's type before transitioning to complete.
+//     Frames carry no artifact digest: a value the receiver can recompute from the frames
+//     alone is equally computable by anyone who photographs one, and a hostile sender
+//     computes it over their own artifact. Authenticity of pq-message comes from the inner
+//     AEAD tag; public artifacts are authenticated only by the out-of-band fingerprint
+//     comparison at import. Accidental corruption that still decodes as canonical CBOR of
+//     the declared type is no longer detected here — see docs/security/threat-model.md T16.
 //   - Release chunk state on timeout (expiresAt), explicit discard, completion, or error.
 import type { ErrorCode } from "@/crypto/errors"
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { decodeCanonicalCbor } from "@/crypto/pq/canonical-cbor"
-import { bytesEqual, sha256 } from "@/lib/bytes"
+import { bytesEqual } from "@/lib/bytes"
 import {
   FRAME_CHUNK_MAX_BYTES,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
@@ -38,7 +41,6 @@ interface TransferMetadata {
   artifactType: V2ArtifactType
   frameCount: number
   totalByteLength: number
-  payloadSha256: Uint8Array
 }
 
 interface ActiveTransfer {
@@ -54,8 +56,7 @@ function metadataMatches(metadata: TransferMetadata, frame: QrFrameV2): boolean 
     bytesEqual(metadata.transferId, frame.transferId) &&
     metadata.artifactType === frame.artifactType &&
     metadata.frameCount === frame.frameCount &&
-    metadata.totalByteLength === frame.totalByteLength &&
-    bytesEqual(metadata.payloadSha256, frame.payloadSha256)
+    metadata.totalByteLength === frame.totalByteLength
   )
 }
 
@@ -136,7 +137,6 @@ export class TransferAssembler {
           artifactType: frame.artifactType,
           frameCount: frame.frameCount,
           totalByteLength: frame.totalByteLength,
-          payloadSha256: Uint8Array.from(frame.payloadSha256),
         },
         chunks: new Map(),
         expiresAt,
@@ -177,20 +177,6 @@ export class TransferAssembler {
       if (chunk === undefined) return this.#fail("INVALID_QR_PAYLOAD")
       artifactBytes.set(chunk, offset)
       offset += chunk.byteLength
-    }
-
-    let actualHash: Uint8Array
-    try {
-      actualHash = await sha256(artifactBytes)
-    } catch {
-      if (this.#active !== active) return this.state()
-      return this.#fail("INVALID_QR_PAYLOAD")
-    }
-    // Do not resurrect this transfer if discard, error, or another completion check
-    // changed state while the digest was pending.
-    if (this.#active !== active) return this.state()
-    if (!bytesEqual(actualHash, active.metadata.payloadSha256)) {
-      return this.#fail("INVALID_QR_PAYLOAD")
     }
 
     let restoredArtifactType: V2ArtifactType

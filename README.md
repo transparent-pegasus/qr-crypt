@@ -113,7 +113,10 @@ Use this when the offline device should never contact the app's origin at all.
 5. Serve it with a static server that was already installed on the offline device through
    a trusted route, bound to `127.0.0.1` / `localhost` only. It must apply the bundled
    `_headers` and `_redirects` semantics: the security headers, correct MIME types, the SPA
-   fallback to `/index.html`, and `no-store` for the reachability sentinel.
+   fallback to `/index.html`, and `no-store` for the reachability sentinel. The production
+   build also carries the supported part of the same CSP in a meta tag as a fallback, but
+   `frame-ancestors` cannot be enforced there and remains available only through the
+   `_headers` response header.
 6. Open `http://localhost` and wait until the app reports that offline use is ready.
 7. Stop the server, remove the transport medium, physically disconnect networking, and
    confirm QR Crypt reports offline **before** entering or restoring any secret. The
@@ -154,9 +157,13 @@ authenticated ([docs/security/threat-model.md](docs/security/threat-model.md) T1
 | **ML-KEM-1024** (with HKDF-SHA256 + AES-256-GCM) | Messages that must stay private for decades. Built to resist a future quantum computer; heavier, so the message becomes a sequence of QR codes. |
 | **ML-KEM-1024 + ML-DSA-87** | The same, with a signature so the recipient can verify who sent it. |
 
+For post-quantum identities, the rotation cadence is the granularity of forward secrecy.
+Rotation retains superseded generations for decryption, so every envelope addressed to an
+older generation remains decryptable until you explicitly discard that generation.
+
 The post-quantum suites are **experimental** and **not independently audited**. QR Crypt
-adopts implementations of the FIPS 203 / FIPS 204 algorithms; it does not claim to be "FIPS
-certified" or "perfectly secure". Current status and blockers:
+adopts implementations of the FIPS 203 / FIPS 204 algorithms; that does not confer FIPS 140
+validation or an independent security assessment. Current status and blockers:
 [docs/security/security-review.md](docs/security/security-review.md).
 
 ## Documentation

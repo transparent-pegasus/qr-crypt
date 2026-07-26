@@ -602,7 +602,6 @@ export const splitIntoFrames = vi.fn(
         frameIndex,
         frameCount,
         totalByteLength: artifactBytes.byteLength,
-        payloadSha256: new Uint8Array(32),
         chunk: artifactBytes.slice(offset, offset + chunkBytes),
       }
       offset += chunkBytes
@@ -807,6 +806,9 @@ export const clearAllKeys = vi.fn(async () => {
   fakeKeys.splice(0)
 })
 
+export const findIdentityByKemKeyId = vi.fn(async (keyId: string) =>
+  fakeIdentities.find((identity) => identity.kem.keyId === keyId),
+)
 export const listIdentities = vi.fn(async () => [...fakeIdentities])
 export const saveIdentity = vi.fn(async (identity: PostQuantumIdentity) => {
   fakeIdentities.unshift(identity)
@@ -838,6 +840,19 @@ export const deleteIdentity = vi.fn(async (id: string) => {
   const index = fakeIdentities.findIndex((identity) => identity.id === id)
   if (index >= 0) fakeIdentities.splice(index, 1)
 })
+export const deleteSupersededIdentities = vi.fn(
+  async (ids: readonly string[]) => {
+    const requested = new Set(ids)
+    const present = fakeIdentities.filter((identity) => requested.has(identity.id))
+    if (present.some((identity) => identity.status === "active")) {
+      throw new AppError("STORAGE_FAILED")
+    }
+    const presentIds = new Set(present.map((identity) => identity.id))
+    for (let index = fakeIdentities.length - 1; index >= 0; index -= 1) {
+      if (presentIds.has(fakeIdentities[index]!.id)) fakeIdentities.splice(index, 1)
+    }
+  },
+)
 export const clearAllIdentities = vi.fn(async () => {
   fakeIdentities.splice(0)
 })

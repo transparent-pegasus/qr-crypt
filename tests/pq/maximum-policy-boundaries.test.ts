@@ -72,7 +72,8 @@ function legacyBundle(identity = legacyIdentity()): PqPublicBundleRecord {
       fingerprint: identity.signing.fingerprint,
     },
     identityFingerprint: identity.identityFingerprint,
-    trust: "unverified",
+    trust: "fingerprint-confirmed",
+    trustConfirmedAt: identity.createdAt + 2,
     bundleCreatedAt: identity.createdAt,
     importedAt: identity.createdAt + 1,
   }

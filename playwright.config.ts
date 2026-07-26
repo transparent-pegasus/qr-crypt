@@ -8,7 +8,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   use: { baseURL: "http://localhost:4173" },
   webServer: {
-    command: "aube build:prod && aube preview",
+    command: "aube run build:prod && aube run serve:dist",
     port: 4173,
     reuseExistingServer: !process.env.CI,
     timeout: 240_000,
