@@ -44,8 +44,9 @@ The algorithms themselves are the standard ones. The claim is about where they a
 
 * **Two devices per person.** One that stays permanently offline and runs QR Crypt, and
   one ordinary online device used only to carry the scrambled text.
-* **Browser.** Android Chrome and iOS Safari are the primary targets; Windows Chrome,
-  macOS Safari, and Edge are recorded as reference environments
+* **Browser.** Android Chrome and iOS Safari are the primary targets; camera QR scanning
+  requires Safari/iOS 16 or newer. Windows Chrome, macOS Safari, and Edge are recorded as
+  reference environments
   ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)). Without Web Crypto or
   IndexedDB the app stops at a start-up screen and no feature is available.
 * **Origin.** The app must be served over `https://`, or locally over `http://localhost` /
@@ -55,7 +56,8 @@ The algorithms themselves are the standard ones. The claim is about where they a
 * **WebAssembly.** Camera QR scanning uses a WebAssembly decoder, and there is no
   JavaScript fallback:
   * Where WebAssembly is disabled or blocked, the camera still opens, but the first decode
-    fails and the app reports that the camera is unavailable. Nothing can be scanned.
+    fails with a QR-reader-blocked message. On iPhone, the message directs the user to
+    Safari 16 or newer. Nothing can be scanned.
   * Where WebAssembly runs without JIT compilation (some hardened or lockdown
     configurations), decoding is expected to be much slower. How much slower has not been
     measured on real devices ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)).
