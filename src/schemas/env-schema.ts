@@ -103,7 +103,10 @@ const rawSchema = z.object({
     .default("A256GCM"),
   VITE_DEFAULT_PQ_PROFILE: z.enum(["maximum"]).default("maximum"),
   VITE_QR_ERROR_CORRECTION: z.enum(["L", "M", "Q", "H"]).default("Q"),
-  VITE_QR_RENDER_SIZE: intFromString(512, 128, 1024),
+  // 1024 keeps a version 40 symbol (177 modules plus an 8-module quiet zone) at about
+  // 5.5 source pixels per module. At the former 512 the displayed raster, not the
+  // camera, capped what a phone could resolve at the dense end of the density range.
+  VITE_QR_RENDER_SIZE: intFromString(1024, 128, 1024),
   VITE_MAX_PLAINTEXT_BYTES: intFromString(4096, 1, 16384),
   // Retired compatibility variable. Accept true, but always produce false after parsing.
   VITE_ENABLE_RSA: boolFromString("false"),

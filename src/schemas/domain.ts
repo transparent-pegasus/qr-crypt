@@ -310,8 +310,8 @@ export interface Preferences {
   qrErrorCorrection: QrEcLevel
   autoClearPlaintextAfterEncrypt: boolean
   backgroundClearEnabled: boolean
-  frameBytes: number // Active {100, 200}; boot reads legacy stored integers 100–900.
-  frameIntervalMs: number // 1000–3000 in 500ms steps; limits.ts is the single derivation source.
+  frameBytes: number // Active 200–1000 in 100B steps; boot reads legacy integers 100–1000.
+  frameIntervalMs: number // Active 200–1000ms in 100ms steps; boot reads legacy 150–3000ms.
   transferTimeoutMinutes: number // Default 10.
   wipeOnOnline: boolean // Default true.
   resetChurnMb: number // 0–512, default 0 (experimental option).
@@ -322,10 +322,9 @@ export interface Preferences {
 export const PQ_PREFERENCE_DEFAULTS = {
   defaultPqProfile: "maximum",
   requireSignature: false,
-  // The 128-frame cap carries the measured 10,711B maximum at 100B while
-  // keeping QR density low enough for faster camera lock-on.
-  frameBytes: 100,
-  frameIntervalMs: 2000,
+  // Keep the owner's known-good slow/low endpoint as the shipped default.
+  frameBytes: 200,
+  frameIntervalMs: 1000,
   transferTimeoutMinutes: 10,
   wipeOnOnline: true,
   resetChurnMb: 0,

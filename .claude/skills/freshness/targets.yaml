@@ -198,10 +198,14 @@ units:
     method: |
       Re-measure on at least Android Chrome + iOS Safari with current browser
       versions and VITE_BUILD_SHA; fill matrix rows. The zxing-wasm scanner
-      rows (offline first-use instantiation, decode latency, peak memory and
-      long tasks, teardown with a decode in flight) are the gate for keeping
-      decoding on the main thread — if p95 decode is a long task, move it to a
-      dedicated Worker. Re-check
+      rows include offline first-use instantiation and the widened-range gate:
+      sustained full transfers at 200B@1000ms, 1000B@1000ms, 200B@200ms, and
+      1000B@200ms, including poor light and refocus recovery. For every case,
+      record actual start-to-start decode cadence, p95 decode duration and long
+      tasks, sustained CPU/thermal behaviour, teardown latency, sender-side
+      version 40 render completion time, and post-downscale decoder dimensions
+      (camera resolution is not a substitute). If p95 decode is a long task,
+      move it to a dedicated Worker. Re-check
       detectFeatures() assumptions against MDN/caniuse for target browsers;
       update gate copy if reality moved. Align profile names in the matrix
       with the active profile.
@@ -237,12 +241,12 @@ units:
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
     last_checked: 2026-07-26
     files:
-      - src/lib/limits.ts # measured CBOR/OCF2 sizes and active {100, 200}B density set / minimum
+      - src/lib/limits.ts # measured CBOR/OCF2 sizes and active 200–1,000B density grid / minimum
       - src/lib/frame-bytes.ts # active density set and the append-only boot-readable range
       - src/lib/frame-interval.ts # persisted/displayed QR interval policy grid
       - tests/pq/maximum-artifact-size.golden.test.ts # active density / clamp / boot-readable fixtures
       - src/schemas/env-schema.ts # golden size guard at the maximum selectable density
-      - .env.prod # runtime crypto/framing policy and shipped 100B density default
+      - .env.prod # runtime crypto/framing policy and shipped 200B density default
       - .env.example # same density default, kept in step with .env.prod
     why: >
       Measured byte/frame tables (dated 2026-07-23) are cited by
@@ -254,14 +258,20 @@ units:
       comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
       env-schema.ts, and the .env.prod/.env.example defaults together, then
       sync the copy of the table in docs/security-review.md.
-      Verify the active preference-controlled density set {100, 200}B for
-      messages, OCI2, OCP2, and OCS2 (100B shipped default; active writes
-      reject off-grid values such as 250B); the grid-rounded per-artifact
-      minimum against FRAME_BYTES_MAX = 200; and that the append-only
-      boot-readable range still accepts every previously storable integer
-      100–900 so stored preferences stay readable. Keep limits.ts,
-      env-schema.ts, both env files, docs/qr-protocol-v2.md,
-      docs/security-review.md, and the golden test in agreement.
+      Verify the active preference-controlled density grid 200–1,000B in 100B
+      steps for messages, OCI2, OCP2, and OCS2 (200B shipped default; active
+      writes reject off-grid values such as 250B); the grid-rounded
+      per-artifact minimum clamped to the 200B active floor; the independent
+      25,600B absolute artifact ceiling; the 1,000B per-chunk ceiling; and the
+      1,591-character worst-metadata payload against EC-Q v40 capacity 1,663.
+      Confirm the append-only boot-readable range still accepts every
+      historical density integer 100–900 and repository loading normalizes
+      readable retired values onto the active grid. Confirm the selectable
+      interval grid is 200–1,000ms in 100ms steps with a 1,000ms default, while
+      boot readability and repository normalization retain every historical
+      interval integer 150–2,000 plus 2,500/3,000. Keep limits.ts, env-schema.ts,
+      both env files, docs/qr-protocol-v2.md, docs/security-review.md, and the
+      golden test in agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [security-review]
 
@@ -369,13 +379,24 @@ invariants:
   - id: boot-allowlist-append-only
     files:
       - src/app/boot/boot-controller.ts
+      - src/lib/frame-bytes.ts
+      - src/lib/frame-interval.ts
+      - src/storage/preferences-repository.ts
     rule: >
       The boot read-allowlist (algorithms incl. legacy RSA-HYBRID/MLKEM768_*,
-      profiles ["balanced","maximum"]) is APPEND-ONLY. Dropping an old id makes
-      stored preferences unreadable → preferencesReadFailed → wipeOnOnline
-      forced true → a later network-confirmed contact can wipe user data.
+      profiles ["balanced","maximum"], and numeric density/interval contracts)
+      is APPEND-ONLY. Every active density value (200–1,000B in 100B steps) and
+      interval value (200–1,000ms in 100ms steps) must be boot-readable, as
+      must every historical density integer 100–900 and interval integer
+      150–2,000 together with 2,500/3,000. The repository must normalize a
+      boot-readable numeric value that is no longer active onto the current
+      grid before strict preference validation; active patch/env writes remain
+      strict. Dropping an old id/value or its normalization makes stored
+      preferences unreadable → preferencesReadFailed → wipeOnOnline forced
+      true → a later network-confirmed contact can wipe user data.
     verify: >
-      aube test -- tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx
+      aube test -- tests/unit/qr-density-safety.test.ts
+      tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx
   - id: vocabulary-append-only
     files:
       - src/schemas/domain.ts
@@ -395,11 +416,18 @@ invariants:
   - id: legacy-read-normalization
     files:
       - src/storage/preferences-repository.ts
+      - src/lib/frame-bytes.ts
+      - src/lib/frame-interval.ts
     rule: >
       normalizeLegacyStoredPreferences keeps recognizing historical stored
-      values (balanced, legacy algorithm strings); the write allowlist
-      (PQ_PROFILES_ALLOWED) stays stricter than the boot read allowlist.
-    verify: aube test -- tests/integration/storage.test.ts
+      values (balanced, legacy algorithm strings, every historical density
+      integer 100–900, and interval integer 150–2,000 plus 2,500/3,000).
+      Boot-readable numeric values that are no longer active normalize onto
+      the current grid before validation; the active profile and numeric write
+      allowlists stay stricter than the boot read allowlists.
+    verify: >
+      aube test -- tests/unit/qr-density-safety.test.ts
+      tests/integration/storage.test.ts
   - id: retired-profile-negative-tests
     files:
       - tests/pq/maximum-policy-boundaries.test.ts

@@ -31,8 +31,8 @@ export const QR_PREFIX_V2 = {
 export type V2PayloadKind = V2ArtifactType | "frame"
 
 // Character limit for a complete v2 payload on the paste path: base64url of the
-// maximum artifact (128×200B) plus the prefix. MAX_FRAME_PAYLOAD_CHARS separately
-// limits the frame path.
+// independent 25,600B absolute artifact ceiling plus the prefix.
+// MAX_FRAME_PAYLOAD_CHARS separately limits the frame path.
 export const MAX_V2_PAYLOAD_CHARS =
   Math.ceil((MAX_ARTIFACT_BYTES_ABSOLUTE * 4) / 3) +
   QR_PREFIX_V2["pq-message"].length

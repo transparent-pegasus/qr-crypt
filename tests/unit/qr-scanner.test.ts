@@ -337,12 +337,17 @@ describe("camera scanner lifecycle", () => {
     expect(track.stop).toHaveBeenCalledOnce()
   })
 
-  it("uses the fallback when requestVideoFrameCallback never fires", async () => {
+  it("keeps a present-but-silent requestVideoFrameCallback on the 200 ms cadence", async () => {
     const track = new FakeTrack()
     const fakeVideo = new FakeVideo(640, 480, {
       videoFrameCallbacks: true,
     })
     getUserMedia.mockResolvedValue(mediaStream(track))
+    const decodeStartedAt: number[] = []
+    zxing.readBarcodes.mockImplementation(async () => {
+      decodeStartedAt.push(Date.now())
+      return []
+    })
     const onError = vi.fn()
     const decoder = await loadDecoder()
     const handle = await decoder.startQrScan(
@@ -360,8 +365,51 @@ describe("camera scanner lifecycle", () => {
 
     expect(zxing.readBarcodes).toHaveBeenCalledOnce()
     expect(fakeVideo.cancelVideoFrameCallback).toHaveBeenCalledWith(1)
+    await advance(199)
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+    await advance(1)
+
+    expect(zxing.readBarcodes).toHaveBeenCalledTimes(2)
+    expect(decodeStartedAt[1]! - decodeStartedAt[0]!).toBe(200)
     expect(onError).not.toHaveBeenCalled()
     expect(track.stop).not.toHaveBeenCalled()
+    handle.stop()
+  })
+
+  it("uses a working requestVideoFrameCallback at the 200 ms cadence deadline", async () => {
+    const track = new FakeTrack()
+    const fakeVideo = new FakeVideo(640, 480, {
+      videoFrameCallbacks: true,
+    })
+    const decodeStartedAt: number[] = []
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    zxing.readBarcodes.mockImplementation(async () => {
+      decodeStartedAt.push(Date.now())
+      if (decodeStartedAt.length === 1) {
+        setTimeout(() => fakeVideo.fireNextVideoFrame(), 200)
+      }
+      return []
+    })
+    const decoder = await loadDecoder()
+    const handle = await decoder.startQrScan(
+      asVideoElement(fakeVideo),
+      vi.fn(),
+      vi.fn(),
+      { once: false },
+    )
+
+    fakeVideo.fireNextVideoFrame()
+    await flushMicrotasks()
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+    await advance(199)
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+    await advance(1)
+
+    expect(zxing.readBarcodes).toHaveBeenCalledTimes(2)
+    expect(decodeStartedAt[1]! - decodeStartedAt[0]!).toBe(200)
+    expect(
+      fakeVideo.requestVideoFrameCallback?.mock.calls.length,
+    ).toBeGreaterThan(1)
     handle.stop()
   })
 
@@ -450,7 +498,7 @@ describe("camera scanner lifecycle", () => {
     handle.stop()
   })
 
-  it("draws into one willReadFrequently canvas downscaled to a 960px long edge", async () => {
+  it("draws into one willReadFrequently canvas downscaled to a 1280px long edge", async () => {
     const track = new FakeTrack()
     const fakeVideo = new FakeVideo(1920, 1080)
     getUserMedia.mockResolvedValue(mediaStream(track))
@@ -464,7 +512,8 @@ describe("camera scanner lifecycle", () => {
     )
 
     await advance(0)
-    await advance(400)
+    await advance(199)
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
     await advance(1)
 
     expect(canvases).toHaveLength(1)
@@ -473,16 +522,16 @@ describe("camera scanner lifecycle", () => {
     expect(canvas.getContext).toHaveBeenCalledWith("2d", {
       willReadFrequently: true,
     })
-    expect(canvas.element.width).toBe(960)
-    expect(canvas.element.height).toBe(540)
+    expect(canvas.element.width).toBe(1280)
+    expect(canvas.element.height).toBe(720)
     expect(canvas.drawImage).toHaveBeenCalledWith(
       asVideoElement(fakeVideo),
       0,
       0,
-      960,
-      540,
+      1280,
+      720,
     )
-    expect(canvas.getImageData).toHaveBeenCalledWith(0, 0, 960, 540)
+    expect(canvas.getImageData).toHaveBeenCalledWith(0, 0, 1280, 720)
     expect(zxing.readBarcodes).toHaveBeenCalledTimes(2)
     expect(zxing.readBarcodes.mock.calls[0]?.[1]).toEqual({
       formats: ["QRCodeModel2"],
@@ -702,10 +751,8 @@ describe("camera scanner lifecycle", () => {
       )
 
       await advance(0)
-      await advance(399)
+      await advance(199)
       expect(zxing.readBarcodes).toHaveBeenCalledTimes(1)
-      await advance(1)
-      await advance(0)
       await advance(1)
 
       expect(zxing.readBarcodes).toHaveBeenCalledTimes(expectedReads)
@@ -740,6 +787,41 @@ describe("camera scanner lifecycle", () => {
     await flushMicrotasks()
     await advance(0)
     expect(zxing.readBarcodes).toHaveBeenCalledTimes(2)
+    handle.stop()
+  })
+
+  it("starts the next decode immediately after a decode lasting longer than 200 ms", async () => {
+    const firstDecode = deferred<Array<{ text: string }>>()
+    const decodeStartedAt: number[] = []
+    const track = new FakeTrack()
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    zxing.readBarcodes
+      .mockImplementationOnce(() => {
+        decodeStartedAt.push(Date.now())
+        return firstDecode.promise
+      })
+      .mockImplementationOnce(async () => {
+        decodeStartedAt.push(Date.now())
+        return []
+      })
+    const decoder = await loadDecoder()
+    const handle = await decoder.startQrScan(
+      videoElement(),
+      vi.fn(),
+      vi.fn(),
+      { once: false },
+    )
+
+    await advance(0)
+    await advance(250)
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+
+    firstDecode.resolve([])
+    await flushMicrotasks()
+    await advance(0)
+
+    expect(zxing.readBarcodes).toHaveBeenCalledTimes(2)
+    expect(decodeStartedAt[1]! - decodeStartedAt[0]!).toBe(250)
     handle.stop()
   })
 
@@ -787,10 +869,14 @@ describe("camera scanner lifecycle", () => {
     expect(zxing.readBarcodes).not.toHaveBeenCalled()
   })
 
-  it("keeps scanning when readBarcodes returns no result", async () => {
+  it("uses only the timer at a 200 ms cadence when requestVideoFrameCallback is absent", async () => {
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
-    zxing.readBarcodes.mockResolvedValue([])
+    const decodeStartedAt: number[] = []
+    zxing.readBarcodes.mockImplementation(async () => {
+      decodeStartedAt.push(Date.now())
+      return []
+    })
     const onError = vi.fn()
     const decoder = await loadDecoder()
     const handle = await decoder.startQrScan(
@@ -801,13 +887,12 @@ describe("camera scanner lifecycle", () => {
     )
 
     await advance(0)
-    await advance(399)
+    await advance(199)
     expect(zxing.readBarcodes).toHaveBeenCalledOnce()
-    await advance(1)
-    await advance(0)
     await advance(1)
 
     expect(zxing.readBarcodes).toHaveBeenCalledTimes(2)
+    expect(decodeStartedAt[1]! - decodeStartedAt[0]!).toBe(200)
     expect(onError).not.toHaveBeenCalled()
     expect(track.stop).not.toHaveBeenCalled()
     handle.stop()

@@ -22,6 +22,7 @@ import type {
   V2ArtifactType,
 } from "@/schemas/domain"
 import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
+import { MAX_ARTIFACT_BYTES_ABSOLUTE } from "@/lib/limits"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -140,7 +141,7 @@ export const fakeBundles: PqPublicBundleRecord[] = [
 export const fakePreferences: Preferences = {
   ...PQ_PREFERENCE_DEFAULTS,
   defaultAlgorithm: "A256GCM",
-  frameBytes: 100,
+  frameBytes: 200,
   qrErrorCorrection: "Q",
   autoClearPlaintextAfterEncrypt: true,
   backgroundClearEnabled: true,
@@ -566,6 +567,9 @@ export const splitIntoFrames = vi.fn(
     frameBytes?: number
     frameCount?: number
   }): Promise<QrFrameV2[]> => {
+    if (artifactBytes.byteLength > MAX_ARTIFACT_BYTES_ABSOLUTE) {
+      throw new FakeAppError("QR_TOO_LARGE")
+    }
     const frameCount =
       requestedFrameCount ??
       Math.max(1, Math.ceil(artifactBytes.byteLength / (frameBytes ?? 1)))
@@ -885,7 +889,7 @@ export function resetFakes(): void {
   Object.assign(fakePreferences, {
     ...PQ_PREFERENCE_DEFAULTS,
     defaultAlgorithm: "A256GCM",
-    frameBytes: 100,
+    frameBytes: 200,
     qrErrorCorrection: "Q",
     autoClearPlaintextAfterEncrypt: true,
     backgroundClearEnabled: true,

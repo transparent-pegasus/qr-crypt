@@ -223,21 +223,25 @@ describe("key management v2", () => {
       fullscreen = await screen.findByRole("dialog", {
         name: new RegExp(`View .*${title.source}.* full screen`),
       })
-      const density = within(fullscreen).getByRole("radiogroup", {
+      const density = within(fullscreen).getByRole("slider", {
         name: "Frame density",
       })
-      expect(within(density).getByRole("radio", { name: "100 B" })).toBeEnabled()
-      expect(within(density).getByRole("radio", { name: "200 B" })).toBeEnabled()
+      expect(density).toHaveAttribute("min", "200")
+      expect(density).toHaveAttribute("max", "1000")
+      expect(density).toHaveAttribute("step", "100")
+      expect(density).toHaveValue(
+        buttonName === "Public-key bundle QR" ? "200" : "300",
+      )
       expect(within(fullscreen).getByLabelText("Display speed")).toBeInTheDocument()
       if (buttonName === "Public-key bundle QR") {
-        await user.click(within(density).getByRole("radio", { name: "200 B" }))
+        fireEvent.change(density, { target: { value: "300" } })
         fireEvent.change(within(fullscreen).getByLabelText("Display speed"), {
-          target: { value: "2500" },
+          target: { value: "500" },
         })
         await waitFor(() => {
-          expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 200 })
+          expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 300 })
           expect(updatePreferences).toHaveBeenCalledWith({
-            frameIntervalMs: 2_500,
+            frameIntervalMs: 500,
           })
         })
         expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
@@ -250,11 +254,11 @@ describe("key management v2", () => {
     expect(
       within(dialog).getAllByRole("button", { name: "View full screen" }),
     ).toHaveLength(1)
-    const density = await within(dialog).findByRole("radiogroup", {
+    const density = await within(dialog).findByRole("slider", {
       name: "Frame density",
     })
-    expect(within(density).getByRole("radio", { name: "200 B" })).toBeChecked()
-    expect(await within(dialog).findByLabelText("Display speed")).toHaveValue("2500")
+    expect(density).toHaveValue("300")
+    expect(await within(dialog).findByLabelText("Display speed")).toHaveValue("500")
   })
 
   it("blocks immediately on OCI2 fingerprint comparison and can save unverified", async () => {
@@ -421,28 +425,37 @@ describe("settings v2", () => {
     const frameInterval = screen.getByLabelText(/Frame interval/)
     const transferTimeout = screen.getByLabelText(/Scan-state lifetime/)
     expect(frameBytes).toHaveRole("combobox")
-    expect(frameBytes).toHaveTextContent("100 B")
+    expect(frameBytes).toHaveTextContent("200 B")
     await user.click(frameBytes)
     const frameByteOptions = screen.getAllByRole("option")
     expect(frameByteOptions.map((option) => option.textContent)).toEqual([
-      "100 B",
       "200 B",
+      "300 B",
+      "400 B",
+      "500 B",
+      "600 B",
+      "700 B",
+      "800 B",
+      "900 B",
+      "1000 B",
     ])
-    expect(frameByteOptions[0]).toBeEnabled()
-    expect(frameByteOptions[1]).toBeEnabled()
-    await user.click(screen.getByRole("option", { name: "200 B" }))
-    expect(frameInterval).toHaveAttribute("min", "1000")
-    expect(frameInterval).toHaveAttribute("max", "3000")
-    expect(frameInterval).toHaveAttribute("step", "500")
+    expect(frameByteOptions).toHaveLength(9)
+    expect(frameByteOptions.every((option) => !option.hasAttribute("data-disabled"))).toBe(
+      true,
+    )
+    await user.click(screen.getByRole("option", { name: "1000 B" }))
+    expect(frameInterval).toHaveAttribute("min", "200")
+    expect(frameInterval).toHaveAttribute("max", "1000")
+    expect(frameInterval).toHaveAttribute("step", "100")
     expect(transferTimeout).toHaveAttribute("min", "3")
     expect(transferTimeout).toHaveAttribute("max", "120")
-    fireEvent.change(frameInterval, { target: { value: "2250" } })
-    expect(updatePreferences).not.toHaveBeenCalledWith({ frameIntervalMs: 2_250 })
-    fireEvent.change(frameInterval, { target: { value: "3000" } })
+    fireEvent.change(frameInterval, { target: { value: "250" } })
+    expect(updatePreferences).not.toHaveBeenCalledWith({ frameIntervalMs: 250 })
+    fireEvent.change(frameInterval, { target: { value: "900" } })
     fireEvent.change(transferTimeout, { target: { value: "120" } })
     await waitFor(() => {
-      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 200 })
-      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 3_000 })
+      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 1_000 })
+      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 900 })
       expect(updatePreferences).toHaveBeenCalledWith({ transferTimeoutMinutes: 120 })
     })
     expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
@@ -473,7 +486,7 @@ describe("settings v2", () => {
 
   it("clears only a stale preference save error after a successful save", async () => {
     const user = userEvent.setup()
-    fakePreferences.frameBytes = 200
+    fakePreferences.frameBytes = 300
     await renderApp("/settings")
     const frameBytes = await screen.findByLabelText(/Raw data per frame/)
     const frameInterval = screen.getByLabelText(/Frame interval/)
@@ -481,12 +494,12 @@ describe("settings v2", () => {
     updatePreferences.mockRejectedValueOnce(new Error("storage failed"))
 
     await user.click(frameBytes)
-    await user.click(screen.getByRole("option", { name: "100 B" }))
+    await user.click(screen.getByRole("option", { name: "200 B" }))
     expect(await screen.findByText(saveError)).toBeInTheDocument()
 
-    fireEvent.change(frameInterval, { target: { value: "3000" } })
+    fireEvent.change(frameInterval, { target: { value: "900" } })
     await waitFor(() =>
-      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 3_000 }),
+      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 900 }),
     )
     await waitFor(() => expect(screen.queryByText(saveError)).not.toBeInTheDocument())
 
@@ -499,9 +512,9 @@ describe("settings v2", () => {
     expect(await screen.findByText(deleteError)).toBeInTheDocument()
 
     await user.click(frameBytes)
-    await user.click(screen.getByRole("option", { name: "100 B" }))
+    await user.click(screen.getByRole("option", { name: "400 B" }))
     await waitFor(() =>
-      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 100 }),
+      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 400 }),
     )
     expect(screen.getByText(deleteError)).toBeInTheDocument()
   })

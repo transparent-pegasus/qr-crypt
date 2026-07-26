@@ -7,11 +7,11 @@
 import type { PqProfileId, Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
-  FRAME_BYTES_MAX,
   isBootReadableFrameBytes,
   isBootReadableFrameIntervalMs,
   isFrameBytes,
   isFrameIntervalMs,
+  normalizeLegacyFrameBytes,
   normalizeLegacyFrameIntervalMs,
   RESET_CHURN_MB_MAX,
   RESET_CHURN_MB_MIN,
@@ -76,6 +76,13 @@ function normalizeLegacyStoredPreferences(
     normalized.defaultPqProfile = "maximum"
   }
   if (
+    typeof normalized.frameBytes === "number" &&
+    isBootReadableFrameBytes(normalized.frameBytes) &&
+    !isFrameBytes(normalized.frameBytes)
+  ) {
+    normalized.frameBytes = normalizeLegacyFrameBytes(normalized.frameBytes)
+  }
+  if (
     isBootReadableFrameIntervalMs(normalized.frameIntervalMs) &&
     !isFrameIntervalMs(normalized.frameIntervalMs)
   ) {
@@ -116,12 +123,6 @@ function validatePreferences(value: unknown): Preferences {
     throw new AppError("STORAGE_FAILED")
   }
   const candidate = value as Partial<Preferences>
-  const frameBytes =
-    typeof candidate.frameBytes === "number" &&
-    candidate.frameBytes > FRAME_BYTES_MAX &&
-    isBootReadableFrameBytes(candidate.frameBytes)
-      ? FRAME_BYTES_MAX
-      : candidate.frameBytes
   const signatureRequired = candidate.requireSignature === true || env.requireSignature
   const defaultAlgorithm =
     signatureRequired && candidate.defaultAlgorithm === "MLKEM1024_A256GCM"
@@ -136,7 +137,7 @@ function validatePreferences(value: unknown): Preferences {
     !EC_LEVELS.includes(candidate.qrErrorCorrection as QrEcLevel) ||
     typeof candidate.autoClearPlaintextAfterEncrypt !== "boolean" ||
     typeof candidate.backgroundClearEnabled !== "boolean" ||
-    !isFrameBytes(frameBytes) ||
+    !isFrameBytes(candidate.frameBytes) ||
     !isFrameIntervalMs(candidate.frameIntervalMs) ||
     !isIntInRange(
       candidate.transferTimeoutMinutes,
@@ -156,7 +157,7 @@ function validatePreferences(value: unknown): Preferences {
     qrErrorCorrection: candidate.qrErrorCorrection as QrEcLevel,
     autoClearPlaintextAfterEncrypt: candidate.autoClearPlaintextAfterEncrypt,
     backgroundClearEnabled: candidate.backgroundClearEnabled,
-    frameBytes,
+    frameBytes: candidate.frameBytes,
     frameIntervalMs: candidate.frameIntervalMs,
     transferTimeoutMinutes: candidate.transferTimeoutMinutes,
     wipeOnOnline: candidate.wipeOnOnline,

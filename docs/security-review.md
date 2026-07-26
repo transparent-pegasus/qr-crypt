@@ -23,8 +23,9 @@ the active policy and is rejected at the operational boundary as
     maximum while preserving `wipeOnOnline=false`.
   - `tests/pq/maximum-artifact-size.golden.test.ts` pins the canonical CBOR raw
     byte counts in the table below, the OCF2 frame counts at the active chunk
-    sizes 100/200B, real EC-Q generation for every displayable frame, and boundary agreement
-    with the env capacity guard.
+    sizes from 200 through 1,000B, real EC-Q generation for every displayable
+    frame, the 1,591-character worst-metadata payload at the 1,000B ceiling,
+    and boundary agreement with the env capacity guard.
   - The ML-KEM-1024 / ML-DSA-87 KATs and `aube test` / `aube typecheck` pass,
     and the `aube bench:pq` maximum reference figures plus the README and
     protocol documents are updated.
@@ -39,40 +40,47 @@ substitute for independent review and do not close the blocker.
 Measured maximum fixture (`maxPlaintext=4,096B`, `name="テスト"` — the literal
 fixture string):
 
-| artifact | canonical CBOR (bytes) | OCF2 frames (100 / 200B) |
+| artifact | canonical CBOR (bytes) | OCF2 frames (200 / 1,000B) |
 |---|---:|---:|
-| unsigned empty / max | 1,887 / 5,986 | 19/10 / 60/30 |
-| signed empty / max | 6,613 / 10,711 | 67/34 / 108/54 |
-| OCI2 bundle | 4,402 | 45/23 |
-| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 18/9 / 28/14 |
-| OCB2 reserved sizing fixture | 4,637 | 47/24 |
+| unsigned empty / max | 1,887 / 5,986 | 10/2 / 30/6 |
+| signed empty / max | 6,613 / 10,711 | 34/7 / 54/11 |
+| OCI2 bundle | 4,402 | 23/5 |
+| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 9/2 / 14/3 |
+| OCB2 reserved sizing fixture | 4,637 | 24/5 |
 
-All displayed OCF2 artifacts use the same active density set `{100, 200}`
-bytes (shipped default 100B). The renderer grid-rounds a per-artifact minimum
-from total bytes and `VITE_QR_MAX_FRAMES`, then uses the greater of that
-minimum and the stored preference without persisting an automatic clamp.
-Thus 100B is the shipped selectable density and works for every measured
-fixture under the 128-frame protocol cap (128×100 = 12,800B > 10,711B), while
-200B remains the denser escape hatch. A minimum above 200B fails closed as
-`QR_TOO_LARGE`. The density control is a two-option toggle; active writes
-reject off-grid integers such as 250B. The boot read path stays append-only
-and still accepts every previously storable integer from 100 through 900 so
-stored preferences never become unreadable and force `wipeOnOnline` true.
-Receiver ceilings follow `MAX_ARTIFACT_BYTES_ABSOLUTE` = 128 × 200 = 25,600B
-and a per-chunk wire maximum of 200B.
+All displayed OCF2 artifacts use the same active density grid: every 100B
+value from 200 through 1,000B (shipped default 200B). The table shows the two
+endpoints; golden coverage exercises every active density. The renderer
+grid-rounds a theoretical per-artifact minimum from total bytes and
+`VITE_QR_MAX_FRAMES`, clamps that selectable floor to at least the active
+200B minimum, then uses the greater of that floor and the stored preference
+without persisting an automatic clamp. Every measured fixture fits below the
+128-frame cap at 200B; a required minimum above 1,000B fails closed as
+`QR_TOO_LARGE`. Active writes reject off-grid integers such as 250B.
 
-A full 128-frame cycle takes 128 seconds at the 1,000ms interval and 384
-seconds at the 3,000ms interval. The assembly timeout default remains 10
-minutes; `TRANSFER_TIMEOUT_MINUTES_MIN` is 3 minutes so the legal floor covers
-one full worst-case-count cycle at the fastest interval.
+The receiver allocation ceiling is the independently pinned
+`MAX_ARTIFACT_BYTES_ABSOLUTE = 25,600B`, not
+`PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES`; increasing the chunk ceiling
+therefore cannot increase receiver allocation. The separate per-frame chunk
+maximum is 1,000B. With worst-case metadata across every artifact type, a
+1,000B chunk produces a 1,591-character OCF2 payload against the 1,663-character
+EC-Q version 40 capacity.
 
-The current multipart transition interval is exactly
-1,000/1,500/2,000/2,500/3,000ms, defaulting to 2,000ms. New preferences and
-environment values off that grid are rejected. Boot reads the exact union of
-legacy safe integers 150–2,000ms and the current grid, then the preferences
-repository normalizes only persisted legacy values to the nearest
-current-grid value (midpoints round up) before merging a current patch. This keeps readable legacy rows (including `wipeOnOnline=false`) from
-being misclassified while still rejecting stored/new 2,250ms.
+A full 128-frame cycle takes 25.6 seconds at the fastest selectable 200ms
+interval and 128 seconds at the slowest selectable 1,000ms interval. The
+assembly timeout default remains 10 minutes;
+`TRANSFER_TIMEOUT_MINUTES_MIN` is 3 minutes, so the legal floor covers one
+full worst-case-count cycle at the slowest interval.
+
+The current multipart transition interval is every 100ms grid value from 200
+through 1,000ms, defaulting to 1,000ms. New preferences and environment
+values off that grid are rejected. Boot readability remains append-only:
+density accepts every safe integer from 100 through 1,000B and interval
+accepts every safe integer from 150 through 3,000ms. On preference load,
+readable values that are not active are clamped to the corresponding active
+200–1,000 range and rounded to the nearest 100-unit grid value, with midpoint
+ties upward. This keeps legacy rows (including `wipeOnOnline=false`) readable;
+it does not relax the active write contract.
 
 ## 1. Facts About the Adopted Libraries (as of 2026-07-25)
 

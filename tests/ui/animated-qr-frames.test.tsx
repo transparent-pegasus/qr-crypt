@@ -16,6 +16,7 @@ import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
   qrPngBlob,
+  renderQrDataUrl,
   sanitizeQrFileName,
   splitIntoFrames,
   triggerDownload,
@@ -78,14 +79,14 @@ describe("AnimatedQrFrames", () => {
       ),
     ).toBeInTheDocument()
     const speed = screen.getByLabelText("Display speed")
-    expect(speed).toHaveAttribute("min", "1000")
-    expect(speed).toHaveAttribute("max", "3000")
-    expect(speed).toHaveAttribute("step", "500")
-    fireEvent.change(speed, { target: { value: "2500" } })
-    expect(speed).toHaveValue("2500")
+    expect(speed).toHaveAttribute("min", "200")
+    expect(speed).toHaveAttribute("max", "1000")
+    expect(speed).toHaveAttribute("step", "100")
+    fireEvent.change(speed, { target: { value: "500" } })
+    expect(speed).toHaveValue("500")
   })
 
-  it("moves one control set into fullscreen and keeps the same unpaused timer alive", async () => {
+  it("clamps a small artifact's retired 100 B floor to the active 200 B range", async () => {
     vi.useFakeTimers()
     const onFrameBytesChange = vi.fn()
     const onFrameIntervalMsChange = vi.fn()
@@ -93,7 +94,7 @@ describe("AnimatedQrFrames", () => {
       <AnimatedQrFrames
         frames={[frame(0, 2), frame(1, 2)]}
         frameIntervalMs={1_000}
-        frameBytes={100}
+        frameBytes={200}
         onFrameBytesChange={onFrameBytesChange}
         onFrameIntervalMsChange={onFrameIntervalMsChange}
         outputName="test"
@@ -110,18 +111,16 @@ describe("AnimatedQrFrames", () => {
     })
     expect(within(dialog).getByText("1 / 2")).toBeInTheDocument()
     expect(screen.getAllByLabelText("Display speed")).toHaveLength(1)
-    expect(screen.getAllByRole("radiogroup", { name: "Frame density" })).toHaveLength(1)
+    expect(screen.getAllByRole("slider", { name: "Frame density" })).toHaveLength(1)
     expect(within(dialog).getByLabelText("Display speed").id).toMatch(/-fullscreen$/)
-    const density = within(dialog).getByRole("radiogroup", {
+    const density = within(dialog).getByRole("slider", {
       name: "Frame density",
     })
     expect(density.id).toMatch(/-fullscreen$/)
-    const density100 = within(density).getByRole("radio", { name: "100 B" })
-    const density200 = within(density).getByRole("radio", { name: "200 B" })
-    expect(density100).toBeEnabled()
-    expect(density100).toBeChecked()
-    expect(density200).toBeEnabled()
-    expect(density200).not.toBeChecked()
+    expect(density).toHaveAttribute("min", "200")
+    expect(density).toHaveAttribute("max", "1000")
+    expect(density).toHaveAttribute("step", "100")
+    expect(density).toHaveValue("200")
     const ids = Array.from(dialog.querySelectorAll("input[id]")).map((input) => input.id)
     expect(new Set(ids).size).toBe(ids.length)
     for (const id of ids) {
@@ -133,11 +132,11 @@ describe("AnimatedQrFrames", () => {
     expect(dialog).toBeInTheDocument()
 
     fireEvent.change(within(dialog).getByLabelText("Display speed"), {
-      target: { value: "1500" },
+      target: { value: "500" },
     })
-    expect(onFrameIntervalMsChange).toHaveBeenCalledWith(1_500)
-    fireEvent.click(density200)
-    expect(onFrameBytesChange).toHaveBeenCalledWith(200)
+    expect(onFrameIntervalMsChange).toHaveBeenCalledWith(500)
+    fireEvent.change(density, { target: { value: "300" } })
+    expect(onFrameBytesChange).toHaveBeenCalledWith(300)
 
     const fullscreenClose = within(dialog).getAllByRole("button", { name: "Close" })
     expect(fullscreenClose).toHaveLength(1)
@@ -150,25 +149,25 @@ describe("AnimatedQrFrames", () => {
       screen
         .getAllByLabelText("Display speed")
         .find((input) => input.id.endsWith("-inline")),
-    ).toHaveValue("1500")
+    ).toHaveValue("500")
     expect(
       screen
-        .getAllByRole("radiogroup", { name: "Frame density" })
+        .getAllByRole("slider", { name: "Frame density" })
         .some((input) => input.id.endsWith("-inline")),
     ).toBe(true)
   })
 
-  it("disables 100 B when the artifact exceeds a configured 64-frame floor", async () => {
+  it("raises the density range floor above 200 B for a large artifact", async () => {
     env.qrMaxFrames = 64
     const onFrameBytesChange = vi.fn()
     render(
       <AnimatedQrFrames
         frames={[
-          frame(0, 34, { totalByteLength: 6_613 }),
-          frame(1, 34, { totalByteLength: 6_613 }),
+          frame(0, 43, { totalByteLength: 12_801 }),
+          frame(1, 43, { totalByteLength: 12_801 }),
         ]}
-        frameIntervalMs={2_000}
-        frameBytes={200}
+        frameIntervalMs={1_000}
+        frameBytes={300}
         onFrameBytesChange={onFrameBytesChange}
         outputName="signed"
       />,
@@ -177,22 +176,72 @@ describe("AnimatedQrFrames", () => {
       expect(screen.getByRole("button", { name: "View full screen" })).toBeEnabled(),
     )
     fireEvent.click(screen.getByRole("button", { name: "View full screen" }))
-    const density = screen.getByRole("radiogroup", { name: "Frame density" })
-    const density100 = within(density).getByRole("radio", { name: "100 B" })
-    const density200 = within(density).getByRole("radio", { name: "200 B" })
-    expect(density100).toBeDisabled()
-    expect(density100).not.toBeChecked()
-    expect(density200).toBeEnabled()
-    expect(density200).toBeChecked()
-    fireEvent.click(density100)
+    const density = screen.getByRole("slider", { name: "Frame density" })
+    expect(density).toHaveAttribute("min", "300")
+    expect(density).toHaveAttribute("max", "1000")
+    expect(density).toHaveAttribute("step", "100")
+    expect(density).toHaveValue("300")
+    fireEvent.change(density, { target: { value: "200" } })
     expect(onFrameBytesChange).not.toHaveBeenCalled()
+    fireEvent.change(density, { target: { value: "400" } })
+    expect(onFrameBytesChange).toHaveBeenCalledWith(400)
+  })
+
+  it("keeps the prior QR visible past a 200 ms render deadline and clears it on error", async () => {
+    vi.useFakeTimers()
+    const delayedRender = deferred<string>()
+    const firstDataUrl = "data:image/png;base64,Zmlyc3Q="
+    renderQrDataUrl
+      .mockResolvedValueOnce(firstDataUrl)
+      .mockImplementationOnce(() => delayedRender.promise)
+    render(
+      <AnimatedQrFrames
+        frames={[frame(0, 2), frame(1, 2)]}
+        frameIntervalMs={200}
+        outputName="slow-render"
+      />,
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(renderQrDataUrl).toHaveBeenCalledOnce()
+    expect(screen.getByRole("img")).toHaveAttribute("src", firstDataUrl)
+
+    await act(async () => {
+      vi.advanceTimersByTime(200)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(renderQrDataUrl).toHaveBeenCalledTimes(2)
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }))
+
+    await act(async () => {
+      vi.advanceTimersByTime(201)
+      await Promise.resolve()
+    })
+    expect(screen.getByRole("img")).toHaveAttribute("src", firstDataUrl)
+    expect(screen.queryByText("Generating the QR code…")).toBeNull()
+
+    await act(async () => {
+      delayedRender.reject(new AppError("QR_TOO_LARGE"))
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.queryByRole("img")).toBeNull()
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The QR code could not be generated",
+    )
   })
 
   it("resets to frame one when a same-length transfer generation replaces the frames", async () => {
     const { rerender } = render(
       <AnimatedQrFrames
         frames={[frame(0, 2), frame(1, 2)]}
-        frameIntervalMs={2_000}
+        frameIntervalMs={1_000}
         outputName="test"
       />,
     )
@@ -202,7 +251,7 @@ describe("AnimatedQrFrames", () => {
     rerender(
       <AnimatedQrFrames
         frames={[frame(0, 2, { transfer: 1 }), frame(1, 2, { transfer: 1 })]}
-        frameIntervalMs={2_000}
+        frameIntervalMs={1_000}
         outputName="test"
       />,
     )
@@ -213,7 +262,7 @@ describe("AnimatedQrFrames", () => {
     render(
       <AnimatedQrFrames
         frames={[frame(0, 2), frame(1, 2)]}
-        frameIntervalMs={2_000}
+        frameIntervalMs={1_000}
         outputName="test"
       />,
     )
@@ -233,7 +282,7 @@ describe("AnimatedQrFrames", () => {
     const onFullscreenOpenChange = vi.fn()
     const props = {
       frames: [frame(0, 2), frame(1, 2)],
-      frameIntervalMs: 2_000,
+      frameIntervalMs: 1_000,
       outputName: "controlled",
       onFullscreenOpenChange,
     } as const
@@ -275,7 +324,7 @@ describe("AnimatedQrFrames", () => {
     render(
       <AnimatedQrFrames
         frames={[frame(0, 2), frame(1, 2)]}
-        frameIntervalMs={2_000}
+        frameIntervalMs={1_000}
         outputName="test"
         exportsEnabled={false}
       />,
@@ -312,7 +361,7 @@ describe("useFrameSplit", () => {
           enabled: true,
           generation: 1,
         }),
-      { initialProps: { frameBytes: 100 } },
+      { initialProps: { frameBytes: 200 } },
     )
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(1))
     const firstFrames = [frame(0, 1, { transfer: 1 })]
@@ -322,12 +371,12 @@ describe("useFrameSplit", () => {
     })
     await waitFor(() => expect(result.current.frames).toBe(firstFrames))
 
-    rerender({ frameBytes: 200 })
+    rerender({ frameBytes: 300 })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(2))
     expect(result.current.frames).toBe(firstFrames)
     expect(result.current.splitting).toBe(true)
 
-    rerender({ frameBytes: 100 })
+    rerender({ frameBytes: 200 })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(3))
     const newestFrames = [frame(0, 1, { transfer: 3 })]
     await act(async () => {
@@ -386,7 +435,7 @@ describe("useFrameSplit", () => {
           bytes: firstBytes,
           enabled: true,
           generation: 1,
-          frameBytes: 100,
+          frameBytes: 200,
         },
       },
     )
@@ -396,7 +445,7 @@ describe("useFrameSplit", () => {
       bytes: firstBytes,
       enabled: false,
       generation: 1,
-      frameBytes: 100,
+      frameBytes: 200,
     })
     closing.resolve([frame(0, 1, { transfer: 1 })])
     await act(async () => Promise.resolve())
@@ -407,7 +456,7 @@ describe("useFrameSplit", () => {
       bytes: firstBytes,
       enabled: true,
       generation: 2,
-      frameBytes: 100,
+      frameBytes: 200,
     })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(2))
     const reopenedFrames = [frame(0, 1, { transfer: 2 })]
@@ -418,14 +467,14 @@ describe("useFrameSplit", () => {
       bytes: firstBytes,
       enabled: true,
       generation: 2,
-      frameBytes: 200,
+      frameBytes: 300,
     })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(3))
     rerender({
       bytes: firstBytes,
       enabled: false,
       generation: 3,
-      frameBytes: 200,
+      frameBytes: 300,
     })
     backing.reject(new AppError("QR_TOO_LARGE"))
     await act(async () => Promise.resolve())
@@ -436,14 +485,14 @@ describe("useFrameSplit", () => {
       bytes: secondBytes,
       enabled: true,
       generation: 4,
-      frameBytes: 100,
+      frameBytes: 200,
     })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(4))
     rerender({
       bytes: thirdBytes,
       enabled: true,
       generation: 5,
-      frameBytes: 100,
+      frameBytes: 200,
     })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(5))
     oldSelection.reject(new AppError("QR_TOO_LARGE"))
@@ -458,7 +507,7 @@ describe("useFrameSplit", () => {
       bytes: thirdBytes,
       enabled: true,
       generation: 5,
-      frameBytes: 200,
+      frameBytes: 300,
     })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(6))
     unmount()

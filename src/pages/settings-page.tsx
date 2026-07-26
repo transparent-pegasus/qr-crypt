@@ -60,6 +60,8 @@ import {
 import type { Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
   FRAME_BYTES_VALUES,
   FRAME_INTERVAL_MS_MAX,
   FRAME_INTERVAL_MS_MIN,
@@ -316,7 +318,10 @@ export function SettingsPage() {
           />
         </div>
         <SettingField
-          label={t("settings.field.frameBytes")}
+          label={t("settings.field.frameBytes", {
+            min: FRAME_BYTES_MIN,
+            max: FRAME_BYTES_MAX,
+          })}
           htmlFor="frame-bytes"
         >
           <Select

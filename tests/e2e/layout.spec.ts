@@ -145,7 +145,7 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
     const image = fullscreen.getByRole("img", { name: /Full-screen .* image/ })
     const controls = fullscreen.locator("[data-fullscreen-controls]")
     const speedDensityRow = controls.locator("[data-speed-density-controls]")
-    const density = speedDensityRow.getByRole("radiogroup", {
+    const density = speedDensityRow.getByRole("slider", {
       name: "Frame density",
       exact: true,
     })
