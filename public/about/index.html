@@ -249,10 +249,10 @@
           <p class="prose" data-i18n="flow.lede">
             Through all six steps the readable message never leaves the offline device.
             What crosses the seam is ciphertext plus the framing information needed to
-            carry it. The key exchange is what differs by method: AES-256 needs its shared
-            key read in one direction only, while a post-quantum identity needs each side
-            to read the other's public key whenever the message is signed or the
-            conversation runs both ways. What follows is the ML-KEM-1024 route.
+            carry it. The key exchange is what differs by method: a symmetric key needs to be
+            read in one direction only, while a post-quantum identity needs each side to
+            read the other's public key whenever the message is signed or the conversation
+            runs both ways. What follows is the post-quantum identity route.
           </p>
 
           <div class="flow">
