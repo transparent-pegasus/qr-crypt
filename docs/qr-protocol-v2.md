@@ -49,6 +49,15 @@ libraries).
   order, and a single value, and additionally checks re-encoded byte
   equality (non-canonical input always yields `INVALID_QR_PAYLOAD`)
 - Nesting depth limit: 8
+- Decoder input is limited to 1–128,000 bytes. Structural allocation has
+  separate limits because a byte limit alone does not bound entry count or
+  retained heap: at most 9 entries in one map, 13 map entries across the
+  decoded value, 19 UTF-8 bytes per map key, and 300 UTF-8 bytes per text
+  value. Length/count headers are rejected before their loops or strings are
+  materialized
+- Decoded maps have null prototypes. Encoded attacker-supplied keys are not
+  retained in a process-lifetime cache; canonical re-encoding computes them
+  for the current operation only
 
 ## 3. Envelope (OCM2)
 
@@ -159,6 +168,11 @@ verification → `SIGNATURE_INVALID`.
 - ML-DSA context = fixed `UTF8("QR-CRYPT-MESSAGE-V2")` (≤255B)
 - `messageId` = fixed-length CSPRNG 16B. **It is not a replay-prevention
   mechanism**. `createdAt` is the device-reported time (not trusted time)
+- The unsigned and signed post-quantum paths accept at most 120,000 UTF-8
+  plaintext bytes. This is not a shared application limit: the v1 A256GCM
+  path remains one OCM1 QR and derives its smaller pre-encryption ceiling from
+  the v1 8,192-character payload ceiling and the selected QR error-correction
+  capacity
 
 ## 6. Multi-frame QR (OCF2)
 
@@ -170,7 +184,7 @@ QrFrameV2 = {
   artifactType: V2ArtifactType
   frameIndex: uint            // 0-based (0..frameCount-1)
   frameCount: uint            // 1..128
-  totalByteLength: uint       // total raw artifact bytes (1..25,600; absolute bound)
+  totalByteLength: uint       // total raw artifact bytes (1..128,000; absolute bound)
   payloadSha256: bytes(32)    // SHA-256 over the raw artifact bytes (transfer integrity)
   chunk: bytes(1..1,000)      // slice of the raw artifact CBOR bytes
 }
@@ -183,40 +197,42 @@ QrFrameV2 = {
   **fixed at Q**. A single frame string, prefix included, is **≤1663
   characters** (QR v40-Q). After generation, check `payloadFits(…, "Q")`;
   if it does not fit, `QR_TOO_LARGE`. At the 1,000B chunk ceiling, the
-  worst-case metadata across every artifact type produces a 1,591-character
+  worst-case metadata across every artifact type produces a 1,593-character
   OCF2 payload, below the 1,663-character EC-Q version 40 capacity
 - A sender selects exactly one split mode: fixed `frameBytes`, or an explicit
   balanced `frameCount`. Count mode rejects non-integers, counts above
   `VITE_QR_MAX_FRAMES` or the artifact byte length, and any result whose
   largest chunk exceeds 1,000B. Every chunk is non-empty and largest/smallest
   lengths differ by at most one byte
-- Receiver allocation is bounded by the independent constant
-  `MAX_ARTIFACT_BYTES_ABSOLUTE = 25,600`, not by
-  `PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES` (which is 128,000 at the
-  current chunk ceiling). Widening a chunk therefore cannot widen the
-  receiver allocation bound. The receiver separately enforces frame count
-  ≤128, chunk length ≤1,000B, and the structural consistency condition
-  `totalByteLength ≤ frameCount × 1,000`
-- Defaults: chunk 200B / 1,000ms interval / max 128 frames. Active OCF2
-  chunk density for messages, identity bundles, and individual public keys is
-  every 100B grid value from 200 through 1,000B (shipped default 200B).
-  The density control is a range input on that grid. The selectable interval
-  is every 100ms grid value from 200 through 1,000ms (shipped default
-  1,000ms). Env parsing and preference full/patch validation require exact
-  active-grid membership; off-grid writes are rejected
-- Before the first split of each artifact, the renderer computes
+- Receiver and bare-paste allocation are intentionally bounded by
+  `MAX_ARTIFACT_BYTES_ABSOLUTE =
+  PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES = 128 × 1,000 = 128,000`
+  bytes. The receiver also enforces frame count ≤128, chunk length ≤1,000B,
+  and `totalByteLength ≤ frameCount × 1,000`. A bare `OC?2` paste is capped
+  at 170,672 characters (the five-character prefix plus the base64url
+  ceiling), and its decoded bytes are checked again against 128,000
+- Users do not select frame density or display speed. For generated OCF2
+  artifacts, the application chooses 1,000B chunks with a 200ms minimum dwell
+  when the WebAssembly reader module is usable, or a best-effort 100B /
+  2,000ms fallback when it is not. The density is raised automatically when
+  the preferred chunk size cannot fit the artifact within
+  `VITE_QR_MAX_FRAMES`; the dwell remains the one selected by the profile
+- Before each split, the renderer computes
   `gridMin = 100 × ceil(ceil(totalByteLength / VITE_QR_MAX_FRAMES) / 100)`.
-  Because this per-artifact calculation can return the retired 100B value for
-  a small artifact, the selectable floor is
-  `effectiveMin = max(200, gridMin)`. The renderer uses
-  `max(storedFrameBytes, effectiveMin)` without persisting an automatic clamp,
-  and the density input has the same floor. An artifact above the independent
-  25,600B ceiling is rejected before splitting; if `effectiveMin > 1,000`,
-  generation fails as `QR_TOO_LARGE`
-- A density change re-splits the raw artifact and therefore mints a new
-  `transferId`. Receivers that collected any frames from the previous
-  generation must discard them and restart; mixing generations is terminal
-  `FRAME_MISMATCH`
+  It uses `max(profileFrameBytes, gridMin)`. The active internal density grid
+  is every 100B value from 100 through 1,000B. An artifact above 128,000B is
+  rejected before splitting; if `gridMin > 1,000`, generation fails as
+  `QR_TOO_LARGE`. A reader-capability transition or automatic density lift
+  re-splits the artifact and mints a new `transferId`; mixing generations is
+  terminal `FRAME_MISMATCH`
+- The automatic cursor advances only after `QrDisplay` has committed the
+  exact rendered payload, then starts a one-shot timeout for that profile's
+  dwell. The configured 200ms or 2,000ms is therefore a **minimum visible
+  dwell**, not a measured cadence. A real cycle is the sum of every frame's
+  render latency and dwell and must be measured separately
+- Export has one Download control. Exactly one complete frame produces one
+  PNG; multiple complete frames produce one store-only ZIP containing PNGs.
+  SVG export is not offered
 - Assembly invariants: the first frame freezes the immutable metadata
   (transferId/artifactType/frameCount/totalByteLength/payloadSha256).
   A repeated index is ignored only on an exact match; even a 1-byte
@@ -226,19 +242,24 @@ QrFrameV2 = {
   cryptographic processing starts while assembly is incomplete
 - `payloadSha256` is transfer integrity, **not sender authenticity**
   (mind the UI wording)
-- Scan state is released on timeout (default 10 minutes; configurable floor
-  3 minutes so one full 128-frame cycle at the slowest selectable 1,000ms
-  interval fits),
-  explicit discard, completion, or error
+- Scan state is released on explicit discard, completion, error, or timeout.
+  The timeout defaults to 10 minutes with a configurable floor of 5 minutes.
+  A 127-frame maximum signed message has 254 seconds of configured dwell at
+  the 2,000ms fallback; the derived floor conservatively budgets all 128
+  protocol frames (256 seconds) before rounding up to whole minutes. Render
+  latency makes the real cycle longer than those dwell-only figures and is
+  measured separately
 
 For boot compatibility, the append-only read ranges accept every safe integer
 from 100 through 1,000B for density and from 150 through 3,000ms for interval.
 This retains every historical density integer from 100 through 900 and every
 historical interval integer from 150 through 2,000 together with 2,500 and
-3,000. When preferences load, a readable value that is no longer on its active
-grid is normalized instead of rejected: clamp it to the active 200–1,000
-range, then round to the nearest 100-unit grid value with midpoint ties
-upward. Active values are unchanged. Off-grid patch/env values are rejected
+3,000. The internal density set is 100, 200, …, 1,000B; the internal interval
+set is 200, 300, …, 1,000ms plus 2,000ms. When preferences load, a readable
+value outside those sets is normalized to the nearest admitted value, with
+midpoint ties upward. The stored fields remain readable for boot safety, but
+generated-artifact producers neither expose them as controls nor write them
+when choosing an automatic profile. Off-grid patch/env values are rejected
 without normalization. Wire/state `frameIndex` and `missingIndexes` remain
 zero-based; user-facing frame positions are displayed one-based.
 
@@ -345,7 +366,7 @@ contract; they do not imply availability under the active policy.
 | Signature verification failure (body withheld) | `SIGNATURE_INVALID` |
 | Sender signing key not imported (import flow offered) | `SIGNING_KEY_NOT_FOUND` |
 | Frame from another transferId mixed in / frame inconsistency | `FRAME_MISMATCH` |
-| Generation capacity exceeded (artifact >25,600B, frameCount>128, balanced chunk >1,000B, or OCF2 payload >1,663 characters) | `QR_TOO_LARGE` |
+| Generation capacity exceeded (artifact >128,000B, frameCount>128, balanced chunk >1,000B, or OCF2 payload >1,663 characters) | `QR_TOO_LARGE` |
 | OCB2 (reserved) / balanced/768-family operation / legacy RSA format (OCM1-RSA) | `UNSUPPORTED_ALGORITHM` (deprecation wording) |
 | Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
 | Partial failure of local reset | `RESET_FAILED` |

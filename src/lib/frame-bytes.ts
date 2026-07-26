@@ -1,8 +1,11 @@
 // OCF2 frame-density contract. env-schema.ts and limits.ts depend on each other,
 // so this dependency-free module owns the contract and lets both reference it
 // without creating a cycle.
+// 100 is generatable but never chosen by a user: it is the display density used when the
+// wasm reader is unusable. splitIntoFrames validates against this set, so removing it
+// would make that fallback impossible to render.
 export const FRAME_BYTES_VALUES = [
-  200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+  100, 200, 300, 400, 500, 600, 700, 800, 900, 1_000,
 ] as const
 export type FrameBytes = (typeof FRAME_BYTES_VALUES)[number]
 

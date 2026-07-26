@@ -1,7 +1,7 @@
 import "./helpers/module-mocks"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type {
   DsaPublicKeyEnvelopeV2,
   KemPublicKeyEnvelopeV2,
@@ -24,12 +24,22 @@ import {
   fakeIdentities,
   fakeKeys,
   fakePreferences,
+  isQrReaderModuleUsable,
+  prepareQrReaderModule,
   renderQrDataUrl,
   saveBundle,
   startQrScan,
+  subscribeQrReaderModuleState,
   updatePreferences,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
+
+vi.doMock("@/qr/decode", () => ({
+  isQrReaderModuleUsable,
+  prepareQrReaderModule,
+  startQrScan,
+  subscribeQrReaderModuleState,
+}))
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -223,29 +233,7 @@ describe("key management v2", () => {
       fullscreen = await screen.findByRole("dialog", {
         name: new RegExp(`View .*${title.source}.* full screen`),
       })
-      const density = within(fullscreen).getByRole("slider", {
-        name: "Frame density",
-      })
-      expect(density).toHaveAttribute("min", "200")
-      expect(density).toHaveAttribute("max", "1000")
-      expect(density).toHaveAttribute("step", "100")
-      expect(density).toHaveValue(
-        buttonName === "Public-key bundle QR" ? "200" : "300",
-      )
-      expect(within(fullscreen).getByLabelText("Display speed")).toBeInTheDocument()
-      if (buttonName === "Public-key bundle QR") {
-        fireEvent.change(density, { target: { value: "300" } })
-        fireEvent.change(within(fullscreen).getByLabelText("Display speed"), {
-          target: { value: "500" },
-        })
-        await waitFor(() => {
-          expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 300 })
-          expect(updatePreferences).toHaveBeenCalledWith({
-            frameIntervalMs: 500,
-          })
-        })
-        expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
-      }
+      expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
       await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
       await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
     }
@@ -254,11 +242,11 @@ describe("key management v2", () => {
     expect(
       within(dialog).getAllByRole("button", { name: "View full screen" }),
     ).toHaveLength(1)
-    const density = await within(dialog).findByRole("slider", {
-      name: "Frame density",
-    })
-    expect(density).toHaveValue("300")
-    expect(await within(dialog).findByLabelText("Display speed")).toHaveValue("500")
+    expect(
+      await within(dialog).findByRole("region", {
+        name: /public-key bundle frame display/,
+      }),
+    ).toBeInTheDocument()
   })
 
   it("blocks immediately on OCI2 fingerprint comparison and can save unverified", async () => {
@@ -418,46 +406,18 @@ describe("settings v2", () => {
     resetUi()
   })
 
-  it("persists selectable and numeric boundaries and shows wipe/reset warnings", async () => {
+  it("persists remaining numeric boundaries and shows wipe/reset warnings", async () => {
     const user = userEvent.setup()
     await renderApp("/settings")
-    const frameBytes = await screen.findByLabelText(/Raw data per frame/)
-    const frameInterval = screen.getByLabelText(/Frame interval/)
-    const transferTimeout = screen.getByLabelText(/Scan-state lifetime/)
-    expect(frameBytes).toHaveRole("combobox")
-    expect(frameBytes).toHaveTextContent("200 B")
-    await user.click(frameBytes)
-    const frameByteOptions = screen.getAllByRole("option")
-    expect(frameByteOptions.map((option) => option.textContent)).toEqual([
-      "200 B",
-      "300 B",
-      "400 B",
-      "500 B",
-      "600 B",
-      "700 B",
-      "800 B",
-      "900 B",
-      "1000 B",
-    ])
-    expect(frameByteOptions).toHaveLength(9)
-    expect(frameByteOptions.every((option) => !option.hasAttribute("data-disabled"))).toBe(
-      true,
-    )
-    await user.click(screen.getByRole("option", { name: "1000 B" }))
-    expect(frameInterval).toHaveAttribute("min", "200")
-    expect(frameInterval).toHaveAttribute("max", "1000")
-    expect(frameInterval).toHaveAttribute("step", "100")
-    expect(transferTimeout).toHaveAttribute("min", "3")
+    const transferTimeout = await screen.findByLabelText(/Scan-state lifetime/)
+    expect(transferTimeout).toHaveAttribute("min", "5")
     expect(transferTimeout).toHaveAttribute("max", "120")
-    fireEvent.change(frameInterval, { target: { value: "250" } })
-    expect(updatePreferences).not.toHaveBeenCalledWith({ frameIntervalMs: 250 })
-    fireEvent.change(frameInterval, { target: { value: "900" } })
+    fireEvent.change(transferTimeout, { target: { value: "4" } })
+    expect(updatePreferences).not.toHaveBeenCalledWith({ transferTimeoutMinutes: 4 })
     fireEvent.change(transferTimeout, { target: { value: "120" } })
-    await waitFor(() => {
-      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 1_000 })
-      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 900 })
-      expect(updatePreferences).toHaveBeenCalledWith({ transferTimeoutMinutes: 120 })
-    })
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({ transferTimeoutMinutes: 120 }),
+    )
     expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
 
     const wipe = screen.getByRole("switch", {
@@ -486,20 +446,17 @@ describe("settings v2", () => {
 
   it("clears only a stale preference save error after a successful save", async () => {
     const user = userEvent.setup()
-    fakePreferences.frameBytes = 300
     await renderApp("/settings")
-    const frameBytes = await screen.findByLabelText(/Raw data per frame/)
-    const frameInterval = screen.getByLabelText(/Frame interval/)
+    const transferTimeout = await screen.findByLabelText(/Scan-state lifetime/)
     const saveError = "Settings could not be saved. Check the device storage."
     updatePreferences.mockRejectedValueOnce(new Error("storage failed"))
 
-    await user.click(frameBytes)
-    await user.click(screen.getByRole("option", { name: "200 B" }))
+    fireEvent.change(transferTimeout, { target: { value: "20" } })
     expect(await screen.findByText(saveError)).toBeInTheDocument()
 
-    fireEvent.change(frameInterval, { target: { value: "900" } })
+    fireEvent.change(transferTimeout, { target: { value: "30" } })
     await waitFor(() =>
-      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 900 }),
+      expect(updatePreferences).toHaveBeenCalledWith({ transferTimeoutMinutes: 30 }),
     )
     await waitFor(() => expect(screen.queryByText(saveError)).not.toBeInTheDocument())
 
@@ -511,10 +468,9 @@ describe("settings v2", () => {
     const deleteError = "Data could not be deleted. Check the device storage."
     expect(await screen.findByText(deleteError)).toBeInTheDocument()
 
-    await user.click(frameBytes)
-    await user.click(screen.getByRole("option", { name: "400 B" }))
+    fireEvent.change(transferTimeout, { target: { value: "40" } })
     await waitFor(() =>
-      expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 400 }),
+      expect(updatePreferences).toHaveBeenCalledWith({ transferTimeoutMinutes: 40 }),
     )
     expect(screen.getByText(deleteError)).toBeInTheDocument()
   })

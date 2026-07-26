@@ -101,8 +101,8 @@ describe("i18n catalog", () => {
       ),
     ).toBe("count=3; key=key-7; expires=12:30; file=ciphertext.png")
     expect(
-      translate("ja", "settings.field.frameInterval", { min: 1000, max: 3000 }),
-    ).toBe("フレーム切替間隔 1000〜3000 ms")
+      translate("ja", "settings.field.transferTimeout", { min: 5, max: 120 }),
+    ).toBe("読取状態の期限 5〜120 分")
     expect(interpolateMessage("unknown={missing}")).toBe("unknown={missing}")
   })
 

@@ -15,6 +15,7 @@ import { useFrameSplit } from "@/hooks/use-frame-split"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
+  encodeFrameToPayload,
   qrPngBlob,
   renderQrDataUrl,
   sanitizeQrFileName,
@@ -64,7 +65,7 @@ describe("AnimatedQrFrames", () => {
     resetUi()
   })
 
-  it("shows one-based English missing-frame positions and the current speed grid", () => {
+  it("shows one-based English missing-frame positions", () => {
     render(
       <AnimatedQrFrames
         frames={[frame(0, 3), frame(2, 3)]}
@@ -78,163 +79,134 @@ describe("AnimatedQrFrames", () => {
         "Missing frames: frame 2. Recovery is not possible while frames are missing.",
       ),
     ).toBeInTheDocument()
-    const speed = screen.getByLabelText("Display speed")
-    expect(speed).toHaveAttribute("min", "200")
-    expect(speed).toHaveAttribute("max", "1000")
-    expect(speed).toHaveAttribute("step", "100")
-    fireEvent.change(speed, { target: { value: "500" } })
-    expect(speed).toHaveValue("500")
   })
 
-  it("clamps a small artifact's retired 100 B floor to the active 200 B range", async () => {
-    vi.useFakeTimers()
-    const onFrameBytesChange = vi.fn()
-    const onFrameIntervalMsChange = vi.fn()
-    render(
+  it("shows the density-clamp notice only when the automatic profile raises it", () => {
+    const { rerender } = render(
       <AnimatedQrFrames
         frames={[frame(0, 2), frame(1, 2)]}
-        frameIntervalMs={1_000}
-        frameBytes={200}
-        onFrameBytesChange={onFrameBytesChange}
-        onFrameIntervalMsChange={onFrameIntervalMsChange}
+        frameIntervalMs={2_000}
         outputName="test"
       />,
     )
-    await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-    })
 
-    fireEvent.click(screen.getByRole("button", { name: "View full screen" }))
-    const dialog = screen.getByRole("dialog", {
-      name: /View Multi-frame QR 1 \/ 2 full screen/,
-    })
-    expect(within(dialog).getByText("1 / 2")).toBeInTheDocument()
-    expect(screen.getAllByLabelText("Display speed")).toHaveLength(1)
-    expect(screen.getAllByRole("slider", { name: "Frame density" })).toHaveLength(1)
-    expect(within(dialog).getByLabelText("Display speed").id).toMatch(/-fullscreen$/)
-    const density = within(dialog).getByRole("slider", {
-      name: "Frame density",
-    })
-    expect(density.id).toMatch(/-fullscreen$/)
-    expect(density).toHaveAttribute("min", "200")
-    expect(density).toHaveAttribute("max", "1000")
-    expect(density).toHaveAttribute("step", "100")
-    expect(density).toHaveValue("200")
-    const ids = Array.from(dialog.querySelectorAll("input[id]")).map((input) => input.id)
-    expect(new Set(ids).size).toBe(ids.length)
-    for (const id of ids) {
-      expect(document.querySelectorAll(`input[id="${id}"]`)).toHaveLength(1)
-    }
-
-    act(() => vi.advanceTimersByTime(1_000))
-    expect(within(dialog).getByText("2 / 2")).toBeInTheDocument()
-    expect(dialog).toBeInTheDocument()
-
-    fireEvent.change(within(dialog).getByLabelText("Display speed"), {
-      target: { value: "500" },
-    })
-    expect(onFrameIntervalMsChange).toHaveBeenCalledWith(500)
-    fireEvent.change(density, { target: { value: "300" } })
-    expect(onFrameBytesChange).toHaveBeenCalledWith(300)
-
-    const fullscreenClose = within(dialog).getAllByRole("button", { name: "Close" })
-    expect(fullscreenClose).toHaveLength(1)
-    fireEvent.click(fullscreenClose[0]!)
-    const closingInputs = screen.getAllByRole("slider")
-    expect(new Set(closingInputs.map((input) => input.id)).size).toBe(
-      closingInputs.length,
-    )
     expect(
-      screen
-        .getAllByLabelText("Display speed")
-        .find((input) => input.id.endsWith("-inline")),
-    ).toHaveValue("500")
-    expect(
-      screen
-        .getAllByRole("slider", { name: "Frame density" })
-        .some((input) => input.id.endsWith("-inline")),
-    ).toBe(true)
-  })
-
-  it("raises the density range floor above 200 B for a large artifact", async () => {
-    env.qrMaxFrames = 64
-    const onFrameBytesChange = vi.fn()
-    render(
-      <AnimatedQrFrames
-        frames={[
-          frame(0, 43, { totalByteLength: 12_801 }),
-          frame(1, 43, { totalByteLength: 12_801 }),
-        ]}
-        frameIntervalMs={1_000}
-        frameBytes={300}
-        onFrameBytesChange={onFrameBytesChange}
-        outputName="signed"
-      />,
-    )
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "View full screen" })).toBeEnabled(),
-    )
-    fireEvent.click(screen.getByRole("button", { name: "View full screen" }))
-    const density = screen.getByRole("slider", { name: "Frame density" })
-    expect(density).toHaveAttribute("min", "300")
-    expect(density).toHaveAttribute("max", "1000")
-    expect(density).toHaveAttribute("step", "100")
-    expect(density).toHaveValue("300")
-    fireEvent.change(density, { target: { value: "200" } })
-    expect(onFrameBytesChange).not.toHaveBeenCalled()
-    fireEvent.change(density, { target: { value: "400" } })
-    expect(onFrameBytesChange).toHaveBeenCalledWith(400)
-  })
-
-  it("keeps the prior QR visible past a 200 ms render deadline and clears it on error", async () => {
-    vi.useFakeTimers()
-    const delayedRender = deferred<string>()
-    const firstDataUrl = "data:image/png;base64,Zmlyc3Q="
-    renderQrDataUrl
-      .mockResolvedValueOnce(firstDataUrl)
-      .mockImplementationOnce(() => delayedRender.promise)
-    render(
+      screen.queryByText("Frame density was raised so this transfer fits."),
+    ).toBeNull()
+    rerender(
       <AnimatedQrFrames
         frames={[frame(0, 2), frame(1, 2)]}
+        frameIntervalMs={2_000}
+        densityRaised
+        outputName="test"
+      />,
+    )
+    expect(
+      screen.getByText("Frame density was raised so this transfer fits."),
+    ).toHaveAttribute("role", "status")
+  })
+
+  it("presents every slow-rendered frame in order without blanking or skipping", async () => {
+    vi.useFakeTimers()
+    const slowRenders = [
+      deferred<string>(),
+      deferred<string>(),
+      deferred<string>(),
+      deferred<string>(),
+    ]
+    for (const slowRender of slowRenders) {
+      renderQrDataUrl.mockImplementationOnce(() => slowRender.promise)
+    }
+    const frames = [frame(0, 3), frame(1, 3), frame(2, 3)]
+    const payloads = frames.map(encodeFrameToPayload)
+    render(
+      <AnimatedQrFrames
+        frames={frames}
         frameIntervalMs={200}
         outputName="slow-render"
       />,
     )
 
+    expect(renderQrDataUrl).toHaveBeenCalledOnce()
+    expect(renderQrDataUrl).toHaveBeenLastCalledWith(
+      payloads[0],
+      expect.any(Object),
+    )
+
     await act(async () => {
-      await Promise.resolve()
-      await Promise.resolve()
-      await Promise.resolve()
+      vi.advanceTimersByTime(500)
     })
     expect(renderQrDataUrl).toHaveBeenCalledOnce()
-    expect(screen.getByRole("img")).toHaveAttribute("src", firstDataUrl)
 
+    const firstDataUrl = "data:image/png;base64,Zmlyc3Q="
     await act(async () => {
-      vi.advanceTimersByTime(200)
-      await Promise.resolve()
-      await Promise.resolve()
-    })
-    expect(renderQrDataUrl).toHaveBeenCalledTimes(2)
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }))
-
-    await act(async () => {
-      vi.advanceTimersByTime(201)
+      slowRenders[0]!.resolve(firstDataUrl)
+      await slowRenders[0]!.promise
       await Promise.resolve()
     })
     expect(screen.getByRole("img")).toHaveAttribute("src", firstDataUrl)
     expect(screen.queryByText("Generating the QR code…")).toBeNull()
 
     await act(async () => {
-      delayedRender.reject(new AppError("QR_TOO_LARGE"))
-      await Promise.resolve()
-      await Promise.resolve()
+      vi.advanceTimersByTime(200)
       await Promise.resolve()
     })
-    expect(screen.queryByRole("img")).toBeNull()
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "The QR code could not be generated",
+    expect(renderQrDataUrl).toHaveBeenCalledTimes(2)
+    expect(renderQrDataUrl).toHaveBeenLastCalledWith(
+      payloads[1],
+      expect.any(Object),
     )
+    expect(screen.getByText("2 / 3")).toBeInTheDocument()
+    expect(screen.getByRole("img")).toHaveAttribute("src", firstDataUrl)
+    expect(screen.queryByText("Generating the QR code…")).toBeNull()
+
+    await act(async () => {
+      vi.advanceTimersByTime(500)
+    })
+    expect(renderQrDataUrl).toHaveBeenCalledTimes(2)
+
+    const secondDataUrl = "data:image/png;base64,c2Vjb25k"
+    await act(async () => {
+      slowRenders[1]!.resolve(secondDataUrl)
+      await slowRenders[1]!.promise
+      await Promise.resolve()
+    })
+    expect(screen.getByRole("img")).toHaveAttribute("src", secondDataUrl)
+
+    await act(async () => {
+      vi.advanceTimersByTime(200)
+      await Promise.resolve()
+    })
+    expect(renderQrDataUrl).toHaveBeenCalledTimes(3)
+    expect(renderQrDataUrl).toHaveBeenLastCalledWith(
+      payloads[2],
+      expect.any(Object),
+    )
+    expect(screen.getByRole("img")).toHaveAttribute("src", secondDataUrl)
+    expect(screen.queryByText("Generating the QR code…")).toBeNull()
+
+    await act(async () => {
+      vi.advanceTimersByTime(500)
+    })
+    expect(renderQrDataUrl).toHaveBeenCalledTimes(3)
+
+    const thirdDataUrl = "data:image/png;base64,dGhpcmQ="
+    await act(async () => {
+      slowRenders[2]!.resolve(thirdDataUrl)
+      await slowRenders[2]!.promise
+      await Promise.resolve()
+    })
+    expect(screen.getByRole("img")).toHaveAttribute("src", thirdDataUrl)
+
+    await act(async () => {
+      vi.advanceTimersByTime(200)
+      await Promise.resolve()
+    })
+    expect(renderQrDataUrl.mock.calls.slice(0, 4).map(([payload]) => payload)).toEqual(
+      [payloads[0], payloads[1], payloads[2], payloads[0]],
+    )
+    expect(screen.getByRole("img")).toHaveAttribute("src", thirdDataUrl)
+    expect(screen.queryByText("Generating the QR code…")).toBeNull()
   })
 
   it("resets to frame one when a same-length transfer generation replaces the frames", async () => {
@@ -258,24 +230,62 @@ describe("AnimatedQrFrames", () => {
     await waitFor(() => expect(screen.getByText("1 / 2")).toBeInTheDocument())
   })
 
-  it("uses accessible export descriptions while showing three bare format nouns in one row", () => {
+  it("downloads one complete frame as one PNG and has no SVG affordance", async () => {
+    const png = new Blob(["single-png"], { type: "image/png" })
+    qrPngBlob.mockResolvedValueOnce(png)
+    render(
+      <AnimatedQrFrames
+        frames={[frame(0, 1)]}
+        frameIntervalMs={1_000}
+        outputName="single"
+      />,
+    )
+
+    const download = screen.getByRole("button", { name: "Download" })
+    expect(screen.getAllByRole("button", { name: "Download" })).toHaveLength(1)
+    expect(screen.queryByRole("button", { name: /SVG/i })).toBeNull()
+    fireEvent.click(download)
+
+    await waitFor(() =>
+      expect(triggerDownload).toHaveBeenCalledWith(png, "single.png"),
+    )
+    expect(qrPngBlob).toHaveBeenCalledOnce()
+  })
+
+  it("renders ZIP entries serially and includes every multi-frame PNG", async () => {
+    const firstBytes = deferred<ArrayBuffer>()
+    const firstArrayBuffer = vi.fn(() => firstBytes.promise)
+    const firstBlob = { arrayBuffer: firstArrayBuffer } as unknown as Blob
+    const secondBlob = new Blob([Uint8Array.of(2)], { type: "image/png" })
+    qrPngBlob
+      .mockResolvedValueOnce(firstBlob)
+      .mockResolvedValueOnce(secondBlob)
     render(
       <AnimatedQrFrames
         frames={[frame(0, 2), frame(1, 2)]}
         frameIntervalMs={1_000}
-        outputName="test"
+        outputName="multiple"
       />,
     )
 
-    const png = screen.getByRole("button", { name: "Export all PNGs" })
-    const zip = screen.getByRole("button", { name: "Export ZIP" })
-    const svg = screen.getByRole("button", { name: "Current SVG" })
-    expect(png).toHaveTextContent(/^PNG$/)
-    expect(zip).toHaveTextContent(/^ZIP$/)
-    expect(svg).toHaveTextContent(/^SVG$/)
-    expect(png.parentElement).toBe(zip.parentElement)
-    expect(png.parentElement).toBe(svg.parentElement)
-    expect(png.parentElement).toHaveClass("grid", "grid-cols-3")
+    fireEvent.click(screen.getByRole("button", { name: "Download" }))
+    await waitFor(() => expect(firstArrayBuffer).toHaveBeenCalledOnce())
+    expect(qrPngBlob).toHaveBeenCalledOnce()
+    expect(triggerDownload).not.toHaveBeenCalled()
+
+    firstBytes.resolve(Uint8Array.of(1).buffer)
+    await waitFor(() => expect(qrPngBlob).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(triggerDownload).toHaveBeenCalledOnce())
+
+    const [archive, name] = triggerDownload.mock.calls[0]!
+    expect(name).toBe("multiple-frames.zip")
+    expect(archive).toBeInstanceOf(Blob)
+    expect((archive as Blob).type).toBe("application/zip")
+    const archiveText = new TextDecoder().decode(
+      await (archive as Blob).arrayBuffer(),
+    )
+    expect(archiveText).toContain("frame-01.png")
+    expect(archiveText).toContain("frame-02.png")
   })
 
   it("stays parent-controlled until fullscreenOpen is rerendered", async () => {
@@ -330,9 +340,7 @@ describe("AnimatedQrFrames", () => {
       />,
     )
 
-    expect(screen.queryByRole("button", { name: "Export all PNGs" })).toBeNull()
-    expect(screen.queryByRole("button", { name: "Export ZIP" })).toBeNull()
-    expect(screen.queryByRole("button", { name: "Current SVG" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull()
     expect(sanitizeQrFileName).not.toHaveBeenCalled()
     expect(qrPngBlob).not.toHaveBeenCalled()
     expect(triggerDownload).not.toHaveBeenCalled()

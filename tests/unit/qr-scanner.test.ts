@@ -227,6 +227,45 @@ describe("camera scanner lifecycle", () => {
     vi.useFakeTimers()
   })
 
+  it("publishes reader preparation state and reports usable only after WASM resolves", async () => {
+    const preparation = deferred<unknown>()
+    zxing.prepareZXingModule.mockReturnValueOnce(preparation.promise)
+    const decoder = await loadDecoder()
+    const states: string[] = []
+    const unsubscribe = decoder.subscribeQrReaderModuleState(() => {
+      states.push(decoder.getQrReaderModuleState())
+    })
+
+    expect(decoder.getQrReaderModuleState()).toBe("unknown")
+    expect(decoder.isQrReaderModuleUsable()).toBe(false)
+    const pending = decoder.prepareQrReaderModule()
+    expect(decoder.getQrReaderModuleState()).toBe("preparing")
+    expect(decoder.isQrReaderModuleUsable()).toBe(false)
+
+    preparation.resolve({})
+    await pending
+
+    expect(decoder.getQrReaderModuleState()).toBe("usable")
+    expect(decoder.isQrReaderModuleUsable()).toBe(true)
+    expect(states).toEqual(["preparing", "usable"])
+    expect(decoder.prepareQrReaderModule()).toBe(pending)
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    unsubscribe()
+  })
+
+  it("reports the reader failed without invoking ZXing when WebAssembly is absent", async () => {
+    vi.stubGlobal("WebAssembly", undefined)
+    const decoder = await loadDecoder()
+
+    expect(decoder.getQrReaderModuleState()).toBe("failed")
+    expect(decoder.isQrReaderModuleUsable()).toBe(false)
+    await expect(decoder.prepareQrReaderModule()).rejects.toThrow(
+      "WebAssembly is unavailable",
+    )
+    expect(decoder.getQrReaderModuleState()).toBe("failed")
+    expect(zxing.prepareZXingModule).not.toHaveBeenCalled()
+  })
+
   it("prepares one reader module with the stable same-origin WASM override", async () => {
     const firstTrack = new FakeTrack()
     const secondTrack = new FakeTrack()

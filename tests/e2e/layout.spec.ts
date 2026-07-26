@@ -144,60 +144,46 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
     })
     const image = fullscreen.getByRole("img", { name: /Full-screen .* image/ })
     const controls = fullscreen.locator("[data-fullscreen-controls]")
-    const speedDensityRow = controls.locator("[data-speed-density-controls]")
-    const density = speedDensityRow.getByRole("slider", {
-      name: "Frame density",
-      exact: true,
-    })
-    const speed = speedDensityRow.getByRole("slider", {
-      name: "Display speed",
-      exact: true,
-    })
     const transportControls = controls.locator(
       '[data-transport-controls="fullscreen"]',
     )
     const transportButtons = transportControls.getByRole("button")
-    const close = transportControls.getByRole("button", {
+    const closeControls = fullscreen.getByRole("button", {
       name: "Close",
       exact: true,
     })
-    await expect(transportButtons).toHaveCount(4)
-    for (const [index, name] of ["Previous", "Pause", "Close", "Next"].entries()) {
+    await expect(transportButtons).toHaveCount(3)
+    for (const [index, name] of ["Previous", "Pause", "Next"].entries()) {
       await expect(transportButtons.nth(index)).toHaveAccessibleName(name)
     }
+    await expect(closeControls).toHaveCount(1)
     await expect(
-      fullscreen.getByRole("button", { name: "Close", exact: true }),
-    ).toHaveCount(1)
+      transportControls.getByRole("button", { name: "Close", exact: true }),
+    ).toHaveCount(0)
+    await expect(fullscreen.getByRole("slider")).toHaveCount(0)
+    const close = closeControls.first()
     const transport = [
       ["Previous", fullscreen.getByRole("button", { name: "Previous", exact: true })],
       ["Pause", fullscreen.getByRole("button", { name: "Pause", exact: true })],
-      ["Close", close],
       ["Next", fullscreen.getByRole("button", { name: "Next", exact: true })],
     ] as const
     for (const [label, locator] of [
       ["QR image", image],
-      ["density", density],
-      ["speed", speed],
+      ["Close", close],
       ...transport,
     ] as const) {
       await expect(locator).toBeVisible()
       await expectInsideViewport(locator, viewport.width, viewport.height, label)
     }
-    const [imageBox, closeBox, speedSectionBox, densitySectionBox] =
-      await Promise.all([
-        image.boundingBox(),
-        close.boundingBox(),
-        speed.locator("..").boundingBox(),
-        density.locator("..").boundingBox(),
-      ])
+    expect(await close.evaluate((element) => getComputedStyle(element).position)).not.toBe(
+      "absolute",
+    )
+    const [imageBox, closeBox] = await Promise.all([
+      image.boundingBox(),
+      close.boundingBox(),
+    ])
     expect(imageBox).not.toBeNull()
     expect(closeBox).not.toBeNull()
-    expect(speedSectionBox).not.toBeNull()
-    expect(densitySectionBox).not.toBeNull()
-    expect(
-      Math.abs(speedSectionBox!.y - densitySectionBox!.y),
-      `${viewport.width}x${viewport.height} speed and density row`,
-    ).toBeLessThanOrEqual(0.5)
     const closeOverlapsImage =
       closeBox!.x < imageBox!.x + imageBox!.width &&
       closeBox!.x + closeBox!.width > imageBox!.x &&
@@ -269,13 +255,24 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
     '[data-transport-controls="fullscreen"]',
   )
   const japaneseTransportButtons = japaneseTransport.getByRole("button")
-  await expect(japaneseTransportButtons).toHaveCount(4)
-  for (const [index, label] of ["前へ", "一時停止", "閉じる", "次へ"].entries()) {
+  await expect(japaneseTransportButtons).toHaveCount(3)
+  for (const [index, label] of ["前へ", "一時停止", "次へ"].entries()) {
     const locator = japaneseTransportButtons.nth(index)
     await expect(locator).toHaveAccessibleName(label)
     await expect(locator).toBeVisible()
     await expectInsideViewport(locator, 740, 360, label)
   }
+  const japaneseCloseControls = japaneseFullscreen.getByRole("button", {
+    name: "閉じる",
+    exact: true,
+  })
+  await expect(japaneseCloseControls).toHaveCount(1)
+  const japaneseClose = japaneseCloseControls.first()
+  await expect(japaneseClose).toBeVisible()
+  await expectInsideViewport(japaneseClose, 740, 360, "閉じる")
+  expect(
+    await japaneseClose.evaluate((element) => getComputedStyle(element).position),
+  ).not.toBe("absolute")
   const japaneseControls = japaneseFullscreen.locator("[data-fullscreen-controls]")
   const japaneseOverflow = await japaneseControls.evaluate((element) => ({
     clientHeight: element.clientHeight,
@@ -285,7 +282,5 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
     japaneseOverflow.clientHeight,
   )
   expect((await japaneseControls.boundingBox())!.height).toBeLessThanOrEqual(300)
-  await japaneseTransport
-    .getByRole("button", { name: "閉じる", exact: true })
-    .click()
+  await japaneseClose.click()
 })

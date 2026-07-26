@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
+import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
 import {
   validateMlKemEnvelopeV2,
   validatePublicIdentityBundleV2,
@@ -7,6 +8,7 @@ import {
 import {
   FRAME_CHUNK_MAX_BYTES,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
+  MAX_PQ_PLAINTEXT_BYTES,
   MAX_PLAINTEXT_BYTES,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
@@ -35,6 +37,20 @@ describe("PQ strict validation", () => {
     expect(() => validateMlKemEnvelopeV2({ ...envelope, extra: true })).toThrow(
       "INVALID_QR_PAYLOAD",
     )
+  })
+
+  it("rejects a PQ plaintext one byte over its ceiling before Worker encryption", async () => {
+    const encryptPqMessage = vi.fn()
+
+    await expect(
+      encryptPq({
+        client: { encryptPqMessage } as never,
+        recipient: {} as never,
+        plaintext: new Uint8Array(MAX_PQ_PLAINTEXT_BYTES + 1),
+        now: 1_700_000_000_000,
+      }),
+    ).rejects.toMatchObject({ code: "ENCRYPTION_FAILED" })
+    expect(encryptPqMessage).not.toHaveBeenCalled()
   })
 
   it("rejects mixed bundle profiles and enforces exact public-key lengths", () => {
@@ -82,9 +98,7 @@ describe("PQ strict validation", () => {
     } as const
     expect(PROTOCOL_MAX_FRAMES).toBe(128)
     expect(FRAME_CHUNK_MAX_BYTES).toBe(1_000)
-    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(25_600)
-    expect(PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES).toBe(128_000)
-    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBeLessThan(
+    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(
       PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES,
     )
     expect(validateQrFrameV2(frame)).toEqual(frame)

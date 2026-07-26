@@ -648,7 +648,11 @@ export function decodePng(buffer: Buffer): string {
   }
   const estimatedModules = png.width / (finderWidth / 7) - 8
   const estimatedVersion = Math.round((estimatedModules - 21) / 4) + 1
-  if (estimatedVersion < 1 || estimatedVersion > 40) {
+  // A one-pixel error in the finder width moves the estimate by a whole version at
+  // v40, so the estimate itself may land just outside the legal range even when the
+  // symbol is fine. Reject only estimates that no ±2 candidate could rescue; the
+  // candidate loop below still filters to real versions.
+  if (estimatedVersion < -1 || estimatedVersion > 42) {
     throw new Error("Downloaded PNG has invalid QR size")
   }
 

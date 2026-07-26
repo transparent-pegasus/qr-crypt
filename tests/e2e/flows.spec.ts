@@ -41,9 +41,9 @@ test("supports creation through key listing, QR display, and deletion without pe
 
   dialog = page.getByRole("dialog", { name: "Symmetric-key QR", exact: true })
   await expect(dialog.getByRole("img", { name: "Symmetric-key QR image" })).toBeVisible()
-  await expect(dialog.getByRole("button", { name: "PNG", exact: true })).toBeDisabled()
+  await expect(dialog.getByRole("button", { name: "Download", exact: true })).toBeDisabled()
   await dialog.getByRole("checkbox", { name: "I understand the risk" }).check()
-  await expect(dialog.getByRole("button", { name: "PNG", exact: true })).toBeEnabled()
+  await expect(dialog.getByRole("button", { name: "Download", exact: true })).toBeEnabled()
   await expect(dialog.getByText(/Saved|Save key QR/)).toHaveCount(0)
   expect(await rawQrArtifacts(page)).toHaveLength(0)
 

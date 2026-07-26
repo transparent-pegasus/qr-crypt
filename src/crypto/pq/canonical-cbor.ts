@@ -57,6 +57,17 @@ const MAJOR_BYTES = 2
 const MAJOR_TEXT = 3
 const MAJOR_MAP = 5
 
+// Structural allocation limits follow the largest active protocol shapes:
+// QrFrameV2 has 9 entries in one map; PublicIdentityBundleV2 has 13 entries
+// across its root and two nested key maps. The longest key is
+// "kemCiphertextSha256" (19 UTF-8 bytes). The only free text is a display name,
+// capped by its guard at 100 UTF-16 code units, which needs at most 300 UTF-8
+// bytes for valid scalar values.
+const MAX_MAP_ENTRIES = 9
+const MAX_TOTAL_MAP_ENTRIES = 13
+const MAX_KEY_UTF8_BYTES = 19
+const MAX_TEXT_UTF8_BYTES = 300
+
 const utf8Encoder = new TextEncoder()
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true })
 
@@ -100,18 +111,12 @@ function compareBytes(a: Uint8Array, b: Uint8Array): number {
   return a.byteLength - b.byteLength
 }
 
-const encodedKeyCache = new Map<string, Uint8Array>()
-
 function encodedKeyBytes(key: string): Uint8Array {
-  let bytes = encodedKeyCache.get(key)
-  if (bytes === undefined) {
-    const utf8 = utf8Encoder.encode(key)
-    const header = headerBytes(MAJOR_TEXT, utf8.byteLength)
-    bytes = new Uint8Array(header.byteLength + utf8.byteLength)
-    bytes.set(header, 0)
-    bytes.set(utf8, header.byteLength)
-    encodedKeyCache.set(key, bytes)
-  }
+  const utf8 = utf8Encoder.encode(key)
+  const header = headerBytes(MAJOR_TEXT, utf8.byteLength)
+  const bytes = new Uint8Array(header.byteLength + utf8.byteLength)
+  bytes.set(header, 0)
+  bytes.set(utf8, header.byteLength)
   return bytes
 }
 
@@ -165,6 +170,7 @@ export function encodeCanonicalCbor(value: CanonicalCborValue): Uint8Array {
 interface CborReader {
   bytes: Uint8Array
   offset: number
+  mapEntries: number
 }
 
 function readU8(reader: CborReader): number {
@@ -209,13 +215,41 @@ function readLength(reader: CborReader, additional: number): number {
 }
 
 function readSlice(reader: CborReader, length: number): Uint8Array {
-  if (reader.offset + length > reader.bytes.byteLength) {
+  if (length > reader.bytes.byteLength - reader.offset) {
     throw new AppError("INVALID_QR_PAYLOAD")
   }
   // Return a copy to simplify caller ownership for retention and zeroization.
   const slice = reader.bytes.slice(reader.offset, reader.offset + length)
   reader.offset += length
   return slice
+}
+
+function readText(
+  reader: CborReader,
+  additional: number,
+  maximumUtf8Bytes: number,
+): string {
+  const length = readLength(reader, additional)
+  if (length > maximumUtf8Bytes) throw new AppError("INVALID_QR_PAYLOAD")
+  const slice = readSlice(reader, length)
+  try {
+    return utf8Decoder.decode(slice)
+  } catch {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
+}
+
+function readMapKey(
+  reader: CborReader,
+): { key: string; encodedBytes: Uint8Array } {
+  const keyStart = reader.offset
+  const initial = readU8(reader)
+  if (initial >> 5 !== MAJOR_TEXT) throw new AppError("INVALID_QR_PAYLOAD")
+  const key = readText(reader, initial & 0x1f, MAX_KEY_UTF8_BYTES)
+  return {
+    key,
+    encodedBytes: reader.bytes.slice(keyStart, reader.offset),
+  }
 }
 
 function readValue(reader: CborReader, depth: number): CanonicalCborValue {
@@ -228,22 +262,21 @@ function readValue(reader: CborReader, depth: number): CanonicalCborValue {
     return readSlice(reader, readLength(reader, additional))
   }
   if (major === MAJOR_TEXT) {
-    const slice = readSlice(reader, readLength(reader, additional))
-    try {
-      return utf8Decoder.decode(slice)
-    } catch {
-      throw new AppError("INVALID_QR_PAYLOAD")
-    }
+    return readText(reader, additional, MAX_TEXT_UTF8_BYTES)
   }
   if (major === MAJOR_MAP) {
     const count = readLength(reader, additional)
-    const result: Record<string, CanonicalCborValue> = {}
+    if (
+      count > MAX_MAP_ENTRIES ||
+      reader.mapEntries > MAX_TOTAL_MAP_ENTRIES - count
+    ) {
+      throw new AppError("INVALID_QR_PAYLOAD")
+    }
+    reader.mapEntries += count
+    const result = Object.create(null) as Record<string, CanonicalCborValue>
     let previousKeyBytes: Uint8Array | undefined
     for (let index = 0; index < count; index += 1) {
-      const keyStart = reader.offset
-      const key = readValue(reader, depth + 1)
-      if (typeof key !== "string") throw new AppError("INVALID_QR_PAYLOAD")
-      const keyBytes = reader.bytes.slice(keyStart, reader.offset)
+      const { key, encodedBytes: keyBytes } = readMapKey(reader)
       // Reject non-ascending keys, including duplicates (strictly ascending).
       if (previousKeyBytes !== undefined && compareBytes(previousKeyBytes, keyBytes) >= 0) {
         throw new AppError("INVALID_QR_PAYLOAD")
@@ -262,8 +295,13 @@ function readValue(reader: CborReader, depth: number): CanonicalCborValue {
 // (key order, duplicate keys, indefinite lengths, non-minimal integers, tags, and so on);
 // re-encoded equality is also checked defensively.
 export function decodeCanonicalCbor(bytes: Uint8Array): unknown {
-  if (bytes.byteLength === 0) throw new AppError("INVALID_QR_PAYLOAD")
-  const reader: CborReader = { bytes, offset: 0 }
+  if (
+    bytes.byteLength === 0 ||
+    bytes.byteLength > MAX_ARTIFACT_BYTES_ABSOLUTE
+  ) {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
+  const reader: CborReader = { bytes, offset: 0, mapEntries: 0 }
   const value = readValue(reader, 0)
   if (reader.offset !== bytes.byteLength) throw new AppError("INVALID_QR_PAYLOAD")
   const reencoded = encodeCanonicalCbor(value)
