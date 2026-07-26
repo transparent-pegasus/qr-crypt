@@ -238,6 +238,7 @@ const en = {
   "keyDetail.toast.revoked": "The identity was revoked on this device",
   "keyDetail.toast.symmetricDeleted": "The symmetric key was deleted",
   "keyDetail.toast.identityDeleted": "The post-quantum identity was deleted",
+  "keyDetail.toast.supersededDestroyed": "Older key material was discarded",
   "keyDetail.toast.copied":
     "Copied. Be aware that the clipboard may be synchronized.",
   "keyDetail.symmetricQr.title": "Symmetric-key QR",
@@ -256,6 +257,10 @@ const en = {
   "keyDetail.delete.body.symmetric":
     "Ciphertext encrypted with this key will no longer be decryptable. This cannot be undone.",
   "keyDetail.delete.confirm": "Delete",
+  "keyDetail.destroy.title": "Discard {count} older generation(s)?",
+  "keyDetail.destroy.body":
+    "Created {dates}. This closes the decryption route this app keeps open for those generations: messages sent to them that have not been decrypted yet can no longer be opened here. It is a logical delete, so it does not assure the bytes leave the storage medium, and a copy already loaded in another open tab is outside this action.",
+  "keyDetail.destroy.confirm": "Discard",
   "keyDetail.badge.legacyProfile": "Unsupported (legacy profile)",
   "keyDetail.identity.legacyNote":
     "Unsupported (legacy profile): cryptographic operations and QR re-export are unavailable.",
@@ -269,9 +274,11 @@ const en = {
   "keyDetail.button.rotate": "Rotate",
   "keyDetail.button.revoke": "Revoke on this device",
   "keyDetail.revokeNote":
-    "Revocation disables use on this device and is not propagated to other parties.",
+    "Revocation stops this identity from signing and from being published as a current recipient on this device, and is not propagated to other parties. It does not stop decryption with this identity: use Delete to discard its key material.",
   "keyDetail.previous.toggle":
     "{count} previous generations, decryption only",
+  "keyDetail.previous.destroyAll":
+    "Discard the key material of {count} older generation(s)",
   "keyDetail.symmetric.fingerprintLabel": "Key fingerprint",
   "keyDetail.button.showSecretQr": "Show secret-key QR",
 
@@ -291,6 +298,8 @@ const en = {
   "keyList.filter.pqIdentity": "Post-quantum identity",
   "keyList.filter.symmetric": "Symmetric key",
   "keyList.item.identityMeta": "Post-quantum identity · {datetime}",
+  "keyList.item.supersededWarning":
+    "{count} older generation(s) can still decrypt",
   "keyList.item.symmetricMeta": "Symmetric key · {datetime}",
   "keyList.empty.ownAll": "You have no keys.",
   "keyList.empty.ownFiltered": "There are no keys of the selected type.",
@@ -873,6 +882,7 @@ const ja = {
   "keyDetail.toast.revoked": "この端末でIDを失効しました",
   "keyDetail.toast.symmetricDeleted": "共通鍵を削除しました",
   "keyDetail.toast.identityDeleted": "ポスト量子IDを削除しました",
+  "keyDetail.toast.supersededDestroyed": "旧世代の鍵素材を破棄しました",
   "keyDetail.toast.copied":
     "コピーしました。クリップボード同期に注意してください。",
   "keyDetail.symmetricQr.title": "共通鍵QR",
@@ -891,6 +901,10 @@ const ja = {
   "keyDetail.delete.body.symmetric":
     "この鍵で暗号化した暗号文は復号できなくなります。元に戻せません。",
   "keyDetail.delete.confirm": "削除する",
+  "keyDetail.destroy.title": "旧世代 {count} 件を破棄しますか?",
+  "keyDetail.destroy.body":
+    "作成日時: {dates}。このアプリがこれらの世代のために開いたままにしている復号経路を閉じます。これらの鍵宛に送られ、まだ復号していないメッセージは、ここでは開けなくなります。論理削除のため記録媒体からバイト列が消える保証はなく、既に別タブへ読み込まれた複製はこの操作の対象外です。",
+  "keyDetail.destroy.confirm": "破棄する",
   "keyDetail.badge.legacyProfile": "非対応（旧プロファイル）",
   "keyDetail.identity.legacyNote":
     "非対応（旧プロファイル）: 暗号処理とQR再出力はできません。",
@@ -904,8 +918,9 @@ const ja = {
   "keyDetail.button.rotate": "ローテーション",
   "keyDetail.button.revoke": "この端末で失効",
   "keyDetail.revokeNote":
-    "失効はこの端末での利用停止であり、外部の相手には伝播しません。",
+    "失効はこの識別子での署名と、現在の宛先としての公開をこの端末で止めるもので、外部の相手には伝播しません。この識別子での復号は止まりません。鍵素材を手放すには削除を使ってください。",
   "keyDetail.previous.toggle": "旧世代 {count} 件、復号専用",
+  "keyDetail.previous.destroyAll": "旧世代 {count} 件の鍵素材を破棄",
   "keyDetail.symmetric.fingerprintLabel": "鍵指紋",
   "keyDetail.button.showSecretQr": "秘密鍵QRを表示",
 
@@ -925,6 +940,7 @@ const ja = {
   "keyList.filter.pqIdentity": "ポスト量子ID",
   "keyList.filter.symmetric": "共通鍵",
   "keyList.item.identityMeta": "ポスト量子ID · {datetime}",
+  "keyList.item.supersededWarning": "旧世代 {count} 件が復号可能",
   "keyList.item.symmetricMeta": "共通鍵 · {datetime}",
   "keyList.empty.ownAll": "自分の鍵がありません。",
   "keyList.empty.ownFiltered": "選択した種別の鍵がありません。",

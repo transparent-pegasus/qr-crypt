@@ -281,7 +281,7 @@ export function KeyListPage() {
           </div>
           {filteredOwnKeyItems.map((item) => {
             if (item.kind === "identity") {
-              const { head } = item.group
+              const { head, previous } = item.group
               const supported = isUsableIdentity(head)
               return (
                 <button
@@ -299,15 +299,26 @@ export function KeyListPage() {
                         })}
                       </p>
                     </div>
-                    <Badge
-                      variant={
-                        head.status === "active" && supported ? "default" : "secondary"
-                      }
-                    >
-                      {supported
-                        ? t(`keyStatus.${head.status}`)
-                        : t("keyDetail.badge.legacyProfile")}
-                    </Badge>
+                    <div className="max-w-[45%] shrink-0 text-right">
+                      <Badge
+                        variant={
+                          head.status === "active" && supported
+                            ? "default"
+                            : "secondary"
+                        }
+                      >
+                        {supported
+                          ? t(`keyStatus.${head.status}`)
+                          : t("keyDetail.badge.legacyProfile")}
+                      </Badge>
+                      {previous.length > 0 && (
+                        <p className="mt-1 text-xs font-medium text-destructive">
+                          {t("keyList.item.supersededWarning", {
+                            count: previous.length,
+                          })}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </button>
               )

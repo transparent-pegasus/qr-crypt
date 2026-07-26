@@ -83,6 +83,7 @@ import { env } from "@/schemas/env-schema"
 import { deleteKeyRecord } from "@/storage/key-repository"
 import {
   deleteIdentity,
+  deleteSupersededIdentities,
   revokeIdentity,
   saveRotation,
 } from "@/storage/pq-identity-repository"
@@ -155,7 +156,7 @@ export function KeyDetailDialog({
   onOpenChange,
   onChanged,
 }: KeyDetailDialogProps) {
-  const { t } = useI18n()
+  const { language, t } = useI18n()
   const {
     preferences,
     loading: preferencesLoading,
@@ -166,6 +167,9 @@ export function KeyDetailDialog({
   const { setSensitiveSession } = useSensitiveSession()
   const [view, setView] = useState<DetailView>({ kind: "detail" })
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [pendingDestroy, setPendingDestroy] = useState<
+    PostQuantumIdentity[] | null
+  >(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const [compatibilityUpdating, setCompatibilityUpdating] = useState(false)
@@ -236,6 +240,7 @@ export function KeyDetailDialog({
     setQrReady(false)
     setView({ kind: "detail" })
     setPendingDelete(null)
+    setPendingDestroy(null)
     setError(null)
     setSensitiveSession({ cryptoBusy: false, secretVisible: false })
   }, [record, selection, setSensitiveSession])
@@ -255,6 +260,7 @@ export function KeyDetailDialog({
     setQrReady(false)
     setView({ kind: "detail" })
     setPendingDelete(null)
+    setPendingDestroy(null)
     setBusy(false)
     setError(null)
     setSensitiveSession({ cryptoBusy: false, secretVisible: false })
@@ -391,7 +397,26 @@ export function KeyDetailDialog({
         toast.success(t("keyDetail.toast.identityDeleted"))
       }
       setPendingDelete(null)
+      setPendingDestroy(null)
       await onChanged(selection)
+    } catch (caught) {
+      setError(toAppError(caught, "STORAGE_FAILED").code)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const destroySuperseded = async () => {
+    if (!pendingDestroy || !selection) return
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteSupersededIdentities(
+        pendingDestroy.map((generation) => generation.id),
+      )
+      setPendingDestroy(null)
+      await onChanged(selection)
+      toast.success(t("keyDetail.toast.supersededDestroyed"))
     } catch (caught) {
       setError(toAppError(caught, "STORAGE_FAILED").code)
     } finally {
@@ -517,6 +542,9 @@ export function KeyDetailDialog({
                 onShow={showIdentityQr}
                 onRotate={rotate}
                 onRevoke={revoke}
+                onDestroySuperseded={(generations) =>
+                  setPendingDestroy(generations)
+                }
                 onDelete={(target) =>
                   setPendingDelete({
                     kind: "identity",
@@ -637,7 +665,10 @@ export function KeyDetailDialog({
       <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(nextOpen) => {
-          if (!nextOpen) setPendingDelete(null)
+          if (!nextOpen) {
+            setPendingDelete(null)
+            setPendingDestroy(null)
+          }
         }}
       >
         <AlertDialogContent>
@@ -661,6 +692,42 @@ export function KeyDetailDialog({
               onClick={() => void remove()}
             >
               {t("keyDetail.delete.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingDestroy !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setPendingDestroy(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("keyDetail.destroy.title", {
+                count: pendingDestroy?.length ?? 0,
+              })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("keyDetail.destroy.body", {
+                dates: (pendingDestroy ?? [])
+                  .map((generation) =>
+                    formatDateTime(generation.createdAt, language),
+                  )
+                  .join(", "),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => void destroySuperseded()}
+            >
+              {t("keyDetail.destroy.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -758,6 +825,7 @@ function IdentityDetails({
   onShow,
   onRotate,
   onRevoke,
+  onDestroySuperseded,
   onDelete,
 }: {
   identity: PostQuantumIdentity
@@ -769,6 +837,7 @@ function IdentityDetails({
   ) => Promise<void>
   onRotate: (identity: PostQuantumIdentity) => Promise<void>
   onRevoke: (identity: PostQuantumIdentity) => Promise<void>
+  onDestroySuperseded: (generations: PostQuantumIdentity[]) => void
   onDelete: (identity: PostQuantumIdentity) => void
 }) {
   const { language, t } = useI18n()
@@ -887,6 +956,18 @@ function IdentityDetails({
       </div>
       <p className="text-xs text-muted-foreground">{t("keyDetail.revokeNote")}</p>
       {previous.length > 0 && (
+        <Button
+          type="button"
+          variant="destructive"
+          className="h-11 w-full"
+          disabled={busy}
+          onClick={() => onDestroySuperseded(previous)}
+        >
+          <Trash2 aria-hidden="true" />
+          {t("keyDetail.previous.destroyAll", { count: previous.length })}
+        </Button>
+      )}
+      {previous.length > 0 && (
         <Collapsible>
           <CollapsibleTrigger asChild>
             <Button
@@ -914,7 +995,7 @@ function IdentityDetails({
                     </p>
                     <Badge variant="secondary">
                       {generationSupported
-                        ? generation.status
+                        ? t(`keyStatus.${generation.status}`)
                         : t("keyDetail.badge.legacyProfile")}
                     </Badge>
                   </div>
