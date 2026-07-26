@@ -794,6 +794,9 @@ export const clearAllKeys = vi.fn(async () => {
   fakeKeys.splice(0)
 })
 
+export const findIdentityByKemKeyId = vi.fn(async (keyId: string) =>
+  fakeIdentities.find((identity) => identity.kem.keyId === keyId),
+)
 export const listIdentities = vi.fn(async () => [...fakeIdentities])
 export const saveIdentity = vi.fn(async (identity: PostQuantumIdentity) => {
   fakeIdentities.unshift(identity)

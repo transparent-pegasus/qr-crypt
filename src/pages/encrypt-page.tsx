@@ -101,7 +101,10 @@ import { env } from "@/schemas/env-schema"
 import { qrNameSchema } from "@/schemas/key-schema"
 import { markKeyUsed } from "@/storage/key-repository"
 import { markBundleUsed } from "@/storage/pq-bundle-repository"
-import { markIdentityUsed } from "@/storage/pq-identity-repository"
+import {
+  findIdentityByKemKeyId,
+  markIdentityUsed,
+} from "@/storage/pq-identity-repository"
 
 type PageMode = "encrypt" | "decrypt"
 
@@ -513,10 +516,20 @@ export function EncryptPage() {
         setDecrypted({ kind: "aes", text: bytesToUtf8(plaintextResult) })
         await markKeyUsed(decryptAesKey.id, Date.now()).catch(() => undefined)
       } else if (parsedDecrypt.kind === "pq-message" && decryptIdentity) {
+        // The cached list only gates the button. Re-resolve from storage at action
+        // time so a generation discarded elsewhere cannot be decrypted from a stale
+        // in-memory object. A delete landing between this lookup and the worker call
+        // is a residual race, recorded in docs/security/threat-model.md T14.
+        const recipient = await findIdentityByKemKeyId(
+          parsedDecrypt.envelope.recipientKemKeyId,
+        )
+        if (recipient === undefined || !isActiveIdentity(recipient)) {
+          throw new AppError("KEY_NOT_FOUND")
+        }
         const pqResult = await decryptPqMessage({
           client: getPqClient(),
           envelope: parsedDecrypt.envelope,
-          recipient: decryptIdentity,
+          recipient,
           vaultKey: await getOrCreateVaultKey(),
           resolveSigningKey: async (keyId) => {
             const record = bundles.find(
@@ -547,7 +560,7 @@ export function EncryptPage() {
             ),
           })
         }
-        await markIdentityUsed(decryptIdentity.id, Date.now()).catch(() => undefined)
+        await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
       }
     } catch (caught) {
       setDecrypted(null)

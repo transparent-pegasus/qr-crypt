@@ -124,6 +124,7 @@ vi.mock("@/storage/pq-identity-repository", () => ({
   deleteIdentity: fakes.deleteIdentity,
   clearAllIdentities: fakes.clearAllIdentities,
   markIdentityUsed: fakes.markIdentityUsed,
+  findIdentityByKemKeyId: fakes.findIdentityByKemKeyId,
 }))
 vi.mock("@/storage/pq-bundle-repository", () => ({
   listBundles: fakes.listBundles,

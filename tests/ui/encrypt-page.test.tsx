@@ -22,6 +22,8 @@ import {
   fakeIdentities,
   fakePqDecrypt,
   fakePreferences,
+  findIdentityByKemKeyId,
+  markIdentityUsed,
   renderQrDataUrl,
   splitIntoFrames,
   startQrScan,
@@ -346,6 +348,84 @@ describe("encrypt page v2", () => {
       await screen.findByText(messageFor("SIGNATURE_INVALID", "en")),
     ).toBeInTheDocument()
     expect(screen.queryByText("PQ復号済み平文")).not.toBeInTheDocument()
+  })
+
+  it("re-resolves the recipient from storage and refuses a discarded generation", async () => {
+    const user = userEvent.setup()
+    const cachedIdentity = fakeIdentities[0]!
+    findIdentityByKemKeyId.mockResolvedValueOnce(undefined)
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:fake" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+
+    await user.click(decryptButton)
+
+    expect(
+      await screen.findByText(messageFor("KEY_NOT_FOUND", "en")),
+    ).toBeInTheDocument()
+    expect(findIdentityByKemKeyId).toHaveBeenCalledWith(cachedIdentity.kem.keyId)
+    expect(decryptPqMessage).not.toHaveBeenCalled()
+  })
+
+  it("refuses a storage-resolved recipient from a non-active suite", async () => {
+    const user = userEvent.setup()
+    const cachedIdentity = fakeIdentities[0]!
+    findIdentityByKemKeyId.mockResolvedValueOnce({
+      ...cachedIdentity,
+      profile: "balanced",
+      kem: { ...cachedIdentity.kem, algorithm: "ML-KEM-768" },
+      signing: { ...cachedIdentity.signing, algorithm: "ML-DSA-65" },
+    })
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:fake" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+
+    await user.click(decryptButton)
+
+    expect(
+      await screen.findByText(messageFor("KEY_NOT_FOUND", "en")),
+    ).toBeInTheDocument()
+    expect(findIdentityByKemKeyId).toHaveBeenCalledWith(cachedIdentity.kem.keyId)
+    expect(decryptPqMessage).not.toHaveBeenCalled()
+  })
+
+  it("decrypts with and marks the freshly resolved recipient", async () => {
+    const user = userEvent.setup()
+    const cachedIdentity = fakeIdentities[0]!
+    const freshIdentity = {
+      ...cachedIdentity,
+      id: "F".repeat(22),
+      name: "resolved-from-storage",
+    }
+    findIdentityByKemKeyId.mockResolvedValueOnce(freshIdentity)
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:fake" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+
+    await user.click(decryptButton)
+
+    await waitFor(() =>
+      expect(decryptPqMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ recipient: freshIdentity }),
+      ),
+    )
+    expect(findIdentityByKemKeyId).toHaveBeenCalledWith(cachedIdentity.kem.keyId)
+    expect(markIdentityUsed).toHaveBeenCalledWith(
+      freshIdentity.id,
+      expect.any(Number),
+    )
   })
 
   it("fails closed with the worker-unavailable user message", async () => {
