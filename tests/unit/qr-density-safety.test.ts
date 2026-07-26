@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest"
 import { toBase64Url } from "@/lib/base64url"
 import {
+  FRAME_BYTES_VALUES,
   FRAME_INTERVAL_MS_MAX,
-  FRAME_INTERVAL_MS_MIN,
+  FRAME_INTERVAL_MS_VALUES,
+  isBootReadableFrameBytes,
+  isBootReadableFrameIntervalMs,
+  isFrameBytes,
+  isFrameIntervalMs,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
+  normalizeLegacyFrameBytes,
+  normalizeLegacyFrameIntervalMs,
   PROTOCOL_MAX_FRAMES,
   TRANSFER_TIMEOUT_MINUTES_DEFAULT,
   TRANSFER_TIMEOUT_MINUTES_MIN,
@@ -23,12 +30,15 @@ const ACCEPTED_BARE_V2_KINDS = [
 ] as const
 
 describe("QR transfer timing safety budgets", () => {
-  it("lets the legal minimum timeout cover one fastest full protocol cycle", () => {
+  it("lets the legal minimum timeout cover one slowest selectable full cycle", () => {
     const minimumTimeoutMs =
       TRANSFER_TIMEOUT_MINUTES_MIN * MILLISECONDS_PER_MINUTE
-    const fastestFullCycleMs = PROTOCOL_MAX_FRAMES * FRAME_INTERVAL_MS_MIN
+    const slowestSelectableFullCycleMs =
+      PROTOCOL_MAX_FRAMES * FRAME_INTERVAL_MS_MAX
 
-    expect(minimumTimeoutMs).toBeGreaterThanOrEqual(fastestFullCycleMs)
+    expect(minimumTimeoutMs).toBeGreaterThanOrEqual(
+      slowestSelectableFullCycleMs,
+    )
   })
 
   it("keeps one slowest full protocol cycle strictly below the default timeout", () => {
@@ -37,6 +47,68 @@ describe("QR transfer timing safety budgets", () => {
     const slowestFullCycleMs = PROTOCOL_MAX_FRAMES * FRAME_INTERVAL_MS_MAX
 
     expect(slowestFullCycleMs).toBeLessThan(defaultTimeoutMs)
+  })
+})
+
+describe("persisted QR range compatibility", () => {
+  it("keeps every active density and interval boot-readable and write-valid", () => {
+    expect(FRAME_BYTES_VALUES).toEqual([
+      200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+    ])
+    expect(FRAME_INTERVAL_MS_VALUES).toEqual([
+      200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+    ])
+
+    for (const frameBytes of FRAME_BYTES_VALUES) {
+      expect(isBootReadableFrameBytes(frameBytes)).toBe(true)
+      expect(isFrameBytes(frameBytes)).toBe(true)
+    }
+    for (const frameIntervalMs of FRAME_INTERVAL_MS_VALUES) {
+      expect(isBootReadableFrameIntervalMs(frameIntervalMs)).toBe(true)
+      expect(isFrameIntervalMs(frameIntervalMs)).toBe(true)
+    }
+  })
+
+  it.each([100, 150, 250] as const)(
+    "keeps retired density %i boot-readable while the active write validator rejects it",
+    (frameBytes) => {
+      expect(isBootReadableFrameBytes(frameBytes)).toBe(true)
+      expect(isFrameBytes(frameBytes)).toBe(false)
+    },
+  )
+
+  it("normalizes every historically stored density integer from 100 through 900", () => {
+    for (let frameBytes = 100; frameBytes <= 900; frameBytes += 1) {
+      expect(isBootReadableFrameBytes(frameBytes)).toBe(true)
+      expect(normalizeLegacyFrameBytes(frameBytes)).toBe(
+        Math.max(200, Math.round(frameBytes / 100) * 100),
+      )
+    }
+  })
+
+  it.each([1_500, 2_000, 2_500, 3_000] as const)(
+    "keeps retired interval %i boot-readable while the active write validator rejects it",
+    (frameIntervalMs) => {
+      expect(isBootReadableFrameIntervalMs(frameIntervalMs)).toBe(true)
+      expect(isFrameIntervalMs(frameIntervalMs)).toBe(false)
+    },
+  )
+
+  it("normalizes every historically stored interval integer plus the 2500/3000 stops", () => {
+    const historicalIntervals = [
+      ...Array.from({ length: 2_000 - 150 + 1 }, (_, index) => 150 + index),
+      2_500,
+      3_000,
+    ]
+    for (const frameIntervalMs of historicalIntervals) {
+      expect(isBootReadableFrameIntervalMs(frameIntervalMs)).toBe(true)
+      expect(normalizeLegacyFrameIntervalMs(frameIntervalMs)).toBe(
+        Math.min(
+          1_000,
+          Math.max(200, Math.round(frameIntervalMs / 100) * 100),
+        ),
+      )
+    }
   })
 })
 

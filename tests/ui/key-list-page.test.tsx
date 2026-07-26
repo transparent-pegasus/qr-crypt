@@ -186,7 +186,7 @@ describe("key list page", () => {
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-public-identity",
-          frameBytes: 100,
+          frameBytes: 200,
         }),
       ),
     )
@@ -195,7 +195,13 @@ describe("key list page", () => {
     let fullscreen = await screen.findByRole("dialog", {
       name: /View .*public-key bundle.* full screen/,
     })
-    expect(within(fullscreen).getByLabelText("Frame density")).toBeInTheDocument()
+    const density = within(fullscreen).getByRole("slider", {
+      name: "Frame density",
+    })
+    expect(density).toHaveAttribute("min", "200")
+    expect(density).toHaveAttribute("max", "1000")
+    expect(density).toHaveAttribute("step", "100")
+    expect(density).toHaveValue("200")
     expect(within(fullscreen).getByLabelText("Display speed")).toBeInTheDocument()
     await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
     expect(screen.getByRole("dialog", { name: /public-key bundle/ })).toBeInTheDocument()
@@ -208,7 +214,7 @@ describe("key list page", () => {
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-kem-public-key",
-          frameBytes: 100,
+          frameBytes: 200,
         }),
       ),
     )
@@ -234,7 +240,7 @@ describe("key list page", () => {
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-dsa-public-key",
-          frameBytes: 100,
+          frameBytes: 200,
         }),
       ),
     )

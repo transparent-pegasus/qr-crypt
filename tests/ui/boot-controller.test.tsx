@@ -289,12 +289,16 @@ describe("boot decisions", () => {
     )
   })
 
-  it.each([300, 900] as const)(
-    "keeps stored legacy frameBytes=%i boot-readable without wiping sensitive data",
+  it.each([100, 250, 900] as const)(
+    "keeps stored frameBytes=%i and retired interval 3000 boot-readable without wiping sensitive data",
     async (frameBytes) => {
       const { database } = fakeBootDatabase({
         keyCount: 1,
-        preferencesValue: { frameBytes, wipeOnOnline: false },
+        preferencesValue: {
+          frameBytes,
+          frameIntervalMs: 3_000,
+          wipeOnOnline: false,
+        },
       })
       const getDatabase = async () => database
       const snapshot = await readBootDecision({
@@ -322,7 +326,7 @@ describe("boot decisions", () => {
     },
   )
 
-  it.each([99, 901] as const)(
+  it.each([99, 1_001] as const)(
     "fails closed for stored frameBytes=%i outside the boot-readable range",
     async (frameBytes) => {
       const { database } = fakeBootDatabase({

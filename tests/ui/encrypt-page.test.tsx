@@ -3,6 +3,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
+import { FRAME_BYTES_MAX } from "@/lib/limits"
 import type { MlKemMessageEnvelopeV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
@@ -109,11 +110,13 @@ describe("encrypt page v2", () => {
     expect(within(result).getByText("maximum")).toBeInTheDocument()
     expect(within(result).getByRole("button", { name: "Pause" })).toBeInTheDocument()
     expect(within(result).getByRole("button", { name: "Next" })).toBeInTheDocument()
-    const inlineDensity = within(result).getByRole("radiogroup", {
+    const inlineDensity = within(result).getByRole("slider", {
       name: "Frame density",
     })
-    expect(within(inlineDensity).getByRole("radio", { name: "100 B" })).toBeEnabled()
-    expect(within(inlineDensity).getByRole("radio", { name: "200 B" })).toBeEnabled()
+    expect(inlineDensity).toHaveAttribute("min", "200")
+    expect(inlineDensity).toHaveAttribute("max", "1000")
+    expect(inlineDensity).toHaveAttribute("step", "100")
+    expect(inlineDensity).toHaveValue("200")
     expect(within(result).getByLabelText("Display speed")).toBeInTheDocument()
     expect(
       within(result).getByRole("button", { name: /Export all PNGs/ }),
@@ -127,9 +130,9 @@ describe("encrypt page v2", () => {
     await user.click(within(result).getByRole("button", { name: "Pause" }))
     expect(within(result).getByRole("button", { name: "Play" })).toBeInTheDocument()
     fireEvent.change(within(result).getByLabelText("Display speed"), {
-      target: { value: "2500" },
+      target: { value: "500" },
     })
-    expect(within(result).getByText("2500 ms")).toBeInTheDocument()
+    expect(within(result).getByText("500 ms")).toBeInTheDocument()
     await waitFor(() => expect(renderQrDataUrl).toHaveBeenCalled())
     expect(renderQrDataUrl.mock.calls.at(-1)?.[0]).toMatch(/^OCF2:/)
     const fullscreen = within(result).getByRole("button", { name: "View full screen" })
@@ -139,46 +142,40 @@ describe("encrypt page v2", () => {
       name: /View Ciphertext 2 \/ .* full screen/,
     })
     expect(fullscreenDialog).toBeInTheDocument()
-    const fullscreenDensity = within(fullscreenDialog).getByRole("radiogroup", {
+    const fullscreenDensity = within(fullscreenDialog).getByRole("slider", {
       name: "Frame density",
     })
-    const density100 = within(fullscreenDensity).getByRole("radio", {
-      name: "100 B",
-    })
-    const density200 = within(fullscreenDensity).getByRole("radio", {
-      name: "200 B",
-    })
-    expect(density100).toBeEnabled()
-    expect(density100).toBeChecked()
-    expect(density200).toBeEnabled()
-    expect(density200).not.toBeChecked()
-    expect(within(fullscreenDialog).getByLabelText("Display speed")).toHaveValue("2500")
+    expect(fullscreenDensity).toHaveAttribute("min", "200")
+    expect(fullscreenDensity).toHaveAttribute("max", "1000")
+    expect(fullscreenDensity).toHaveAttribute("step", "100")
+    expect(fullscreenDensity).toHaveValue("200")
+    expect(within(fullscreenDialog).getByLabelText("Display speed")).toHaveValue("500")
     const controlIds = Array.from(fullscreenDialog.querySelectorAll("input[id]")).map(
       (input) => input.id,
     )
     expect(new Set(controlIds).size).toBe(controlIds.length)
     const splitCallsBeforeSpeed = splitIntoFrames.mock.calls.length
     fireEvent.change(within(fullscreenDialog).getByLabelText("Display speed"), {
-      target: { value: "3000" },
+      target: { value: "900" },
     })
     await waitFor(() =>
-      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 3_000 }),
+      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 900 }),
     )
     expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
     expect(splitIntoFrames).toHaveBeenCalledTimes(splitCallsBeforeSpeed)
-    await user.click(density200)
+    fireEvent.change(fullscreenDensity, { target: { value: "300" } })
     await waitFor(() =>
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-message",
-          frameBytes: 200,
+          frameBytes: 300,
         }),
       ),
     )
-    expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 200 })
+    expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 300 })
     updatePreferences.mockRejectedValueOnce(new Error("storage failed"))
     fireEvent.change(within(fullscreenDialog).getByLabelText("Display speed"), {
-      target: { value: "2500" },
+      target: { value: "800" },
     })
     await waitFor(() =>
       expect(
@@ -401,6 +398,9 @@ describe("encrypt page v2", () => {
   )
 
   it("fails through QR_TOO_LARGE when even the maximum density cannot fit", async () => {
+    const frameCeiling = 10
+    const artifactByteLength = frameCeiling * FRAME_BYTES_MAX + 1
+    env.qrMaxFrames = frameCeiling
     fakePreferences.frameBytes = 100
     encryptPq.mockResolvedValueOnce({
       version: 2,
@@ -410,7 +410,7 @@ describe("encrypt page v2", () => {
       kemCiphertext: new Uint8Array(1_568),
       hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
-      ciphertext: new Uint8Array(56_305),
+      ciphertext: new Uint8Array(artifactByteLength - 1_568 - 128),
     })
     const user = userEvent.setup()
     await renderApp("/encrypt")

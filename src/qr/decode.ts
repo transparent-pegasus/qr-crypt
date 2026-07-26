@@ -11,6 +11,7 @@ import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url"
 
 import type { AppError } from "@/crypto/errors"
 import { AppError as ConcreteAppError } from "@/crypto/errors"
+import { FRAME_INTERVAL_MS_MIN } from "@/lib/limits"
 
 export interface QrScanHandle {
   // Idempotent. Stop controls and every MediaStreamTrack owned by this attempt.
@@ -40,8 +41,8 @@ export const CAMERA_FRAME_READY_TIMEOUT_MS = 6_000
 const maxAcquireRetries = 3
 const acquireRetryDelayMs = 300
 const frameRetryDelayMs = 250
-const decodeIntervalMs = 400
-const maxFrameLongEdge = 960
+const decodeIntervalMs = FRAME_INTERVAL_MS_MIN
+const maxFrameLongEdge = 1280
 const CAMERA_DIAGNOSTIC_NAME = /^[A-Za-z]{1,40}$/
 
 const zxingModuleOverrides: ZXingModuleOverrides = {
@@ -433,8 +434,6 @@ async function startAttempt(
       cancelScheduledFrame()
     },
   }
-  let lastDecodeStartedAt: number | undefined
-
   function clearFrameReadyTimeout(): void {
     if (attempt.frameReadyTimeoutId === undefined) return
     clearTimeout(attempt.frameReadyTimeoutId)
@@ -504,7 +503,10 @@ async function startAttempt(
     retryVideoPlayback(attempt)
   }
 
-  function takeScheduledFrame(source: "video" | "timer"): void {
+  function takeScheduledFrame(
+    source: "video" | "timer",
+    nextDecodeDeadline: number,
+  ): void {
     if (source === "video") {
       pump.requestVideoFrameCallbackHandle = undefined
       if (pump.fallbackTimerId !== undefined) {
@@ -526,12 +528,8 @@ async function startAttempt(
       return
     }
 
-    const cadenceDelay =
-      lastDecodeStartedAt === undefined
-        ? 0
-        : Math.max(0, decodeIntervalMs - (Date.now() - lastDecodeStartedAt))
-    if (cadenceDelay > 0) {
-      scheduleNextFrame(cadenceDelay)
+    if (Date.now() < nextDecodeDeadline) {
+      scheduleNextFrame(nextDecodeDeadline)
       return
     }
 
@@ -539,7 +537,10 @@ async function startAttempt(
     void decodeFrame()
   }
 
-  function armFrameRace(fallbackDelayMs = frameRetryDelayMs): void {
+  function armFrameRace(
+    nextDecodeDeadline: number,
+    callbackFallbackDelayMs = 0,
+  ): void {
     if (
       pump.cancelled ||
       pump.decodeInFlight ||
@@ -550,26 +551,35 @@ async function startAttempt(
       return
     }
 
+    // Early video callbacks re-arm with this unchanged absolute deadline. The timer
+    // targets the same deadline, so a silent callback cannot add a second wait.
     let callbackRegistered = false
     let callbackFiredSynchronously = false
+    let callbackRegistrationComplete = false
     const requestVideoFrameCallback = attempt.video.requestVideoFrameCallback
     if (typeof requestVideoFrameCallback === "function") {
       try {
         const callbackHandle = requestVideoFrameCallback.call(attempt.video, () => {
-          callbackFiredSynchronously = true
-          takeScheduledFrame("video")
+          if (!callbackRegistrationComplete) {
+            callbackFiredSynchronously = true
+            return
+          }
+          takeScheduledFrame("video", nextDecodeDeadline)
         })
+        callbackRegistrationComplete = true
         if (!callbackFiredSynchronously) {
           pump.requestVideoFrameCallbackHandle = callbackHandle
           callbackRegistered = true
+        } else if (Date.now() >= nextDecodeDeadline) {
+          takeScheduledFrame("video", nextDecodeDeadline)
         }
       } catch {
+        callbackRegistrationComplete = true
         // Fall through to the timer scheduler when rVFC is unavailable at runtime.
       }
     }
 
     if (
-      callbackFiredSynchronously ||
       pump.cancelled ||
       pump.decodeInFlight ||
       !isActiveAttempt(attempt)
@@ -578,15 +588,19 @@ async function startAttempt(
     }
 
     pump.fallbackTimerId = setTimeout(
-      () => takeScheduledFrame("timer"),
-      callbackRegistered ? fallbackDelayMs : 0,
+      () => takeScheduledFrame("timer", nextDecodeDeadline),
+      Math.max(
+        0,
+        nextDecodeDeadline - Date.now(),
+        callbackRegistered ? callbackFallbackDelayMs : 0,
+      ),
     )
   }
 
   function scheduleNextFrame(
-    delayMs = 0,
+    nextDecodeDeadline = Date.now(),
     replaceScheduled = false,
-    fallbackDelayMs = frameRetryDelayMs,
+    callbackFallbackDelayMs = 0,
   ): void {
     if (pump.cancelled || pump.decodeInFlight || !isActiveAttempt(attempt)) return
 
@@ -598,16 +612,7 @@ async function startAttempt(
       cancelScheduledFrame()
     }
 
-    if (delayMs > 0) {
-      pump.fallbackTimerId = setTimeout(() => {
-        pump.fallbackTimerId = undefined
-        if (pump.cancelled || pump.decodeInFlight || !isActiveAttempt(attempt)) return
-        armFrameRace(fallbackDelayMs)
-      }, delayMs)
-      return
-    }
-
-    armFrameRace(fallbackDelayMs)
+    armFrameRace(nextDecodeDeadline, callbackFallbackDelayMs)
   }
 
   async function decodeFrame(): Promise<void> {
@@ -647,7 +652,6 @@ async function startAttempt(
       if (!isActiveAttempt(attempt)) return
 
       decodeStartedAt = Date.now()
-      lastDecodeStartedAt = decodeStartedAt
       const results = await readBarcodes(imageData, zxingReaderOptions)
       if (!isActiveAttempt(attempt)) return
 
@@ -671,13 +675,13 @@ async function startAttempt(
       pump.decodeInFlight = false
       if (!pump.cancelled && isActiveAttempt(attempt)) {
         if (decodeStartedAt === undefined) {
-          if (isActiveAttempt(attempt)) scheduleNextFrame(frameRetryDelayMs, false, 0)
+          if (isActiveAttempt(attempt)) {
+            scheduleNextFrame(Date.now() + frameRetryDelayMs)
+          }
         } else {
-          const delayMs = Math.max(
-            0,
-            decodeIntervalMs - (Date.now() - decodeStartedAt),
-          )
-          if (isActiveAttempt(attempt)) scheduleNextFrame(delayMs)
+          if (isActiveAttempt(attempt)) {
+            scheduleNextFrame(decodeStartedAt + decodeIntervalMs)
+          }
         }
       }
     }
@@ -691,8 +695,10 @@ async function startAttempt(
   attempt.frameRecoveryActive = true
   attempt.lastFrameErrorName = undefined
   ensureFrameReadyTimeout()
-  attempt.retryDecoder = () => scheduleNextFrame(0, true, 0)
-  scheduleNextFrame()
+  attempt.retryDecoder = () => scheduleNextFrame(Date.now(), true)
+  // Preserve the initial rVFC grace period; the readiness watchdog is already armed.
+  // Steady-state scheduling above uses the cadence deadline with no added grace.
+  scheduleNextFrame(Date.now(), false, frameRetryDelayMs)
   return pump
 }
 

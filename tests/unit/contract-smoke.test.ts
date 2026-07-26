@@ -43,8 +43,10 @@ describe("contract smoke", () => {
     const normalized = parseAppEnv({ VITE_ENABLE_RSA: "true" })
     expect(normalized.enableRsa).toBe(false)
     expect(normalized.buildSha).toBe("development")
-    expect(normalized.qrFrameIntervalMs).toBe(2_000)
-    expect(FRAME_INTERVAL_MS_VALUES).toEqual([1_000, 1_500, 2_000, 2_500, 3_000])
+    expect(normalized.qrFrameIntervalMs).toBe(1_000)
+    expect(FRAME_INTERVAL_MS_VALUES).toEqual([
+      200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+    ])
     for (const frameIntervalMs of FRAME_INTERVAL_MS_VALUES) {
       expect(isFrameIntervalMs(frameIntervalMs)).toBe(true)
       expect(
@@ -53,7 +55,7 @@ describe("contract smoke", () => {
         }).qrFrameIntervalMs,
       ).toBe(frameIntervalMs)
     }
-    for (const frameIntervalMs of [999, 1_250, 2_250, 3_001]) {
+    for (const frameIntervalMs of [199, 250, 1_001, 1_500, 3_000]) {
       expect(isFrameIntervalMs(frameIntervalMs)).toBe(false)
       expect(() =>
         parseAppEnv({

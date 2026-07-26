@@ -2,7 +2,6 @@
 // Redefining these constraints in individual modules is prohibited.
 import {
   FRAME_BYTES_MAX,
-  FRAME_BYTES_MIN,
   FRAME_BYTES_STEP,
 } from "@/lib/frame-bytes"
 import { env } from "@/schemas/env-schema"
@@ -15,6 +14,7 @@ export {
   isFrameBytes,
   LEGACY_FRAME_BYTES_MAX,
   LEGACY_FRAME_BYTES_MIN,
+  normalizeLegacyFrameBytes,
   type FrameBytes,
 } from "@/lib/frame-bytes"
 export {
@@ -101,37 +101,23 @@ export const TRANSFER_TIMEOUT_MINUTES_DEFAULT = 10
 export const RESET_CHURN_MB_MIN = 0
 export const RESET_CHURN_MB_MAX = 512
 
-// Absolute protocol limit for receiver-side resource checks.
-// The sender generation limit is separately constrained by env.qrMaxFrames (≤128).
+// Absolute protocol limit for sender- and receiver-side resource checks. It is
+// independent of frame density and covers the 22,999B worst-case signed artifact.
 // Measured maximum canonical CBOR on 2026-07-23 (maxPlaintext=4,096B,
 // name=<three-character, 9-byte non-ASCII UTF-8 fixture>):
-// artifact                         bytes   OCF2 frames (100 / 200B)
-// unsigned empty / max          1,887 / 5,986      19/10 / 60/30
-// signed empty / max            6,613 / 10,711     67/34 / 108/54
-// OCI2 bundle                    4,402              45/23
-// OCP2 KEM / OCS2 DSA           1,733 / 2,755      18/9 / 28/14
-// OCB2 reserved sizing fixture   4,637              47/24
-// The 128-frame cap carries every measured artifact at the shipped 100B density;
-// 200B remains available for fewer, denser frames. A full capped cycle takes
-// 128 seconds at the 1,000ms interval and 384 seconds at the 3,000ms interval.
-// The 3-minute timeout floor covers the fastest cycle, and the 10-minute default
-// covers the slowest cycle.
+// artifact                         bytes   OCF2 frames (200 / 1,000B)
+// unsigned empty / max          1,887 / 5,986      10/2 / 30/6
+// signed empty / max            6,613 / 10,711     34/7 / 54/11
+// OCI2 bundle                    4,402              23/5
+// OCP2 KEM / OCS2 DSA           1,733 / 2,755      9/2 / 14/3
+// OCB2 reserved sizing fixture   4,637              24/5
+// A full capped cycle takes 25.6 seconds at the 200ms interval and 128 seconds
+// at the 1,000ms interval. The 3-minute timeout floor covers the slowest cycle,
+// with additional headroom at the 10-minute default.
 // maximum-artifact-size.golden.test.ts also pins actual EC-Q generation for every OCF2 string.
 export const PROTOCOL_MAX_FRAMES = 128
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX
-export const MAX_ARTIFACT_BYTES_ABSOLUTE = PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES
-
-// Sender: maximum raw artifact bytes generatable under the current frameBytes setting.
-export function maxArtifactBytes(frameBytes: number): number {
-  if (
-    !Number.isSafeInteger(frameBytes) ||
-    frameBytes < FRAME_BYTES_MIN ||
-    frameBytes > FRAME_BYTES_MAX
-  ) {
-    throw new RangeError("frameBytes out of range")
-  }
-  return env.qrMaxFrames * frameBytes
-}
+export const MAX_ARTIFACT_BYTES_ABSOLUTE = 25_600
 
 // The OCF2 frame-string limit, including the prefix, equals QR v40 EC-Q byte capacity.
 // Payloads are ASCII-only, so character count equals byte count; golden tests under

@@ -68,7 +68,7 @@ describe("PQ strict validation", () => {
     ).toThrow("INVALID_QR_PAYLOAD")
   })
 
-  it("accepts exact frame maxima and rejects each one-over boundary", () => {
+  it("enforces independent per-frame and whole-artifact receiver bounds", () => {
     const frame = {
       version: 2,
       type: "qr-frame",
@@ -81,19 +81,32 @@ describe("PQ strict validation", () => {
       chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES),
     } as const
     expect(PROTOCOL_MAX_FRAMES).toBe(128)
-    expect(FRAME_CHUNK_MAX_BYTES).toBe(200)
+    expect(FRAME_CHUNK_MAX_BYTES).toBe(1_000)
     expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(25_600)
+    expect(PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES).toBe(128_000)
+    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBeLessThan(
+      PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES,
+    )
     expect(validateQrFrameV2(frame)).toEqual(frame)
 
-    for (const changes of [
-      { frameCount: PROTOCOL_MAX_FRAMES + 1 },
-      { totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE + 1 },
-      { chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES + 1) },
-    ]) {
-      expect(() => validateQrFrameV2({ ...frame, ...changes })).toThrow(
-        "INVALID_QR_PAYLOAD",
-      )
-    }
+    expect(() =>
+      validateQrFrameV2({
+        ...frame,
+        chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES + 1),
+      }),
+    ).toThrow("INVALID_QR_PAYLOAD")
+    expect(() =>
+      validateQrFrameV2({
+        ...frame,
+        totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE + 1,
+      }),
+    ).toThrow("INVALID_QR_PAYLOAD")
+    expect(() =>
+      validateQrFrameV2({
+        ...frame,
+        frameCount: PROTOCOL_MAX_FRAMES + 1,
+      }),
+    ).toThrow("INVALID_QR_PAYLOAD")
   })
 
   it("rejects frame metadata whose total cannot fit its declared frame count", () => {

@@ -1,18 +1,21 @@
 // OCF2 display-interval contract. env-schema.ts and limits.ts depend on each other,
 // so this dependency-free module owns the contract and lets both reference it
 // without creating a cycle.
-export const FRAME_INTERVAL_MS_VALUES = [1_000, 1_500, 2_000, 2_500, 3_000] as const
+export const FRAME_INTERVAL_MS_VALUES = [
+  200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+] as const
 export type FrameIntervalMs = (typeof FRAME_INTERVAL_MS_VALUES)[number]
 
 export const FRAME_INTERVAL_MS_MIN = FRAME_INTERVAL_MS_VALUES[0]
-export const FRAME_INTERVAL_MS_MAX = FRAME_INTERVAL_MS_VALUES[4]
-export const FRAME_INTERVAL_MS_STEP = 500
-export const FRAME_INTERVAL_MS_DEFAULT = 2_000
+export const FRAME_INTERVAL_MS_MAX =
+  FRAME_INTERVAL_MS_VALUES[FRAME_INTERVAL_MS_VALUES.length - 1]!
+export const FRAME_INTERVAL_MS_STEP = 100
+export const FRAME_INTERVAL_MS_DEFAULT = 1_000
 
-// Range that an older PWA may have stored. Keep boot-time reading append-only
-// and separate it from the current grid.
+// Append-only: narrowing this boot-readable range can make stored preferences
+// unreadable and force wipeOnOnline true.
 export const LEGACY_FRAME_INTERVAL_MS_MIN = 150
-export const LEGACY_FRAME_INTERVAL_MS_MAX = 2_000
+export const LEGACY_FRAME_INTERVAL_MS_MAX = 3_000
 
 export function isFrameIntervalMs(value: unknown): value is FrameIntervalMs {
   return (

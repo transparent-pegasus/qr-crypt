@@ -1,17 +1,19 @@
 // OCF2 frame-density contract. env-schema.ts and limits.ts depend on each other,
 // so this dependency-free module owns the contract and lets both reference it
 // without creating a cycle.
-export const FRAME_BYTES_VALUES = [100, 200] as const
+export const FRAME_BYTES_VALUES = [
+  200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+] as const
 export type FrameBytes = (typeof FRAME_BYTES_VALUES)[number]
 
 export const FRAME_BYTES_MIN = FRAME_BYTES_VALUES[0]
-export const FRAME_BYTES_MAX = FRAME_BYTES_VALUES[1]
+export const FRAME_BYTES_MAX = FRAME_BYTES_VALUES[FRAME_BYTES_VALUES.length - 1]!
 export const FRAME_BYTES_STEP = 100
 
 // Range that an older PWA may have stored. Keep boot-time reading append-only:
 // narrowing it would make stored preferences unreadable and force wipeOnOnline true.
 export const LEGACY_FRAME_BYTES_MIN = 100
-export const LEGACY_FRAME_BYTES_MAX = 900
+export const LEGACY_FRAME_BYTES_MAX = 1_000
 
 export function isFrameBytes(value: unknown): value is FrameBytes {
   return (
@@ -32,4 +34,21 @@ export function isBootReadableFrameBytes(
       value <= LEGACY_FRAME_BYTES_MAX) ||
     isFrameBytes(value)
   )
+}
+
+export function normalizeLegacyFrameBytes(value: number): FrameBytes {
+  if (!isBootReadableFrameBytes(value)) {
+    throw new RangeError("frameBytes is not boot-readable")
+  }
+  const clamped = Math.min(FRAME_BYTES_MAX, Math.max(FRAME_BYTES_MIN, value))
+  const rounded =
+    FRAME_BYTES_MIN +
+    Math.floor(
+      (clamped - FRAME_BYTES_MIN + FRAME_BYTES_STEP / 2) / FRAME_BYTES_STEP,
+    ) *
+      FRAME_BYTES_STEP
+  if (!isFrameBytes(rounded)) {
+    throw new RangeError("normalized frameBytes is off-grid")
+  }
+  return rounded
 }

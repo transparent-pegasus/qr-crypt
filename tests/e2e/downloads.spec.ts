@@ -207,7 +207,10 @@ test("controls signed multipart frames and preserves every ZIP and bounded PNG f
   await seedSelfPublicBundle(page, identityName)
   const { result } = await encryptSignedPq(page, { identityName, plaintext })
   const frameCount = Number.parseInt(await detailValue(result, "QR frame count"), 10)
-  expect(frameCount).toBeGreaterThan(99)
+  // A three-digit frame count is unreachable at the shipped 4,096B plaintext limit
+  // once the density floor is 200B (10,711B signed / 200 = 54 frames). Ten or more
+  // frames is still enough to exercise zero-padded names and the ZIP path.
+  expect(frameCount).toBeGreaterThan(9)
   expect(frameCount).toBeLessThanOrEqual(128)
 
   const frames = result.getByRole("region", { name: "Ciphertext frame display" })
@@ -218,8 +221,8 @@ test("controls signed multipart frames and preserves every ZIP and bounded PNG f
   await expect(counter).not.toHaveText(initialCounter)
   await frames.getByRole("button", { name: "Previous" }).click()
   await expect(counter).toHaveText(initialCounter)
-  await frames.getByLabel("Display speed").fill("2500")
-  await expect(frames.getByText("2500 ms", { exact: true })).toBeVisible()
+  await frames.getByLabel("Display speed").fill("600")
+  await expect(frames.getByText("600 ms", { exact: true })).toBeVisible()
 
   await frames.getByRole("button", { name: "View full screen" }).click()
   const fullscreen = page.getByRole("dialog", {
@@ -249,7 +252,6 @@ test("controls signed multipart frames and preserves every ZIP and bounded PNG f
       (_, index) => `frame-${String(index + 1).padStart(2, "0")}.png`,
     ),
   )
-  expect(zip.entries.some((entry) => /^frame-\d{3}\.png$/.test(entry.name))).toBe(true)
   expect(new Set(zip.entries.map((entry) => decodePng(entry.data)))).toEqual(
     new Set(framePayloads),
   )
@@ -269,13 +271,14 @@ test("controls signed multipart frames and preserves every ZIP and bounded PNG f
   const publicKeyFrames = publicKeyDialog.getByRole("region", {
     name: `${identityName} encryption public key frame display`,
   })
-  const density = publicKeyFrames.getByRole("radiogroup", {
+  const density = publicKeyFrames.getByRole("slider", {
     name: "Frame density",
     exact: true,
   })
-  const density200 = density.getByRole("radio", { name: "200 B", exact: true })
-  await density.getByText("200 B", { exact: true }).click()
-  await expect(density200).toBeChecked()
+  // Ten downloads is Chromium's suppression threshold, so keep the frame count low
+  // by picking a dense stop rather than the shipped 200B default.
+  await density.fill("500")
+  await expect(density).toHaveValue("500")
   const publicKeyCounter = publicKeyFrames.getByText(/^\d+ \/ \d+$/).last()
   await expect
     .poll(async () => {

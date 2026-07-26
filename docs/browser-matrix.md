@@ -2,7 +2,7 @@
 
 This table maps the target browser environments to the primary verification items.
 
-**On-device verification is manual work performed outside this repository.** The Playwright runs in CI (chromium / webkit) provide approximate coverage only and do not substitute for on-device PWA installation, camera access, OS-specific key persistence, and the like. The initial value of each cell is either `automated (e2e)` (planned to be covered by in-repo e2e tests) or `manual-pending` (manual verification on real devices).
+**On-device verification is manual work performed outside this repository.** The Playwright runs in CI (chromium / webkit) provide approximate coverage only and do not substitute for on-device PWA installation, camera access, OS-specific key persistence, and the like. The initial value of each cell is `automated (e2e)` (planned to be covered by in-repo e2e tests), `manual-pending` (manual verification on real devices), or `not yet measured` for a quantitative device gate.
 
 | Verification item | Android Chrome | iOS Safari | Windows Chrome | macOS Safari | Edge |
 | --- | --- | --- | --- | --- | --- |
@@ -13,9 +13,8 @@ This table maps the target browser environments to the primary verification item
 | QR display | automated (e2e) | automated (e2e) | automated (e2e) | automated (e2e) | manual-pending |
 | QR scanning | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Camera decoder WebAssembly instantiation on first use **while offline** (zxing-wasm reader, precached same-origin) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| Camera decode latency at 100B and 200B frame densities | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| Camera decode peak memory and long-task behaviour (p95 decode below a 50ms long task) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| Scanner teardown responsiveness with a decode in flight (close / background / wipe) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| QR range-extension gate: sustained full transfers at 200B@1,000ms, 1,000B@1,000ms, 200B@200ms, and 1,000B@200ms, including poor light and refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
+| QR range-extension telemetry: actual decode cadence/duration, long tasks, sustained CPU/thermal behaviour, teardown latency, sender v40 render time, and post-downscale decoder dimensions | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
 | Non-extractable CryptoKey persistence in IndexedDB (generate → close tab → restore → decrypt) | automated (e2e) | manual-pending | automated (e2e) | automated (e2e) | manual-pending |
 | Online relay: camera scan → text (getUserMedia start on explicit action only) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: text → QR playback (verbatim OCF2 re-display) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
@@ -39,6 +38,25 @@ On-device measurement sheet. This sheet was originally drawn up for the balanced
 
 Recorded fields (common to every environment): Device / OS / Browser version / Build hash (`VITE_BUILD_SHA` or equivalent).
 
+Promotion beyond `dev` for the widened QR range is additionally conditional
+on sustained full-transfer passes in all four density/interval combinations
+below on both release-gate platforms. Each combination must include poor-light
+operation and recovery after focus is lost and reacquired. A configured 200ms
+interval is not evidence of 5 fps: cadence is measured from actual decode
+start to actual decode start. Record p95 decode duration and long tasks,
+sustained CPU and thermal behaviour, scanner teardown latency, version 40 QR
+render completion time on the sending device, and the exact post-downscale
+`ImageData` dimensions seen by the decoder.
+
+The decoder now caps the post-downscale camera frame at a 1,280-pixel long
+edge. Source-camera resolution must not be substituted for the recorded
+decoder dimensions: at the retired 960-pixel cap, a 1,920×1,080 source became
+960×540, and a version 40 symbol occupying 80% of the short edge resolved to
+only about 432/177 ≈ 2.44 pixels per module, below the practical floor of 3.
+Decoder resolution, not camera resolution, determines pixels per module.
+
+Every value cell in the QR range-extension tables is **not yet measured**.
+
 ### Android Chrome (release gate)
 
 | Item | Value |
@@ -54,9 +72,23 @@ Recorded fields (common to every environment): Device / OS / Browser version / B
 | Verification time | not yet measured |
 | Seed re-expansion time | not yet measured |
 | Peak memory | not yet measured |
-| QR frame render completion time | not yet measured |
-| QR scan completion time | not yet measured |
 | Worker load check after offline reload | not yet measured |
+
+#### QR range-extension scanner/sender gate
+
+| Measurement | 200B @ 1,000ms | 1,000B @ 1,000ms | 200B @ 200ms | 1,000B @ 200ms |
+| --- | --- | --- | --- | --- |
+| Sustained full-transfer completion | not yet measured | not yet measured | not yet measured | not yet measured |
+| Poor-light sustained transfer | not yet measured | not yet measured | not yet measured | not yet measured |
+| Refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured |
+| Actual start-to-start decode cadence | not yet measured | not yet measured | not yet measured | not yet measured |
+| p95 decode duration | not yet measured | not yet measured | not yet measured | not yet measured |
+| Long tasks | not yet measured | not yet measured | not yet measured | not yet measured |
+| Sustained CPU behaviour | not yet measured | not yet measured | not yet measured | not yet measured |
+| Sustained thermal behaviour | not yet measured | not yet measured | not yet measured | not yet measured |
+| Scanner teardown latency | not yet measured | not yet measured | not yet measured | not yet measured |
+| Sender-side version 40 render completion time | not yet measured | not yet measured | not yet measured | not yet measured |
+| Post-downscale decoder `ImageData` dimensions | not yet measured | not yet measured | not yet measured | not yet measured |
 
 ### iOS Safari (release gate)
 
@@ -73,9 +105,23 @@ Recorded fields (common to every environment): Device / OS / Browser version / B
 | Verification time | not yet measured |
 | Seed re-expansion time | not yet measured |
 | Peak memory | not yet measured |
-| QR frame render completion time | not yet measured |
-| QR scan completion time | not yet measured |
 | Worker load check after offline reload | not yet measured |
+
+#### QR range-extension scanner/sender gate
+
+| Measurement | 200B @ 1,000ms | 1,000B @ 1,000ms | 200B @ 200ms | 1,000B @ 200ms |
+| --- | --- | --- | --- | --- |
+| Sustained full-transfer completion | not yet measured | not yet measured | not yet measured | not yet measured |
+| Poor-light sustained transfer | not yet measured | not yet measured | not yet measured | not yet measured |
+| Refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured |
+| Actual start-to-start decode cadence | not yet measured | not yet measured | not yet measured | not yet measured |
+| p95 decode duration | not yet measured | not yet measured | not yet measured | not yet measured |
+| Long tasks | not yet measured | not yet measured | not yet measured | not yet measured |
+| Sustained CPU behaviour | not yet measured | not yet measured | not yet measured | not yet measured |
+| Sustained thermal behaviour | not yet measured | not yet measured | not yet measured | not yet measured |
+| Scanner teardown latency | not yet measured | not yet measured | not yet measured | not yet measured |
+| Sender-side version 40 render completion time | not yet measured | not yet measured | not yet measured | not yet measured |
+| Post-downscale decoder `ImageData` dimensions | not yet measured | not yet measured | not yet measured | not yet measured |
 
 ### Desktop (reference, recorded alongside)
 

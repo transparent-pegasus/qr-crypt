@@ -33,6 +33,14 @@ export interface QrDisplayProps {
   onFullscreenOpenChange?: (open: boolean) => void
 }
 
+interface QrRenderRequest {
+  id: number
+  identity: string
+  payload: string
+  ecLevel: QrEcLevel
+  size: number
+}
+
 export function QrDisplay({
   payload,
   ecLevel,
@@ -49,6 +57,7 @@ export function QrDisplay({
   const { t } = useI18n()
   const title = titleProp ?? t("qrDisplay.defaultTitle")
   const identity = `${payload}\u0000${ecLevel}\u0000${size}`
+  const payloadIsValid = isQrCryptPayload(payload)
   const [rendered, setRendered] = useState<{
     identity: string
     dataUrl: string | null
@@ -62,15 +71,42 @@ export function QrDisplay({
     onFullscreenOpenChange?.(open)
   }
   const renderedCallbackRef = useRef(onRendered)
+  const mountedRef = useRef(true)
+  const nextRenderRequestIdRef = useRef(0)
+  const currentRenderRequestIdRef = useRef(0)
+  const invalidatedThroughRequestIdRef = useRef(0)
+  // Keep one render active and only the newest pending target. A completed
+  // frame remains visible while that target renders, without building a backlog.
+  const queuedRenderRef = useRef<QrRenderRequest | null>(null)
+  const activeRenderRequestIdRef = useRef<number | null>(null)
   useEffect(() => {
     renderedCallbackRef.current = onRendered
   }, [onRendered])
 
   useEffect(() => {
-    let active = true
-    if (!isQrCryptPayload(payload)) {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      invalidatedThroughRequestIdRef.current = nextRenderRequestIdRef.current
+      queuedRenderRef.current = null
+      activeRenderRequestIdRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const requestId = nextRenderRequestIdRef.current + 1
+    nextRenderRequestIdRef.current = requestId
+    currentRenderRequestIdRef.current = requestId
+
+    if (!payloadIsValid) {
+      // Invalid input is a hard boundary: no older in-flight result may reappear.
+      invalidatedThroughRequestIdRef.current = requestId
+      queuedRenderRef.current = null
       queueMicrotask(() => {
-        if (active) {
+        if (
+          mountedRef.current &&
+          currentRenderRequestIdRef.current === requestId
+        ) {
           setRendered({
             identity,
             dataUrl: null,
@@ -78,32 +114,88 @@ export function QrDisplay({
           })
         }
       })
-      return () => {
-        active = false
-      }
+      return
     }
-    void renderQrDataUrl(payload, { ecLevel, size })
-      .then((url) => {
-        if (!active) return
-        setRendered({ identity, dataUrl: url, error: null })
-        renderedCallbackRef.current?.()
-      })
-      .catch((caught: unknown) => {
-        if (active) {
-          setRendered({
-            identity,
-            dataUrl: null,
-            error: toAppError(caught, "QR_TOO_LARGE").code,
-          })
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [ecLevel, identity, payload, size])
 
-  const dataUrl = rendered.identity === identity ? rendered.dataUrl : null
-  const error = rendered.identity === identity ? rendered.error : null
+    queuedRenderRef.current = {
+      id: requestId,
+      identity,
+      payload,
+      ecLevel,
+      size,
+    }
+
+    const renderNext = () => {
+      if (
+        !mountedRef.current ||
+        activeRenderRequestIdRef.current !== null
+      ) {
+        return
+      }
+      const request = queuedRenderRef.current
+      if (request === null) return
+
+      queuedRenderRef.current = null
+      activeRenderRequestIdRef.current = request.id
+      void renderQrDataUrl(request.payload, {
+        ecLevel: request.ecLevel,
+        size: request.size,
+      })
+        .then((url) => {
+          if (
+            !mountedRef.current ||
+            request.id <= invalidatedThroughRequestIdRef.current
+          ) {
+            return
+          }
+          // A newer valid target may already be queued. Commit this successful
+          // frame first so a slow renderer lowers frame rate instead of blanking.
+          setRendered({
+            identity: request.identity,
+            dataUrl: url,
+            error: null,
+          })
+          renderedCallbackRef.current?.()
+        })
+        .catch((caught: unknown) => {
+          if (
+            !mountedRef.current ||
+            request.id <= invalidatedThroughRequestIdRef.current
+          ) {
+            return
+          }
+          const requestIsCurrent =
+            currentRenderRequestIdRef.current === request.id
+          // A known render failure always clears the displayed QR. Surface the
+          // error only while that failed request is still the active target.
+          invalidatedThroughRequestIdRef.current = request.id
+          setRendered({
+            identity: request.identity,
+            dataUrl: null,
+            error: requestIsCurrent
+              ? toAppError(caught, "QR_TOO_LARGE").code
+              : null,
+          })
+        })
+        .finally(() => {
+          if (activeRenderRequestIdRef.current === request.id) {
+            activeRenderRequestIdRef.current = null
+          }
+          renderNext()
+        })
+    }
+
+    renderNext()
+  }, [ecLevel, identity, payload, payloadIsValid, size])
+
+  const invalidPayloadError: LocalizedMessage | null = payloadIsValid
+    ? null
+    : "qrDisplay.notQrCryptPayload"
+  const error =
+    invalidPayloadError ??
+    (rendered.identity === identity ? rendered.error : null)
+  const dataUrl =
+    payloadIsValid && error === null ? rendered.dataUrl : null
   const localizedError = useLocalizedMessage(error)
 
   if (error) {

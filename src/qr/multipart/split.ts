@@ -7,7 +7,12 @@ import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { randomBytes } from "@/crypto/random"
 import { sha256 } from "@/lib/bytes"
-import { FRAME_BYTES_MAX, FRAME_BYTES_MIN, FRAME_CHUNK_MAX_BYTES } from "@/lib/limits"
+import {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
+  FRAME_CHUNK_MAX_BYTES,
+  MAX_ARTIFACT_BYTES_ABSOLUTE,
+} from "@/lib/limits"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import { payloadFits } from "@/qr/encode"
 import { env } from "@/schemas/env-schema"
@@ -40,6 +45,9 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
   }
   if (!(artifactBytes instanceof Uint8Array) || artifactBytes.byteLength === 0) {
     throw new AppError("INVALID_QR_PAYLOAD")
+  }
+  if (artifactBytes.byteLength > MAX_ARTIFACT_BYTES_ABSOLUTE) {
+    throw new AppError("QR_TOO_LARGE")
   }
 
   const frameBytes = "frameBytes" in args ? args.frameBytes : undefined
