@@ -299,7 +299,12 @@ export function EncryptPage() {
   const recipients = useMemo(
     () =>
       bundles.filter(
-        (record) => record.revokedAt === undefined && isActiveBundle(record),
+        (record) =>
+          record.revokedAt === undefined &&
+          isActiveBundle(record) &&
+          // An in-band check the sender can forge is not an identity proof. Only a
+          // fingerprint compared out of band may authorise encryption to this key.
+          record.trust === "fingerprint-confirmed",
       ),
     [bundles],
   )
@@ -665,6 +670,11 @@ export function EncryptPage() {
                   }`,
                 }))}
               />
+              {!pqLoading && recipients.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {t("encrypt.recipient.needsConfirmation")}
+                </p>
+              )}
               {signed && (
                 <RecordSelect
                   id="sender-select"

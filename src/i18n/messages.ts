@@ -303,6 +303,14 @@ const en = {
   "keyList.bundle.legacyNote":
     "This legacy profile is unsupported, so only deletion is available.",
   "keyList.bundle.revoke": "Disable on this device",
+  "keyList.bundle.confirmOpen": "Compare and confirm the fingerprint",
+  "keyList.bundle.confirmTitle": "Confirm this identity's fingerprint",
+  "keyList.bundle.confirmBody":
+    "Compare every group below with the value shown on the other party's own device, through another channel such as a call or in person. Confirming records that you did so and makes this identity selectable as an encryption recipient; the app cannot check the comparison for you.",
+  "keyList.bundle.confirmCheck":
+    "I compared the fingerprint through another channel and it matched",
+  "keyList.bundle.confirmSubmit": "Confirm",
+  "keyList.toast.bundleConfirmed": "The fingerprint was confirmed",
 
   "keys.validation.keyNameFallback": "Check the key name.",
   "keys.validation.idNameFallback": "Check the identity name.",
@@ -334,7 +342,7 @@ const en = {
     "To verify the association with a person and use this key persistently, import the OCI2 public-key bundle.",
   "keys.bundle.dialogTitle": "Compare the fingerprint through another channel",
   "keys.bundle.dialogDesc":
-    "Before completing the import, compare the full hex with the other party through another channel, such as a call or in person. A self-signature alone does not prove a person's identity.",
+    "Before completing the import, compare the full hex with the other party through another channel, such as a call or in person. A self-signature alone does not prove a person's identity. If you save without verification, this identity cannot be selected for encryption until you confirm it later under Saved keys.",
   "keys.bundle.fingerprintKem": "ML-KEM fingerprint",
   "keys.bundle.fingerprintSigning": "ML-DSA fingerprint",
   "keys.bundle.confirmLabel": "I confirmed a match through another channel",
@@ -374,6 +382,8 @@ const en = {
   "encrypt.recipientLabel": "Recipient ML-KEM public key",
   "encrypt.recipient.confirmed": "Verified",
   "encrypt.recipient.unverified": "Unverified",
+  "encrypt.recipient.needsConfirmation":
+    "No confirmed recipient. A public identity becomes selectable here once its fingerprint has been compared with the other party through another channel and confirmed under Saved keys.",
   "encrypt.senderLabel": "My ML-DSA signing identity",
   "encrypt.plaintextLabel": "Plaintext",
   "encrypt.clearPlaintext": "Clear plaintext",
@@ -925,6 +935,14 @@ const ja = {
   "keyList.bundle.legacyNote":
     "非対応（旧プロファイル）のため、削除以外の操作はできません。",
   "keyList.bundle.revoke": "利用停止",
+  "keyList.bundle.confirmOpen": "指紋を比較して確認する",
+  "keyList.bundle.confirmTitle": "この識別子の指紋を確認しますか?",
+  "keyList.bundle.confirmBody":
+    "以下の各グループを、相手本人の端末に表示された値と、通話や対面など別の経路で突き合わせてください。確認するとその事実が記録され、この識別子が暗号化の宛先として選べるようになります。比較そのものをアプリが検証することはできません。",
+  "keyList.bundle.confirmCheck":
+    "別の経路で指紋を比較し、一致することを確認しました",
+  "keyList.bundle.confirmSubmit": "確認する",
+  "keyList.toast.bundleConfirmed": "指紋を確認しました",
 
   "keys.validation.keyNameFallback": "鍵名を確認してください。",
   "keys.validation.idNameFallback": "ID名を確認してください。",
@@ -956,7 +974,7 @@ const ja = {
     "人物との対応を確認して永続利用するには、OCI2公開鍵セットを取り込んでください。",
   "keys.bundle.dialogTitle": "別経路で指紋を比較してください",
   "keys.bundle.dialogDesc":
-    "取込を完了する前に、相手と通話・対面など別経路で full hex を照合します。自己署名だけでは人物を証明しません。",
+    "取込を完了する前に、相手と通話・対面など別経路で full hex を照合します。自己署名だけでは人物を証明しません。未確認のまま保存した識別子は暗号化の宛先に選べませんが、保存済み鍵の画面から後で指紋を確認できます。",
   "keys.bundle.fingerprintKem": "ML-KEM鍵指紋",
   "keys.bundle.fingerprintSigning": "ML-DSA鍵指紋",
   "keys.bundle.confirmLabel": "別経路で一致を確認した",
@@ -996,6 +1014,8 @@ const ja = {
   "encrypt.recipientLabel": "受信者のML-KEM公開鍵",
   "encrypt.recipient.confirmed": "確認済み",
   "encrypt.recipient.unverified": "未確認",
+  "encrypt.recipient.needsConfirmation":
+    "確認済みの宛先がありません。公開識別子は、相手と別の経路で指紋を比較し、保存済み鍵の画面で確認したものだけがここで選べるようになります。",
   "encrypt.senderLabel": "自分のML-DSA署名ID",
   "encrypt.plaintextLabel": "平文",
   "encrypt.clearPlaintext": "平文を消去",

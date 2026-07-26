@@ -12,8 +12,31 @@ import {
   MAX_PLAINTEXT_BYTES,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
+import type { PqPublicBundleRecord } from "@/schemas/domain"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
+const confirmedBundleFixture: PqPublicBundleRecord = {
+  recordId: "recipient-record",
+  identityId: "recipient-identity",
+  name: "Recipient",
+  kem: {
+    algorithm: "ML-KEM-1024",
+    keyId: KEY_ID,
+    publicKey: new Uint8Array(1568),
+    fingerprint: "kem-fingerprint",
+  },
+  signing: {
+    algorithm: "ML-DSA-87",
+    keyId: "EBESExQVFhcYGRobHB0eHw",
+    publicKey: new Uint8Array(2592),
+    fingerprint: "signing-fingerprint",
+  },
+  identityFingerprint: "identity-fingerprint",
+  trust: "fingerprint-confirmed",
+  trustConfirmedAt: 1_700_000_000_000,
+  bundleCreatedAt: 1_699_999_999_999,
+  importedAt: 1_700_000_000_000,
+}
 
 describe("PQ strict validation", () => {
   it("layers the configured ciphertext bound over the canonical envelope guard", () => {
@@ -50,6 +73,25 @@ describe("PQ strict validation", () => {
         now: 1_700_000_000_000,
       }),
     ).rejects.toMatchObject({ code: "ENCRYPTION_FAILED" })
+    expect(encryptPqMessage).not.toHaveBeenCalled()
+  })
+
+  it("refuses to encrypt to a bundle whose fingerprint was never confirmed", async () => {
+    const encryptPqMessage = vi.fn()
+    const unverifiedRecipient: PqPublicBundleRecord = {
+      ...confirmedBundleFixture,
+      trust: "unverified",
+    }
+    delete unverifiedRecipient.trustConfirmedAt
+
+    await expect(
+      encryptPq({
+        client: { encryptPqMessage } as never,
+        recipient: unverifiedRecipient,
+        plaintext: new TextEncoder().encode("x"),
+        now: 1_700_000_000_001,
+      }),
+    ).rejects.toMatchObject({ code: "KEY_NOT_FOUND" })
     expect(encryptPqMessage).not.toHaveBeenCalled()
   })
 

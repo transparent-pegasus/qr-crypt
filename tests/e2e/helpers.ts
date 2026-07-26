@@ -290,6 +290,7 @@ export async function seedSelfPublicBundle(
               reject(new Error(`PQ identity not found: ${name}`))
               return
             }
+            const confirmedAt = Math.max(Date.now(), identity.createdAt)
             transaction.objectStore("pqPublicBundles").put({
               recordId: identity.id,
               identityId: identity.id,
@@ -307,9 +308,10 @@ export async function seedSelfPublicBundle(
                 fingerprint: identity.signing.fingerprint,
               },
               identityFingerprint: identity.identityFingerprint,
-              trust: "unverified",
+              trust: "fingerprint-confirmed",
+              trustConfirmedAt: confirmedAt,
               bundleCreatedAt: identity.createdAt,
-              importedAt: Math.max(Date.now(), identity.createdAt),
+              importedAt: confirmedAt,
             })
           }
         }
@@ -357,7 +359,7 @@ export async function encryptSignedPq(
 ): Promise<{ payload: string; result: Locator }> {
   await goToOfflinePage(page, "/encrypt")
   await chooseOption(page, "Cryptographic algorithm", SIGNED_PQ_ALGORITHM_LABEL)
-  await chooseOption(page, "Recipient ML-KEM public key", /^(Verified|Unverified): /)
+  await chooseOption(page, "Recipient ML-KEM public key", /^Verified: /)
   await chooseOption(page, "My ML-DSA signing identity", args.identityName)
   await page.getByLabel("Plaintext", { exact: true }).fill(args.plaintext)
   await page.getByRole("button", { name: "Encrypt", exact: true }).click()

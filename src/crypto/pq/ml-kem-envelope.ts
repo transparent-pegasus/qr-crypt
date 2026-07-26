@@ -39,6 +39,12 @@ export async function encryptPq(args: EncryptPqArgs): Promise<MlKemMessageEnvelo
     if (args.recipient.revokedAt !== undefined) {
       throw new AppError("KEY_NOT_FOUND")
     }
+    if (args.recipient.trust !== "fingerprint-confirmed") {
+      // Parity with the revocation check above: an imported bundle whose fingerprint
+      // was never compared out of band must not reach KEM encapsulation. The UI
+      // filters first, so this is the backstop for any other caller.
+      throw new AppError("KEY_NOT_FOUND")
+    }
     if (args.sign !== undefined && args.sign.identity.status !== "active") {
       throw new AppError("ENCRYPTION_FAILED")
     }

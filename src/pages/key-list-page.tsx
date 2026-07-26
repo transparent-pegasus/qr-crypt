@@ -1,15 +1,25 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router"
 import { LoaderCircle } from "lucide-react"
+import { toast } from "sonner"
 import {
   isUsableIdentity,
   KeyDetailDialog,
   type KeySelection,
 } from "@/components/key-detail-dialog"
+import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -34,7 +44,11 @@ import type {
   PqPublicBundleRecord,
   StoredKeyRecord,
 } from "@/schemas/domain"
-import { deleteBundle, revokeBundle } from "@/storage/pq-bundle-repository"
+import {
+  confirmBundleFingerprint,
+  deleteBundle,
+  revokeBundle,
+} from "@/storage/pq-bundle-repository"
 
 interface IdentityGroup {
   head: PostQuantumIdentity
@@ -101,6 +115,9 @@ export function KeyListPage() {
   const [ownKeyFilter, setOwnKeyFilter] = useState<OwnKeyFilter>("all")
   const [bundleBusy, setBundleBusy] = useState(false)
   const [bundleError, setBundleError] = useState<LocalizedMessage | null>(null)
+  const [bundleConfirmation, setBundleConfirmation] =
+    useState<PqPublicBundleRecord | null>(null)
+  const [bundleFingerprintChecked, setBundleFingerprintChecked] = useState(false)
   const localizedPqError = useLocalizedMessage(pqError)
   const localizedKeysError = useLocalizedMessage(keysError)
   const localizedBundleError = useLocalizedMessage(bundleError)
@@ -161,6 +178,28 @@ export function KeyListPage() {
     try {
       await operation()
       await refreshPq()
+    } catch (caught) {
+      setBundleError(toAppError(caught, "STORAGE_FAILED").code)
+    } finally {
+      setBundleBusy(false)
+    }
+  }
+
+  const closeBundleConfirmation = () => {
+    setBundleConfirmation(null)
+    setBundleFingerprintChecked(false)
+  }
+
+  const confirmStoredBundle = async () => {
+    const record = bundleConfirmation
+    if (record === null || !bundleFingerprintChecked) return
+    setBundleBusy(true)
+    setBundleError(null)
+    try {
+      await confirmBundleFingerprint(record.recordId, Date.now())
+      await refreshPq()
+      closeBundleConfirmation()
+      toast.success(t("keyList.toast.bundleConfirmed"))
     } catch (caught) {
       setBundleError(toAppError(caught, "STORAGE_FAILED").code)
     } finally {
@@ -317,6 +356,10 @@ export function KeyListPage() {
             <BundleList
               bundles={bundles}
               busy={bundleBusy}
+              onConfirm={(record) => {
+                setBundleConfirmation(record)
+                setBundleFingerprintChecked(false)
+              }}
               onRevoke={(recordId) =>
                 mutateBundle(() => revokeBundle(recordId, Date.now()))
               }
@@ -358,6 +401,72 @@ export function KeyListPage() {
           setSelection(nextSelection)
         }}
       />
+
+      <Dialog
+        open={bundleConfirmation !== null}
+        onOpenChange={(open) => {
+          if (!open && !bundleBusy) closeBundleConfirmation()
+        }}
+      >
+        <NoAutofocusDialogContent className="max-h-[95dvh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("keyList.bundle.confirmTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("keyList.bundle.confirmBody")}
+            </DialogDescription>
+          </DialogHeader>
+          {bundleConfirmation !== null && (
+            <div className="space-y-4">
+              <Fingerprint
+                label={t("common.identityFingerprint")}
+                value={bundleConfirmation.identityFingerprint}
+              />
+              <Fingerprint
+                label={t("keyList.bundle.fingerprintKem", {
+                  algorithm: bundleConfirmation.kem.algorithm,
+                })}
+                value={bundleConfirmation.kem.fingerprint}
+              />
+              <Fingerprint
+                label={t("keyList.bundle.fingerprintSigning", {
+                  algorithm: bundleConfirmation.signing.algorithm,
+                })}
+                value={bundleConfirmation.signing.fingerprint}
+              />
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="stored-bundle-fingerprint-confirmed"
+                  checked={bundleFingerprintChecked}
+                  disabled={bundleBusy}
+                  onCheckedChange={(checked) =>
+                    setBundleFingerprintChecked(checked === true)
+                  }
+                />
+                <Label htmlFor="stored-bundle-fingerprint-confirmed">
+                  {t("keyList.bundle.confirmCheck")}
+                </Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={bundleBusy}
+              onClick={closeBundleConfirmation}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              disabled={bundleBusy || !bundleFingerprintChecked}
+              onClick={() => void confirmStoredBundle()}
+            >
+              {t("keyList.bundle.confirmSubmit")}
+            </Button>
+          </DialogFooter>
+        </NoAutofocusDialogContent>
+      </Dialog>
     </section>
   )
 }
@@ -378,11 +487,13 @@ function Fingerprint({ label, value }: { label: string; value: string }) {
 function BundleList({
   bundles,
   busy,
+  onConfirm,
   onRevoke,
   onDelete,
 }: {
   bundles: PqPublicBundleRecord[]
   busy: boolean
+  onConfirm: (record: PqPublicBundleRecord) => void
   onRevoke: (recordId: string) => Promise<void>
   onDelete: (recordId: string) => Promise<void>
 }) {
@@ -443,6 +554,17 @@ function BundleList({
                 <p className="text-sm text-destructive">
                   {t("keyList.bundle.legacyNote")}
                 </p>
+              )}
+              {record.trust !== "fingerprint-confirmed" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() => onConfirm(record)}
+                >
+                  {t("keyList.bundle.confirmOpen")}
+                </Button>
               )}
               <div className={`grid gap-2 ${supported ? "grid-cols-2" : "grid-cols-1"}`}>
                 {supported && (

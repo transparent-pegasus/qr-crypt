@@ -6,7 +6,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { AppProviders, useSensitiveSession } from "@/app/providers"
 import type { KeySelection } from "@/components/key-detail-dialog"
 import { LanguageProvider } from "@/i18n"
+import { translate } from "@/i18n/messages"
+import type { PqPublicBundleRecord } from "@/schemas/domain"
 import {
+  confirmBundleFingerprint,
   deleteBundle,
   deleteIdentity,
   deleteKeyRecord,
@@ -180,6 +183,64 @@ describe("key list page", () => {
     expect(
       await screen.findByText("There are no imported public-key bundles."),
     ).toBeInTheDocument()
+  })
+
+  it("confirms a stored bundle's fingerprint from the saved keys screen", async () => {
+    const user = userEvent.setup()
+    const unverifiedBundle: PqPublicBundleRecord = {
+      ...fakeBundles[0]!,
+      name: "Unverified display name",
+      trust: "unverified",
+      kem: {
+        ...fakeBundles[0]!.kem,
+        fingerprint: "7".repeat(64),
+      },
+      signing: {
+        ...fakeBundles[0]!.signing,
+        fingerprint: "8".repeat(64),
+      },
+      identityFingerprint: "9".repeat(64),
+    }
+    delete unverifiedBundle.trustConfirmedAt
+    fakeBundles.splice(0, fakeBundles.length, unverifiedBundle)
+    await renderKeyList()
+    await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: translate("en", "keyList.bundle.confirmOpen"),
+      }),
+    )
+    const dialog = await screen.findByRole("dialog", {
+      name: translate("en", "keyList.bundle.confirmTitle"),
+    })
+    expect(
+      within(dialog).getByText(unverifiedBundle.identityFingerprint),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(unverifiedBundle.kem.fingerprint),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(unverifiedBundle.signing.fingerprint),
+    ).toBeInTheDocument()
+
+    const checkbox = within(dialog).getByRole("checkbox", {
+      name: translate("en", "keyList.bundle.confirmCheck"),
+    })
+    const submit = within(dialog).getByRole("button", {
+      name: translate("en", "keyList.bundle.confirmSubmit"),
+    })
+    expect(submit).toBeDisabled()
+    await user.click(checkbox)
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+
+    await waitFor(() =>
+      expect(confirmBundleFingerprint).toHaveBeenCalledWith(
+        unverifiedBundle.recordId,
+        expect.any(Number),
+      ),
+    )
   })
 
   it("shows QR views in the same dialog and never offers QR persistence", async () => {

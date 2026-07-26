@@ -131,6 +131,7 @@ describe("PQ envelope and storage integration", () => {
         trustConfirmedAt: NOW + 3,
       }),
     ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+    await confirmBundleFingerprint(recipientRecord.recordId, NOW + 3)
     await confirmBundleFingerprint(senderRecord.recordId, NOW + 3)
     expect(await getBundle(senderRecord.recordId)).toMatchObject({
       trust: "fingerprint-confirmed",
@@ -246,7 +247,7 @@ describe("PQ envelope and storage integration", () => {
     await expect(
       encryptPq({
         client,
-        recipient: recipientRecord,
+        recipient: selectedRecipient!,
         plaintext,
         sign: { identity: revokedSender!, vaultKey },
         now: NOW + 7,
