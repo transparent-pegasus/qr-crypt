@@ -793,6 +793,13 @@ export const renameKeyRecord = vi.fn(async (id: string, name: string) => {
   const record = fakeKeys.find((item) => item.id === id)
   if (record) record.name = name
 })
+export const renameIdentity = vi.fn(async (id: string, name: string) => {
+  const existing = fakeIdentities.find((identity) => identity.id === id)
+  if (existing === undefined || existing.status === "rotated") {
+    throw new AppError("KEY_NOT_FOUND")
+  }
+  existing.name = name.trim()
+})
 export const deleteKeyRecord = vi.fn(async (id: string) => {
   const index = fakeKeys.findIndex((item) => item.id === id)
   if (index >= 0) fakeKeys.splice(index, 1)

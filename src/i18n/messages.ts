@@ -234,6 +234,9 @@ const en = {
     "Increase the screen brightness and keep the device still for more reliable scanning.",
   "animatedQr.export.error.title": "The frames could not be exported",
 
+  "keyDetail.rename.label": "Key name",
+  "keyDetail.rename.submit": "Rename",
+  "keyDetail.rename.saved": "Key renamed",
   "keyDetail.qr.bundleTitle": "{name} public-key bundle",
   "keyDetail.qr.kemTitle": "{name} encryption public key",
   "keyDetail.qr.signingTitle": "{name} signature-verification public key",
@@ -886,6 +889,9 @@ const ja = {
     "画面の輝度を上げ、端末を動かさずに読み取ると安定します。",
   "animatedQr.export.error.title": "フレームを出力できません",
 
+  "keyDetail.rename.label": "鍵の名前",
+  "keyDetail.rename.submit": "改名",
+  "keyDetail.rename.saved": "鍵を改名しました",
   "keyDetail.qr.bundleTitle": "{name} 公開鍵セット",
   "keyDetail.qr.kemTitle": "{name} 暗号化用公開鍵",
   "keyDetail.qr.signingTitle": "{name} 署名検証用公開鍵",

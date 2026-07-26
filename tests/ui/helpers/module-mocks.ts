@@ -122,6 +122,7 @@ vi.mock("@/storage/pq-identity-repository", () => ({
   listIdentities: fakes.listIdentities,
   saveIdentity: fakes.saveIdentity,
   saveRotation: fakes.saveRotation,
+  renameIdentity: fakes.renameIdentity,
   revokeIdentity: fakes.revokeIdentity,
   deleteIdentity: fakes.deleteIdentity,
   deleteSupersededIdentities: fakes.deleteSupersededIdentities,
