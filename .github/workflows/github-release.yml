@@ -82,6 +82,93 @@ jobs:
       - name: Build production PWA
         run: aube run build:prod
 
+      - name: Verify production build determinism
+        run: |
+          set -euo pipefail
+
+          first_build="$RUNNER_TEMP/qr-crypt-dist-first"
+          second_build="$RUNNER_TEMP/qr-crypt-dist-second"
+          first_files="$RUNNER_TEMP/qr-crypt-dist-first.files"
+          second_files="$RUNNER_TEMP/qr-crypt-dist-second.files"
+          first_hashes="$RUNNER_TEMP/qr-crypt-dist-first.sha256"
+          second_hashes="$RUNNER_TEMP/qr-crypt-dist-second.sha256"
+
+          for path in \
+            "$first_build" "$second_build" \
+            "$first_files" "$second_files" \
+            "$first_hashes" "$second_hashes"; do
+            [[ "$path" == "$RUNNER_TEMP/"* ]] ||
+              {
+                printf 'production build determinism error: unsafe temporary path\n' >&2
+                exit 1
+              }
+            [[ ! -e "$path" ]] ||
+              {
+                printf 'production build determinism error: temporary path exists: %s\n' \
+                  "$path" >&2
+                exit 1
+              }
+          done
+          [[ -d dist ]] ||
+            {
+              printf 'production build determinism error: first dist is missing\n' >&2
+              exit 1
+            }
+
+          mv dist "$first_build"
+
+          restore_first_build() {
+            if [[ -e "$first_build" ]]; then
+              if [[ -e dist ]]; then
+                mv dist "$second_build"
+              fi
+              mv "$first_build" dist
+            fi
+          }
+          trap restore_first_build EXIT
+
+          # The first build is outside the checkout while Tailwind scans the
+          # project tree for the second build.
+          aube run build:prod
+          [[ -d dist ]] ||
+            {
+              printf 'production build determinism error: second dist is missing\n' >&2
+              exit 1
+            }
+
+          find "$first_build" -type f -printf '%P\n' |
+            LC_ALL=C sort > "$first_files"
+          find dist -type f -printf '%P\n' |
+            LC_ALL=C sort > "$second_files"
+          (
+            cd "$first_build"
+            find . -type f -printf '%P\0' |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum
+          ) > "$first_hashes"
+          (
+            cd dist
+            find . -type f -printf '%P\0' |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum
+          ) > "$second_hashes"
+
+          comparison_failed=0
+          if ! diff -u "$first_files" "$second_files"; then
+            printf 'production build determinism error: file sets differ\n' >&2
+            comparison_failed=1
+          fi
+          if ! diff -u "$first_hashes" "$second_hashes"; then
+            printf 'production build determinism error: file hashes differ\n' >&2
+            comparison_failed=1
+          fi
+
+          restore_first_build
+          trap - EXIT
+          if [[ "$comparison_failed" -ne 0 ]]; then
+            exit 1
+          fi
+
       - name: Validate and package the static PWA
         id: package
         env:
@@ -376,25 +463,167 @@ jobs:
           The signature authenticates this ZIP. It does not make removable
           media, firmware, the operating system, browser, or local server safe.
 
+          REBUILD AND COMPARE
+          The signed ZIP contains SHA256SUMS.files. The ZIP signature authenticates
+          that manifest, and the manifest authenticates every other archive file,
+          including INSTALL.txt. To compare those authenticated bytes with a local
+          rebuild:
+
+          1. Prepare a clean checkout at the independently authenticated Source
+             commit. Extract the authenticated ZIP into a new empty directory
+             outside that checkout. Never put the extracted archive or a
+             copied/stale build tree under the checkout: Tailwind scans the
+             project tree, and such leftovers can change generated CSS and cause
+             a false mismatch.
+
+            set -euo pipefail
+            export QR_CRYPT_SOURCE_SHA=$SOURCE_SHA
+            export QR_CRYPT_CHECKOUT=/absolute/path/to/clean-checkout
+            export QR_CRYPT_ARCHIVE_ROOT=/absolute/path/outside-checkout/$root_name
+            test "\$(git -C "\$QR_CRYPT_CHECKOUT" rev-parse HEAD)" = \\
+              "\$QR_CRYPT_SOURCE_SHA"
+            test -z "\$(git -C "\$QR_CRYPT_CHECKOUT" status \\
+              --porcelain --untracked-files=all)"
+
+          2. Install and use the Node and aube versions pinned by mise.toml, then
+             build with the authenticated commit as the build identity:
+
+            (
+              cd "\$QR_CRYPT_CHECKOUT"
+              mise install
+              mise exec -- aube ci
+              VITE_BUILD_SHA="\$QR_CRYPT_SOURCE_SHA" \\
+                mise exec -- aube run build:prod
+            )
+
+          3. From inside the extracted archive root, verify the manifest format,
+             the complete member set (the manifest excludes only itself), and
+             every listed hash:
+
+            export QR_CRYPT_COMPARE_TMP="\$(mktemp -d)"
+            (
+              cd "\$QR_CRYPT_ARCHIVE_ROOT"
+              test -s SHA256SUMS.files
+              if grep -Evq \\
+                '^[0-9a-f]{64}  [A-Za-z0-9._/-]+$' SHA256SUMS.files; then
+                printf 'invalid SHA256SUMS.files entry\n' >&2
+                exit 1
+              fi
+              test -z "\$(find . -mindepth 1 ! -type d ! -type f \\
+                -print -quit)"
+              cut -c67- SHA256SUMS.files |
+                LC_ALL=C sort > "\$QR_CRYPT_COMPARE_TMP/archive.listed"
+              find . -type f ! -path './SHA256SUMS.files' -printf '%P\n' |
+                LC_ALL=C sort > "\$QR_CRYPT_COMPARE_TMP/archive.actual"
+              grep -Fxq INSTALL.txt "\$QR_CRYPT_COMPARE_TMP/archive.listed"
+              diff -u "\$QR_CRYPT_COMPARE_TMP/archive.listed" \\
+                "\$QR_CRYPT_COMPARE_TMP/archive.actual"
+              sha256sum -c SHA256SUMS.files
+            )
+
+          4. Compare both the sorted payload file set and each per-file hash.
+             The production build's online-only about/ tree is excluded on the
+             rebuild side; packaging-only INSTALL.txt and SHA256SUMS.files are
+             excluded on the archive side:
+
+            (
+              cd "\$QR_CRYPT_CHECKOUT/dist"
+              find . -type f ! -path './about/*' -printf '%P\n' |
+                LC_ALL=C sort
+            ) > "\$QR_CRYPT_COMPARE_TMP/rebuilt.files"
+            (
+              cd "\$QR_CRYPT_ARCHIVE_ROOT"
+              find . -type f \\
+                ! -path './INSTALL.txt' \\
+                ! -path './SHA256SUMS.files' \\
+                -printf '%P\n' |
+                LC_ALL=C sort
+            ) > "\$QR_CRYPT_COMPARE_TMP/archive-payload.files"
+            diff -u "\$QR_CRYPT_COMPARE_TMP/rebuilt.files" \\
+              "\$QR_CRYPT_COMPARE_TMP/archive-payload.files"
+            (
+              cd "\$QR_CRYPT_CHECKOUT/dist"
+              while IFS= read -r file; do
+                sha256sum -- "\$file"
+              done < "\$QR_CRYPT_COMPARE_TMP/rebuilt.files"
+            ) > "\$QR_CRYPT_COMPARE_TMP/rebuilt.sha256"
+            (
+              cd "\$QR_CRYPT_ARCHIVE_ROOT"
+              while IFS= read -r file; do
+                sha256sum -- "\$file"
+              done < "\$QR_CRYPT_COMPARE_TMP/archive-payload.files"
+            ) > "\$QR_CRYPT_COMPARE_TMP/archive-payload.sha256"
+            diff -u "\$QR_CRYPT_COMPARE_TMP/rebuilt.sha256" \\
+              "\$QR_CRYPT_COMPARE_TMP/archive-payload.sha256"
+            rm -rf -- "\$QR_CRYPT_COMPARE_TMP"
+
+          The workflow's double build establishes determinism only within the
+          same CI environment; environment-independent reproducibility remains
+          unverified. A Cosign signature attests provenance (the workflow and
+          source commit), not source-to-binary correspondence. An attacker who
+          controls the CI environment can still publish a correctly signed
+          backdoor; only an independent rebuild comparison can detect that case.
+
           DEPLOY ON THE OFFLINE DEVICE
           1. Extract this ZIP. It creates one $root_name directory; use that
              directory as the server document root.
           2. Use an audited static server already preinstalled through an
-             independent trusted process. Bind it only to 127.0.0.1/localhost.
+             independent trusted process. Bind it only to 127.0.0.1.
              It must enforce the included _headers and _redirects semantics:
              security headers, correct MIME types, SPA fallback to /index.html,
-             and no-store for the reachability sentinel.
-          3. Open http://localhost (or http://127.0.0.1) and wait until the PWA
-             reports that offline use is ready.
+             and no-store for the reachability sentinel. Avoid collision-prone
+             ports such as 8000 or 8080; choose one fixed uncommon high port.
+          3. Open the exact http://127.0.0.1:PORT origin chosen for this
+             installation and wait until the PWA reports that offline use is ready.
           4. Stop the local server, remove the transport medium, physically
              disconnect networking, and confirm QR Crypt reports offline before
              entering or restoring any secret.
+
+          ORIGIN BOUNDARY
+          The stored keys and Vault key belong to IndexedDB at the exact
+          http://127.0.0.1:PORT origin. Browser origin is determined only by
+          scheme, host, and port; this local HTTP deployment has neither TLS nor
+          host authentication. localhost and 127.0.0.1 are different origins, so
+          always use 127.0.0.1.
+
+          If another page is later served from that same host:port, it is
+          same-origin and can reach the stored keys and Vault key handle. Even a
+          non-extractable key can still decrypt through crypto.subtle. Treat the
+          host:port as a defense boundary: never serve anything else there and
+          keep the chosen port fixed. Changing the port after installation makes
+          the app a different origin that cannot reach its stored data.
 
           Opening index.html with file:// is unsupported. Plain HTTP on a LAN
           address is unsupported. Do not enter secrets while the install server
           is running: its sentinel deliberately makes QR Crypt treat that origin as
           reachable.
           EOF
+
+          (
+            cd "$stage_dir"
+            find . -type f ! -path './SHA256SUMS.files' -printf '%P\0' |
+              LC_ALL=C sort -z |
+              xargs -0 -r sha256sum > SHA256SUMS.files
+          )
+          [[ -s "$stage_dir/SHA256SUMS.files" ]] ||
+            fail "per-file checksum manifest is empty"
+          grep -Eq '^[0-9a-f]{64}  INSTALL\.txt$' \
+            "$stage_dir/SHA256SUMS.files" ||
+            fail "per-file checksum manifest does not cover INSTALL.txt"
+          if ! diff -u \
+            --label 'staged regular files' \
+            --label 'SHA256SUMS.files paths' \
+            <(
+              cd "$stage_dir"
+              find . -type f ! -path './SHA256SUMS.files' -printf '%P\n' |
+                LC_ALL=C sort
+            ) \
+            <(
+              cut -c67- "$stage_dir/SHA256SUMS.files" |
+                LC_ALL=C sort
+            ); then
+            fail "per-file checksum manifest does not exactly cover staged regular files"
+          fi
 
           commit_epoch="$(git show -s --format=%ct "$SOURCE_SHA")"
           [[ "$commit_epoch" =~ ^[0-9]+$ && "$commit_epoch" -ge 315532800 ]] ||
