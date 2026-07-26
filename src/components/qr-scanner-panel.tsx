@@ -888,6 +888,8 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
 
 export type QrScannerModalProps = QrScannerPanelProps & {
   triggerLabel: string
+  triggerDisabled?: boolean
+  onClosed?: () => void
   className?: string
 }
 
@@ -895,6 +897,8 @@ export function QrScannerModal(props: QrScannerModalProps) {
   const { t } = useI18n()
   const {
     triggerLabel,
+    triggerDisabled = false,
+    onClosed,
     cameraAvailable = true,
     title: titleProp,
     stopHint: stopHintProp,
@@ -1128,7 +1132,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
           <Button
             type="button"
             className="h-11 w-full"
-            disabled={!cameraAvailable || deliveryBusy}
+            disabled={!cameraAvailable || triggerDisabled || deliveryBusy}
           >
             <Camera aria-hidden="true" />
             {triggerLabel}
@@ -1143,9 +1147,9 @@ export function QrScannerModal(props: QrScannerModalProps) {
             contentRef.current?.focus()
           }}
           onCloseAutoFocus={(event) => {
-            if (!automaticCloseRef.current) return
-            event.preventDefault()
+            if (automaticCloseRef.current) event.preventDefault()
             automaticCloseRef.current = false
+            if (!openRef.current) onClosed?.()
           }}
         >
           <DialogTitle className="sr-only">{title}</DialogTitle>

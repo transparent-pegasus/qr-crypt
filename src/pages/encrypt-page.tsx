@@ -228,10 +228,8 @@ export function EncryptPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const [compatibilityUpdating, setCompatibilityUpdating] = useState(false)
-  const [compatibilityError, setCompatibilityError] =
-    useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(
-    error ?? compatibilityError ?? keysError ?? pqError ?? preferencesError,
+    error ?? keysError ?? pqError ?? preferencesError,
   )
   const [result, setResult] = useState<EncryptionResult | null>(null)
   const [resultExporting, setResultExporting] = useState(false)
@@ -242,6 +240,8 @@ export function EncryptPage() {
   const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
   const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
   const resultGenerationRef = useRef(0)
+  const resultAbortRef = useRef<AbortController | null>(null)
+  const pendingDecryptRef = useRef<string | null>(null)
   const pqResult = result?.kind === "pq" ? result : null
   const selectedFramePair = selectedGeneratedDisplayPair(preferences)
   const compatibilityEnabled =
@@ -284,7 +284,7 @@ export function EncryptPage() {
   const changeCompatibilityMode = useCallback(
     async (enabled: boolean) => {
       setCompatibilityUpdating(true)
-      setCompatibilityError(null)
+      setResultError(null)
       const pair = enabled
         ? COMPATIBLE_GENERATED_DISPLAY_PAIR
         : DEFAULT_GENERATED_DISPLAY_PAIR
@@ -294,7 +294,7 @@ export function EncryptPage() {
           frameIntervalMs: pair.frameIntervalMs,
         })
       } catch (caught) {
-        setCompatibilityError(toAppError(caught, "STORAGE_FAILED").code)
+        setResultError(toAppError(caught, "STORAGE_FAILED").code)
       } finally {
         setCompatibilityUpdating(false)
       }
@@ -428,9 +428,20 @@ export function EncryptPage() {
       secretVisible: false,
     })
   }, [busy, decrypted, plaintext, setSensitiveSession])
-  useEffect(() => () => resetSensitiveSession(), [resetSensitiveSession])
+  useEffect(
+    () => () => {
+      resultAbortRef.current?.abort()
+      resultAbortRef.current = null
+      resetSensitiveSession()
+    },
+    [resetSensitiveSession],
+  )
 
   const clearTransient = useCallback(() => {
+    resultAbortRef.current?.abort()
+    resultAbortRef.current = null
+    pendingDecryptRef.current = null
+    setResultExporting(false)
     setPlaintext("")
     setDecryptInput("")
     setDecrypted(null)
@@ -451,11 +462,17 @@ export function EncryptPage() {
 
   const handleEncrypt = async () => {
     if (!canEncrypt) return
+    resultAbortRef.current?.abort()
+    resultAbortRef.current = null
+    setResultExporting(false)
     setBusy(true)
     setError(null)
     setResult(null)
     try {
       const now = Date.now()
+      const suggestedOutputName = t("encrypt.output.suggestedName", {
+        date: formatSuggestedDate(now),
+      })
       if (algorithm === "A256GCM" && selectedKey?.symmetricKey) {
         const envelope = await encryptWithAesKey({
           key: selectedKey.symmetricKey,
@@ -467,6 +484,8 @@ export function EncryptPage() {
         if (!payloadFits(payload, ecLevelFor("message", preferences))) {
           throw new AppError("QR_TOO_LARGE")
         }
+        const sha256 = await payloadSha256Hex(payload)
+        setOutputName(suggestedOutputName)
         setResult({
           kind: "aes",
           payload,
@@ -474,7 +493,7 @@ export function EncryptPage() {
           key: selectedKey,
           createdAt: now,
           totalBytes: new TextEncoder().encode(payload).byteLength,
-          sha256: await payloadSha256Hex(payload),
+          sha256,
         })
         await markKeyUsed(selectedKey.id, now).catch(() => undefined)
       } else if (selectedRecipient) {
@@ -494,7 +513,9 @@ export function EncryptPage() {
         if (minimumFrameBytes > FRAME_BYTES_MAX) {
           throw new AppError("QR_TOO_LARGE")
         }
+        const sha256 = await sha256Hex(artifactBytes)
         resultGenerationRef.current += 1
+        setOutputName(suggestedOutputName)
         setResult({
           kind: "pq",
           payload: buildV2Payload("pq-message", artifactBytes),
@@ -506,16 +527,11 @@ export function EncryptPage() {
           ...(sender === undefined ? {} : { sender }),
           createdAt: now,
           totalBytes: artifactBytes.byteLength,
-          sha256: await sha256Hex(artifactBytes),
+          sha256,
         })
         await markBundleUsed(selectedRecipient.recordId, now).catch(() => undefined)
         if (sender) await markIdentityUsed(sender.id, now).catch(() => undefined)
       }
-      setOutputName(
-        t("encrypt.output.suggestedName", {
-          date: formatSuggestedDate(now),
-        }),
-      )
       if (preferences.autoClearPlaintextAfterEncrypt) {
         setPlaintext("")
         toast.info(t("encrypt.toast.plaintextClearedByPref"))
@@ -563,8 +579,12 @@ export function EncryptPage() {
           key: aesKey.symmetricKey,
           envelope: parsed.envelope,
         })
-        setDecrypted({ kind: "aes", text: bytesToUtf8(plaintextResult) })
+        const outcome: DecryptionResult = {
+          kind: "aes",
+          text: bytesToUtf8(plaintextResult),
+        }
         await markKeyUsed(aesKey.id, Date.now()).catch(() => undefined)
+        setDecrypted(outcome)
       } else if (parsed.kind === "pq-message" && identity) {
         // The cached list only gates the button. Re-resolve from storage at action
         // time so a generation discarded elsewhere cannot be decrypted from a stale
@@ -594,12 +614,13 @@ export function EncryptPage() {
                 }
           },
         })
+        let outcome: DecryptionResult
         if (pqResult.kind === "signed-key-unknown") {
-          setDecrypted(pqResult)
+          outcome = pqResult
         } else if (pqResult.kind === "unsigned") {
-          setDecrypted({ kind: "unsigned", text: bytesToUtf8(pqResult.plaintext) })
+          outcome = { kind: "unsigned", text: bytesToUtf8(pqResult.plaintext) }
         } else {
-          setDecrypted({
+          outcome = {
             kind: "signed-valid",
             text: bytesToUtf8(pqResult.plaintext),
             senderSigningKeyId: pqResult.senderSigningKeyId,
@@ -608,9 +629,10 @@ export function EncryptPage() {
                 bundle.signing.keyId === pqResult.senderSigningKeyId &&
                 isActiveBundle(bundle),
             ),
-          })
+          }
         }
         await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
+        setDecrypted(outcome)
       }
     } catch (caught) {
       setDecrypted(null)
@@ -622,16 +644,24 @@ export function EncryptPage() {
 
   const copyPayload = async () => {
     if (!result) return
+    const controller = resultAbortRef.current ?? new AbortController()
+    resultAbortRef.current = controller
+    const { signal } = controller
     try {
       await copyTextToClipboard(result.payload)
+      if (signal.aborted) return
       toast.success(t("encrypt.toast.payloadCopied"))
     } catch {
+      if (signal.aborted) return
       setResultError("common.copyFailed")
     }
   }
 
   const exportSingle = async () => {
     if (result?.kind !== "aes") return
+    const controller = resultAbortRef.current ?? new AbortController()
+    resultAbortRef.current = controller
+    const { signal } = controller
     const parsedName = qrNameSchema.safeParse(outputName)
     if (!parsedName.success) {
       setResultError(
@@ -649,14 +679,19 @@ export function EncryptPage() {
         ecLevel,
         size: env.qrRenderSize,
       })
+      if (signal.aborted) return
       triggerDownload(blob, buildExportFileName(parsedName.data, id, "png"))
     } catch (caught) {
+      if (signal.aborted) return
       setResultError(toAppError(caught, "QR_TOO_LARGE").code)
     }
   }
 
   const exportFrames = async () => {
     if (result?.kind !== "pq" || resultExporting || !canExportResult) return
+    const controller = resultAbortRef.current ?? new AbortController()
+    resultAbortRef.current = controller
+    const { signal } = controller
     const parsedName = qrNameSchema.safeParse(outputName)
     if (!parsedName.success) {
       setResultError(
@@ -673,11 +708,14 @@ export function EncryptPage() {
       await exportQrFramePayloads(pqFrames, {
         outputName: parsedName.data,
         size: env.qrRenderSize,
+        signal,
       })
+      if (signal.aborted) return
     } catch (caught) {
+      if (signal.aborted) return
       setResultError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
-      setResultExporting(false)
+      if (!signal.aborted) setResultExporting(false)
     }
   }
 
@@ -695,10 +733,10 @@ export function EncryptPage() {
         }}
       >
         <TabsList className="grid h-11 w-full grid-cols-2">
-          <TabsTrigger value="encrypt" className="h-9 cursor-pointer">
+          <TabsTrigger value="encrypt" className="h-9 cursor-pointer" disabled={busy}>
             {t("encrypt.tab.encrypt")}
           </TabsTrigger>
-          <TabsTrigger value="decrypt" className="h-9 cursor-pointer">
+          <TabsTrigger value="decrypt" className="h-9 cursor-pointer" disabled={busy}>
             {t("encrypt.tab.decrypt")}
           </TabsTrigger>
         </TabsList>
@@ -856,12 +894,13 @@ export function EncryptPage() {
                 className="space-y-6"
                 singleTargets={["message"]}
                 cameraAvailable={camera}
+                triggerDisabled={busy}
                 title={t("encrypt.decrypt.scanTrigger")}
                 onSingleScan={(_target, payload) => {
                   setDecryptInput(payload)
                   setDecrypted(null)
                   setError(null)
-                  return runDecrypt(payload)
+                  pendingDecryptRef.current = payload
                 }}
                 multipart={{
                   session: multipartSession,
@@ -876,8 +915,13 @@ export function EncryptPage() {
                     setDecryptInput(payload)
                     setDecrypted(null)
                     setError(null)
-                    return runDecrypt(payload)
+                    pendingDecryptRef.current = payload
                   },
+                }}
+                onClosed={() => {
+                  const payload = pendingDecryptRef.current
+                  pendingDecryptRef.current = null
+                  if (payload !== null) void runDecrypt(payload)
                 }}
               />
             </CardContent>
@@ -981,7 +1025,7 @@ export function EncryptPage() {
         </>
       )}
 
-      {(keysError || pqError || preferencesError || error || compatibilityError) && (
+      {(keysError || pqError || preferencesError || error) && (
         <Alert variant="destructive" role="alert">
           <AlertCircle aria-hidden="true" className="size-4" />
           <AlertTitle>{t("common.operationFailed")}</AlertTitle>
@@ -996,6 +1040,9 @@ export function EncryptPage() {
         open={result !== null && mode === "encrypt"}
         onOpenChange={(open) => {
           if (open) return
+          resultAbortRef.current?.abort()
+          resultAbortRef.current = null
+          setResultExporting(false)
           setResult(null)
           setOutputName("")
           setResultError(null)
