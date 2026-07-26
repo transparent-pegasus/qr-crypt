@@ -3,7 +3,7 @@ name: artful-simplicity
 description: Judge whether this repository's design simplicity holds up — implementation logic, test scope, and the wording of docs and comments. Read-only: findings go to .tmp/, nothing is edited. Use for 設計レビュー, シンプルさ監査, 過剰なテスト, 冗長なコメント, over-engineering audit, /artful-simplicity.
 ---
 
-# Design review
+# Artful simplicity
 
 One question, three axes: is this the shortest thing that still works?
 
