@@ -28,6 +28,7 @@ import {
   multipartPayload,
   scannerStop,
   startQrScan,
+  warmQrReader,
 } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
 
@@ -318,6 +319,14 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
 
     expect(signal?.aborted).toBe(true)
     expect(scannerStop).toHaveBeenCalledOnce()
+  })
+
+  it("warms the QR reader when the scanner panel mounts", async () => {
+    render(
+      <QrScannerPanel singleTargets={["message"]} onSingleScan={vi.fn()} />,
+    )
+
+    expect(warmQrReader).toHaveBeenCalled()
   })
 })
 
@@ -689,5 +698,17 @@ describe("QrScannerModal", () => {
         "The temporary scan state expired and was discarded.",
       ),
     ).toBeInTheDocument()
+  })
+
+  it("warms the QR reader when the scanner modal mounts, before any tap", async () => {
+    render(
+      <QrScannerModal
+        triggerLabel="Scan a ciphertext QR code"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    expect(warmQrReader).toHaveBeenCalled()
   })
 })

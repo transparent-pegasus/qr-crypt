@@ -1340,7 +1340,7 @@ describe("camera scanner lifecycle", () => {
 
   it("surfaces WASM preparation failure after acquisition and stops the track", async () => {
     const preparationError = new WebAssembly.CompileError("bad reader module")
-    zxing.prepareZXingModule.mockRejectedValueOnce(preparationError)
+    zxing.prepareZXingModule.mockRejectedValue(preparationError)
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
     const onError = vi.fn()
@@ -1363,7 +1363,8 @@ describe("camera scanner lifecycle", () => {
         detail: "640x480 rs=2 track=live/unmuted",
       },
     )
-    expect(zxing.purgeZXingModule).toHaveBeenCalledOnce()
+    expect(zxing.purgeZXingModule).toHaveBeenCalled()
+    expect(zxing.prepareZXingModule).toHaveBeenCalledTimes(2)
     expect(getUserMedia).toHaveBeenCalledOnce()
     expect(fakeVideo.play).toHaveBeenCalledOnce()
     expect(canvases[0]!.drawImage).toHaveBeenCalledOnce()
@@ -1681,6 +1682,237 @@ describe("camera scanner lifecycle", () => {
     expect(
       decoder.shouldRestartQrScanOnVisibility("failed", "hidden"),
     ).toBe(false)
+  })
+
+  it("retries a rejected reader preparation once and keeps the scan alive", async () => {
+    const first = deferred<unknown>()
+    const second = deferred<unknown>()
+    zxing.prepareZXingModule
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    const track = new FakeTrack()
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    zxing.readBarcodes.mockResolvedValue(barcode("OCM1:retried"))
+    const onText = vi.fn()
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(videoElement(), onText, onError, {
+      once: false,
+    })
+    await advance(0)
+    expect(canvases[0]!.drawImage).toHaveBeenCalledOnce()
+
+    const aborted = new Error("Aborted(both async and sync fetching of the wasm failed)")
+    aborted.name = "RuntimeError"
+    first.reject(aborted)
+    await flushMicrotasks()
+
+    expect(zxing.purgeZXingModule).toHaveBeenCalled()
+    expect(zxing.prepareZXingModule).toHaveBeenCalledTimes(2)
+    expect(onError).not.toHaveBeenCalled()
+
+    second.resolve({})
+    await advance(0)
+
+    expect(zxing.readBarcodes).toHaveBeenCalled()
+    expect(onText).toHaveBeenCalledWith("OCM1:retried")
+    handle.stop()
+  })
+
+  it("keeps the pipeline diagnostic out of failed while the retry is in flight", async () => {
+    const first = deferred<unknown>()
+    const second = deferred<unknown>()
+    zxing.prepareZXingModule
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
+    const diagnostics: Array<{ readerModuleState: string }> = []
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), {
+      once: false,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    })
+    await advance(0)
+
+    const aborted = new Error("Aborted(wasm)")
+    aborted.name = "RuntimeError"
+    first.reject(aborted)
+    await flushMicrotasks()
+
+    expect(diagnostics.at(-1)?.readerModuleState).toBe("preparing")
+
+    second.resolve({})
+    await advance(0)
+
+    expect(diagnostics.at(-1)?.readerModuleState).toBe("ready")
+    handle.stop()
+  })
+
+  it("does not tear down a preparation started from inside a diagnostic callback", async () => {
+    const first = deferred<unknown>()
+    const second = deferred<unknown>()
+    zxing.prepareZXingModule
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
+    zxing.readBarcodes.mockResolvedValue(barcode("OCM1:reentrant"))
+    const onText = vi.fn()
+    const decoder = await loadDecoder()
+    let warmed = false
+
+    const handle = await decoder.startQrScan(videoElement(), onText, vi.fn(), {
+      once: false,
+      onDiagnostic: (diagnostic) => {
+        // Re-entrancy: the failure diagnostic starts a fresh warm-up before the failing
+        // generation has finished cleaning itself up.
+        if (warmed || diagnostic.readerModuleState !== "failed") return
+        warmed = true
+        decoder.warmQrReader()
+      },
+    })
+    await advance(0)
+
+    const aborted = new Error("Aborted(wasm)")
+    aborted.name = "RuntimeError"
+    first.reject(aborted)
+    await flushMicrotasks()
+    second.resolve({})
+    await advance(0)
+
+    // Exactly two preparations: the failed one and the single fresh generation that the
+    // callback and the retry share. The stale cleanup must not have erased it.
+    expect(zxing.prepareZXingModule).toHaveBeenCalledTimes(2)
+    expect(onText).toHaveBeenCalledWith("OCM1:reentrant")
+    handle.stop()
+  })
+
+  it("fails the attempt when the retried reader preparation also rejects", async () => {
+    const first = deferred<unknown>()
+    const second = deferred<unknown>()
+    zxing.prepareZXingModule
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    const track = new FakeTrack()
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    const diagnostics: unknown[] = []
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(videoElement(), vi.fn(), onError, {
+      once: false,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    })
+    await advance(0)
+
+    const aborted = new Error("Aborted(wasm)")
+    aborted.name = "RuntimeError"
+    first.reject(aborted)
+    await flushMicrotasks()
+    expect(onError).not.toHaveBeenCalled()
+
+    const again = new Error("Aborted(wasm)")
+    again.name = "RuntimeError"
+    second.reject(again)
+    await flushMicrotasks()
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
+      expect.objectContaining({ phase: "playing", name: "RuntimeError" }),
+    )
+    expect(zxing.readBarcodes).not.toHaveBeenCalled()
+    expect(diagnostics.at(-1)).toEqual(
+      expect.objectContaining({
+        readerModuleState: "failed",
+        decodeAttemptsCompleted: 0,
+        lastErrorName: "RuntimeError",
+      }),
+    )
+    expect(track.stop).toHaveBeenCalled()
+    handle.stop()
+  })
+
+  it("does not retry a reader preparation that timed out", async () => {
+    const preparation = deferred<unknown>()
+    zxing.prepareZXingModule.mockReturnValue(preparation.promise)
+    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(videoElement(), vi.fn(), onError, {
+      once: false,
+    })
+    await advance(0)
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+
+    await advance(decoder.CAMERA_READER_PREPARATION_TIMEOUT_MS + 10)
+
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "QR_READER_PREPARATION_TIMEOUT" }),
+      expect.objectContaining({ phase: "playing" }),
+    )
+    handle.stop()
+  })
+
+  it("does not retry after the attempt is stopped", async () => {
+    const preparation = deferred<unknown>()
+    zxing.prepareZXingModule.mockReturnValue(preparation.promise)
+    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(videoElement(), vi.fn(), onError, {
+      once: false,
+    })
+    await advance(0)
+
+    handle.stop()
+    const aborted = new Error("Aborted(wasm)")
+    aborted.name = "RuntimeError"
+    preparation.reject(aborted)
+    await flushMicrotasks()
+
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it("warms the reader module without touching the camera", async () => {
+    const decoder = await loadDecoder()
+
+    decoder.warmQrReader()
+    await flushMicrotasks()
+
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    expect(getUserMedia).not.toHaveBeenCalled()
+  })
+
+  it("swallows a rejected warm-up so it cannot raise an unhandled rejection", async () => {
+    const failure = new Error("Aborted(wasm)")
+    failure.name = "RuntimeError"
+    zxing.prepareZXingModule.mockRejectedValueOnce(failure)
+    const decoder = await loadDecoder()
+
+    expect(() => decoder.warmQrReader()).not.toThrow()
+    await flushMicrotasks()
+
+    expect(zxing.purgeZXingModule).toHaveBeenCalled()
+  })
+
+  it("reuses a warm preparation instead of starting a second one", async () => {
+    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
+    const decoder = await loadDecoder()
+
+    decoder.warmQrReader()
+    await flushMicrotasks()
+    const handle = await decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), {
+      once: false,
+    })
+    await advance(0)
+
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    handle.stop()
   })
 })
 

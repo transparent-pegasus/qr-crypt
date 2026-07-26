@@ -11,6 +11,7 @@ import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import { formatFramePositions } from "@/features/presentation"
 import {
   startQrScan,
+  warmQrReader,
   type CameraDiagnostic,
   type CameraPipelineDiagnostic,
   type CameraScanState,
@@ -191,6 +192,12 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const [integrityConfirmed, setIntegrityConfirmed] = useState(
     transferState.kind === "complete",
   )
+
+  // Take the one-megabyte reader fetch off the acquisition path: warming here means the
+  // binary is normally compiled before the user ever taps start.
+  useEffect(() => {
+    warmQrReader()
+  }, [])
 
   useEffect(() => {
     cameraAvailableRef.current = cameraAvailable
@@ -913,6 +920,12 @@ export function QrScannerModal(props: QrScannerModalProps) {
     closedNotice === null
       ? null
       : t(closedNotice.key, closedNotice.values)
+
+  // Take the one-megabyte reader fetch off the acquisition path: warming here means the
+  // binary is normally compiled before the user ever taps start.
+  useEffect(() => {
+    warmQrReader()
+  }, [])
 
   const beginDelivery = useCallback((): boolean => {
     if (deliveryBusyRef.current) return false

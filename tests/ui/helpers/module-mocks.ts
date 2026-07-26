@@ -94,6 +94,7 @@ vi.mock("@/qr/export-image", () => ({
 }))
 vi.mock("@/qr/decode", () => ({
   startQrScan: fakes.startQrScan,
+  warmQrReader: fakes.warmQrReader,
 }))
 vi.mock("@/qr/multipart/split", () => ({
   splitIntoFrames: fakes.splitIntoFrames,

@@ -208,16 +208,35 @@ function prepareQrReaderModule(): Promise<void> {
   })
   zxingModulePromise = preparation
   // Reset on failure so the restart button can retry, and swallow the rejection here:
-  // an attempt can stop before any decode awaits this promise.
+  // an attempt can stop before any decode awaits this promise. Cleanup runs to
+  // completion before the diagnostic, because a synchronous callback can start a fresh
+  // preparation and must not have it purged from under it.
   void preparation.catch(() => {
-    if (zxingModulePromise === preparation) {
-      zxingModulePromise = undefined
-      zxingModuleState = "failed"
-      if (activeAttempt !== null) publishPipelineDiagnostic(activeAttempt)
-      purgeZXingModule()
-    }
+    if (zxingModulePromise !== preparation) return
+    zxingModulePromise = undefined
+    zxingModuleState = "failed"
+    purgeZXingModule()
+    if (activeAttempt !== null) publishPipelineDiagnostic(activeAttempt)
   })
   return preparation
+}
+
+// Tear down only the generation that actually failed. If a newer preparation is already
+// cached — started by a diagnostic callback, a warm-up, or another attempt — leave it
+// alone so the retry adopts it instead of erasing it.
+function invalidateQrReaderModule(failed: Promise<void>): void {
+  if (zxingModulePromise !== undefined && zxingModulePromise !== failed) return
+  zxingModulePromise = undefined
+  zxingModuleState = "idle"
+  purgeZXingModule()
+}
+
+// Fetch and compile the reader ahead of any tap. iOS Safari raises the camera permission
+// prompt while a cold one-megabyte fetch is still in flight, and losing that fetch aborts
+// the Emscripten runtime. Warming on mount takes the fetch off the acquisition path
+// entirely; the rejection is swallowed because nothing awaits a warm-up.
+export function warmQrReader(): void {
+  void prepareQrReaderModule().catch(() => undefined)
 }
 
 // true does not automatically restart; it directs the UI to transition to stopped
@@ -592,16 +611,7 @@ async function startAttempt(
     }, CAMERA_DECODE_PROGRESS_TIMEOUT_MS)
   }
 
-  async function waitForReaderModulePreparation(): Promise<void> {
-    if (
-      attempt.readerModuleState === "ready" ||
-      zxingModuleState === "ready"
-    ) {
-      attempt.readerModuleState = "ready"
-      publishPipelineDiagnostic(attempt)
-      return
-    }
-
+  async function awaitPreparation(preparation: Promise<void>): Promise<void> {
     let settled = false
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     let resolveWait: () => void = () => undefined
@@ -633,24 +643,60 @@ async function startAttempt(
     )
     const cancelWait = () => settleFailed(new AttemptCancelled())
     attempt.cancelModulePreparationWait = cancelWait
-    void modulePreparation.then(settleReady, settleFailed)
+    void preparation.then(settleReady, settleFailed)
 
     try {
       await wait
-      attempt.readerModuleState = "ready"
-      publishPipelineDiagnostic(attempt)
-    } catch (error) {
-      if (!(error instanceof AttemptCancelled) && isActiveAttempt(attempt)) {
-        attempt.readerModuleState =
-          error instanceof QrReaderPreparationTimeout ? "timed-out" : "failed"
-        attempt.lastErrorName = diagnosticName(error)
-        publishPipelineDiagnostic(attempt)
-      }
-      throw error
     } finally {
       clearWaitTimeout()
       if (attempt.cancelModulePreparationWait === cancelWait) {
         attempt.cancelModulePreparationWait = undefined
+      }
+    }
+  }
+
+  let readerRetryUsed = false
+
+  async function waitForReaderModulePreparation(): Promise<void> {
+    if (attempt.readerModuleState === "ready" || zxingModuleState === "ready") {
+      attempt.readerModuleState = "ready"
+      publishPipelineDiagnostic(attempt)
+      return
+    }
+
+    let preparation = modulePreparation
+    for (;;) {
+      try {
+        await awaitPreparation(preparation)
+        attempt.readerModuleState = "ready"
+        publishPipelineDiagnostic(attempt)
+        return
+      } catch (error) {
+        // A cancelled attempt is being torn down, and a timeout already spent the full
+        // budget — retrying it would hold a live camera for a second empty window.
+        const retryable =
+          !readerRetryUsed &&
+          !(error instanceof AttemptCancelled) &&
+          !(error instanceof QrReaderPreparationTimeout) &&
+          isActiveAttempt(attempt)
+        if (!retryable) {
+          if (!(error instanceof AttemptCancelled) && isActiveAttempt(attempt)) {
+            attempt.readerModuleState =
+              error instanceof QrReaderPreparationTimeout ? "timed-out" : "failed"
+            attempt.lastErrorName = diagnosticName(error)
+            publishPipelineDiagnostic(attempt)
+          }
+          throw error
+        }
+        readerRetryUsed = true
+        attempt.lastErrorName = diagnosticName(error)
+        invalidateQrReaderModule(preparation)
+        preparation = prepareQrReaderModule()
+        // pipelineDiagnostic only mirrors the module state while the attempt field is
+        // idle or preparing, so publishing before this assignment would latch "failed"
+        // for the whole retry window.
+        attempt.readerModuleState = "preparing"
+        publishPipelineDiagnostic(attempt)
       }
     }
   }

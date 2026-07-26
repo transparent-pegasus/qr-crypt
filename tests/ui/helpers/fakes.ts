@@ -433,6 +433,7 @@ interface FakeCameraPipelineDiagnostic {
 }
 
 export const scannerStop = vi.fn()
+export const warmQrReader = vi.fn(() => undefined)
 let scanTextCallback: ((payload: string) => void) | null = null
 let scanErrorCallback:
   | ((error: FakeAppError, diagnostic: FakeCameraDiagnostic) => void)
