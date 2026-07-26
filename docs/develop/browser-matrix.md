@@ -13,7 +13,7 @@ This table maps the target browser environments to the primary verification item
 | QR display | automated (e2e) | automated (e2e) | automated (e2e) | automated (e2e) | manual-pending |
 | QR scanning | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Camera decoder WebAssembly instantiation on first use **while offline** (zxing-wasm reader, precached same-origin) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| Automatic QR profile gate: sustained full transfers with the shipped WebAssembly-reader-usable profile (1,000B / 200ms minimum dwell) and the reader-unusable fallback (100B / 2,000ms minimum dwell, density raised when required), including poor light and refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
+| User-selected QR compatibility preferences: sustained full transfers with the shipped default (switch off, 1,000B / 200ms minimum dwell) and compatible preference (switch on, 100B / 2,000ms minimum dwell, per-artifact effective density clamped upward when required), including poor light and refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
 | QR range-extension telemetry: actual decode cadence/duration, long tasks, sustained CPU/thermal behaviour, teardown latency, sender v40 render time, and post-downscale decoder dimensions | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
 | Non-extractable CryptoKey persistence in IndexedDB (generate → close tab → restore → decrypt) | automated (e2e) | manual-pending | automated (e2e) | automated (e2e) | manual-pending |
 | Online relay: camera scan → text (getUserMedia start on explicit action only) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
@@ -39,14 +39,16 @@ On-device measurement sheet. This sheet was originally drawn up for the balanced
 Recorded fields (common to every environment): Device / OS / Browser version / Build hash (`VITE_BUILD_SHA` or equivalent).
 
 Promotion beyond `dev` for the widened QR range is additionally conditional
-on sustained full-transfer passes with both automatic profiles below on both
-release-gate platforms. The primary shipped profile is 1,000B with a 200ms
-minimum dwell when the WebAssembly reader is usable. The reader-unusable
-fallback prefers 100B with a 2,000ms minimum dwell; the application raises
-density automatically when an artifact cannot fit in 128 frames. Users do not
-select density or dwell.
+on sustained full-transfer passes with both user-selected preferences below
+on both release-gate platforms. Switch off is the shipped default of 1,000B
+with a 200ms minimum dwell. Switch on is the compatible preference of 100B
+with a 2,000ms minimum dwell. When an artifact cannot fit in 128 frames, a
+per-artifact effective clamp raises density without changing the stored
+preference; when the clamp reaches 1,000B, the switch still changes the dwell.
+The displaying device does not infer a choice from its local WebAssembly
+reader because it cannot know the capability of the peer camera.
 
-Each profile must include poor-light operation and recovery after focus is
+Each preference must include poor-light operation and recovery after focus is
 lost and reacquired. The cursor advances only after the rendered code has
 committed and then receives its full dwell, so 200ms is not evidence of 5 fps
 and 2,000ms is not a complete per-frame cycle time. Record the actual full
@@ -84,7 +86,7 @@ Every value cell in the QR range-extension tables is **not yet measured**.
 
 #### QR range-extension scanner/sender gate
 
-| Measurement | WebAssembly reader usable: 1,000B / 200ms minimum dwell | Reader-unusable fallback: 100B / 2,000ms minimum dwell (density auto-raised if required) |
+| Measurement | Default preference (switch off): 1,000B / 200ms minimum dwell | Compatible preference (switch on): 100B / 2,000ms minimum dwell (per-artifact effective density clamped if required) |
 | --- | --- | --- |
 | Sustained full-transfer completion | not yet measured | not yet measured |
 | Poor-light sustained transfer | not yet measured | not yet measured |
@@ -118,7 +120,7 @@ Every value cell in the QR range-extension tables is **not yet measured**.
 
 #### QR range-extension scanner/sender gate
 
-| Measurement | WebAssembly reader usable: 1,000B / 200ms minimum dwell | Reader-unusable fallback: 100B / 2,000ms minimum dwell (density auto-raised if required) |
+| Measurement | Default preference (switch off): 1,000B / 200ms minimum dwell | Compatible preference (switch on): 100B / 2,000ms minimum dwell (per-artifact effective density clamped if required) |
 | --- | --- | --- |
 | Sustained full-transfer completion | not yet measured | not yet measured |
 | Poor-light sustained transfer | not yet measured | not yet measured |
@@ -156,17 +158,17 @@ Windows Chrome / macOS Safari / Edge, etc. Not a mandatory release-gate target, 
 
 ### Node reference bench (development machine, not a release gate)
 
-Values from a single run of `aube bench:pq` on 2026-07-25 (Vitest 4.1.10, Linux x86_64,
+Values from a single run of `aube bench:pq` on 2026-07-26 (Vitest 4.1.10, Linux x86_64,
 Intel Core i7-10870H). `hz` is operations per second; mean is the average milliseconds per
 operation.
 
 | Operation | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| ML-KEM-1024 keygen | 1,090.15 | 0.9173 | 1,031.95 | 0.9690 |
-| ML-KEM-1024 encapsulate | 1,025.61 | 0.9750 | 979.89 | 1.0205 |
-| ML-KEM-1024 decapsulate | 787.64 | 1.2696 | 781.58 | 1.2795 |
-| ML-DSA-87 sign | 83.4877 | 11.9778 | 96.8792 | 10.3221 |
-| ML-DSA-87 verify | 295.14 | 3.3883 | 285.53 | 3.5025 |
+| ML-KEM-1024 keygen | 1,088.26 | 0.9189 | 1,047.13 | 0.9550 |
+| ML-KEM-1024 encapsulate | 979.24 | 1.0212 | 934.98 | 1.0695 |
+| ML-KEM-1024 decapsulate | 748.70 | 1.3356 | 729.28 | 1.3712 |
+| ML-DSA-87 sign | 88.5802 | 11.2892 | 77.1664 | 12.9590 |
+| ML-DSA-87 verify | 278.11 | 3.5957 | 270.07 | 3.7028 |
 
 These are reference values from a development machine. They do not substitute for the
 on-device measurements above, nor for the `release-approved` determination.

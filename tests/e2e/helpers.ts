@@ -744,6 +744,147 @@ export async function detailValue(scope: Locator, label: string): Promise<string
   return (await row.locator("span").nth(1).innerText()).trim()
 }
 
+export async function expectStableTrailingDialogClose(
+  dialog: Locator,
+  closeName: string,
+): Promise<void> {
+  const close = dialog.getByRole("button", {
+    name: closeName,
+    exact: true,
+  })
+  await expect(close).toHaveCount(1)
+  await expect(close).toBeVisible()
+
+  const metrics = await dialog.evaluate((root, expectedCloseName) => {
+    const dialogElement = root as HTMLElement
+    const closeButton = Array.from(
+      dialogElement.querySelectorAll<HTMLButtonElement>("button"),
+    ).find(
+      (button) =>
+        button.getAttribute("aria-label") === expectedCloseName ||
+        button.textContent?.trim() === expectedCloseName,
+    )
+    if (closeButton === undefined) {
+      throw new Error(`Close control ${expectedCloseName} was not found`)
+    }
+
+    const scrollRegion = [
+      dialogElement,
+      ...Array.from(dialogElement.querySelectorAll<HTMLElement>("*")),
+    ]
+      .filter((element) => {
+        const style = getComputedStyle(element)
+        return (
+          /^(auto|scroll)$/u.test(style.overflowY) &&
+          element.scrollHeight > element.clientHeight + 1
+        )
+      })
+      .sort(
+        (left, right) =>
+          right.scrollHeight -
+          right.clientHeight -
+          (left.scrollHeight - left.clientHeight),
+      )[0]
+    if (scrollRegion === undefined) {
+      throw new Error("No vertically scrollable dialog body was found")
+    }
+
+    const tabbables = Array.from(
+      dialogElement.querySelectorAll<HTMLElement>(
+        "button, a[href], input, select, textarea, [tabindex]",
+      ),
+    ).filter((element) => {
+      const style = getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return (
+        element.tabIndex >= 0 &&
+        element.getAttribute("aria-hidden") !== "true" &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        rect.width > 0 &&
+        rect.height > 0
+      )
+    })
+    const rectOf = (element: Element) => {
+      const rect = element.getBoundingClientRect()
+      return {
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+      }
+    }
+
+    scrollRegion.scrollTop = 0
+    const closeAtTop = rectOf(closeButton)
+    const scrollAtTop = rectOf(scrollRegion)
+    const dialogAtTop = rectOf(dialogElement)
+    scrollRegion.scrollTop = scrollRegion.scrollHeight
+    const bottomScrollTop = scrollRegion.scrollTop
+    const closeAtBottom = rectOf(closeButton)
+    const scrollAtBottom = rectOf(scrollRegion)
+    scrollRegion.scrollTop = 0
+    const closeAfterReset = rectOf(closeButton)
+    const closeOverlapsBody =
+      closeAtTop.left < scrollAtTop.right &&
+      closeAtTop.right > scrollAtTop.left &&
+      closeAtTop.top < scrollAtTop.bottom &&
+      closeAtTop.bottom > scrollAtTop.top
+    const closeOverlapsBodyAtBottom =
+      closeAtBottom.left < scrollAtBottom.right &&
+      closeAtBottom.right > scrollAtBottom.left &&
+      closeAtBottom.top < scrollAtBottom.bottom &&
+      closeAtBottom.bottom > scrollAtBottom.top
+
+    return {
+      bottomScrollTop,
+      clientHeight: scrollRegion.clientHeight,
+      closeAfterReset,
+      closeAtBottom,
+      closeAtTop,
+      closeIsLastTabStop: tabbables.at(-1) === closeButton,
+      closeOverlapsBody,
+      closeOverlapsBodyAtBottom,
+      closePosition: getComputedStyle(closeButton).position,
+      dialogAtTop,
+      scrollAtTop,
+      scrollHeight: scrollRegion.scrollHeight,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+    }
+  }, closeName)
+
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight)
+  expect(metrics.bottomScrollTop).toBeGreaterThan(0)
+  expect(metrics.closeIsLastTabStop).toBe(true)
+  expect(metrics.closePosition).not.toBe("absolute")
+  expect(metrics.closeOverlapsBody).toBe(false)
+  expect(metrics.closeOverlapsBodyAtBottom).toBe(false)
+  for (const closeRect of [metrics.closeAtTop, metrics.closeAtBottom]) {
+    expect(closeRect.left).toBeGreaterThanOrEqual(0)
+    expect(closeRect.top).toBeGreaterThanOrEqual(0)
+    expect(closeRect.right).toBeLessThanOrEqual(metrics.viewportWidth)
+    expect(closeRect.bottom).toBeLessThanOrEqual(metrics.viewportHeight)
+  }
+  expect(metrics.closeAtTop.top).toBeGreaterThanOrEqual(
+    metrics.scrollAtTop.bottom - 0.5,
+  )
+  expect(metrics.closeAtTop.right).toBeGreaterThan(
+    metrics.dialogAtTop.left + metrics.dialogAtTop.width / 2,
+  )
+  expect(
+    Math.abs(metrics.closeAtBottom.left - metrics.closeAtTop.left),
+  ).toBeLessThanOrEqual(0.5)
+  expect(
+    Math.abs(metrics.closeAtBottom.top - metrics.closeAtTop.top),
+  ).toBeLessThanOrEqual(0.5)
+  expect(
+    Math.abs(metrics.closeAfterReset.top - metrics.closeAtTop.top),
+  ).toBeLessThanOrEqual(0.5)
+}
+
 export function mainNavigation(page: Page) {
   return page.getByRole("navigation", { name: "Main navigation" })
 }

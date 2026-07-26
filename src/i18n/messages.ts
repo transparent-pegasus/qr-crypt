@@ -221,7 +221,9 @@ const en = {
   "animatedQr.play": "Play",
   "animatedQr.pause": "Pause",
   "animatedQr.next": "Next",
-  "animatedQr.densityRaised": "Frame density was raised so this transfer fits.",
+  "animatedQr.compatibility.label": "Compatibility mode",
+  "animatedQr.densityRaised":
+    "Frame density could not be lowered further because this transfer must stay within the frame limit.",
   "animatedQr.brightnessHint":
     "Increase the screen brightness and keep the device still for more reliable scanning.",
   "animatedQr.export.error.title": "The frames could not be exported",
@@ -842,8 +844,9 @@ const ja = {
   "animatedQr.play": "再生",
   "animatedQr.pause": "一時停止",
   "animatedQr.next": "次へ",
+  "animatedQr.compatibility.label": "互換モード",
   "animatedQr.densityRaised":
-    "この転送を収めるため、フレーム密度を上げました。",
+    "フレーム数の上限内に収めるため、フレーム密度をこれ以上下げられませんでした。",
   "animatedQr.brightnessHint":
     "画面の輝度を上げ、端末を動かさずに読み取ると安定します。",
   "animatedQr.export.error.title": "フレームを出力できません",

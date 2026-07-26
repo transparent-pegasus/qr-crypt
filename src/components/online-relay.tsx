@@ -707,77 +707,79 @@ export function OnlineRelay({
           if (!open) endSession("close")
         }}
       >
-        <DialogContent className="max-h-dvh overflow-y-auto pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-          <DialogHeader>
-            <DialogTitle>{t("relay.capture.title")}</DialogTitle>
-            <DialogDescription>{t("relay.capture.description")}</DialogDescription>
-          </DialogHeader>
+        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)_auto] overflow-hidden pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          <div className="grid min-h-0 gap-4 overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{t("relay.capture.title")}</DialogTitle>
+              <DialogDescription>{t("relay.capture.description")}</DialogDescription>
+            </DialogHeader>
 
-          <video
-            ref={videoRef}
-            aria-label={t("relay.capture.video.ariaLabel")}
-            className="aspect-square w-full rounded-lg border bg-black object-cover"
-            muted
-            playsInline
-          />
-          <Button
-            type="button"
-            className="h-11 cursor-pointer focus-visible:ring-2"
-            disabled={cameraActive || joinedText.length > 0}
-            onClick={startCamera}
-          >
-            <Camera aria-hidden="true" />
-            {cameraActive
-              ? t("relay.capture.cameraActive")
-              : t("relay.capture.startCamera")}
-          </Button>
+            <video
+              ref={videoRef}
+              aria-label={t("relay.capture.video.ariaLabel")}
+              className="aspect-square w-full rounded-lg border bg-black object-cover"
+              muted
+              playsInline
+            />
+            <Button
+              type="button"
+              className="h-11 cursor-pointer focus-visible:ring-2"
+              disabled={cameraActive || joinedText.length > 0}
+              onClick={startCamera}
+            >
+              <Camera aria-hidden="true" />
+              {cameraActive
+                ? t("relay.capture.cameraActive")
+                : t("relay.capture.startCamera")}
+            </Button>
 
-          {captureSet.metadata !== null && (
-            <div className="space-y-1" aria-live="polite">
-              <p className="font-mono text-sm tabular-nums">
-                {t("relay.capture.progress", {
-                  collected: captureSet.entries.size,
-                  total: captureCount,
-                })}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {t("relay.capture.missing", {
-                  indexes: formatFramePositions(captureMissing, language),
-                })}
-              </p>
-            </div>
-          )}
+            {captureSet.metadata !== null && (
+              <div className="space-y-1" aria-live="polite">
+                <p className="font-mono text-sm tabular-nums">
+                  {t("relay.capture.progress", {
+                    collected: captureSet.entries.size,
+                    total: captureCount,
+                  })}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.capture.missing", {
+                    indexes: formatFramePositions(captureMissing, language),
+                  })}
+                </p>
+              </div>
+            )}
 
-          {captureError && (
-            <Alert variant="destructive">
-              <AlertTriangle aria-hidden="true" />
-              <AlertTitle>{t("relay.error.title")}</AlertTitle>
-              <AlertDescription>{t(captureError)}</AlertDescription>
-            </Alert>
-          )}
+            {captureError && (
+              <Alert variant="destructive">
+                <AlertTriangle aria-hidden="true" />
+                <AlertTitle>{t("relay.error.title")}</AlertTitle>
+                <AlertDescription>{t(captureError)}</AlertDescription>
+              </Alert>
+            )}
 
-          {joinedText.length > 0 && (
-            <div className="space-y-3">
-              <Label htmlFor="relay-captured-text">
-                {t("relay.capture.output.label")}
-              </Label>
-              <Textarea
-                id="relay-captured-text"
-                className="min-h-36 font-mono text-xs"
-                readOnly
-                value={joinedText}
-              />
-              <p className="text-sm text-muted-foreground">{t("relay.copy.warning")}</p>
-              <Button
-                type="button"
-                className="h-11 w-full cursor-pointer focus-visible:ring-2"
-                onClick={() => void copyCaptureText()}
-              >
-                <ClipboardCopy aria-hidden="true" />
-                {t("relay.capture.copy")}
-              </Button>
-            </div>
-          )}
+            {joinedText.length > 0 && (
+              <div className="space-y-3">
+                <Label htmlFor="relay-captured-text">
+                  {t("relay.capture.output.label")}
+                </Label>
+                <Textarea
+                  id="relay-captured-text"
+                  className="min-h-36 font-mono text-xs"
+                  readOnly
+                  value={joinedText}
+                />
+                <p className="text-sm text-muted-foreground">{t("relay.copy.warning")}</p>
+                <Button
+                  type="button"
+                  className="h-11 w-full cursor-pointer focus-visible:ring-2"
+                  onClick={() => void copyCaptureText()}
+                >
+                  <ClipboardCopy aria-hidden="true" />
+                  {t("relay.capture.copy")}
+                </Button>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -787,70 +789,72 @@ export function OnlineRelay({
           if (!open) endSession("close")
         }}
       >
-        <DialogContent className="max-h-dvh overflow-y-auto pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-          <DialogHeader>
-            <DialogTitle>{t("relay.playback.title")}</DialogTitle>
-            <DialogDescription>{t("relay.playback.description")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="relay-playback-text">{t("relay.playback.input.label")}</Label>
-            <Textarea
-              id="relay-playback-text"
-              className="min-h-36 font-mono text-xs"
-              value={playbackText}
-              onChange={(event) => {
-                playbackOperationRef.current += 1
-                playbackTextRef.current = event.target.value
-                setPlaybackText(event.target.value)
-                setPlaybackMissingIndexes([])
-              }}
-            />
-          </div>
-          <Button
-            type="button"
-            className="h-11 cursor-pointer focus-visible:ring-2"
-            onClick={() => void showPlayback()}
-          >
-            <QrCode aria-hidden="true" />
-            {t("relay.playback.show")}
-          </Button>
-
-          {playbackError && (
-            <Alert variant="destructive">
-              <AlertTriangle aria-hidden="true" />
-              <AlertTitle>{t("relay.error.title")}</AlertTitle>
-              <AlertDescription>{t(playbackError)}</AlertDescription>
-            </Alert>
-          )}
-
-          {playbackMissingIndexes.length > 0 && (
-            <p className="text-sm text-muted-foreground" aria-live="polite">
-              {t("relay.playback.missing", {
-                indexes: formatFramePositions(playbackMissingIndexes, language),
-              })}
-            </p>
-          )}
-
-          {playbackFrames.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                {t("relay.playback.screenCaptureWarning")}
-              </p>
-              <AnimatedQrFrames
-                frames={playbackFrames}
-                frameIntervalMs={FRAME_INTERVAL_MS_DEFAULT}
-                outputName="relay"
-                title={t("relay.playback.qrTitle")}
-                exportsEnabled={false}
-                {...(playbackAnimationSignal
-                  ? { animationSignal: playbackAnimationSignal }
-                  : {})}
+        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)_auto] overflow-hidden pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          <div className="grid min-h-0 gap-4 overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{t("relay.playback.title")}</DialogTitle>
+              <DialogDescription>{t("relay.playback.description")}</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="relay-playback-text">{t("relay.playback.input.label")}</Label>
+              <Textarea
+                id="relay-playback-text"
+                className="min-h-36 font-mono text-xs"
+                value={playbackText}
+                onChange={(event) => {
+                  playbackOperationRef.current += 1
+                  playbackTextRef.current = event.target.value
+                  setPlaybackText(event.target.value)
+                  setPlaybackMissingIndexes([])
+                }}
               />
-              <p className="text-sm text-muted-foreground">
-                {t("relay.playback.noDownloadControls")}
-              </p>
             </div>
-          )}
+            <Button
+              type="button"
+              className="h-11 cursor-pointer focus-visible:ring-2"
+              onClick={() => void showPlayback()}
+            >
+              <QrCode aria-hidden="true" />
+              {t("relay.playback.show")}
+            </Button>
+
+            {playbackError && (
+              <Alert variant="destructive">
+                <AlertTriangle aria-hidden="true" />
+                <AlertTitle>{t("relay.error.title")}</AlertTitle>
+                <AlertDescription>{t(playbackError)}</AlertDescription>
+              </Alert>
+            )}
+
+            {playbackMissingIndexes.length > 0 && (
+              <p className="text-sm text-muted-foreground" aria-live="polite">
+                {t("relay.playback.missing", {
+                  indexes: formatFramePositions(playbackMissingIndexes, language),
+                })}
+              </p>
+            )}
+
+            {playbackFrames.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.playback.screenCaptureWarning")}
+                </p>
+                <AnimatedQrFrames
+                  frames={playbackFrames}
+                  frameIntervalMs={FRAME_INTERVAL_MS_DEFAULT}
+                  outputName="relay"
+                  title={t("relay.playback.qrTitle")}
+                  exportsEnabled={false}
+                  {...(playbackAnimationSignal
+                    ? { animationSignal: playbackAnimationSignal }
+                    : {})}
+                />
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.playback.noDownloadControls")}
+                </p>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </>

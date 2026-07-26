@@ -23,8 +23,9 @@ the active policy and is rejected at the operational boundary as
     maximum while preserving `wipeOnOnline=false`.
   - `tests/pq/maximum-artifact-size.golden.test.ts` pins the canonical CBOR raw
     byte counts in the table below, the OCF2 frame counts across the internal
-    100–1,000B chunk set, the automatic-profile density lift, real EC-Q
-    generation for every displayable frame, the 1,593-character
+    100–1,000B chunk set, both exact display preference pairs and the
+    per-artifact effective density clamps, real EC-Q generation for every
+    displayable frame, the 1,593-character
     worst-metadata payload at the 1,000B ceiling, and boundary agreement with
     the env capacity guard.
   - The ML-KEM-1024 / ML-DSA-87 KATs and `aube test` / `aube typecheck` pass,
@@ -41,7 +42,7 @@ substitute for independent review and do not close the blocker.
 Measured maximum fixture (`maxPlaintext=120,000B`, `name="テスト"` — the literal
 fixture string):
 
-| artifact | canonical CBOR (bytes) | fallback frames | WebAssembly-reader-usable frames |
+| artifact | canonical CBOR (bytes) | compatible-preference frames | default-preference frames |
 |---|---:|---:|---:|
 | unsigned empty / max | 1,887 / 121,894 | 19 / 122* | 2 / 122 |
 | signed empty / max | 6,613 / 126,619 | 67 / 127* | 7 / 127 |
@@ -55,12 +56,20 @@ pre-encryption ceiling from the v1 8,192-character payload ceiling and the
 selected version 40 error-correction capacity: L 2,010B, M 1,543B, Q 1,042B,
 or H 750B.
 
-The usable-reader profile is 1,000B with a 200ms minimum dwell. The
-reader-unusable fallback prefers 100B with a 2,000ms minimum dwell; `*` marks
-maximum fixtures whose fallback density is raised automatically to 1,000B so
-the artifact fits within 128 frames. Users cannot select either density or
-dwell. The density lift uses the 100B internal grid and fails closed as
-`QR_TOO_LARGE` if the required value exceeds 1,000B.
+The single labelled compatibility switch selects an atomic preference pair.
+Off is the shipped default, 1,000B with a 200ms minimum dwell; on is the
+user-selected compatible preference, 100B with a 2,000ms minimum dwell. `*`
+marks maximum fixtures whose per-artifact effective density is clamped to
+1,000B so the artifact fits within 128 frames. That effective value is never
+persisted. If the clamp is already 1,000B, the switch still changes only the
+dwell from 200ms to 2,000ms. The clamp uses the 100B generated-density grid
+and fails closed as `QR_TOO_LARGE` if the required value exceeds 1,000B.
+
+The automatic reader-based selector was removed because the displaying device
+cannot know whether the peer camera can read its screen. It had also shipped
+an always-compatible bug: its usability predicate required reader-module
+state to reach `usable`, which happened only after camera preparation
+resolved, so the display path never observed that state.
 
 The receiver allocation ceiling now equals the complete wire budget:
 `MAX_ARTIFACT_BYTES_ABSOLUTE =
@@ -71,12 +80,12 @@ capacity.
 
 The frame cursor advances only after the exact rendered code has committed,
 then waits the configured dwell. A maximum signed message has 127 frames, so
-its dwell-only floor is 25.4 seconds with the usable reader and 254 seconds
-with the 2,000ms fallback. The protocol-wide conservative budget is 128 ×
-2,000ms = 256 seconds, which makes `TRANSFER_TIMEOUT_MINUTES_MIN` 5 minutes;
-the assembly timeout default remains 10 minutes. These are not measured cycle
-times: actual cycles also include every frame's render latency and must be
-measured separately.
+its dwell-only floor is 25.4 seconds with the default preference and 254
+seconds with the compatible preference. The protocol-wide conservative budget
+is 128 × 2,000ms = 256 seconds, which makes
+`TRANSFER_TIMEOUT_MINUTES_MIN` 5 minutes; the assembly timeout default remains
+10 minutes. These are not measured cycle times: actual cycles also include
+every frame's render latency and must be measured separately.
 
 **Long-text export, measured 2026-07-26** on the CI-class Linux desktop
 (mobile-chromium Playwright project, `aube run test:e2e`), 120,000-byte signed
@@ -100,19 +109,30 @@ materially longer wait on a phone.
 Boot readability remains append-only: density accepts every safe integer from
 100 through 1,000B and interval accepts every safe integer from 150 through
 3,000ms. The internal admitted sets are 100, 200, …, 1,000B and 200, 300, …,
-1,000ms plus 2,000ms. Readable off-set stored values normalize to the nearest
-admitted value with midpoint ties upward. Generated-artifact producers do not
-expose or write the stored density/interval fields; strict patch/env
-validation remains in place for the retained schema.
+1,000ms plus 2,000ms. The exact default and compatible pairs survive reads;
+every other boot-readable historical combination, including a missing member,
+is canonicalized to the default 1,000B/200ms pair before strict validation.
+The append-only ranges and historical per-field normalizers remain, so no
+stored preference can become unreadable and force a wipe. New preference
+patches must provide one exact pair, while per-artifact effective clamps are
+never persisted.
 
-## 1. Facts About the Adopted Libraries (as of 2026-07-25)
+Visible dismissal is also an explicit UI contract. Ordinary modal and
+fullscreen views put one close control at bottom right in normal flow, after
+the content. Alert dialogs retain Cancel as their single dismissal and do not
+gain an ×. The fingerprint confirmation is the documented exception: it has
+no close control, blocks Escape and outside dismissal, and requires one of its
+explicit save decisions because the security confirmation must not be
+dismissible.
+
+## 1. Facts About the Adopted Libraries (as of 2026-07-26)
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-25: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-26: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
 - Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-07-25): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
+- FIPS errata (§3 step 1, checked 2026-07-26): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
 - **Not independently audited.** The audit status as of 0.6.1 is self-audit only (scope: everything)
 - **Side channels: as a JS implementation, constant-time execution is not guaranteed.** In particular, for the ML-KEM decaps implicit-rejection path, constant-time behavior under JS/JIT is explicitly documented and not guaranteed
 - APIs used by the active policy (verified against the actual 0.6.1 source):

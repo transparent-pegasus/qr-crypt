@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react"
 import { Link } from "react-router"
 import {
@@ -77,11 +76,6 @@ import {
   maximumSymmetricPlaintextBytesForPayloadCapacity,
   minimumFrameBytesForArtifact,
 } from "@/lib/limits"
-import {
-  isQrReaderModuleUsable,
-  prepareQrReaderModule,
-  subscribeQrReaderModuleState,
-} from "@/qr/decode"
 import { ecLevelFor, payloadFits, qrByteCapacity } from "@/qr/encode"
 import {
   buildExportFileName,
@@ -91,13 +85,17 @@ import {
 } from "@/qr/export-image"
 import { buildV2Payload } from "@/qr/payload-v2"
 import { decodePayload, encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
-import type {
-  MlKemMessageEnvelopeV2,
-  PostQuantumIdentity,
-  PqPublicBundleRecord,
-  StoredKeyRecord,
-  UiAlgorithm,
-  WireSuite,
+import {
+  COMPATIBLE_GENERATED_DISPLAY_PAIR,
+  DEFAULT_GENERATED_DISPLAY_PAIR,
+  type GeneratedDisplayPair,
+  type MlKemMessageEnvelopeV2,
+  type PostQuantumIdentity,
+  type PqPublicBundleRecord,
+  type Preferences,
+  type StoredKeyRecord,
+  type UiAlgorithm,
+  type WireSuite,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { qrNameSchema } from "@/schemas/key-schema"
@@ -143,42 +141,15 @@ type DecryptionResult =
   | { kind: "aes"; text: string }
 
 const EMPTY_ARTIFACT_BYTES = new Uint8Array()
-const WASM_FRAME_BYTES = 1_000
-const WASM_FRAME_INTERVAL_MS = 200
-const FALLBACK_FRAME_BYTES = 100
-const FALLBACK_FRAME_INTERVAL_MS = 2_000
-const readerUnavailable = () => false
-const subscribeToNothing = () => () => undefined
 
-function automaticQrDisplayProfile(
-  artifactByteLength: number,
-  wasmReaderUsable: boolean,
-) {
-  const preferredFrameBytes = wasmReaderUsable ? WASM_FRAME_BYTES : FALLBACK_FRAME_BYTES
-  const frameBytes = Math.max(
-    preferredFrameBytes,
-    minimumFrameBytesForArtifact(artifactByteLength),
-  )
-  return {
-    frameBytes,
-    frameIntervalMs: wasmReaderUsable
-      ? WASM_FRAME_INTERVAL_MS
-      : FALLBACK_FRAME_INTERVAL_MS,
-    densityRaised: !wasmReaderUsable && frameBytes > FALLBACK_FRAME_BYTES,
-  }
-}
-
-function useQrReaderModuleUsable(enabled: boolean): boolean {
-  const usable = useSyncExternalStore(
-    enabled ? subscribeQrReaderModuleState : subscribeToNothing,
-    enabled ? isQrReaderModuleUsable : readerUnavailable,
-    readerUnavailable,
-  )
-  useEffect(() => {
-    if (!enabled) return
-    void prepareQrReaderModule().catch(() => undefined)
-  }, [enabled])
-  return usable
+function selectedGeneratedDisplayPair(
+  preferences: Pick<Preferences, "frameBytes" | "frameIntervalMs">,
+): GeneratedDisplayPair {
+  return preferences.frameBytes === COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes &&
+    preferences.frameIntervalMs ===
+      COMPATIBLE_GENERATED_DISPLAY_PAIR.frameIntervalMs
+    ? COMPATIBLE_GENERATED_DISPLAY_PAIR
+    : DEFAULT_GENERATED_DISPLAY_PAIR
 }
 
 function algorithmOptions(requireSignature: boolean): UiAlgorithm[] {
@@ -232,7 +203,12 @@ export function EncryptPage() {
     error: pqError,
     refresh: refreshPq,
   } = usePqRecords()
-  const { preferences, error: preferencesError } = usePreferences()
+  const {
+    preferences,
+    loading: preferencesLoading,
+    error: preferencesError,
+    updatePreferences,
+  } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const { camera } = useFeatureSupport()
   const { nonce } = useTransientClear()
@@ -245,8 +221,11 @@ export function EncryptPage() {
   const [plaintext, setPlaintext] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
+  const [compatibilityUpdating, setCompatibilityUpdating] = useState(false)
+  const [compatibilityError, setCompatibilityError] =
+    useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(
-    error ?? keysError ?? pqError ?? preferencesError,
+    error ?? compatibilityError ?? keysError ?? pqError ?? preferencesError,
   )
   const [result, setResult] = useState<EncryptionResult | null>(null)
   const [outputName, setOutputName] = useState("")
@@ -255,15 +234,23 @@ export function EncryptPage() {
   const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
   const resultGenerationRef = useRef(0)
   const pqResult = result?.kind === "pq" ? result : null
-  const wasmReaderUsable = useQrReaderModuleUsable(pqResult !== null)
-  const frameProfile =
+  const selectedFramePair = selectedGeneratedDisplayPair(preferences)
+  const compatibilityEnabled =
+    selectedFramePair === COMPATIBLE_GENERATED_DISPLAY_PAIR
+  const effectiveFrameBytes =
     pqResult === null
-      ? {
-          frameBytes: FALLBACK_FRAME_BYTES,
-          frameIntervalMs: FALLBACK_FRAME_INTERVAL_MS,
-          densityRaised: false,
-        }
-      : automaticQrDisplayProfile(pqResult.artifactBytes.byteLength, wasmReaderUsable)
+      ? selectedFramePair.frameBytes
+      : Math.max(
+          selectedFramePair.frameBytes,
+          minimumFrameBytesForArtifact(pqResult.artifactBytes.byteLength),
+        )
+  const frameProfile = {
+    frameBytes: effectiveFrameBytes,
+    frameIntervalMs: selectedFramePair.frameIntervalMs,
+    densityRaised:
+      compatibilityEnabled &&
+      effectiveFrameBytes > COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes,
+  }
   const frameSplit = useFrameSplit({
     bytes: pqResult?.artifactBytes ?? EMPTY_ARTIFACT_BYTES,
     artifactType: pqResult?.artifactType ?? "pq-message",
@@ -272,6 +259,26 @@ export function EncryptPage() {
     generation: `${pqResult?.generation ?? 0}:${frameProfile.frameBytes}`,
   })
   const localizedFrameError = useLocalizedMessage(frameSplit.error)
+  const changeCompatibilityMode = useCallback(
+    async (enabled: boolean) => {
+      setCompatibilityUpdating(true)
+      setCompatibilityError(null)
+      const pair = enabled
+        ? COMPATIBLE_GENERATED_DISPLAY_PAIR
+        : DEFAULT_GENERATED_DISPLAY_PAIR
+      try {
+        await updatePreferences({
+          frameBytes: pair.frameBytes,
+          frameIntervalMs: pair.frameIntervalMs,
+        })
+      } catch (caught) {
+        setCompatibilityError(toAppError(caught, "STORAGE_FAILED").code)
+      } finally {
+        setCompatibilityUpdating(false)
+      }
+    },
+    [updatePreferences],
+  )
 
   const algorithms = useMemo(
     () => algorithmOptions(preferences.requireSignature),
@@ -922,7 +929,7 @@ export function EncryptPage() {
         </>
       )}
 
-      {(keysError || pqError || preferencesError || error) && (
+      {(keysError || pqError || preferencesError || error || compatibilityError) && (
         <Alert variant="destructive" role="alert">
           <AlertCircle aria-hidden="true" className="size-4" />
           <AlertTitle>{t("common.operationFailed")}</AlertTitle>
@@ -983,6 +990,14 @@ export function EncryptPage() {
                   frames={frameSplit.frames}
                   frameIntervalMs={frameProfile.frameIntervalMs}
                   densityRaised={frameProfile.densityRaised}
+                  compatibilityControl={{
+                    enabled: compatibilityEnabled,
+                    disabled:
+                      preferencesLoading ||
+                      preferencesError !== null ||
+                      compatibilityUpdating,
+                    onEnabledChange: changeCompatibilityMode,
+                  }}
                   outputName={outputName || "pq-message"}
                   title={t("encrypt.result.pqTitle")}
                   splitting={frameSplit.splitting}

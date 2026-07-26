@@ -1,4 +1,11 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -162,6 +169,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  vi.restoreAllMocks()
   // reset, not clear: clearAllMocks leaves queued mockImplementationOnce
   // entries behind, so a test that fails mid-flight hands its unconsumed
   // deferred renders to the next test. beforeEach reinstalls both defaults.
@@ -363,6 +371,59 @@ describe("relay frame-set parser", () => {
 })
 
 describe("online relay UI", () => {
+  it("keeps both scrolling dialog bodies bounded with one trailing close and Escape dismissal", async () => {
+    renderRelay()
+    const user = userEvent.setup()
+
+    for (const [triggerName, dialogName] of [
+      ["QR → text", "QR frames to text"],
+      ["Text → QR", "Turn relay text into QR frames"],
+    ] as const) {
+      await user.click(screen.getByRole("button", { name: triggerName }))
+      const dialog = await screen.findByRole("dialog", { name: dialogName })
+      expect(dialog).toHaveClass(
+        "grid",
+        "grid-rows-[minmax(0,1fr)_auto]",
+        "overflow-hidden",
+      )
+      expect(dialog.firstElementChild).toHaveClass(
+        "min-h-0",
+        "overflow-y-auto",
+      )
+      const closeControls = within(dialog).getAllByRole("button", {
+        name: "Close",
+      })
+      expect(closeControls).toHaveLength(1)
+      expect(Array.from(dialog.querySelectorAll("button")).at(-1)).toBe(
+        closeControls[0],
+      )
+
+      await user.keyboard("{Escape}")
+      await waitFor(() => expect(dialog).not.toBeInTheDocument())
+    }
+  })
+
+  it("keeps relay playback on its own 1000 millisecond dwell without a compatibility switch", async () => {
+    const timeout = vi.spyOn(window, "setTimeout")
+    renderRelay()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    await enterRelayText(
+      user,
+      screen.getByLabelText("Relay text"),
+      `${payload(0)}\n${payload(1)}`,
+    )
+    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+
+    await screen.findByRole("img")
+    await waitFor(() =>
+      expect(timeout.mock.calls.some(([, delay]) => delay === 1_000)).toBe(true),
+    )
+    expect(
+      screen.queryByRole("switch", { name: "Compatibility mode" }),
+    ).toBeNull()
+  })
+
   it("is absent when ineligible and requests no camera on mount or dialog open", async () => {
     const { rerender } = render(
       <LanguageProvider initialLanguage="en">

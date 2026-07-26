@@ -1,7 +1,7 @@
 import "./helpers/module-mocks"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import type {
   DsaPublicKeyEnvelopeV2,
   KemPublicKeyEnvelopeV2,
@@ -24,22 +24,12 @@ import {
   fakeIdentities,
   fakeKeys,
   fakePreferences,
-  isQrReaderModuleUsable,
-  prepareQrReaderModule,
   renderQrDataUrl,
   saveBundle,
   startQrScan,
-  subscribeQrReaderModuleState,
   updatePreferences,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
-
-vi.doMock("@/qr/decode", () => ({
-  isQrReaderModuleUsable,
-  prepareQrReaderModule,
-  startQrScan,
-  subscribeQrReaderModuleState,
-}))
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -47,6 +37,16 @@ function deferred<T>() {
     resolve = resolvePromise
   })
   return { promise, resolve }
+}
+
+function expectSingleAlertCancelWithoutClose(dialog: HTMLElement): void {
+  expect(
+    within(dialog).getAllByRole("button", { name: "Cancel" }),
+  ).toHaveLength(1)
+  expect(
+    within(dialog).queryByRole("button", { name: "Close" }),
+  ).toBeNull()
+  expect(dialog.querySelector("svg.lucide-x")).toBeNull()
 }
 
 describe("key management v2", () => {
@@ -264,6 +264,10 @@ describe("key management v2", () => {
     expect(within(dialog).getByText("7".repeat(64))).toBeInTheDocument()
     expect(within(dialog).getByText("8".repeat(64))).toBeInTheDocument()
     expect(within(dialog).getByRole("button", { name: "Verify and save" })).toBeDisabled()
+    expect(
+      within(dialog).queryByRole("button", { name: "Close" }),
+    ).toBeNull()
+    expect(dialog.querySelector("svg.lucide-x")).toBeNull()
     await user.keyboard("{Escape}")
     expect(
       screen.getByRole("dialog", {
@@ -463,6 +467,7 @@ describe("settings v2", () => {
     clearAllKeys.mockRejectedValueOnce(new Error("delete failed"))
     await user.click(screen.getByRole("button", { name: "Delete all keys" }))
     const dialog = await screen.findByRole("alertdialog", { name: "Delete all keys" })
+    expectSingleAlertCancelWithoutClose(dialog)
     await user.type(within(dialog).getByLabelText("Confirmation text"), "DELETE ALL")
     await user.click(within(dialog).getByRole("button", { name: "Run logical deletion" }))
     const deleteError = "Data could not be deleted. Check the device storage."
@@ -526,6 +531,7 @@ describe("settings v2", () => {
     const dialog = await screen.findByRole("alertdialog", {
       name: "Keep keys for the next update only",
     })
+    expectSingleAlertCancelWithoutClose(dialog)
     const action = within(dialog).getByRole("button", { name: "Arm maintenance token" })
     expect(action).toBeDisabled()
     await user.type(within(dialog).getByLabelText("Confirmation text"), "KEEP KEYS")

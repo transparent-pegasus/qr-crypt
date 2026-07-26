@@ -54,9 +54,11 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
   * WebAssembly が JIT なしで動く環境（一部の堅牢化・ロックダウン構成）では、デコードは大幅に
     遅くなると見込まれます。どの程度遅くなるかは実機で未計測です
     （[docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)）。
-  * QR の表示も同じ判定に従い、利用者が設定することはありません。デコーダーが使える場合は密な
-    フレームを短い表示時間で（1,000 B を 200 ms ごと）、使えない場合は小さなフレームを長く
-    表示します（100 B を 2,000 ms ごと。収まらない成果物のときだけ密度を上げます）。
+  * QR 表示はローカルのデコーダー判定には従いません。表示側の端末から、相手のカメラが何を
+    読み取れるかは分からないためです。ラベル付きの互換モードスイッチで利用者が選択します。
+    OFF は出荷時の既定値（1,000 B / 200 ms）、ON は互換性を優先する設定（100 B / 2,000 ms）
+    です。100 B では収まらない成果物だけ実効密度を引き上げますが、その値は保存しません。
+    1,000 B まで引き上げられた場合も、ON では 2,000 ms の表示時間が維持されます。
   * その場合に残る入力手段は、本文の手入力・貼り付けだけです。この入力欄が受け付けるのは完結した
     ペイロード文字列であって個々の QR フレームではありません。ポスト量子メッセージは複数フレームに
     分割され、ポスト量子の公開鍵と識別情報も常にフレームとして運ばれるため、カメラが使えない環境
@@ -146,7 +148,7 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
 ## ドキュメント
 
 * [docs/spec/qr-protocol.md](docs/spec/qr-protocol.md) — QR プロトコル仕様（v1）
-* [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QR プロトコル仕様（v2・ポスト量子）。QR 密度と表示間隔もこちら
+* [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QR プロトコル仕様（v2・ポスト量子）。利用者が選ぶ表示設定と成果物ごとの実効密度もこちら
 * [docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md) — 起動 / wipe-on-online 契約
 * [docs/security/threat-model.md](docs/security/threat-model.md) — 脅威モデル
 * [docs/security/security-review.md](docs/security/security-review.md) — セキュリティレビュー記録（v2・監査区分）

@@ -4,6 +4,7 @@ import {
   createPqIdentity,
   emitInjectedQr,
   encryptSignedPq,
+  expectStableTrailingDialogClose,
   injectedScanSnapshot,
   installInjectedDecoderStream,
   loadOnlineGate,
@@ -183,6 +184,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   })
   await installInjectedDecoderStream(page)
   await context.grantPermissions(["camera", "clipboard-read", "clipboard-write"])
+  await page.setViewportSize({ width: 360, height: 320 })
   await loadOnlineGate(page)
 
   const relayNavigationButton = page.getByRole("button", {
@@ -198,6 +200,11 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   const capture = page.getByRole("dialog", {
     name: "QR frames to text",
   })
+  await expect(capture).toBeVisible()
+  await expectStableTrailingDialogClose(capture, "Close")
+  await page.keyboard.press("Escape")
+  await expect(capture).toBeHidden()
+  await scanButton.click()
   await expect(capture).toBeVisible()
   expect(await injectedScanSnapshot(page)).toEqual([])
   await capture.getByRole("button", { name: "Start camera" }).click()
@@ -223,10 +230,16 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await capture.getByRole("button", { name: "Close" }).click()
 
   await relayNavigationButton.click()
-  await page.getByRole("button", { name: "Text → QR" }).click()
+  const playbackButton = page.getByRole("button", { name: "Text → QR" })
+  await playbackButton.click()
   const playback = page.getByRole("dialog", {
     name: "Turn relay text into QR frames",
   })
+  await expectStableTrailingDialogClose(playback, "Close")
+  await page.keyboard.press("Escape")
+  await expect(playback).toBeHidden()
+  await playbackButton.click()
+  await expect(playback).toBeVisible()
   await playback
     .getByLabel("Relay text")
     .fill(`${framePayloads.slice().reverse().join("\r\n")}\r\n`)

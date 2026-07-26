@@ -211,25 +211,36 @@ QrFrameV2 = {
   and `totalByteLength ≤ frameCount × 1,000`. A bare `OC?2` paste is capped
   at 170,672 characters (the five-character prefix plus the base64url
   ceiling), and its decoded bytes are checked again against 128,000
-- Users do not select frame density or display speed. For generated OCF2
-  artifacts, the application chooses 1,000B chunks with a 200ms minimum dwell
-  when the WebAssembly reader module is usable, or a best-effort 100B /
-  2,000ms fallback when it is not. The density is raised automatically when
-  the preferred chunk size cannot fit the artifact within
-  `VITE_QR_MAX_FRAMES`; the dwell remains the one selected by the profile
+- Generated OCF2 display exposes one labelled compatibility switch. Off is the
+  shipped default preference, `{ frameBytes: 1000, frameIntervalMs: 200 }`;
+  on is the user-selected compatible preference,
+  `{ frameBytes: 100, frameIntervalMs: 2000 }`. The switch writes both
+  preference members together; a preference patch that supplies only one
+  member or any other pair is rejected
+- The application does not infer density or dwell from the displaying
+  device's QR reader. That device cannot answer whether the peer camera can
+  read its screen. The removed automatic selector also had a shipped
+  always-compatible bug: its usability check required reader-module state to
+  have reached `usable`, which happened only after camera preparation
+  resolved, so the display path never observed the usable state
 - Before each split, the renderer computes
   `gridMin = 100 × ceil(ceil(totalByteLength / VITE_QR_MAX_FRAMES) / 100)`.
-  It uses `max(profileFrameBytes, gridMin)`. The active internal density grid
-  is every 100B value from 100 through 1,000B. An artifact above 128,000B is
-  rejected before splitting; if `gridMin > 1,000`, generation fails as
-  `QR_TOO_LARGE`. A reader-capability transition or automatic density lift
-  re-splits the artifact and mints a new `transferId`; mixing generations is
-  terminal `FRAME_MISMATCH`
+  The per-artifact effective density clamp is
+  `max(preferredFrameBytes, gridMin)`. Intermediate densities are effective
+  values only: the complete generated-density grid is every 100B value from
+  100 through 1,000B, and a raised value is never persisted over the selected
+  preference. An artifact above 128,000B is rejected before splitting; if
+  `gridMin > 1,000`, generation fails as `QR_TOO_LARGE`. A switch change that
+  changes effective density, or a changed artifact clamp, re-splits the
+  artifact and mints a new `transferId`; mixing generations is terminal
+  `FRAME_MISMATCH`. When `gridMin` is already 1,000B, switching still changes
+  the dwell from 200ms to 2,000ms even though effective density remains
+  1,000B
 - The automatic cursor advances only after `QrDisplay` has committed the
-  exact rendered payload, then starts a one-shot timeout for that profile's
-  dwell. The configured 200ms or 2,000ms is therefore a **minimum visible
-  dwell**, not a measured cadence. A real cycle is the sum of every frame's
-  render latency and dwell and must be measured separately
+  exact rendered payload, then starts a one-shot timeout for the selected
+  preference's dwell. The configured 200ms or 2,000ms is therefore a
+  **minimum visible dwell**, not a measured cadence. A real cycle is the sum
+  of every frame's render latency and dwell and must be measured separately
 - Export has one Download control. Exactly one complete frame produces one
   PNG; multiple complete frames produce one store-only ZIP containing PNGs.
   SVG export is not offered
@@ -245,23 +256,27 @@ QrFrameV2 = {
 - Scan state is released on explicit discard, completion, error, or timeout.
   The timeout defaults to 10 minutes with a configurable floor of 5 minutes.
   A 127-frame maximum signed message has 254 seconds of configured dwell at
-  the 2,000ms fallback; the derived floor conservatively budgets all 128
-  protocol frames (256 seconds) before rounding up to whole minutes. Render
-  latency makes the real cycle longer than those dwell-only figures and is
-  measured separately
+  the user-selected compatible preference; the derived floor conservatively
+  budgets all 128 protocol frames at 2,000ms (256 seconds) before rounding up
+  to whole minutes. Render latency makes the real cycle longer than those
+  dwell-only figures and is measured separately
 
 For boot compatibility, the append-only read ranges accept every safe integer
 from 100 through 1,000B for density and from 150 through 3,000ms for interval.
 This retains every historical density integer from 100 through 900 and every
 historical interval integer from 150 through 2,000 together with 2,500 and
 3,000. The internal density set is 100, 200, …, 1,000B; the internal interval
-set is 200, 300, …, 1,000ms plus 2,000ms. When preferences load, a readable
-value outside those sets is normalized to the nearest admitted value, with
-midpoint ties upward. The stored fields remain readable for boot safety, but
-generated-artifact producers neither expose them as controls nor write them
-when choosing an automatic profile. Off-grid patch/env values are rejected
-without normalization. Wire/state `frameIndex` and `missingIndexes` remain
-zero-based; user-facing frame positions are displayed one-based.
+set is 200, 300, …, 1,000ms plus 2,000ms. On preference read, the exact
+1,000B/200ms and 100B/2,000ms pairs are preserved; every other boot-readable
+historical combination, including a missing member, is canonicalized to the
+default 1,000B/200ms pair before strict validation. The append-only ranges and
+the per-field historical normalization paths remain intact, so no previously
+readable display preference can become a boot read failure and force
+`wipeOnOnline`. Current preference patches must write one exact pair
+atomically. Per-artifact effective clamps are never persisted, and invalid
+patch/environment values are rejected without read-time normalization.
+Wire/state `frameIndex` and `missingIndexes` remain zero-based; user-facing
+frame positions are displayed one-based.
 
 ## 7. Vault (seed storage)
 
@@ -399,3 +414,6 @@ signatures. Authoritative completion remains §6 (offline assembler).
 - `payloadSha256` on each frame is transfer integrity, **not** sender
   authenticity (§6). A relay can drop, reorder, replay, or substitute an
   entire well-formed frame set.
+- Relay playback uses its own deliberately named 1,000ms interval. It has no
+  compatibility switch because it re-displays frames generated by another
+  sender and cannot re-split their density.

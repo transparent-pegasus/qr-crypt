@@ -17,24 +17,15 @@ import {
   fakeBundles,
   fakeIdentities,
   fakePqDecrypt,
-  isQrReaderModuleUsable,
-  prepareQrReaderModule,
+  fakePreferences,
   renderQrDataUrl,
-  setQrReaderModuleUsable,
   splitIntoFrames,
   startQrScan,
-  subscribeQrReaderModuleState,
+  updatePreferences,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 const defaultQrMaxFrames = env.qrMaxFrames
-
-vi.doMock("@/qr/decode", () => ({
-  isQrReaderModuleUsable,
-  prepareQrReaderModule,
-  startQrScan,
-  subscribeQrReaderModuleState,
-}))
 
 async function chooseSelectOption(
   user: ReturnType<typeof userEvent.setup>,
@@ -49,6 +40,7 @@ describe("encrypt page v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
     env.qrMaxFrames = defaultQrMaxFrames
+    vi.unstubAllGlobals()
     vi.restoreAllMocks()
     resetUi()
   })
@@ -358,74 +350,57 @@ describe("encrypt page v2", () => {
     expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
   })
 
-  it.each([
-    {
-      label: "wasm reader usable",
-      wasmReaderUsable: true,
-      frameBytes: 1_000,
-      dwellMs: 200,
-    },
-    {
-      label: "wasm reader unusable",
-      wasmReaderUsable: false,
-      frameBytes: 100,
-      dwellMs: 2_000,
-    },
-  ])(
-    "selects the automatic display profile when the $label",
-    async ({ wasmReaderUsable, frameBytes, dwellMs }) => {
-      const firstQrRender = (() => {
-        let resolve!: (value: string) => void
-        const promise = new Promise<string>((resolvePromise) => {
-          resolve = resolvePromise
-        })
-        return { promise, resolve }
-      })()
-      setQrReaderModuleUsable(wasmReaderUsable)
-      renderQrDataUrl.mockImplementationOnce(() => firstQrRender.promise)
-      encryptPq.mockResolvedValueOnce({
-        version: 2,
-        type: "pq-message",
-        suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
-        recipientKemKeyId: fakeBundles[0]!.kem.keyId,
-        kemCiphertext: new Uint8Array(1_568),
-        hkdfSalt: new Uint8Array(32),
-        iv: new Uint8Array(12),
-        ciphertext: new Uint8Array(512),
-      })
-      const user = userEvent.setup()
-      await renderApp("/encrypt")
-      await chooseSelectOption(
-        user,
-        "Cryptographic algorithm",
-        /Post-quantum ML-KEM-1024 \+ AES/,
-      )
-      await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
-      await user.type(screen.getByLabelText("Plaintext"), "profile selection")
-      await user.click(screen.getByRole("button", { name: "Encrypt" }))
-
-      const result = await screen.findByRole("region", { name: "Encryption result" })
-      await waitFor(() =>
-        expect(splitIntoFrames).toHaveBeenLastCalledWith(
-          expect.objectContaining({
-            artifactType: "pq-message",
-            frameBytes,
-          }),
-        ),
-      )
-
-      const timeout = vi.spyOn(window, "setTimeout")
-      firstQrRender.resolve("data:image/png;base64,cHJvZmlsZQ==")
-      await waitFor(() => expect(within(result).getByRole("img")).toBeInTheDocument())
-      expect(timeout.mock.calls.some(([, delay]) => delay === dwellMs)).toBe(true)
-      timeout.mockRestore()
-    },
-  )
-
-  it("raises the unusable-reader fallback density and shows the clamp notice", async () => {
-    const artifactByteLength = 12_801
-    setQrReaderModuleUsable(false)
+  it("defaults to 1000 bytes and 200 milliseconds without WebAssembly", async () => {
+    vi.stubGlobal("WebAssembly", undefined)
     encryptPq.mockResolvedValueOnce({
+      version: 2,
+      type: "pq-message",
+      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      recipientKemKeyId: fakeBundles[0]!.kem.keyId,
+      kemCiphertext: new Uint8Array(1_568),
+      hkdfSalt: new Uint8Array(32),
+      iv: new Uint8Array(12),
+      ciphertext: new Uint8Array(512),
+    })
+    const timeout = vi.spyOn(window, "setTimeout")
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "no wasm default")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const result = await screen.findByRole("region", { name: "Encryption result" })
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-message",
+          frameBytes: 1_000,
+        }),
+      ),
+    )
+    await waitFor(() => expect(within(result).getByRole("img")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(timeout.mock.calls.some(([, delay]) => delay === 200)).toBe(true),
+    )
+    expect(globalThis.WebAssembly).toBeUndefined()
+    expect(
+      within(result).getByRole("switch", { name: "Compatibility mode" }),
+    ).not.toBeChecked()
+    expect(fakePreferences).toMatchObject({
+      frameBytes: 1_000,
+      frameIntervalMs: 200,
+    })
+    expect(updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it("persists the compatible pair, re-splits at the raised density, and survives remount", async () => {
+    const artifactByteLength = 12_801
+    encryptPq.mockResolvedValue({
       version: 2,
       type: "pq-message",
       suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
@@ -436,6 +411,66 @@ describe("encrypt page v2", () => {
       ciphertext: new Uint8Array(artifactByteLength - 1_568 - 128),
     })
     const user = userEvent.setup()
+    const mounted = await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "compatible clamp")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    let result = await screen.findByRole("region", { name: "Encryption result" })
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-message",
+          frameBytes: 1_000,
+        }),
+      ),
+    )
+    const compatibility = within(result).getByRole("switch", {
+      name: "Compatibility mode",
+    })
+    expect(compatibility).not.toBeChecked()
+    await user.click(compatibility)
+
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({
+        frameBytes: 100,
+        frameIntervalMs: 2_000,
+      }),
+    )
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-message",
+          frameBytes: 200,
+        }),
+      ),
+    )
+    await waitFor(() =>
+      expect(
+        within(result).getByRole("switch", { name: "Compatibility mode" }),
+      ).toBeChecked(),
+    )
+    expect(
+      within(result).getByText(
+        "Frame density could not be lowered further because this transfer must stay within the frame limit.",
+      ),
+    ).toHaveAttribute("role", "status")
+    expect(
+      updatePreferences.mock.calls
+        .map(([patch]) => patch)
+        .filter((patch) => "frameBytes" in patch || "frameIntervalMs" in patch),
+    ).toEqual([{ frameBytes: 100, frameIntervalMs: 2_000 }])
+    expect(fakePreferences).toMatchObject({
+      frameBytes: 100,
+      frameIntervalMs: 2_000,
+    })
+
+    mounted.unmount()
     await renderApp("/encrypt")
     await chooseSelectOption(
       user,
@@ -443,10 +478,15 @@ describe("encrypt page v2", () => {
       /Post-quantum ML-KEM-1024 \+ AES/,
     )
     await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
-    await user.type(screen.getByLabelText("Plaintext"), "fallback clamp")
+    await user.type(screen.getByLabelText("Plaintext"), "compatible remount")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
-    const result = await screen.findByRole("region", { name: "Encryption result" })
+    result = await screen.findByRole("region", { name: "Encryption result" })
+    await waitFor(() =>
+      expect(
+        within(result).getByRole("switch", { name: "Compatibility mode" }),
+      ).toBeChecked(),
+    )
     await waitFor(() =>
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -456,8 +496,78 @@ describe("encrypt page v2", () => {
       ),
     )
     expect(
-      within(result).getByText("Frame density was raised so this transfer fits."),
+      within(result).getByText(
+        "Frame density could not be lowered further because this transfer must stay within the frame limit.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      updatePreferences.mock.calls
+        .map(([patch]) => patch)
+        .filter((patch) => "frameBytes" in patch || "frameIntervalMs" in patch),
+    ).toEqual([{ frameBytes: 100, frameIntervalMs: 2_000 }])
+  })
+
+  it("keeps a 1000-byte floor while compatible mode changes dwell to 2000 milliseconds", async () => {
+    const artifactByteLength = 128_000
+    encryptPq.mockResolvedValueOnce({
+      version: 2,
+      type: "pq-message",
+      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      recipientKemKeyId: fakeBundles[0]!.kem.keyId,
+      kemCiphertext: new Uint8Array(1_568),
+      hkdfSalt: new Uint8Array(32),
+      iv: new Uint8Array(12),
+      ciphertext: new Uint8Array(artifactByteLength - 1_568 - 128),
+    })
+    const timeout = vi.spyOn(window, "setTimeout")
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "density floor")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const result = await screen.findByRole("region", { name: "Encryption result" })
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-message",
+          frameBytes: 1_000,
+        }),
+      ),
+    )
+    await waitFor(() => expect(within(result).getByRole("img")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(timeout.mock.calls.some(([, delay]) => delay === 200)).toBe(true),
+    )
+    const splitCallsAtDefault = splitIntoFrames.mock.calls.length
+    await user.click(
+      within(result).getByRole("switch", { name: "Compatibility mode" }),
+    )
+
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({
+        frameBytes: 100,
+        frameIntervalMs: 2_000,
+      }),
+    )
+    await waitFor(() =>
+      expect(timeout.mock.calls.some(([, delay]) => delay === 2_000)).toBe(true),
+    )
+    expect(splitIntoFrames).toHaveBeenCalledTimes(splitCallsAtDefault)
+    expect(
+      within(result).getByText(
+        "Frame density could not be lowered further because this transfer must stay within the frame limit.",
+      ),
     ).toHaveAttribute("role", "status")
+    expect(updatePreferences).not.toHaveBeenCalledWith({
+      frameBytes: 1_000,
+      frameIntervalMs: 2_000,
+    })
   })
 
   it("fails through QR_TOO_LARGE when even the maximum density cannot fit", async () => {

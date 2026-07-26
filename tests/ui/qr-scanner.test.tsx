@@ -329,7 +329,8 @@ describe("QrScannerModal", () => {
     expect(
       dialog.querySelector("[data-qr-scanner-scroll-region]"),
     ).toHaveClass(
-      "max-h-[calc(95dvh-4rem)]",
+      "min-h-0",
+      "max-h-[calc(95dvh-4rem-44px-1rem)]",
       "overflow-y-auto",
     )
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
@@ -339,9 +340,26 @@ describe("QrScannerModal", () => {
       ),
     ).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "Close" }))
+    const closeControls = within(dialog).getAllByRole("button", {
+      name: "Close",
+    })
+    expect(closeControls).toHaveLength(1)
+    expect(Array.from(dialog.querySelectorAll("button")).at(-1)).toBe(
+      closeControls[0],
+    )
+    await user.click(closeControls[0]!)
     await waitFor(() => expect(dialog).not.toBeInTheDocument())
     expect(scannerStop).toHaveBeenCalledOnce()
+    expect(trigger).toHaveFocus()
+
+    await user.click(trigger)
+    const reopened = await screen.findByRole("dialog", {
+      name: "Scan a ciphertext QR code",
+    })
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(reopened).not.toBeInTheDocument())
+    expect(scannerStop).toHaveBeenCalledTimes(2)
     expect(trigger).toHaveFocus()
   })
 
