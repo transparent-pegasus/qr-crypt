@@ -21,4 +21,7 @@ coverage/
 !.claude/skills/nation-state-security/
 
 # Local task workflow (untracked)
-/WORKFLOW.md
+/CLAUDE.local.md
+
+# herdrpowers repo config and pane workspace (local only)
+.herdrpowers/

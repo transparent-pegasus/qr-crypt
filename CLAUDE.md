@@ -1,4 +1,4 @@
-@WORKFLOW.md
+@CLAUDE.local.md
 
 # Project Goal
 
