@@ -6,7 +6,6 @@
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { randomBytes } from "@/crypto/random"
-import { sha256 } from "@/lib/bytes"
 import {
   FRAME_BYTES_MAX,
   FRAME_BYTES_MIN,
@@ -87,11 +86,10 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
   }
   if (frameCount > env.qrMaxFrames) throw new AppError("QR_TOO_LARGE")
 
-  // Pin an owned copy first so the hash and chunks cannot observe different snapshots
-  // if the caller mutates the input view while the digest is pending.
+  // Pin an owned copy first so every chunk is sliced from the same snapshot even
+  // if the caller mutates the input view while frames are being built.
   const stableArtifactBytes = Uint8Array.from(artifactBytes)
   const transferId = randomBytes(16)
-  const payloadSha256 = await sha256(stableArtifactBytes)
   const frames: QrFrameV2[] = []
   let chunkStart = 0
 
@@ -107,7 +105,6 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
       frameIndex,
       frameCount,
       totalByteLength: stableArtifactBytes.byteLength,
-      payloadSha256: Uint8Array.from(payloadSha256),
       chunk: stableArtifactBytes.slice(chunkStart, chunkEnd),
     }
     const payload = encodeFrameToPayload(frame)

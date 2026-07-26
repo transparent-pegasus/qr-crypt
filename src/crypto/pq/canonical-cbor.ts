@@ -679,7 +679,6 @@ export function guardQrFrameV2(value: unknown): QrFrameV2 {
     "frameIndex",
     "frameCount",
     "totalByteLength",
-    "payloadSha256",
     "chunk",
   ])
   const frameCount = guardInt(record["frameCount"], 1, PROTOCOL_MAX_FRAMES)
@@ -702,7 +701,6 @@ export function guardQrFrameV2(value: unknown): QrFrameV2 {
     frameIndex,
     frameCount,
     totalByteLength,
-    payloadSha256: guardBytes(record["payloadSha256"], 32),
     chunk,
   }
 }

@@ -141,7 +141,6 @@ const qrFrameV2Schema = z
     frameIndex: z.number().int().nonnegative(),
     frameCount: z.number().int().min(1).max(PROTOCOL_MAX_FRAMES),
     totalByteLength: z.number().int().min(1).max(MAX_ARTIFACT_BYTES_ABSOLUTE),
-    payloadSha256: bytes(32),
     chunk: bytes().refine(
       (value) => value.byteLength >= 1 && value.byteLength <= FRAME_CHUNK_MAX_BYTES,
     ),

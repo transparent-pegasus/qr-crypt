@@ -590,7 +590,6 @@ export const splitIntoFrames = vi.fn(
         frameIndex,
         frameCount,
         totalByteLength: artifactBytes.byteLength,
-        payloadSha256: new Uint8Array(32),
         chunk: artifactBytes.slice(offset, offset + chunkBytes),
       }
       offset += chunkBytes

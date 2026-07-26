@@ -135,7 +135,6 @@ describe("PQ strict validation", () => {
       frameIndex: PROTOCOL_MAX_FRAMES - 1,
       frameCount: PROTOCOL_MAX_FRAMES,
       totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE,
-      payloadSha256: new Uint8Array(32),
       chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES),
     } as const
     expect(PROTOCOL_MAX_FRAMES).toBe(128)
@@ -174,7 +173,6 @@ describe("PQ strict validation", () => {
       frameIndex: 0,
       frameCount: 2,
       totalByteLength: FRAME_CHUNK_MAX_BYTES * 2 + 1,
-      payloadSha256: new Uint8Array(32),
       chunk: Uint8Array.of(1),
     } as const
     expect(() => validateQrFrameV2(frame)).toThrow("INVALID_QR_PAYLOAD")

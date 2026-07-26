@@ -59,7 +59,6 @@ interface RelayMetadata {
   readonly artifactType: "pq-message"
   readonly frameCount: number
   readonly totalByteLength: number
-  readonly payloadSha256: Uint8Array
 }
 
 export interface RelayFrameEntry {
@@ -111,8 +110,7 @@ function metadataMatches(metadata: RelayMetadata, frame: QrFrameV2): boolean {
     bytesEqual(metadata.transferId, frame.transferId) &&
     metadata.artifactType === frame.artifactType &&
     metadata.frameCount === frame.frameCount &&
-    metadata.totalByteLength === frame.totalByteLength &&
-    bytesEqual(metadata.payloadSha256, frame.payloadSha256)
+    metadata.totalByteLength === frame.totalByteLength
   )
 }
 
@@ -167,7 +165,6 @@ export function parseRelayFrameSet(
         artifactType: "pq-message",
         frameCount: frame.frameCount,
         totalByteLength: frame.totalByteLength,
-        payloadSha256: Uint8Array.from(frame.payloadSha256),
       }
     } else if (!metadataMatches(metadata, frame)) {
       return { ok: false, code: "mismatch" }

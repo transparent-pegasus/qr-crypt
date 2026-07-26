@@ -6,6 +6,10 @@ import {
   MAX_ARTIFACT_BYTES_ABSOLUTE,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
+import {
+  decodeQrFrameV2,
+  encodeCanonicalCbor,
+} from "@/crypto/pq/canonical-cbor"
 import { validateQrFrameV2Strict } from "@/qr/multipart/frame-schema"
 
 function validFrame(artifactType: V2ArtifactType = "pq-message"): QrFrameV2 {
@@ -17,7 +21,6 @@ function validFrame(artifactType: V2ArtifactType = "pq-message"): QrFrameV2 {
     frameIndex: 0,
     frameCount: 1,
     totalByteLength: 1,
-    payloadSha256: new Uint8Array(32),
     chunk: Uint8Array.of(1),
   }
 }
@@ -60,7 +63,6 @@ describe("validateQrFrameV2Strict", () => {
 
   it.each([
     ["short transferId", { transferId: new Uint8Array(15) }],
-    ["short hash", { payloadSha256: new Uint8Array(31) }],
     ["zero frameCount", { frameCount: 0 }],
     ["too many frames", { frameCount: PROTOCOL_MAX_FRAMES + 1 }],
     ["index equal to count", { frameIndex: 1 }],
@@ -94,5 +96,22 @@ describe("validateQrFrameV2Strict", () => {
       validFrame(),
     )
     expectInvalid(value)
+  })
+
+  it("rejects a legacy frame that still carries payloadSha256", () => {
+    const legacy = encodeCanonicalCbor({
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16),
+      artifactType: "pq-message",
+      frameIndex: 0,
+      frameCount: 1,
+      totalByteLength: 4,
+      payloadSha256: new Uint8Array(32),
+      chunk: new Uint8Array([1, 2, 3, 4]),
+    })
+    expect(() => decodeQrFrameV2(legacy)).toThrowError(
+      expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+    )
   })
 })

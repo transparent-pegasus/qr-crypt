@@ -25,7 +25,7 @@ the active policy and is rejected at the operational boundary as
     byte counts in the table below, the OCF2 frame counts across the internal
     100–1,000B chunk set, both exact display preference pairs and the
     per-artifact effective density clamps, real EC-Q generation for every
-    displayable frame, the 1,593-character
+    displayable frame, the 1,529-character
     worst-metadata payload at the 1,000B ceiling, and boundary agreement with
     the env capacity guard.
   - The ML-KEM-1024 / ML-DSA-87 KATs and `aube test` / `aube typecheck` pass,
@@ -75,7 +75,7 @@ The receiver allocation ceiling now equals the complete wire budget:
 `MAX_ARTIFACT_BYTES_ABSOLUTE =
 PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES = 128,000B`. With worst-case
 metadata across every artifact type, a 1,000B chunk produces a
-1,593-character OCF2 payload against the 1,663-character EC-Q version 40
+1,529-character OCF2 payload against the 1,663-character EC-Q version 40
 capacity.
 
 The frame cursor advances only after the exact rendered code has committed,

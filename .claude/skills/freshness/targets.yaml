@@ -318,7 +318,7 @@ units:
       per-artifact effective density clamp, including that it is never
       persisted and that compatible dwell remains 2000ms at the 1000B density
       floor; the frames × chunk 128,000B absolute artifact ceiling; the 1,000B
-      per-chunk ceiling; and the 1,593-character worst-metadata payload against
+      per-chunk ceiling; and the 1,529-character worst-metadata payload against
       EC-Q v40 capacity 1,663.
       Confirm the append-only boot-readable range still accepts every
       historical density integer 100–900 and every historical interval integer
