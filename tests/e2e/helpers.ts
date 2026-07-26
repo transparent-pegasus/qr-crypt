@@ -563,7 +563,7 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
     const response = await route.fetch()
     const source = await response.text()
     const startQrScanPattern =
-      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=[\s\S]{0,1000}?video:\1,onError:\3,stoppedPromise:[$\w]+,resolveStopped:[$\w]+,phase:[`"']acquiring[`"'],stopped:!1,emitted:!1,errorReported:!1)/g
+      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=[\s\S]{0,1000}?video:\1,onError:\3,onDiagnostic:\4\?\.onDiagnostic,stoppedPromise:[$\w]+,resolveStopped:[$\w]+,phase:[`"']acquiring[`"'],stopped:!1,emitted:!1,errorReported:!1)/g
     const matches = [...source.matchAll(startQrScanPattern)]
     if (matches.length !== 1) {
       throw new Error("Production scanner bundle marker was not found")

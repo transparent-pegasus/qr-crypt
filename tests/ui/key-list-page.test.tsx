@@ -306,8 +306,14 @@ describe("key list page", () => {
     expect(within(dialog).queryByText(/Saved/)).toBeNull()
   })
 
-  it("lets the identity parent persist compatibility mode and re-split its frames", async () => {
+  it("keeps identity fullscreen open while compatibility mode re-splits and restarts at frame one", async () => {
     const timeout = vi.spyOn(window, "setTimeout")
+    const defaultSplitIntoFrames = splitIntoFrames.getMockImplementation()!
+    const compatibleSplit =
+      deferred<Awaited<ReturnType<typeof defaultSplitIntoFrames>>>()
+    let compatibleArgs:
+      | Parameters<typeof defaultSplitIntoFrames>[0]
+      | undefined
     const user = userEvent.setup()
     await renderKeyList()
 
@@ -324,11 +330,28 @@ describe("key list page", () => {
         }),
       ),
     )
-
-    const compatibility = within(dialog).getByRole("switch", {
+    await waitFor(() => expect(within(dialog).getByRole("img")).toBeInTheDocument())
+    await user.click(within(dialog).getByRole("button", { name: "Pause" }))
+    const fullscreenTrigger = within(dialog).getByRole("button", {
+      name: "View full screen",
+    })
+    await waitFor(() => expect(fullscreenTrigger).toBeEnabled())
+    await user.click(fullscreenTrigger)
+    const fullscreen = await screen.findByRole("dialog", {
+      name: /View .*public-key bundle.* full screen/,
+    })
+    if (within(fullscreen).queryByText("1 / 4")) {
+      await user.click(within(fullscreen).getByRole("button", { name: "Next" }))
+    }
+    const stalePosition = within(fullscreen).getByText(/^[2-4] \/ 4$/).textContent
+    const compatibility = within(fullscreen).getByRole("switch", {
       name: "Compatibility mode",
     })
     expect(compatibility).not.toBeChecked()
+    splitIntoFrames.mockImplementationOnce((args) => {
+      compatibleArgs = args
+      return compatibleSplit.promise
+    })
     await user.click(compatibility)
 
     await waitFor(() =>
@@ -345,12 +368,48 @@ describe("key list page", () => {
         }),
       ),
     )
+    expect(
+      screen.getByRole("dialog", {
+        name: new RegExp(`View .*${stalePosition} full screen`),
+      }),
+    ).toBe(fullscreen)
+    expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
+
+    const compatibleFrames = await defaultSplitIntoFrames(compatibleArgs!)
+    const renderCallsBeforeResolve = renderQrDataUrl.mock.calls.length
+    compatibleSplit.resolve(compatibleFrames)
+    await compatibleSplit.promise
+
+    await waitFor(() =>
+      expect(
+        within(fullscreen).getByText(`1 / ${compatibleFrames.length}`),
+      ).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByRole("dialog", {
+        name: new RegExp(
+          `View .*public-key bundle.*1 / ${compatibleFrames.length} full screen`,
+        ),
+      }),
+    ).toBe(fullscreen)
+    await waitFor(() =>
+      expect(renderQrDataUrl.mock.calls.length).toBeGreaterThan(
+        renderCallsBeforeResolve,
+      ),
+    )
+    expect(renderQrDataUrl.mock.calls[renderCallsBeforeResolve]?.[0]).toContain(
+      `:0:${compatibleFrames.length}:pq-public-identity`,
+    )
+    expect(
+      within(fullscreen).getAllByRole("button", { name: "Close" }),
+    ).toHaveLength(1)
+    await user.click(within(fullscreen).getByRole("button", { name: "Play" }))
     await waitFor(() =>
       expect(timeout.mock.calls.some(([, delay]) => delay === 2_000)).toBe(true),
     )
     await waitFor(() =>
       expect(
-        within(dialog).getByRole("switch", { name: "Compatibility mode" }),
+        within(fullscreen).getByRole("switch", { name: "Compatibility mode" }),
       ).toBeChecked(),
     )
   })
