@@ -120,9 +120,8 @@
             You type a message; the app encrypts it and shows the result on screen as a QR
             code. Your everyday phone scans that code, converts it to a text string, and
             sends it through any ordinary messenger. The person receiving it does the same
-            in reverse. Only the two offline devices ever see the real message. The phones
-            in between carry scrambled text, though anyone watching can still see how big
-            it is and how many pieces it came in.
+            in reverse. Only the two offline devices ever see the real message. The online
+            device in between carries nothing but scrambled text.
           </p>
           <ul class="facts">
             <li class="facts__item" data-i18n="what.fact1">
@@ -187,7 +186,8 @@
               <p class="prose" data-i18n="install.a.body">
                 On the device you will keep offline, open the site in a browser and choose
                 Install or Add to Home Screen. Then disconnect that device from every
-                network and leave it that way. Airplane mode is not enough.
+                network and never connect it again. On a device that has been online,
+                airplane mode is not something to trust.
               </p>
               <p class="route__link">
                 <a class="cta" href="https://qr-crypt.pages.dev/">
@@ -217,8 +217,12 @@
               <p class="prose" data-i18n="install.b.body">
                 On a computer you trust, download the signed release and verify its
                 signature and checksum there, using values you obtained some other way.
-                Move it to the offline device, unzip it, and serve the folder from a local
-                web server; opening index.html straight from a file path does not work.
+                Move it to the offline device, unzip it, and serve the folder from a static
+                web server bound to 127.0.0.1 alone. As the bundled INSTALL.txt requires,
+                use a server obtained through an independent trusted process, and apply the
+                headers and redirects shipped with it. Opening index.html straight from a
+                file path does not work: storage isolation does not hold there, and another
+                local HTML file can end up able to read your keys.
                 Whatever you carry it on, a USB stick or an SD card, has to be trusted
                 too: anything that can alter the storage can alter the app.
               </p>
@@ -243,8 +247,12 @@
           <p class="eyebrow" data-i18n="flow.eyebrow">Using it</p>
           <h2 class="h2" data-i18n="flow.heading">How a message travels</h2>
           <p class="prose" data-i18n="flow.lede">
-            Six steps. Colour and placement tell you which device each one happens on.
-            This is the ML-KEM-1024 route.
+            Through all six steps the readable message never leaves the offline device.
+            What crosses the seam is ciphertext plus the framing information needed to
+            carry it. The key exchange is what differs by method: AES-256 needs its shared
+            key read in one direction only, while a post-quantum identity needs each side
+            to read the other's public key whenever the message is signed or the
+            conversation runs both ways. What follows is the ML-KEM-1024 route.
           </p>
 
           <div class="flow">
@@ -478,10 +486,11 @@
           </article>
           <article class="warn__item">
             <h3 class="warn__title" data-i18n="warn.two.title">
-              If the offline device goes online, the app erases what it is holding
+              If the offline device goes online, the app erases all its data
             </h3>
             <p class="warn__body" data-i18n="warn.two.body">
-              It deletes the keys and data it stores, but deleted is not gone: traces can
+              It deletes the keys and data it stores, but deleted is not gone. The deletion
+              is best-effort, and the app tells you when a step of it fails. Traces can
               often be pulled back off the hardware. If it truly has to be unrecoverable,
               wipe the storage with a method suited to the medium (NIST SP 800-88) or
               destroy the device.
