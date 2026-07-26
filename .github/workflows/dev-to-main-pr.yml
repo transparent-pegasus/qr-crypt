@@ -106,6 +106,7 @@ jobs:
             echo ''
             echo 'Merging this pull request deploys production and publishes the signed release.'
             echo ''
+            # shellcheck disable=SC2016 # backticks are Markdown code spans in the PR body
             echo 'Required checks: `validate`, `e2e`.'
             echo ''
             echo 'Compare: https://github.com/'"${GH_REPO}"'/compare/main...dev'
