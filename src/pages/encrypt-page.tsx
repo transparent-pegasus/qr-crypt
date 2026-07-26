@@ -1008,8 +1008,9 @@ export function EncryptPage() {
                   {t("qrDisplay.generating")}
                 </p>
               )}
-              {frameSplit.frames.length > 0 && (
+              {(frameSplit.frames.length > 0 || frameSplit.splitting) && (
                 <AnimatedQrFrames
+                  key={result.generation}
                   frames={frameSplit.frames}
                   frameIntervalMs={frameProfile.frameIntervalMs}
                   densityRaised={frameProfile.densityRaised}

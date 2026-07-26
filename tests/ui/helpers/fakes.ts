@@ -423,6 +423,14 @@ interface FakeCameraDiagnostic {
   detail: string
 }
 
+interface FakeCameraPipelineDiagnostic {
+  readerModuleState: "idle" | "preparing" | "ready" | "failed" | "timed-out"
+  videoFramesDrawn: number
+  decodeAttemptsCompleted: number
+  decodeResultsSeen: number
+  lastErrorName: string | null
+}
+
 export const scannerStop = vi.fn()
 let scanTextCallback: ((payload: string) => void) | null = null
 let scanErrorCallback:
@@ -436,7 +444,11 @@ export const startQrScan = vi.fn(
       error: FakeAppError,
       diagnostic: FakeCameraDiagnostic,
     ) => void,
-    _options?: { once?: boolean; signal?: AbortSignal },
+    _options?: {
+      once?: boolean
+      signal?: AbortSignal
+      onDiagnostic?: (diagnostic: FakeCameraPipelineDiagnostic) => void
+    },
   ): Promise<{ stop: () => void }> => {
     void _options
     scanTextCallback = onText

@@ -1,4 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import {
   ChevronLeft,
   ChevronRight,
@@ -82,10 +89,32 @@ export function AnimatedQrFrames({
   const { language, t } = useI18n()
   const compatibilityLabelId = useId()
   const title = titleProp ?? t("animatedQr.defaultTitle")
+  // A density change makes useFrameSplit project an empty set until its
+  // replacement commits. Retaining the last completed set keeps QrDisplay and
+  // its fullscreen dialog mounted across that same-session handoff.
+  const [frameBuffer, setFrameBuffer] = useState(() => ({
+    source: frames,
+    committed: frames,
+  }))
+  if (frameBuffer.source !== frames) {
+    setFrameBuffer({
+      source: frames,
+      committed: frames.length > 0 ? frames : frameBuffer.committed,
+    })
+  }
+  const displayFrames =
+    frames.length > 0
+      ? frames
+      : splitting
+        ? frameBuffer.committed
+        : frames
   const { slots, missingIndexes, frameCount } = useMemo(() => {
-    const expected = Math.max(0, ...frames.map((frame) => frame.frameCount))
+    const expected = Math.max(
+      0,
+      ...displayFrames.map((frame) => frame.frameCount),
+    )
     const nextSlots = new Map<number, FrameSlot>()
-    for (const frame of frames) {
+    for (const frame of displayFrames) {
       if (!nextSlots.has(frame.frameIndex)) {
         nextSlots.set(frame.frameIndex, {
           payload: encodeFrameToPayload(frame),
@@ -97,12 +126,15 @@ export function AnimatedQrFrames({
       if (!nextSlots.has(index)) missing.push(index)
     }
     return { slots: nextSlots, missingIndexes: missing, frameCount: expected }
-  }, [frames])
+  }, [displayFrames])
   const availableIndexes = useMemo(
     () => [...slots.keys()].sort((left, right) => left - right),
     [slots],
   )
-  const frameGeneration = useMemo(() => transferIdentity(frames), [frames])
+  const frameGeneration = useMemo(
+    () => transferIdentity(displayFrames),
+    [displayFrames],
+  )
   const [cursor, setCursor] = useState({
     generation: frameGeneration,
     position: 0,
@@ -252,6 +284,7 @@ export function AnimatedQrFrames({
   }
 
   if (!current || frameCount === 0) {
+    if (splitting) return null
     return (
       <Alert variant="destructive" role="alert">
         <AlertTitle>{t("animatedQr.empty.title")}</AlertTitle>

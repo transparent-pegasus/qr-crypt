@@ -259,25 +259,56 @@ describe("AnimatedQrFrames", () => {
     expect(screen.queryByText("Generating the QR code…")).toBeNull()
   })
 
-  it("resets to frame one when a same-length transfer generation replaces the frames", async () => {
+  it("keeps fullscreen mounted through a split gap and resets the new transfer to frame one", async () => {
+    const initialFrames = [frame(0, 2), frame(1, 2)]
     const { rerender } = render(
       <AnimatedQrFrames
-        frames={[frame(0, 2), frame(1, 2)]}
+        frames={initialFrames}
         frameIntervalMs={1_000}
         outputName="test"
       />,
     )
     fireEvent.click(screen.getByRole("button", { name: "Next" }))
     expect(screen.getByText("2 / 2")).toBeInTheDocument()
+    const trigger = screen.getByRole("button", { name: "View full screen" })
+    await waitFor(() => expect(trigger).toBeEnabled())
+    fireEvent.click(trigger)
+    const dialog = screen.getByRole("dialog", {
+      name: /View Multi-frame QR 2 \/ 2 full screen/,
+    })
 
     rerender(
       <AnimatedQrFrames
-        frames={[frame(0, 2, { transfer: 1 }), frame(1, 2, { transfer: 1 })]}
+        frames={[]}
+        frameIntervalMs={1_000}
+        outputName="test"
+        splitting
+      />,
+    )
+    expect(
+      screen.getByRole("dialog", {
+        name: /View Multi-frame QR 2 \/ 2 full screen/,
+      }),
+    ).toBe(dialog)
+    expect(within(dialog).getByRole("img")).toBeInTheDocument()
+
+    rerender(
+      <AnimatedQrFrames
+        frames={[
+          frame(0, 3, { transfer: 1 }),
+          frame(1, 3, { transfer: 1 }),
+          frame(2, 3, { transfer: 1 }),
+        ]}
         frameIntervalMs={1_000}
         outputName="test"
       />,
     )
-    await waitFor(() => expect(screen.getByText("1 / 2")).toBeInTheDocument())
+    await waitFor(() => expect(within(dialog).getByText("1 / 3")).toBeInTheDocument())
+    expect(
+      screen.getByRole("dialog", {
+        name: /View Multi-frame QR 1 \/ 3 full screen/,
+      }),
+    ).toBe(dialog)
   })
 
   it("downloads one complete frame as one PNG and has no SVG affordance", async () => {

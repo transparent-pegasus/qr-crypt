@@ -42,6 +42,14 @@ async function chooseSelectOption(
   await user.click(await screen.findByRole("option", { name: option }))
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
 describe("encrypt page v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
@@ -564,6 +572,122 @@ describe("encrypt page v2", () => {
       frameIntervalMs: 200,
     })
     expect(updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it("keeps fullscreen open while compatibility mode re-splits and restarts at frame one", async () => {
+    encryptPq.mockResolvedValueOnce({
+      version: 2,
+      type: "pq-message",
+      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      recipientKemKeyId: fakeBundles[0]!.kem.keyId,
+      kemCiphertext: new Uint8Array(1_568),
+      hkdfSalt: new Uint8Array(32),
+      iv: new Uint8Array(12),
+      ciphertext: new Uint8Array(32),
+    })
+    const defaultSplitIntoFrames = splitIntoFrames.getMockImplementation()!
+    const compatibleSplit =
+      deferred<Awaited<ReturnType<typeof defaultSplitIntoFrames>>>()
+    let compatibleArgs:
+      | Parameters<typeof defaultSplitIntoFrames>[0]
+      | undefined
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "fullscreen compatibility")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const result = await screen.findByRole("region", { name: "Encryption result" })
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-message",
+          frameBytes: 1_000,
+        }),
+      ),
+    )
+    await waitFor(() => expect(within(result).getByRole("img")).toBeInTheDocument())
+    await user.click(within(result).getByRole("button", { name: "Pause" }))
+    const fullscreenTrigger = within(result).getByRole("button", {
+      name: "View full screen",
+    })
+    await waitFor(() => expect(fullscreenTrigger).toBeEnabled())
+    await user.click(fullscreenTrigger)
+    const fullscreen = screen.getByRole("dialog", {
+      name: /View Ciphertext .* full screen/,
+    })
+    if (within(fullscreen).queryByText("1 / 2")) {
+      await user.click(within(fullscreen).getByRole("button", { name: "Next" }))
+    }
+    expect(within(fullscreen).getByText("2 / 2")).toBeInTheDocument()
+
+    splitIntoFrames.mockImplementationOnce((args) => {
+      compatibleArgs = args
+      return compatibleSplit.promise
+    })
+    await user.click(
+      within(fullscreen).getByRole("switch", { name: "Compatibility mode" }),
+    )
+
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({
+        frameBytes: 100,
+        frameIntervalMs: 2_000,
+      }),
+    )
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-message",
+          frameBytes: 100,
+        }),
+      ),
+    )
+    expect(
+      screen.getByRole("dialog", {
+        name: /View Ciphertext 2 \/ 2 full screen/,
+      }),
+    ).toBe(fullscreen)
+    expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
+
+    const compatibleFrames = await defaultSplitIntoFrames(compatibleArgs!)
+    const renderCallsBeforeResolve = renderQrDataUrl.mock.calls.length
+    await act(async () => {
+      compatibleSplit.resolve(compatibleFrames)
+      await compatibleSplit.promise
+    })
+
+    await waitFor(() =>
+      expect(
+        within(fullscreen).getByText(`1 / ${compatibleFrames.length}`),
+      ).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByRole("dialog", {
+        name: new RegExp(
+          `View Ciphertext 1 / ${compatibleFrames.length} full screen`,
+        ),
+      }),
+    ).toBe(fullscreen)
+    await waitFor(() =>
+      expect(renderQrDataUrl.mock.calls.length).toBeGreaterThan(
+        renderCallsBeforeResolve,
+      ),
+    )
+    expect(renderQrDataUrl.mock.calls[renderCallsBeforeResolve]?.[0]).toContain(
+      `:0:${compatibleFrames.length}:pq-message`,
+    )
+    expect(
+      within(fullscreen).getAllByRole("button", { name: "Close" }),
+    ).toHaveLength(1)
+    expect(
+      within(fullscreen).getByRole("switch", { name: "Compatibility mode" }),
+    ).toBeChecked()
   })
 
   it("persists the compatible pair, re-splits at the raised density, and survives remount", async () => {
