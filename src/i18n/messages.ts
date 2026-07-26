@@ -74,6 +74,10 @@ const en = {
   "errors.CAMERA_PERMISSION_DENIED":
     "Camera access is not permitted. Allow it in the browser settings.",
   "errors.CAMERA_NOT_AVAILABLE": "The camera is unavailable.",
+  "errors.QR_READER_PREPARATION_TIMEOUT":
+    "The QR reader did not finish preparing on this device.",
+  "errors.QR_DECODE_PROGRESS_TIMEOUT":
+    "The QR decoding pipeline stopped making progress on this device.",
   "errors.QR_READER_BLOCKED":
     "This browser blocks the QR reader. On iPhone, use Safari 16 or newer.",
   "errors.DUPLICATE_KEY": "A key with the same contents is already stored.",
@@ -504,6 +508,10 @@ const en = {
   "scanner.error.title": "The scan could not be completed",
   "scanner.diagnostic.ariaLabel": "Camera diagnostic",
   "scanner.diagnostic": "Diagnostic: {name} @{phase} [{detail}]",
+  "scanner.pipelineDiagnostic.ariaLabel": "QR decode pipeline diagnostic",
+  "scanner.pipelineDiagnostic":
+    "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
+  "scanner.pipelineDiagnostic.noError": "none",
   "scanner.button.discard": "Discard scan state",
   "scanner.button.stopCamera": "Stop camera",
   "scanner.closed.multipartProgress":
@@ -697,6 +705,10 @@ const ja = {
   "errors.CAMERA_PERMISSION_DENIED":
     "カメラの使用が許可されていません。ブラウザーの設定で許可してください。",
   "errors.CAMERA_NOT_AVAILABLE": "カメラを利用できません。",
+  "errors.QR_READER_PREPARATION_TIMEOUT":
+    "この端末でQRリーダーの準備が完了しませんでした。",
+  "errors.QR_DECODE_PROGRESS_TIMEOUT":
+    "この端末でQR復号パイプラインの進行が停止しました。",
   "errors.QR_READER_BLOCKED":
     "このブラウザーではQRコードリーダーがブロックされています。iPhoneではSafari 16以降を使用してください。",
   "errors.DUPLICATE_KEY": "同じ内容の鍵がすでに保存されています。",
@@ -1131,6 +1143,10 @@ const ja = {
   "scanner.error.title": "読み取りを完了できません",
   "scanner.diagnostic.ariaLabel": "カメラ診断",
   "scanner.diagnostic": "診断: {name} @{phase} [{detail}]",
+  "scanner.pipelineDiagnostic.ariaLabel": "QR復号パイプライン診断",
+  "scanner.pipelineDiagnostic":
+    "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
+  "scanner.pipelineDiagnostic.noError": "なし",
   "scanner.button.discard": "読取状態を破棄",
   "scanner.button.stopCamera": "カメラを停止",
   "scanner.closed.multipartProgress":

@@ -725,7 +725,7 @@ function IdentityQrSession({
           {t("qrDisplay.generating")}
         </p>
       )}
-      {split.frames.length > 0 && (
+      {(split.frames.length > 0 || split.splitting) && (
         <AnimatedQrFrames
           frames={split.frames}
           frameIntervalMs={selectedFramePair.frameIntervalMs}
