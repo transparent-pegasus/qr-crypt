@@ -74,6 +74,8 @@ const en = {
   "errors.CAMERA_PERMISSION_DENIED":
     "Camera access is not permitted. Allow it in the browser settings.",
   "errors.CAMERA_NOT_AVAILABLE": "The camera is unavailable.",
+  "errors.QR_READER_BLOCKED":
+    "This browser blocks the QR reader. On iPhone, use Safari 16 or newer.",
   "errors.DUPLICATE_KEY": "A key with the same contents is already stored.",
   "errors.DUPLICATE_QR": "A QR code with the same contents is already stored.",
   "errors.SIGNATURE_INVALID":
@@ -695,6 +697,8 @@ const ja = {
   "errors.CAMERA_PERMISSION_DENIED":
     "カメラの使用が許可されていません。ブラウザーの設定で許可してください。",
   "errors.CAMERA_NOT_AVAILABLE": "カメラを利用できません。",
+  "errors.QR_READER_BLOCKED":
+    "このブラウザーではQRコードリーダーがブロックされています。iPhoneではSafari 16以降を使用してください。",
   "errors.DUPLICATE_KEY": "同じ内容の鍵がすでに保存されています。",
   "errors.DUPLICATE_QR": "同じ内容のQRコードがすでに保存されています。",
   "errors.SIGNATURE_INVALID":
