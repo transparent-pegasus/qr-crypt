@@ -29,6 +29,7 @@ import {
   saveBundle,
 } from "@/storage/pq-bundle-repository"
 import {
+  deleteSupersededIdentities,
   findIdentityByKemKeyId,
   findIdentityBySigningKeyId,
   getIdentity,
@@ -269,4 +270,70 @@ describe("PQ envelope and storage integration", () => {
       }),
     ).rejects.toMatchObject({ code: "KEY_NOT_FOUND" })
   }, 30_000)
+})
+
+describe("deleteSupersededIdentities", () => {
+  it("deletes rotated and revoked generations after deduplicating the request", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const first = await createIdentity({
+      client,
+      vaultKey,
+      name: "first generation",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(first)
+    const rotation = await rotateIdentity({
+      client,
+      vaultKey,
+      current: first,
+      now: NOW + 1,
+    })
+    await saveRotation(rotation)
+    await revokeIdentity(rotation.next.id, NOW + 2)
+
+    await deleteSupersededIdentities([
+      rotation.previous.id,
+      rotation.next.id,
+      rotation.previous.id,
+    ])
+
+    expect(await getIdentity(rotation.previous.id)).toBeUndefined()
+    expect(await getIdentity(rotation.next.id)).toBeUndefined()
+  }, 30_000)
+
+  it("refuses the whole request when any id is still active and deletes nothing", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const first = await createIdentity({
+      client,
+      vaultKey,
+      name: "first generation",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(first)
+    const rotation = await rotateIdentity({
+      client,
+      vaultKey,
+      current: first,
+      now: NOW + 1,
+    })
+    await saveRotation(rotation)
+
+    await expect(
+      deleteSupersededIdentities([rotation.previous.id, rotation.next.id]),
+    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+    expect(await getIdentity(rotation.previous.id)).toBeDefined()
+    expect(await getIdentity(rotation.next.id)).toBeDefined()
+  }, 30_000)
+
+  it("ignores ids that are not present", async () => {
+    await expect(
+      deleteSupersededIdentities(["A".repeat(22)]),
+    ).resolves.toBeUndefined()
+  })
 })
