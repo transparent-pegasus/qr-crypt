@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-07-26 # last revision of this registry itself
+updated: 2026-07-27 # last revision of this registry itself
 
 units:
   - id: deps
@@ -90,11 +90,16 @@ units:
       - mise.toml # node / aube pins
       - docs/develop/development.md # duplicates the pinned versions in prose
     why: >
-      Toolchain pins (node 26.5.0, aube 1.32.0) fall behind releases; the
-      development guide repeats them and drifts silently.
+      Toolchain pins in mise.toml fall behind releases; the development guide
+      repeats them and drifts silently.
     method: |
-      Check current node LTS / aube releases; edit mise.toml; mise install;
-      sync the versions named in docs/develop/development.md.
+      mise outdated --bump node aube
+      It prints each pinned version next to the latest release, so any row whose
+      last column exceeds mise.toml is the update signal. Plain `mise outdated`
+      (no --bump) is blind here: an exact pin is its own latest. The pins follow
+      the node current line, not LTS.
+      When moving a pin: edit mise.toml; mise install; sync the versions named
+      in docs/develop/development.md.
     verify: mise install && node -v && aube -V && aube ci && aube test
 
   - id: ci-actions
