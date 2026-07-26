@@ -60,7 +60,7 @@ const zxingReaderOptions: ReaderOptions = {
   tryDownscale: true,
 }
 
-let zxingModulePromise: Promise<unknown> | undefined
+let zxingModulePromise: Promise<void> | undefined
 
 interface ScannerControls {
   stop(): void
@@ -113,31 +113,37 @@ let activeAttempt: CameraAttempt | null = null
 // an unresolved request.
 let cameraAcquisitionQueue: Promise<void> = Promise.resolve()
 
-async function prepareSharedZXingModule(): Promise<void> {
-  let modulePromise = zxingModulePromise
-  if (modulePromise === undefined) {
-    try {
-      modulePromise = prepareZXingModule({
-        overrides: zxingModuleOverrides,
-        fireImmediately: true,
-      })
-      zxingModulePromise = modulePromise
-    } catch (error) {
-      zxingModulePromise = undefined
-      purgeZXingModule()
-      throw error
-    }
+// Start (or reuse) WASM preparation WITHOUT awaiting it. iOS Safari only opens the
+// camera permission prompt while the user activation from the tap is still live, and
+// fetching plus compiling a one-megabyte binary outlives that window. Acquisition must
+// therefore reach getUserMedia first; the decoder awaits this promise later, after the
+// first frame has been drawn.
+function beginZXingModulePreparation(): Promise<void> {
+  const existing = zxingModulePromise
+  if (existing !== undefined) return existing
+
+  let started: Promise<unknown>
+  try {
+    started = prepareZXingModule({
+      overrides: zxingModuleOverrides,
+      fireImmediately: true,
+    })
+  } catch (error) {
+    purgeZXingModule()
+    return Promise.reject(error instanceof Error ? error : new Error(String(error)))
   }
 
-  try {
-    await modulePromise
-  } catch (error) {
-    if (zxingModulePromise === modulePromise) {
+  const preparation = started.then(() => undefined)
+  zxingModulePromise = preparation
+  // Reset on failure so the restart button can retry, and swallow the rejection here:
+  // an attempt can stop before any decode awaits this promise.
+  void preparation.catch(() => {
+    if (zxingModulePromise === preparation) {
       zxingModulePromise = undefined
       purgeZXingModule()
     }
-    throw error
-  }
+  })
+  return preparation
 }
 
 // true does not automatically restart; it directs the UI to transition to stopped
@@ -396,6 +402,7 @@ async function startAttempt(
   handle: QrScanHandle,
   onText: (text: string) => void,
   once: boolean,
+  modulePreparation: Promise<void>,
 ): Promise<ScannerControls> {
   const stream = await acquireWithRetries(attempt)
   if (!isActiveAttempt(attempt)) {
@@ -633,6 +640,12 @@ async function startAttempt(
       )
       if (!isActiveAttempt(attempt)) return
 
+      // The decoder module is awaited here, not before acquisition: the watchdog is
+      // already cleared by the successful draw above, so a cold instantiate cannot be
+      // mistaken for a stalled camera.
+      await modulePreparation
+      if (!isActiveAttempt(attempt)) return
+
       decodeStartedAt = Date.now()
       lastDecodeStartedAt = decodeStartedAt
       const results = await readBarcodes(imageData, zxingReaderOptions)
@@ -748,30 +761,19 @@ async function startQrScanImplementation(
   if (!isActiveAttempt(attempt)) {
     throw attempt.failure ?? new ConcreteAppError("CAMERA_NOT_AVAILABLE")
   }
-  try {
-    await prepareSharedZXingModule()
-  } catch (error) {
-    if (!isActiveAttempt(attempt)) {
-      throw attempt.failure ?? new ConcreteAppError("CAMERA_NOT_AVAILABLE")
-    }
-    const mapped = new ConcreteAppError("CAMERA_NOT_AVAILABLE")
-    reportAttemptError(
-      attempt,
-      mapped,
-      cameraDiagnostic(attempt, diagnosticName(error)),
-    )
-    stopAttempt(attempt)
-    throw mapped
-  }
-  if (!isActiveAttempt(attempt)) {
-    throw attempt.failure ?? new ConcreteAppError("CAMERA_NOT_AVAILABLE")
-  }
+
+  // Not awaited: getUserMedia has to run inside the tap's user-activation window or
+  // iOS Safari never shows the permission prompt. The decoder awaits this after its
+  // first drawn frame instead, and a preparation failure surfaces there as
+  // CAMERA_NOT_AVAILABLE.
+  const modulePreparation = beginZXingModulePreparation()
 
   const operation: Promise<AttemptOutcome> = startAttempt(
     attempt,
     handle,
     onText,
     options?.once ?? true,
+    modulePreparation,
   ).then(
     (controls) => ({ kind: "ready", controls }),
     (error: unknown) => ({ kind: "error", error }),
