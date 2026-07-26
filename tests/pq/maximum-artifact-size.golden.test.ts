@@ -9,25 +9,35 @@ import {
   encodeUnsignedMessageBodyV2,
 } from "@/crypto/pq/canonical-cbor"
 import { DSA_SIZES } from "@/crypto/pq/profiles"
-import { concatBytes, sha256 } from "@/lib/bytes"
+import { toBase64Url } from "@/lib/base64url"
+import { concatBytes } from "@/lib/bytes"
 import {
-  MAX_PLAINTEXT_BYTES,
-  PQ_IDENTITY_QR_FRAME_COUNT_MAX,
-  PQ_IDENTITY_QR_FRAME_COUNT_MIN,
-  PQ_IDENTITY_QR_TARGET_FRAME_BYTES,
-  PQ_KEY_QR_FRAME_BYTES,
-  pqIdentityQrFrameCount,
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
+  FRAME_BYTES_STEP,
+  FRAME_BYTES_VALUES,
+  MAX_ARTIFACT_BYTES_ABSOLUTE,
+  MAX_PQ_PLAINTEXT_BYTES,
+  minimumFrameBytesForArtifact,
   PROTOCOL_MAX_FRAMES,
+  TRANSFER_TIMEOUT_MINUTES_DEFAULT,
 } from "@/lib/limits"
 import { payloadFits, renderQrSvgString } from "@/qr/encode"
+import { TransferAssembler } from "@/qr/multipart/assemble"
 import { splitIntoFrames } from "@/qr/multipart/split"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
-import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
+import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
+import {
+  type QrFrameV2,
+  V2_ARTIFACT_TYPES,
+  type V2ArtifactType,
+} from "@/schemas/domain"
 import { env, parseAppEnv } from "@/schemas/env-schema"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 const CREATED_AT = 1_700_000_000_000
-const FRAME_BYTES = [200, 300, 400, 600, 900] as const
+const FRAME_BYTES = [
+  100, 200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+] as const
 
 interface ArtifactFixture {
   label: string
@@ -149,58 +159,162 @@ function artifactFixtures(): ArtifactFixture[] {
       artifactType: "pq-message",
       bytes: messageArtifact(false, 0),
       expectedBytes: 1887,
-      expectedFrames: { 200: 10, 300: 7, 400: 5, 600: 4, 900: 3 },
+      expectedFrames: {
+        100: 19,
+        200: 10,
+        300: 7,
+        400: 5,
+        500: 4,
+        600: 4,
+        700: 3,
+        800: 3,
+        900: 3,
+        1_000: 2,
+      },
     },
     {
       label: "unsigned / maximum plaintext",
       artifactType: "pq-message",
-      bytes: messageArtifact(false, MAX_PLAINTEXT_BYTES),
-      expectedBytes: 5986,
-      expectedFrames: { 200: 30, 300: 20, 400: 15, 600: 10, 900: 7 },
+      bytes: messageArtifact(false, MAX_PQ_PLAINTEXT_BYTES),
+      expectedBytes: 121_894,
+      expectedFrames: {
+        100: 1_219,
+        200: 610,
+        300: 407,
+        400: 305,
+        500: 244,
+        600: 204,
+        700: 175,
+        800: 153,
+        900: 136,
+        1_000: 122,
+      },
     },
     {
       label: "signed / empty plaintext",
       artifactType: "pq-message",
       bytes: messageArtifact(true, 0),
       expectedBytes: 6613,
-      expectedFrames: { 200: 34, 300: 23, 400: 17, 600: 12, 900: 8 },
+      expectedFrames: {
+        100: 67,
+        200: 34,
+        300: 23,
+        400: 17,
+        500: 14,
+        600: 12,
+        700: 10,
+        800: 9,
+        900: 8,
+        1_000: 7,
+      },
     },
     {
       label: "signed / maximum plaintext",
       artifactType: "pq-message",
-      bytes: messageArtifact(true, MAX_PLAINTEXT_BYTES),
-      expectedBytes: 10711,
-      expectedFrames: { 200: 54, 300: 36, 400: 27, 600: 18, 900: 12 },
+      bytes: messageArtifact(true, MAX_PQ_PLAINTEXT_BYTES),
+      expectedBytes: 126_619,
+      expectedFrames: {
+        100: 1_267,
+        200: 634,
+        300: 423,
+        400: 317,
+        500: 254,
+        600: 212,
+        700: 181,
+        800: 159,
+        900: 141,
+        1_000: 127,
+      },
     },
     {
       label: "OCI2 public bundle",
       artifactType: "pq-public-identity",
       bytes: publicIdentityArtifact("テスト"),
       expectedBytes: 4402,
-      expectedFrames: { 200: 23, 300: 15, 400: 12, 600: 8, 900: 5 },
+      expectedFrames: {
+        100: 45,
+        200: 23,
+        300: 15,
+        400: 12,
+        500: 9,
+        600: 8,
+        700: 7,
+        800: 6,
+        900: 5,
+        1_000: 5,
+      },
     },
     {
       label: "OCP2 ML-KEM public key",
       artifactType: "pq-kem-public-key",
       bytes: encodeKemPublicKeyEnvelopeV2(kemKey),
       expectedBytes: 1733,
-      expectedFrames: { 200: 9, 300: 6, 400: 5, 600: 3, 900: 2 },
+      expectedFrames: {
+        100: 18,
+        200: 9,
+        300: 6,
+        400: 5,
+        500: 4,
+        600: 3,
+        700: 3,
+        800: 3,
+        900: 2,
+        1_000: 2,
+      },
     },
     {
       label: "OCS2 ML-DSA public key",
       artifactType: "pq-dsa-public-key",
       bytes: encodeDsaPublicKeyEnvelopeV2(dsaKey),
       expectedBytes: 2755,
-      expectedFrames: { 200: 14, 300: 10, 400: 7, 600: 5, 900: 4 },
+      expectedFrames: {
+        100: 28,
+        200: 14,
+        300: 10,
+        400: 7,
+        500: 6,
+        600: 5,
+        700: 4,
+        800: 4,
+        900: 4,
+        1_000: 3,
+      },
     },
     {
       label: "OCB2 encrypted-seed-backup reserved fixture",
       artifactType: "encrypted-seed-backup",
       bytes: encryptedSeedBackup,
       expectedBytes: 4637,
-      expectedFrames: { 200: 24, 300: 16, 400: 12, 600: 8, 900: 6 },
+      expectedFrames: {
+        100: 47,
+        200: 24,
+        300: 16,
+        400: 12,
+        500: 10,
+        600: 8,
+        700: 7,
+        800: 6,
+        900: 6,
+        1_000: 5,
+      },
     },
   ]
+}
+
+function worstMetadataFrame(
+  artifactType: V2ArtifactType,
+  chunkBytes: number,
+): QrFrameV2 {
+  return {
+    version: 2,
+    type: "qr-frame",
+    transferId: new Uint8Array(16).fill(0xee),
+    artifactType,
+    frameIndex: PROTOCOL_MAX_FRAMES - 1,
+    frameCount: PROTOCOL_MAX_FRAMES,
+    totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE,
+    chunk: new Uint8Array(chunkBytes).fill(0xa5),
+  }
 }
 
 async function reservedBackupFrames(
@@ -208,7 +322,6 @@ async function reservedBackupFrames(
   frameBytes: number,
 ): Promise<QrFrameV2[]> {
   const frameCount = Math.ceil(artifactBytes.byteLength / frameBytes)
-  const digest = await sha256(artifactBytes)
   return Array.from({ length: frameCount }, (_, frameIndex) => ({
     version: 2,
     type: "qr-frame",
@@ -217,16 +330,33 @@ async function reservedBackupFrames(
     frameIndex,
     frameCount,
     totalByteLength: artifactBytes.byteLength,
-    payloadSha256: Uint8Array.from(digest),
     chunk: artifactBytes.slice(frameIndex * frameBytes, (frameIndex + 1) * frameBytes),
   }))
 }
 
 describe("maximum canonical CBOR artifact sizing", () => {
+  it("pins the complete active density grid", () => {
+    expect(FRAME_BYTES_VALUES).toEqual(FRAME_BYTES)
+  })
+
   for (const fixture of artifactFixtures()) {
     it(`${fixture.label} freezes bytes, OCF2 counts, and real EC-Q generation`, async () => {
       expect(fixture.bytes.byteLength).toBe(fixture.expectedBytes)
       for (const frameBytes of FRAME_BYTES) {
+        const expectedFrames = fixture.expectedFrames[frameBytes]
+        if (
+          fixture.artifactType !== "encrypted-seed-backup" &&
+          expectedFrames > env.qrMaxFrames
+        ) {
+          await expect(
+            splitIntoFrames({
+              artifactType: fixture.artifactType,
+              artifactBytes: fixture.bytes,
+              frameBytes,
+            }),
+          ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+          continue
+        }
         const frames =
           fixture.artifactType === "encrypted-seed-backup"
             ? await reservedBackupFrames(fixture.bytes, frameBytes)
@@ -235,7 +365,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
                 artifactBytes: fixture.bytes,
                 frameBytes,
               })
-        expect(frames).toHaveLength(fixture.expectedFrames[frameBytes])
+        expect(frames).toHaveLength(expectedFrames)
         for (const frame of frames) {
           const payload = encodeFrameToPayload(frame)
           expect(payloadFits(payload, "Q")).toBe(true)
@@ -246,6 +376,51 @@ describe("maximum canonical CBOR artifact sizing", () => {
     }, 60_000)
   }
 
+  it("generates every worst-metadata 1000B frame within the EC-Q capacity", async () => {
+    const payloadLengths: Array<{
+      artifactType: V2ArtifactType
+      payloadLength: number
+    }> = []
+
+    for (const artifactType of V2_ARTIFACT_TYPES) {
+      const frame = worstMetadataFrame(artifactType, FRAME_BYTES_MAX)
+      expect(frame).toMatchObject({
+        artifactType,
+        frameIndex: 127,
+        frameCount: 128,
+        totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE,
+      })
+      expect(frame.chunk).toHaveLength(1_000)
+      const payload = encodeFrameToPayload(frame)
+      payloadLengths.push({ artifactType, payloadLength: payload.length })
+      expect(payloadFits(payload, "Q")).toBe(true)
+      await expect(
+        renderQrSvgString(payload, { ecLevel: "Q" }),
+      ).resolves.toContain("<svg")
+    }
+
+    const longest = payloadLengths.reduce((current, candidate) =>
+      candidate.payloadLength > current.payloadLength ? candidate : current,
+    )
+    expect(longest).toEqual({
+      artifactType: "encrypted-seed-backup",
+      payloadLength: 1_529,
+    })
+  }, 60_000)
+
+  it("pins the forbidden 1100B density exactly at the EC-Q capacity", () => {
+    const rawFrame = worstMetadataFrame(
+      "encrypted-seed-backup",
+      FRAME_BYTES_MAX + FRAME_BYTES_STEP,
+    )
+    expect(rawFrame.chunk).toHaveLength(1_100)
+    const rawFrameBytes = encodeCanonicalCbor({ ...rawFrame })
+    const payload = `${QR_PREFIX_V2.frame}${toBase64Url(rawFrameBytes)}`
+
+    expect(payload).toHaveLength(1_663)
+    expect(payloadFits(payload, "Q")).toBe(true)
+  })
+
   it("signed sizing formula stays exact across canonical byte-string header boundaries", () => {
     for (const [plaintextBytes, expectedArtifactBytes] of [
       [1, 6614],
@@ -254,19 +429,52 @@ describe("maximum canonical CBOR artifact sizing", () => {
       [255, 6869],
       [256, 6871],
       [16_384, 22_999],
+      [65_535, 72_152],
+      [65_536, 72_155],
+      [MAX_PQ_PLAINTEXT_BYTES, 126_619],
     ] as const) {
       expect(messageArtifact(true, plaintextBytes)).toHaveLength(expectedArtifactBytes)
     }
   })
 
-  it("env capacity guard matches generated signed artifact boundaries", () => {
-    for (const plaintextBytes of [MAX_PLAINTEXT_BYTES, 16_384]) {
+  it("round-trips a maximum PQ plaintext as 127 EC-Q frames byte for byte", async () => {
+    const artifactBytes = messageArtifact(true, MAX_PQ_PLAINTEXT_BYTES)
+    expect(MAX_PQ_PLAINTEXT_BYTES).toBe(120_000)
+    expect(artifactBytes).toHaveLength(126_619)
+
+    const frames = await splitIntoFrames({
+      artifactType: "pq-message",
+      artifactBytes,
+      frameBytes: FRAME_BYTES_MAX,
+    })
+    expect(frames).toHaveLength(127)
+    expect(
+      frames.every((frame) => payloadFits(encodeFrameToPayload(frame), "Q")),
+    ).toBe(true)
+
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
+    let state = assembler.state()
+    for (const frame of frames) {
+      state = await assembler.add(encodeFrameToPayload(frame))
+    }
+    expect(state.kind).toBe("complete")
+    if (state.kind !== "complete") throw new Error("transfer did not complete")
+    expect(state.artifactBytes).toEqual(artifactBytes)
+
+    expect(() =>
+      parseAppEnv({
+        VITE_MAX_PLAINTEXT_BYTES: String(MAX_PQ_PLAINTEXT_BYTES + 1),
+      }),
+    ).toThrow("Invalid environment variables")
+  }, 60_000)
+
+  it("env capacity guard uses maximum internal density for every active stop", () => {
+    for (const plaintextBytes of [MAX_PQ_PLAINTEXT_BYTES, 16_384]) {
       const signedArtifactBytes = messageArtifact(true, plaintextBytes).byteLength
+      const requiredFrames = Math.ceil(signedArtifactBytes / FRAME_BYTES_MAX)
       for (const frameBytes of FRAME_BYTES) {
-        const requiredFrames = Math.ceil(signedArtifactBytes / frameBytes)
-        // Combinations needing more than the protocol ceiling cannot be expressed by
-        // VITE_QR_MAX_FRAMES at all, so the capacity guard has nothing to compare.
-        if (requiredFrames > PROTOCOL_MAX_FRAMES) continue
         expect(
           parseAppEnv({
             VITE_MAX_PLAINTEXT_BYTES: String(plaintextBytes),
@@ -285,81 +493,85 @@ describe("maximum canonical CBOR artifact sizing", () => {
             VITE_QR_MAX_FRAMES: String(requiredFrames - 1),
           }),
         ).toThrow(
-          "the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × VITE_QR_FRAME_BYTES",
+          "the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × the maximum selectable frame density",
         )
       }
+    }
+    expect(() =>
+      parseAppEnv({
+        VITE_QR_FRAME_BYTES: "250",
+      }),
+    ).toThrow("Invalid environment variables")
+  })
+
+  it("uses the compatible 100B preference for identity and single-key artifacts", async () => {
+    for (const fixture of artifactFixtures()) {
+      if (
+        fixture.artifactType !== "pq-public-identity" &&
+        fixture.artifactType !== "pq-kem-public-key" &&
+        fixture.artifactType !== "pq-dsa-public-key"
+      ) {
+        continue
+      }
+      const frames = await splitIntoFrames({
+        artifactType: fixture.artifactType,
+        artifactBytes: fixture.bytes,
+        frameBytes: FRAME_BYTES_MIN,
+      })
+      expect(frames).toHaveLength(fixture.expectedFrames[FRAME_BYTES_MIN])
+      expect(concatBytes(...frames.map((frame) => frame.chunk))).toEqual(fixture.bytes)
     }
   })
 
   it.each([
-    { caseName: "short non-ASCII name", name: "短" },
-    { caseName: "maximum-length ASCII name", name: "A".repeat(80) },
-    { caseName: "maximum-length non-ASCII name", name: "鍵".repeat(80) },
+    {
+      caseName: "signed empty",
+      plaintextBytes: 0,
+      qrMaxFrames: 64,
+      expectedMinimum: 200,
+      expectedFrames: 34,
+    },
+    {
+      caseName: "signed maximum",
+      plaintextBytes: MAX_PQ_PLAINTEXT_BYTES,
+      qrMaxFrames: PROTOCOL_MAX_FRAMES,
+      expectedMinimum: FRAME_BYTES_MAX,
+      expectedFrames: 127,
+    },
   ])(
-    "balances OCI2 names through the 80-character limit with real EC-Q fit: $caseName",
-    async ({ name }) => {
-      const artifactBytes = publicIdentityArtifact(name)
-      const frameCount = pqIdentityQrFrameCount(artifactBytes.byteLength)
-      const frames = await splitIntoFrames({
-        artifactType: "pq-public-identity",
-        artifactBytes,
-        frameCount,
-      })
-
-      expect(frames).toHaveLength(frameCount)
-      expect(frameCount).toBeGreaterThanOrEqual(PQ_IDENTITY_QR_FRAME_COUNT_MIN)
-      expect(frameCount).toBeLessThanOrEqual(PQ_IDENTITY_QR_FRAME_COUNT_MAX)
-      const chunkLengths = frames.map((frame) => frame.chunk.byteLength)
-      expect(Math.max(...chunkLengths) - Math.min(...chunkLengths)).toBeLessThanOrEqual(
-        1,
-      )
-      expect(concatBytes(...frames.map((frame) => frame.chunk))).toEqual(artifactBytes)
-      for (const frame of frames) {
-        const payload = encodeFrameToPayload(frame)
-        expect(payloadFits(payload, "Q")).toBe(true)
-        expect(await renderQrSvgString(payload, { ecLevel: "Q" })).toContain("<svg")
+    "clamps the compatible 100B preference to $expectedMinimum bytes for $caseName",
+    async ({ plaintextBytes, qrMaxFrames, expectedMinimum, expectedFrames }) => {
+      const originalMaximum = env.qrMaxFrames
+      try {
+        env.qrMaxFrames = qrMaxFrames
+        const artifactBytes = messageArtifact(true, plaintextBytes)
+        const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)
+        expect(minimum).toBe(expectedMinimum)
+        const frames = await splitIntoFrames({
+          artifactType: "pq-message",
+          artifactBytes,
+          frameBytes: Math.max(FRAME_BYTES_MIN, minimum),
+        })
+        expect(frames).toHaveLength(expectedFrames)
+      } finally {
+        env.qrMaxFrames = originalMaximum
       }
     },
-    60_000,
   )
 
-  it("clamps the semantic OCI2 target to 40–50 frames", () => {
-    expect(PQ_IDENTITY_QR_TARGET_FRAME_BYTES).toBe(100)
-    expect(PQ_IDENTITY_QR_FRAME_COUNT_MIN).toBe(40)
-    expect(PQ_IDENTITY_QR_FRAME_COUNT_MAX).toBe(50)
-    expect(pqIdentityQrFrameCount(PQ_IDENTITY_QR_TARGET_FRAME_BYTES)).toBe(
-      PQ_IDENTITY_QR_FRAME_COUNT_MIN,
-    )
-    expect(
-      pqIdentityQrFrameCount(
-        PQ_IDENTITY_QR_FRAME_COUNT_MIN * PQ_IDENTITY_QR_TARGET_FRAME_BYTES + 1,
-      ),
-    ).toBe(PQ_IDENTITY_QR_FRAME_COUNT_MIN + 1)
-    expect(
-      pqIdentityQrFrameCount(
-        PQ_IDENTITY_QR_FRAME_COUNT_MAX * PQ_IDENTITY_QR_TARGET_FRAME_BYTES,
-      ),
-    ).toBe(PQ_IDENTITY_QR_FRAME_COUNT_MAX)
-    expect(
-      pqIdentityQrFrameCount(
-        (PQ_IDENTITY_QR_FRAME_COUNT_MAX + 1) *
-          PQ_IDENTITY_QR_TARGET_FRAME_BYTES,
-      ),
-    ).toBe(PQ_IDENTITY_QR_FRAME_COUNT_MAX)
-  })
-
-  it("fails closed when VITE_QR_MAX_FRAMES is below the selected OCI2 count", async () => {
-    const artifactBytes = publicIdentityArtifact("テスト")
-    const frameCount = pqIdentityQrFrameCount(artifactBytes.byteLength)
-    expect(frameCount).toBe(45)
+  it("fails closed when the grid-rounded minimum exceeds the active density maximum", async () => {
+    const artifactBytes = messageArtifact(true, MAX_PQ_PLAINTEXT_BYTES)
     const originalMaximum = env.qrMaxFrames
     try {
-      env.qrMaxFrames = frameCount - 1
+      env.qrMaxFrames = 10
+      const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)
+      expect(minimum).toBeGreaterThan(FRAME_BYTES_MAX)
+      expect(minimum % FRAME_BYTES_STEP).toBe(0)
       await expect(
         splitIntoFrames({
-          artifactType: "pq-public-identity",
+          artifactType: "pq-message",
           artifactBytes,
-          frameCount,
+          frameBytes: FRAME_BYTES_MAX,
         }),
       ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
     } finally {
@@ -367,25 +579,41 @@ describe("maximum canonical CBOR artifact sizing", () => {
     }
   })
 
-  it("single-key artifacts retain PQ_KEY_QR_FRAME_BYTES with EC-Q-fit frames", async () => {
-    const expectedByType = {
-      "pq-kem-public-key": 13,
-      "pq-dsa-public-key": 20,
-    } as const
-    for (const fixture of artifactFixtures()) {
-      if (!(fixture.artifactType in expectedByType)) continue
-      const expectedFrames =
-        expectedByType[fixture.artifactType as keyof typeof expectedByType]
-      const frames = await splitIntoFrames({
-        artifactType: fixture.artifactType,
-        artifactBytes: fixture.bytes,
-        frameBytes: PQ_KEY_QR_FRAME_BYTES,
-      })
-      expect(frames).toHaveLength(expectedFrames)
-      for (const frame of frames) {
-        const payload = encodeFrameToPayload(frame)
-        expect(payloadFits(payload, "Q")).toBe(true)
-      }
-    }
-  }, 60_000)
+  it("raises the compatible 100B preference for a 16KiB signed artifact and keeps 1000B valid", async () => {
+    const artifactBytes = messageArtifact(true, 16_384)
+    expect(artifactBytes).toHaveLength(22_999)
+    const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)
+    expect(minimum).toBe(200)
+    await expect(
+      splitIntoFrames({
+        artifactType: "pq-message",
+        artifactBytes,
+        frameBytes: FRAME_BYTES_MIN,
+      }),
+    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+    const lowDensityFrames = await splitIntoFrames({
+      artifactType: "pq-message",
+      artifactBytes,
+      frameBytes: minimum,
+    })
+    const highDensityFrames = await splitIntoFrames({
+      artifactType: "pq-message",
+      artifactBytes,
+      frameBytes: FRAME_BYTES_MAX,
+    })
+    expect(lowDensityFrames).toHaveLength(115)
+    expect(highDensityFrames).toHaveLength(23)
+  })
+
+  it("fails one byte over the independent absolute maximum before generation", async () => {
+    const artifactBytes = new Uint8Array(MAX_ARTIFACT_BYTES_ABSOLUTE + 1)
+    expect(minimumFrameBytesForArtifact(artifactBytes.byteLength)).toBe(1_100)
+    await expect(
+      splitIntoFrames({
+        artifactType: "pq-message",
+        artifactBytes,
+        frameBytes: FRAME_BYTES_MAX,
+      }),
+    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+  })
 })

@@ -21,20 +21,26 @@ import { memoryLocalStorage, renderApp, resetUi } from "./helpers/render-app"
 
 const ACK_TITLE = "Confirm before continuing"
 const JA_ACK_TITLE = "続行前の確認"
-const INSTALL_TITLE = "Only PWA installation is available while online"
+const INSTALL_TITLE = "Install the PWA or relay OCF2 message-header QR frames"
 
 function response(body: string, status = 200): Response {
   return { status, text: vi.fn(async () => body) } as unknown as Response
 }
 
 function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSnapshot {
-  return {
+  const snapshot = {
     wipeOnOnline: true,
     sensitiveDataExists: false,
     maintenanceTokenArmed: false,
     resetChurnMb: 0,
     preferencesReadFailed: false,
     ...overrides,
+  }
+  return {
+    ...snapshot,
+    cleanOrigin:
+      overrides.cleanOrigin ??
+      (snapshot.sensitiveDataExists ? "dirty" : "confirmed-clean"),
   }
 }
 
@@ -154,7 +160,7 @@ describe("offline acknowledgement shell", () => {
       }),
     )
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: async () => decision(),
     })
 
@@ -251,7 +257,7 @@ describe("offline acknowledgement shell", () => {
       const consumeMaintenanceToken = vi.fn(async () => true)
       const controller = createBootController({
         consumeMaintenanceToken,
-        fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+        fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
         performWipe,
         readDecision: async () =>
           decision({
@@ -287,7 +293,7 @@ describe("offline acknowledgement shell", () => {
     const user = userEvent.setup()
     const reloadPage = vi.fn()
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({ ok: true, failedSteps: [] })),
       readDecision: async () => decision({ sensitiveDataExists: true }),
     })
@@ -323,7 +329,7 @@ describe("offline acknowledgement shell", () => {
   it("[acceptance 6] gives partial failure no acknowledgement or resume path", async () => {
     setTestOnlineStatus(true)
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({
         ok: false,
         failedSteps: ["database-verification"],
@@ -353,7 +359,7 @@ describe("offline acknowledgement shell", () => {
 
   it("reconciles an eventless offline/online round trip exactly once", async () => {
     setTestOnlineStatus(true)
-    const sentinelFetch = vi.fn(async () => response("QRYPT-REACHABLE"))
+    const sentinelFetch = vi.fn(async () => response("QR-CRYPT-REACHABLE"))
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const consumeMaintenanceToken = vi.fn(async () => false)
     const readDecision = vi
@@ -402,7 +408,7 @@ describe("offline acknowledgement shell", () => {
   it("persists pending across reload and clears it only on acceptance", async () => {
     setTestOnlineStatus(true)
     const onlineController = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: onlineController })
@@ -510,7 +516,7 @@ describe("offline acknowledgement shell", () => {
     })
     setTestOnlineStatus(true)
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QRYPT-REACHABLE")),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: controller })
@@ -603,7 +609,7 @@ describe("offline acknowledgement shell", () => {
     let displayReachable = true
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).startsWith("/reachability-sentinel.txt")) {
-        return response("QRYPT-REACHABLE")
+        return response("QR-CRYPT-REACHABLE")
       }
       if (!displayReachable) throw new TypeError("offline")
       return response("manifest", 200)

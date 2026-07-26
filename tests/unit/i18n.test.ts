@@ -47,6 +47,13 @@ describe("i18n catalog", () => {
       "keys.bundle.fingerprintKem": "ML-KEM fingerprint",
       "encrypt.decrypt.cameraTitle": "Scan with the camera",
       "scanner.progress.missingIndex": "Missing frames: {indexes}",
+      "errors.QR_READER_PREPARATION_TIMEOUT":
+        "The QR reader did not finish preparing on this device.",
+      "errors.QR_DECODE_PROGRESS_TIMEOUT":
+        "The QR decoding pipeline stopped making progress on this device.",
+      "scanner.pipelineDiagnostic":
+        "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
+      "scanner.pipelineDiagnostic.noError": "none",
       "settings.error.saveFailed":
         "Settings could not be saved. Check the device storage.",
       "settings.error.deleteFailed":
@@ -62,6 +69,13 @@ describe("i18n catalog", () => {
       "scanner.error.singleWhileMultipart":
         "複数QR読取中です。単発QRは読取完了または破棄後に読み取ってください。",
       "scanner.progress.missingIndex": "欠損フレーム: {indexes}",
+      "errors.QR_READER_PREPARATION_TIMEOUT":
+        "この端末でQRリーダーの準備が完了しませんでした。",
+      "errors.QR_DECODE_PROGRESS_TIMEOUT":
+        "この端末でQR復号パイプラインの進行が停止しました。",
+      "scanner.pipelineDiagnostic":
+        "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
+      "scanner.pipelineDiagnostic.noError": "なし",
       "common.identityFingerprint": "公開鍵セット指紋",
       "keyDetail.identity.kemFingerprintLabel": "暗号化用公開鍵 {algorithm}",
       "keys.bundle.fingerprintSigning": "ML-DSA鍵指紋",
@@ -71,6 +85,7 @@ describe("i18n catalog", () => {
     for (const removedKey of [
       "encrypt.decrypt.imageTitle",
       "settings.hooks.preferences.loadFailed",
+      "settings.toast.saved",
       "sensitive.secretQrWarning",
       "sensitive.title",
     ]) {
@@ -100,8 +115,8 @@ describe("i18n catalog", () => {
       ),
     ).toBe("count=3; key=key-7; expires=12:30; file=ciphertext.png")
     expect(
-      translate("ja", "settings.field.frameBytes", { min: 120, max: 480 }),
-    ).toBe("1フレームの生データ 120〜480 bytes")
+      translate("ja", "settings.field.transferTimeout", { min: 5, max: 120 }),
+    ).toBe("読取状態の期限 5〜120 分")
     expect(interpolateMessage("unknown={missing}")).toBe("unknown={missing}")
   })
 

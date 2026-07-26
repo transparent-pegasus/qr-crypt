@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises"
-import { expect, test, type Download } from "@playwright/test"
+import { expect, test, type Download, type Locator } from "@playwright/test"
 import {
+  SIGNED_PQ_ALGORITHM_LABEL,
+  chooseOption,
   collectAnimatedFramePayloads,
   createPqIdentity,
   createSymmetricKey,
@@ -54,7 +56,14 @@ async function downloadBuffer(download: Download): Promise<Buffer> {
   return readFile(path)
 }
 
-test("PNG and SVG download contents match the on-screen payload", async ({
+async function animatedFrameCount(scope: Locator): Promise<number> {
+  const text = await scope.getByText(/^\d+ \/ \d+$/).last().innerText()
+  const match = text.match(/^\d+ \/ (\d+)$/)
+  if (match === null) throw new Error("Animated QR frame counter is invalid")
+  return Number(match[1])
+}
+
+test("a one-QR encryption downloads one PNG with no SVG affordance", async ({
   context,
   page,
 }) => {
@@ -68,64 +77,21 @@ test("PNG and SVG download contents match the on-screen payload", async ({
 
   const result = page.getByRole("region", { name: "Encryption result" })
   await result.getByLabel("Output name", { exact: true }).fill("ダウンロード確認")
+  const downloadButton = result.getByRole("button", {
+    name: "Download",
+    exact: true,
+  })
+  await expect(downloadButton).toHaveCount(1)
+  await expect(result.getByRole("button", { name: /SVG/i })).toHaveCount(0)
 
   const pngDownloadPromise = page.waitForEvent("download")
-  await result.getByRole("button", { name: "PNG", exact: true }).click()
+  await downloadButton.click()
   const pngDownload = await pngDownloadPromise
   expect(pngDownload.suggestedFilename()).toMatch(/^[^/\\]+-[A-Za-z0-9_-]{8}\.png$/)
   expect(decodePng(await downloadBuffer(pngDownload))).toBe(payload)
-
-  const svgDownloadPromise = page.waitForEvent("download")
-  await result.getByRole("button", { name: "SVG", exact: true }).click()
-  const svgDownload = await svgDownloadPromise
-  expect(svgDownload.suggestedFilename()).toMatch(/^[^/\\]+-[A-Za-z0-9_-]{8}\.svg$/)
-  const svg = (await downloadBuffer(svgDownload)).toString("utf8")
-
-  const svgAnalysis = await page.evaluate((source) => {
-    const document = new DOMParser().parseFromString(source, "image/svg+xml")
-    const root = document.documentElement
-    const viewBox = root.getAttribute("viewBox")?.trim().split(/\s+/) ?? []
-    const [x, y, width, height] = viewBox
-    const isWhite = (element: Element) => {
-      const fill = element.getAttribute("fill")?.toLowerCase()
-      return fill === "#fff" || fill === "#ffffff" || fill === "white"
-    }
-    const coversViewBox = (element: Element) => {
-      if (
-        x === undefined ||
-        y === undefined ||
-        width === undefined ||
-        height === undefined
-      ) {
-        return false
-      }
-      if (element.localName === "rect") {
-        return (
-          (element.getAttribute("x") ?? "0") === x &&
-          (element.getAttribute("y") ?? "0") === y &&
-          element.getAttribute("width") === width &&
-          element.getAttribute("height") === height
-        )
-      }
-      const compactPath = element.getAttribute("d")?.replaceAll(/\s+/g, "")
-      return compactPath === `M${x}${y}h${width}v${height}H${x}z`
-    }
-    return {
-      rootIsSvg: root.localName === "svg",
-      parseError: document.querySelector("parsererror") !== null,
-      whiteBackgroundRectangle: Array.from(root.children).some(
-        (element) => isWhite(element) && coversViewBox(element),
-      ),
-    }
-  }, svg)
-  expect(svgAnalysis).toEqual({
-    rootIsSvg: true,
-    parseError: false,
-    whiteBackgroundRectangle: true,
-  })
 })
 
-test("exports a secret-key QR and public-key-bundle QR from the key-list modal", async ({
+test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no SVG affordance", async ({
   context,
   page,
 }) => {
@@ -145,22 +111,20 @@ test("exports a secret-key QR and public-key-bundle QR from the key-list modal",
   await dialog
     .getByRole("checkbox", { name: "I understand the risk" })
     .check()
+  await expect(dialog.getByRole("button", { name: /SVG/i })).toHaveCount(0)
 
   const secretPngPromise = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: "PNG", exact: true }).click()
+  const secretDownload = dialog.getByRole("button", {
+    name: "Download",
+    exact: true,
+  })
+  await expect(secretDownload).toHaveCount(1)
+  await secretDownload.click()
   const secretPng = await secretPngPromise
   expect(secretPng.suggestedFilename()).toMatch(
     /^一覧出力秘密鍵-[A-Za-z0-9_-]{8}\.png$/,
   )
   expect(decodePng(await downloadBuffer(secretPng))).toMatch(/^OCK1:/)
-
-  const secretSvgPromise = page.waitForEvent("download")
-  await dialog.getByRole("button", { name: "SVG", exact: true }).click()
-  const secretSvg = await secretSvgPromise
-  expect(secretSvg.suggestedFilename()).toMatch(
-    /^一覧出力秘密鍵-[A-Za-z0-9_-]{8}\.svg$/,
-  )
-  expect((await downloadBuffer(secretSvg)).toString("utf8")).toContain("<svg")
 
   await dialog.getByRole("button", { name: "Back to details" }).click()
   await page
@@ -182,86 +146,100 @@ test("exports a secret-key QR and public-key-bundle QR from the key-list modal",
   const frames = dialog.getByRole("region", {
     name: `${identityName} public-key bundle frame display`,
   })
-  const payloads = await collectAnimatedFramePayloads(frames)
-  expect(payloads.length).toBeGreaterThan(0)
-  expect(payloads.every((payload) => payload.startsWith("OCF2:"))).toBe(true)
+  await expect
+    .poll(() => animatedFrameCount(frames), { timeout: 30_000 })
+    .toBeLessThanOrEqual(10)
+  const publicFrameCount = await animatedFrameCount(frames)
+  expect(publicFrameCount).toBeGreaterThan(1)
+  await expect(frames.getByRole("button", { name: /SVG/i })).toHaveCount(0)
+  const publicDownload = frames.getByRole("button", {
+    name: "Download",
+    exact: true,
+  })
+  await expect(publicDownload).toHaveCount(1)
 
-  const publicSvgPromise = page.waitForEvent("download")
-  await frames.getByRole("button", { name: "Current SVG" }).click()
-  const publicSvg = await publicSvgPromise
-  expect(publicSvg.suggestedFilename()).toMatch(
-    /public-key bundle-.+-frame-\d{2}\.svg$/,
+  const publicZipPromise = page.waitForEvent("download")
+  await publicDownload.click()
+  const publicZip = await publicZipPromise
+  expect(publicZip.suggestedFilename()).toMatch(
+    /public-key bundle-.+-frames\.zip$/,
   )
-  expect((await downloadBuffer(publicSvg)).toString("utf8")).toContain("<svg")
+  const archive = parseStoreOnlyZip(await downloadBuffer(publicZip))
+  expect(archive.centralCount).toBe(publicFrameCount)
+  expect(archive.entries).toHaveLength(publicFrameCount)
+  expect(archive.entries.map((entry) => entry.name)).toEqual(
+    Array.from(
+      { length: publicFrameCount },
+      (_, index) => `frame-${String(index + 1).padStart(2, "0")}.png`,
+    ),
+  )
+  expect(
+    archive.entries.every(
+      (entry) => entry.data.subarray(0, 8).toString("hex") === "89504e470d0a1a0a",
+    ),
+  ).toBe(true)
+  expect(
+    new Set(archive.entries.map((entry) => entry.data.toString("base64"))).size,
+  ).toBe(publicFrameCount)
 })
 
-test("controls signed multipart frames and exports the ZIP and every PNG as real files", async ({
+test("controls signed multipart frames and preserves every PNG in its single ZIP", async ({
   context,
   page,
 }) => {
-  test.setTimeout(120_000)
+  test.setTimeout(240_000)
   const identityName = "複数出力PQ-ID"
-  const plaintext = "署名付き複数フレームを一時停止し前後移動して出力確認する本文"
+  const plaintext = "x".repeat(4_096)
   await openOfflineApp(page, context, "/keys")
   await createPqIdentity(page, identityName)
   await seedSelfPublicBundle(page, identityName)
-  // Chromium suppresses individual downloads beyond 10 from one user action.
-  // Keep the maximum signed fixture within a frame count that allows every PNG
-  // to be verified.
-  await goToOfflinePage(page, "/settings")
-  const frameBytes = page.getByLabel(/Raw data per frame/)
-  await frameBytes.fill("900")
-  await expect(frameBytes).toHaveValue("900")
   const { result } = await encryptSignedPq(page, { identityName, plaintext })
-  const frameCount = Number.parseInt(await detailValue(result, "QR frame count"), 10)
-  expect(frameCount).toBeGreaterThan(1)
-
   const frames = result.getByRole("region", { name: "Ciphertext frame display" })
+  await expect
+    .poll(() => animatedFrameCount(frames), { timeout: 30_000 })
+    .toBeLessThanOrEqual(20)
+  const frameCount = Number.parseInt(await detailValue(result, "QR frame count"), 10)
+  // The default 1,000-byte preference still gives this signed artifact enough
+  // frames to exercise zero-padded names and the ZIP path.
+  expect(frameCount).toBeGreaterThan(9)
+  expect(frameCount).toBeLessThanOrEqual(20)
+  expect(await animatedFrameCount(frames)).toBe(frameCount)
+
+  await expect(frames.getByRole("slider")).toHaveCount(0)
+  await expect(frames.getByRole("button", { name: /SVG/i })).toHaveCount(0)
+  await expect(
+    frames.getByRole("button", { name: "Download", exact: true }),
+  ).toHaveCount(1)
   const counter = frames.getByText(/^\d+ \/ \d+$/).last()
   await frames.getByRole("button", { name: "Pause" }).click()
   const initialCounter = await counter.innerText()
-  await frames.getByRole("button", { name: "Next frame" }).click()
+  await frames.getByRole("button", { name: "Next" }).click()
   await expect(counter).not.toHaveText(initialCounter)
-  await frames.getByRole("button", { name: "Previous frame" }).click()
+  await frames.getByRole("button", { name: "Previous" }).click()
   await expect(counter).toHaveText(initialCounter)
-  await frames.getByLabel("Display speed").fill("2500")
-  await expect(frames.getByText("2500 ms", { exact: true })).toBeVisible()
 
   await frames.getByRole("button", { name: "View full screen" }).click()
   const fullscreen = page.getByRole("dialog", {
     name: /View Ciphertext \d+ \/ \d+ full screen/,
   })
   await expect(fullscreen.getByRole("img", { name: /Full-screen .* image/ })).toBeVisible()
-  await fullscreen.getByRole("button", { name: "Close" }).first().click()
+  await fullscreen.getByRole("button", { name: "Close" }).click()
 
   const framePayloads = await collectAnimatedFramePayloads(frames)
   expect(framePayloads).toHaveLength(frameCount)
   expect(framePayloads.every((payload) => payload.startsWith("OCF2:"))).toBe(true)
   await result.getByLabel("Output name", { exact: true }).fill("署名付き複数フレーム")
 
-  const pngDownloads: Download[] = []
-  const capturePng = (download: Download) => pngDownloads.push(download)
-  page.on("download", capturePng)
-  await frames.getByRole("button", { name: "Export all PNGs" }).click()
-  await expect.poll(() => pngDownloads.length, { timeout: 60_000 }).toBe(frameCount)
-  page.off("download", capturePng)
-
-  const downloadedPayloads: string[] = []
-  for (const download of pngDownloads) {
-    expect(download.suggestedFilename()).toMatch(/-frame-\d{2}\.png$/)
-    const bytes = await downloadBuffer(download)
-    expect(bytes.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a")
-    downloadedPayloads.push(decodePng(bytes))
-  }
-  expect(new Set(downloadedPayloads)).toEqual(new Set(framePayloads))
-
-  const zipPromise = page.waitForEvent("download")
-  await frames.getByRole("button", { name: "Export ZIP" }).click()
+  const zipPromise = page.waitForEvent("download", { timeout: 180_000 })
+  await frames.getByRole("button", { name: "Download", exact: true }).click()
   const zipDownload = await zipPromise
   expect(zipDownload.suggestedFilename()).toMatch(/-frames\.zip$/)
   const zip = parseStoreOnlyZip(await downloadBuffer(zipDownload))
   expect(zip.centralCount).toBe(frameCount)
   expect(zip.entries).toHaveLength(frameCount)
+  expect(zip.entries.every((entry) => /^frame-\d{2,3}\.png$/.test(entry.name))).toBe(
+    true,
+  )
   expect(zip.entries.map((entry) => entry.name)).toEqual(
     Array.from(
       { length: frameCount },
@@ -271,4 +249,179 @@ test("controls signed multipart frames and exports the ZIP and every PNG as real
   expect(new Set(zip.entries.map((entry) => decodePng(entry.data)))).toEqual(
     new Set(framePayloads),
   )
+})
+
+test("measures a maximum 120000-byte signed PQ message through ZIP production", async ({
+  context,
+  page,
+}, testInfo) => {
+  test.setTimeout(600_000)
+  const identityName = "最大長計測PQ-ID"
+  const plaintextBytes = 120_000
+  await openOfflineApp(page, context, "/keys")
+  await createPqIdentity(page, identityName)
+  await seedSelfPublicBundle(page, identityName)
+  await goToOfflinePage(page, "/encrypt")
+  await chooseOption(
+    page,
+    "Cryptographic algorithm",
+    SIGNED_PQ_ALGORITHM_LABEL,
+  )
+  await chooseOption(page, "Recipient ML-KEM public key", /^Verified: /)
+  await chooseOption(page, "My ML-DSA signing identity", identityName)
+
+  const plaintext = page.getByLabel("Plaintext", { exact: true })
+  const encryptButton = page.getByRole("button", {
+    name: "Encrypt",
+    exact: true,
+  })
+  await plaintext.fill("x".repeat(plaintextBytes + 1))
+  await expect(
+    page.getByText("The plaintext limit has been exceeded", { exact: true }),
+  ).toBeVisible()
+  await expect(encryptButton).toBeDisabled()
+
+  await plaintext.fill("x".repeat(plaintextBytes))
+  await expect(
+    page.getByText(`${plaintextBytes} / ${plaintextBytes} bytes`, { exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByText("The plaintext limit has been exceeded", { exact: true }),
+  ).toHaveCount(0)
+  await expect(encryptButton).toBeEnabled()
+
+  await page.evaluate(() => {
+    const markNames = [
+      "nodisp-encrypt-start",
+      "nodisp-encrypt-complete",
+      "nodisp-split-complete",
+      "nodisp-first-frame-rendered",
+    ]
+    for (const name of markNames) performance.clearMarks(name)
+    performance.mark("nodisp-encrypt-start")
+    const markOnce = (name: string) => {
+      if (performance.getEntriesByName(name, "mark").length === 0) {
+        performance.mark(name)
+      }
+    }
+    const inspect = () => {
+      const result = document.querySelector(
+        'section[aria-label="Encryption result"]',
+      )
+      if (result !== null) markOnce("nodisp-encrypt-complete")
+      const frames = document.querySelector(
+        'section[aria-label="Ciphertext frame display"]',
+      )
+      if (frames !== null) markOnce("nodisp-split-complete")
+      const image = frames?.querySelector(
+        'img[alt^="Ciphertext "][alt$=" image"]',
+      )
+      if (
+        image instanceof HTMLImageElement &&
+        image.src.startsWith("data:image/png;base64,")
+      ) {
+        markOnce("nodisp-first-frame-rendered")
+      }
+    }
+    const observer = new MutationObserver(inspect)
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["src"],
+      childList: true,
+      subtree: true,
+    })
+    ;(window as unknown as Record<string, unknown>).__nodispMeasurementObserver =
+      observer
+    inspect()
+  })
+  await encryptButton.click()
+
+  const result = page.getByRole("region", { name: "Encryption result" })
+  await expect(result.getByText("Encryption is complete")).toBeVisible({
+    timeout: 120_000,
+  })
+  const frames = result.getByRole("region", {
+    name: "Ciphertext frame display",
+  })
+  const firstFrame = frames.getByRole("img", {
+    name: /^Ciphertext \d+ \/ \d+ image$/,
+  })
+  await expect(firstFrame).toHaveAttribute("src", /^data:image\/png;base64,/, {
+    timeout: 180_000,
+  })
+
+  const artifactBytes = Number.parseInt(
+    await detailValue(result, "Total data size"),
+    10,
+  )
+  const frameCount = Number.parseInt(
+    await detailValue(result, "QR frame count"),
+    10,
+  )
+  expect(artifactBytes).toBe(126_619)
+  expect(frameCount).toBe(127)
+  await expect(frames.getByRole("button", { name: /SVG/i })).toHaveCount(0)
+  const downloadButton = frames.getByRole("button", {
+    name: "Download",
+    exact: true,
+  })
+  await expect(downloadButton).toHaveCount(1)
+
+  const renderMarks = await page.evaluate(() => {
+    const markTime = (name: string) => {
+      const mark = performance.getEntriesByName(name, "mark")[0]
+      if (mark === undefined) throw new Error(`Missing performance mark: ${name}`)
+      return mark.startTime
+    }
+    return {
+      start: markTime("nodisp-encrypt-start"),
+      encrypted: markTime("nodisp-encrypt-complete"),
+      split: markTime("nodisp-split-complete"),
+      firstFrame: markTime("nodisp-first-frame-rendered"),
+    }
+  })
+
+  const zipStartedAt = Date.now()
+  const zipPromise = page.waitForEvent("download", { timeout: 300_000 })
+  await downloadButton.click()
+  const zipDownload = await zipPromise
+  expect(zipDownload.suggestedFilename()).toMatch(/-frames\.zip$/)
+  const zipBytes = await downloadBuffer(zipDownload)
+  const zipMs = Date.now() - zipStartedAt
+  const zip = parseStoreOnlyZip(zipBytes)
+  expect(zip.centralCount).toBe(frameCount)
+  expect(zip.entries).toHaveLength(frameCount)
+  expect(zip.entries.map((entry) => entry.name)).toEqual(
+    Array.from(
+      { length: frameCount },
+      (_, index) => `frame-${String(index + 1).padStart(2, "0")}.png`,
+    ),
+  )
+  expect(
+    zip.entries.every(
+      (entry) => entry.data.subarray(0, 8).toString("hex") === "89504e470d0a1a0a",
+    ),
+  ).toBe(true)
+  expect(
+    new Set(zip.entries.map((entry) => entry.data.toString("base64"))).size,
+  ).toBe(frameCount)
+
+  const metrics = {
+    plaintextBytes,
+    artifactBytes,
+    frameCount,
+    encryptMs: Math.round(renderMarks.encrypted - renderMarks.start),
+    splitMs: Math.round(renderMarks.split - renderMarks.encrypted),
+    firstFrameRenderMs: Math.round(renderMarks.firstFrame - renderMarks.split),
+    zipMs,
+    archiveBytes: zipBytes.byteLength,
+  }
+  expect(metrics.encryptMs).toBeGreaterThanOrEqual(0)
+  expect(metrics.splitMs).toBeGreaterThanOrEqual(0)
+  expect(metrics.firstFrameRenderMs).toBeGreaterThanOrEqual(0)
+  expect(metrics.zipMs).toBeGreaterThanOrEqual(0)
+  await testInfo.attach("long-text-metrics.json", {
+    body: JSON.stringify(metrics, null, 2),
+    contentType: "application/json",
+  })
 })

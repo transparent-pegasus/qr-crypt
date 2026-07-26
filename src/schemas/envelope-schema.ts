@@ -1,4 +1,4 @@
-// Strict Zod validation for envelopes (docs/qr-protocol.md §3/§6).
+// Strict Zod validation for envelopes (docs/spec/qr-protocol.md §3/§6).
 // Reject unknown keys, enforce fixed byte lengths, and ensure prefix/type agreement.
 // decodePayload in qr/payload.ts uses this validation boundary.
 import { z } from "zod"

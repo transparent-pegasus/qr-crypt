@@ -1,9 +1,9 @@
-# Qrypt QR Protocol Specification v2 (Post-Quantum)
+# QR Crypt QR Protocol Specification v2 (Post-Quantum)
 
 This document is the normative specification of the v2 (ML-KEM / ML-DSA)
 wire format. The implementation (`src/crypto/pq/*`, `src/qr/payload-v2.ts`,
 `src/qr/multipart/*`) and the golden fixtures in `tests/pq/*` follow this
-document. The v1 format remains specified in `docs/qr-protocol.md`
+document. The v1 format remains specified in `docs/spec/qr-protocol.md`
 (reusing v1 prefixes for ML purposes is forbidden). This document is the
 authoritative committed specification of this contract.
 
@@ -27,8 +27,8 @@ authoritative committed specification of this contract.
   because `VITE_ENABLE_ENCRYPTED_SEED_BACKUP=false` is fixed.
 - Managed deviation: `pq-kem-public-key` / `pq-dsa-public-key` were added to
   the three artifactType values of the original draft specification
-  (single keys are also always carried via framing; see the deviation table
-  in the README).
+  (single keys are also always carried via framing; see
+  [../develop/deviations.md](../develop/deviations.md)).
 
 ## 2. Canonical CBOR profile (shared by all v2 structures)
 
@@ -49,6 +49,15 @@ libraries).
   order, and a single value, and additionally checks re-encoded byte
   equality (non-canonical input always yields `INVALID_QR_PAYLOAD`)
 - Nesting depth limit: 8
+- Decoder input is limited to 1–128,000 bytes. Structural allocation has
+  separate limits because a byte limit alone does not bound entry count or
+  retained heap: at most 9 entries in one map, 13 map entries across the
+  decoded value, 19 UTF-8 bytes per map key, and 300 UTF-8 bytes per text
+  value. Length/count headers are rejected before their loops or strings are
+  materialized
+- Decoded maps have null prototypes. Encoded attacker-supplied keys are not
+  retained in a process-lifetime cache; canonical re-encoding computes them
+  for the current operation only
 
 ## 3. Envelope (OCM2)
 
@@ -122,7 +131,7 @@ never stored on the wire or in persistent storage (§7).
 HKDF-SHA-256 (`hkdfInfoV2`, frozen as part of this contract):
 
 ```
-info = UTF8("QRYPT-MESSAGE-V2") || 0x00 || UTF8(wireSuite) || 0x00
+info = UTF8("QR-CRYPT-MESSAGE-V2") || 0x00 || UTF8(wireSuite) || 0x00
        || kemKeyIdRaw(16 bytes) || 0x02
 salt = fresh CSPRNG 32B per encryption / derived key = AES-256-GCM (non-extractable)
 ```
@@ -156,9 +165,14 @@ verification → `SIGNATURE_INVALID`.
 
 - **The signing target = the canonical CBOR of the bare
   `SignedMessageBodyV2` map** (`signingTargetBytes`)
-- ML-DSA context = fixed `UTF8("QRYPT-MESSAGE-V2")` (≤255B)
+- ML-DSA context = fixed `UTF8("QR-CRYPT-MESSAGE-V2")` (≤255B)
 - `messageId` = fixed-length CSPRNG 16B. **It is not a replay-prevention
   mechanism**. `createdAt` is the device-reported time (not trusted time)
+- The unsigned and signed post-quantum paths accept at most 120,000 UTF-8
+  plaintext bytes. This is not a shared application limit: the v1 A256GCM
+  path remains one OCM1 QR and derives its smaller pre-encryption ceiling from
+  the v1 8,192-character payload ceiling and the selected QR error-correction
+  capacity
 
 ## 6. Multi-frame QR (OCF2)
 
@@ -169,10 +183,9 @@ QrFrameV2 = {
   transferId: bytes(16)       // CSPRNG
   artifactType: V2ArtifactType
   frameIndex: uint            // 0-based (0..frameCount-1)
-  frameCount: uint            // 1..64
-  totalByteLength: uint       // total raw artifact bytes (≤ 64×900)
-  payloadSha256: bytes(32)    // SHA-256 over the raw artifact bytes (transfer integrity)
-  chunk: bytes(1..900)        // slice of the raw artifact CBOR bytes
+  frameCount: uint            // 1..128
+  totalByteLength: uint       // total raw artifact bytes (1..128,000; absolute bound)
+  chunk: bytes(1..1,000)      // slice of the raw artifact CBOR bytes
 }
 ```
 
@@ -182,44 +195,95 @@ QrFrameV2 = {
 - Frame string = `OCF2:<base64url(canonicalCBOR(frame))>`. EC level is
   **fixed at Q**. A single frame string, prefix included, is **≤1663
   characters** (QR v40-Q). After generation, check `payloadFits(…, "Q")`;
-  if it does not fit, `QR_TOO_LARGE`
+  if it does not fit, `QR_TOO_LARGE`. At the 1,000B chunk ceiling, the
+  worst-case metadata across every artifact type produces a 1,529-character
+  OCF2 payload, below the 1,663-character EC-Q version 40 capacity. A raw
+  worst-metadata 1,100B frame would land exactly at that capacity, but the
+  protocol chunk and generated-density ceilings remain 1,000B
 - A sender selects exactly one split mode: fixed `frameBytes`, or an explicit
   balanced `frameCount`. Count mode rejects non-integers, counts above
   `VITE_QR_MAX_FRAMES` or the artifact byte length, and any result whose
-  largest chunk exceeds 900B. Every chunk is non-empty and largest/smallest
+  largest chunk exceeds 1,000B. Every chunk is non-empty and largest/smallest
   lengths differ by at most one byte
-- Defaults: chunk 300B / 1,000ms interval / max 64 frames. Message chunks are
-  configurable from 200–900B. The current interval values are exactly
-  1,000/1,500/2,000/2,500/3,000ms (UI step 500ms); off-grid env values and
-  new preference writes are rejected
-- OCI2 display uses balanced count mode with
-  `clamp(ceil(artifactBytes / 100), 40, 50)`. The 4,402B measured fixture
-  therefore uses 45 chunks of 97/98B. A custom `VITE_QR_MAX_FRAMES` below
-  the selected count fails closed as `QR_TOO_LARGE`; the selection is not
-  silently reduced
-- OCP2/OCS2 single-key display uses the fixed 140B chunk
-  (`PQ_KEY_QR_FRAME_BYTES`, not user-configurable)
+- Receiver and bare-paste allocation are intentionally bounded by
+  `MAX_ARTIFACT_BYTES_ABSOLUTE =
+  PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES = 128 × 1,000 = 128,000`
+  bytes. The receiver also enforces frame count ≤128, chunk length ≤1,000B,
+  and `totalByteLength ≤ frameCount × 1,000`. A bare `OC?2` paste is capped
+  at 170,672 characters (the five-character prefix plus the base64url
+  ceiling), and its decoded bytes are checked again against 128,000
+- Generated OCF2 display exposes one labelled compatibility switch. Off is the
+  shipped default preference, `{ frameBytes: 1000, frameIntervalMs: 200 }`;
+  on is the user-selected compatible preference,
+  `{ frameBytes: 100, frameIntervalMs: 2000 }`. The switch writes both
+  preference members together; a preference patch that supplies only one
+  member or any other pair is rejected
+- The application does not infer density or dwell from the displaying
+  device's QR reader. That device cannot answer whether the peer camera can
+  read its screen. The removed automatic selector also had a shipped
+  always-compatible bug: its usability check required reader-module state to
+  have reached `usable`, which happened only after camera preparation
+  resolved, so the display path never observed the usable state
+- Before each split, the renderer computes
+  `gridMin = 100 × ceil(ceil(totalByteLength / VITE_QR_MAX_FRAMES) / 100)`.
+  The per-artifact effective density clamp is
+  `max(preferredFrameBytes, gridMin)`. Intermediate densities are effective
+  values only: the complete generated-density grid is every 100B value from
+  100 through 1,000B, and a raised value is never persisted over the selected
+  preference. An artifact above 128,000B is rejected before splitting; if
+  `gridMin > 1,000`, generation fails as `QR_TOO_LARGE`. A switch change that
+  changes effective density, or a changed artifact clamp, re-splits the
+  artifact and mints a new `transferId`; mixing generations is terminal
+  `FRAME_MISMATCH`. When `gridMin` is already 1,000B, switching still changes
+  the dwell from 200ms to 2,000ms even though effective density remains
+  1,000B
+- The automatic cursor advances only after `QrDisplay` has committed the
+  exact rendered payload, then starts a one-shot timeout for the selected
+  preference's dwell. The configured 200ms or 2,000ms is therefore a
+  **minimum visible dwell**, not a measured cadence. A real cycle is the sum
+  of every frame's render latency and dwell and must be measured separately
+- Export has one Download control. Exactly one complete frame produces one
+  PNG; multiple complete frames produce one store-only ZIP containing PNGs.
+  SVG export is not offered
 - Assembly invariants: the first frame freezes the immutable metadata
-  (transferId/artifactType/frameCount/totalByteLength/payloadSha256).
+  (transferId/artifactType/frameCount/totalByteLength).
   A repeated index is ignored only on an exact match; even a 1-byte
   difference or a frame from another transferId is `FRAME_MISMATCH`. On
-  completion, verify index coverage, total length, SHA-256, and
-  artifactType match before interpreting the inner payload. No
+  completion, verify index coverage, total length, and artifactType match
+  before interpreting the inner payload. No
   cryptographic processing starts while assembly is incomplete
-- `payloadSha256` is transfer integrity, **not sender authenticity**
-  (mind the UI wording)
-- Scan state is released on timeout (default 10 minutes), explicit discard,
-  completion, or error
+- Frames do not carry an artifact digest. A value the receiver can recompute
+  from the frames alone is equally computable by anyone who photographs one,
+  and a hostile sender can compute it over their own artifact. `pq-message`
+  authenticity comes from the inner AEAD tag. Public-key artifacts
+  (OCI2/OCP2/OCS2) have no AEAD, so their authenticity rests on the
+  out-of-band fingerprint comparison at import. Accidental corruption that
+  still decodes as canonical CBOR of the declared type is not detected during
+  assembly
+- Scan state is released on explicit discard, completion, error, or timeout.
+  The timeout defaults to 10 minutes with a configurable floor of 5 minutes.
+  A 127-frame maximum signed message has 254 seconds of configured dwell at
+  the user-selected compatible preference; the derived floor conservatively
+  budgets all 128 protocol frames at 2,000ms (256 seconds) before rounding up
+  to whole minutes. Render latency makes the real cycle longer than those
+  dwell-only figures and is measured separately
 
-For boot compatibility, persisted legacy interval integers from 150 through
-2,000ms remain readable; the repository normalizes only these persisted legacy
-values before a current patch is merged: clamp to the current 1,000–3,000ms
-range, then round to the nearest 500ms with midpoint ties upward. Off-grid
-patch/env values are rejected without normalization. Boot readability is
-exactly that legacy range union the current grid;
-for example 2,500/3,000 are readable, while stored 2,250 is not. Wire/state
-`frameIndex` and `missingIndexes` remain zero-based; user-facing frame
-positions are displayed one-based.
+For boot compatibility, the append-only read ranges accept every safe integer
+from 100 through 1,000B for density and from 150 through 3,000ms for interval.
+This retains every historical density integer from 100 through 900 and every
+historical interval integer from 150 through 2,000 together with 2,500 and
+3,000. The internal density set is 100, 200, …, 1,000B; the internal interval
+set is 200, 300, …, 1,000ms plus 2,000ms. On preference read, the exact
+1,000B/200ms and 100B/2,000ms pairs are preserved; every other boot-readable
+historical combination, including a missing member, is canonicalized to the
+default 1,000B/200ms pair before strict validation. The append-only ranges and
+the per-field historical normalization paths remain intact, so no previously
+readable display preference can become a boot read failure and force
+`wipeOnOnline`. Current preference patches must write one exact pair
+atomically. Per-artifact effective clamps are never persisted, and invalid
+patch/environment values are rejected without read-time normalization.
+Wire/state `frameIndex` and `missingIndexes` remain zero-based; user-facing
+frame positions are displayed one-based.
 
 ## 7. Vault (seed storage)
 
@@ -232,7 +296,7 @@ positions are displayed one-based.
   (`buildVaultAadV2`):
 
 ```typescript
-{ version: 2, type: "qrypt-vault-aad", identityId, role("ml-kem-seed"|"ml-dsa-seed"),
+{ version: 2, type: "qr-crypt-vault-aad", identityId, role("ml-kem-seed"|"ml-dsa-seed"),
   algorithm, keyId, publicKeySha256(32B) }
 ```
 
@@ -269,9 +333,9 @@ Individual key fingerprints and the identity fingerprint are the SHA-256 of
 the following byte strings:
 
 ```
-kem      = UTF8("QRYPT-FP-KEM-V2") || 0x00 || UTF8(algorithm) || 0x00 || publicKey
-signing  = UTF8("QRYPT-FP-DSA-V2") || 0x00 || UTF8(algorithm) || 0x00 || publicKey
-identity = UTF8("QRYPT-FP-ID-V2") || 0x00
+kem      = UTF8("QR-CRYPT-FP-KEM-V2") || 0x00 || UTF8(algorithm) || 0x00 || publicKey
+signing  = UTF8("QR-CRYPT-FP-DSA-V2") || 0x00 || UTF8(algorithm) || 0x00 || publicKey
+identity = UTF8("QR-CRYPT-FP-ID-V2") || 0x00
            || canonicalCbor({ version, type, identityId, kem, signing, createdAt })
 ```
 
@@ -289,10 +353,10 @@ The 768-family fixtures below freeze the compatibility of the wire/codec
 contract; they do not imply availability under the active policy.
 
 - HKDF info (unsigned 768):
-  `51525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02`
+  `51522d43525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02`
 - HKDF info (signed 768):
-  `51525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b4d4c2d4453412d36352b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02`
-- ML-DSA context: `51525950542d4d4553534147452d5632`
+  `51522d43525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b4d4c2d4453412d36352b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02`
+- ML-DSA context: `51522d43525950542d4d4553534147452d5632`
 - `MlKemAadV2` (suite=unsigned768, sha256=0x22×32):
   `a564747970656a70712d6d657373616765657375697465781e4d4c2d4b454d2d3736382b484b44462d5348413235362b4132353647434d6776657273696f6e0271726563697069656e744b656d4b657949647641414543417751464267634943516f4c4441304f4477736b656d4369706865727465787453686132353658202222222222222222222222222222222222222222222222222222222222222222`
 - Vault AAD (kem-seed/768, pkSha=0x11×32): starts with `a764726f6c65…`
@@ -305,16 +369,16 @@ contract; they do not imply availability under the active policy.
   `e38386e382b9e38388`; keys filled with 0x0a/0x0b): 3377B, SHA-256
   `db7231d753096cc2847e87767040772ca7daef5f726104549d75f1359429925c`
 - Individual KEM key fingerprint (ML-KEM-768, public key 0x0a×1184):
-  `86cca89b088994ddd47493b21d6c2ff3e3d44621ab842d289ca92325b1425dc9`
+  `874c5f32a6464e06a88104f81736753065aeb63c2a5398ddf0d9e93e5d16a6e3`
 - Identity fingerprint of the bundle above (`name` excluded):
-  `803025820e019d89098a95ec449fb59aa6f0232c856d036172425e81a2716122`
+  `e37a66b4fce2ff58563d283cadc68e4f63da47255093221a4e6944614416e999`
 - maximum signed end-to-end composition (fixed seed/randomness):
   - KEM ciphertext SHA-256:
     `7e7cc499f2d0f3bb0bb7aa61a3705c83bfc5cf2446b6bc81a1aa4badd2ea25ae`
   - Canonical CBOR envelope SHA-256:
-    `5986a6b363df30bc95dfa668b03359315df88d3b7f67593dbe62bf61cc4b2f18`
+    `a921a13f77a1312a39730dafb51b26eb6c828da3cfa9c1cc79bf42c0c665ef7b`
   - ML-DSA-87 signature SHA-256:
-    `e14ce55d6babde5635701fcf79566b8b064fc353ccbbdc7b8de50ade1385fcb2`
+    `73d9d5c706e2190bdccc2cdb2b1fd6c5139a02ce520552556ee5f043c4a27784`
 
 ## 9. Error mapping table (v2 additions)
 
@@ -324,7 +388,7 @@ contract; they do not imply availability under the active policy.
 | Signature verification failure (body withheld) | `SIGNATURE_INVALID` |
 | Sender signing key not imported (import flow offered) | `SIGNING_KEY_NOT_FOUND` |
 | Frame from another transferId mixed in / frame inconsistency | `FRAME_MISMATCH` |
-| Capacity exceeded, e.g. frameCount>64 | `QR_TOO_LARGE` |
+| Generation capacity exceeded (artifact >128,000B, frameCount>128, balanced chunk >1,000B, or OCF2 payload >1,663 characters) | `QR_TOO_LARGE` |
 | OCB2 (reserved) / balanced/768-family operation / legacy RSA format (OCM1-RSA) | `UNSUPPORTED_ALGORITHM` (deprecation wording) |
 | Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
 | Partial failure of local reset | `RESET_FAILED` |
@@ -332,3 +396,30 @@ contract; they do not imply availability under the active policy.
 Note: an earlier draft used the provisional name `WIPE_FAILED`; in line with
 the honest-naming policy (no "wipe" / "secure erase" wording), it was
 finalized as `RESET_FAILED`.
+
+## 10. Online optical relay transport (verbatim OCF2 text)
+
+This section describes the **transport contract** for the clean-origin online
+relay. The relay is an untrusted hop: it forwards frame strings; it does not
+assemble artifacts or check inner CBOR type, AEAD, or signatures. Authoritative
+completion remains §6 (offline assembler).
+
+- Every displayed frame string is
+  `OCF2:<unpadded-base64url(canonical CBOR frame)>`: after the 5-character
+  `OCF2:` prefix the body is pure ASCII over `[A-Za-z0-9_-]` with no
+  whitespace, CR, or LF. Therefore `frames.join("\n")` followed by
+  `split("\n")` round-trips character-for-character.
+- On paste, the receiver strips a single trailing `\r` per line (an
+  intermediary may have converted LF to CRLF) and drops empty lines so a
+  trailing newline cannot invent a bogus frame.
+- The relay accepts only frames whose **untrusted outer header declares**
+  `artifactType === "pq-message"`. It performs no assembly and cannot detect
+  a public-key or identity artifact that an attacker re-chunked and
+  relabeled; the offline assembler rejects inner-type mismatches
+  (`src/qr/multipart/assemble.ts`). Face-to-face key exchange is the
+  supported workflow, not an enforcement guarantee of this hop.
+- Frames carry no artifact digest (§6). A relay can drop, reorder, replay, or
+  substitute an entire well-formed frame set.
+- Relay playback uses its own deliberately named 1,000ms interval. It has no
+  compatibility switch because it re-displays frames generated by another
+  sender and cannot re-split their density.

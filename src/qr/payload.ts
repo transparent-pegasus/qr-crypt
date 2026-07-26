@@ -1,4 +1,4 @@
-// Encode and decode QR payload strings (docs/qr-protocol.md §1/§2/§6).
+// Encode and decode QR payload strings (docs/spec/qr-protocol.md §1/§2/§6).
 // The table in qr-protocol.md §6 is authoritative for validation order and error mapping.
 import type {
   AnyEnvelopeV1,

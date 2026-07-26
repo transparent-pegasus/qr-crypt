@@ -1,4 +1,4 @@
-// Post-quantum identity lifecycle; see docs/qr-protocol-v2.md §7 and §7.1.
+// Post-quantum identity lifecycle; see docs/spec/qr-protocol-v2.md §7 and §7.1.
 // Seed generation, keygen, and Vault encryption occur inside the Worker
 // (generateIdentityKeys). KEM and DSA seeds must come from independent CSPRNG calls;
 // tests verify that they differ.

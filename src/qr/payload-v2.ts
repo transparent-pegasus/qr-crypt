@@ -1,5 +1,5 @@
 // v2 QR payloads. The prefix table and frame codec are frozen wire contracts; see
-// docs/qr-protocol-v2.md §1 and §6. Typed-envelope decoding, assembly, and UI wiring
+// docs/spec/qr-protocol-v2.md §1 and §6. Typed-envelope decoding, assembly, and UI wiring
 // build on this module.
 //
 // Policy:
@@ -13,7 +13,10 @@ import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { decodeQrFrameV2, encodeQrFrameV2 } from "@/crypto/pq/canonical-cbor"
 import { fromBase64Url, toBase64Url } from "@/lib/base64url"
-import { MAX_FRAME_PAYLOAD_CHARS } from "@/lib/limits"
+import {
+  MAX_ARTIFACT_BYTES_ABSOLUTE,
+  MAX_FRAME_PAYLOAD_CHARS,
+} from "@/lib/limits"
 
 // artifactType ↔ prefix mapping; reusing v1 prefixes is prohibited.
 export const QR_PREFIX_V2 = {
@@ -28,9 +31,11 @@ export const QR_PREFIX_V2 = {
 export type V2PayloadKind = V2ArtifactType | "frame"
 
 // Character limit for a complete v2 payload on the paste path: base64url of the
-// maximum artifact (64×900B) plus the prefix. MAX_FRAME_PAYLOAD_CHARS separately
-// limits the frame path.
-export const MAX_V2_PAYLOAD_CHARS = 80_000
+// 128-frame × 1,000-byte absolute artifact ceiling plus the prefix.
+// MAX_FRAME_PAYLOAD_CHARS separately limits the frame path.
+export const MAX_V2_PAYLOAD_CHARS =
+  Math.ceil((MAX_ARTIFACT_BYTES_ABSOLUTE * 4) / 3) +
+  QR_PREFIX_V2["pq-message"].length
 
 export interface ClassifiedV2Payload {
   kind: V2PayloadKind
@@ -62,7 +67,11 @@ export function splitV2Payload(text: string): { kind: V2ArtifactType; bytes: Uin
   const body = text.slice(classified.prefix.length)
   if (body.length === 0) throw new AppError("INVALID_QR_PAYLOAD")
   try {
-    return { kind: classified.kind, bytes: fromBase64Url(body) }
+    const bytes = fromBase64Url(body)
+    if (bytes.byteLength > MAX_ARTIFACT_BYTES_ABSOLUTE) {
+      throw new AppError("INVALID_QR_PAYLOAD")
+    }
+    return { kind: classified.kind, bytes }
   } catch (error) {
     throw toAppError(error, "INVALID_QR_PAYLOAD")
   }

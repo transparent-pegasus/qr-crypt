@@ -24,5 +24,6 @@ interface ImportMetaEnv {
   readonly VITE_PQ_PROVIDER?: string
   readonly VITE_PQ_WORKER_ENABLED?: string
   readonly VITE_AUTO_CLEAR_SECONDS?: string
+  readonly VITE_AUTO_CLEAR_FALLBACK_SECONDS?: string
   readonly VITE_BUILD_SHA?: string
 }

@@ -1,80 +1,124 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import {
   ChevronLeft,
   ChevronRight,
   Download,
-  FileArchive,
-  FileCode2,
   Pause,
   Play,
   Sun,
+  TriangleAlert,
 } from "lucide-react"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
-import {
-  qrPngBlob,
-  qrSvgBlob,
-  sanitizeQrFileName,
-  triggerDownload,
-} from "@/qr/export-image"
+import { qrPngBlob, sanitizeQrFileName, triggerDownload } from "@/qr/export-image"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
-import {
-  FRAME_INTERVAL_MS_DEFAULT,
-  FRAME_INTERVAL_MS_MAX,
-  FRAME_INTERVAL_MS_MIN,
-  FRAME_INTERVAL_MS_STEP,
-  isFrameIntervalMs,
-} from "@/lib/limits"
 import { toAppError } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"
 import { env } from "@/schemas/env-schema"
 import { QrDisplay } from "@/components/qr-display"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  useI18n,
-  useLocalizedMessage,
-  type LocalizedMessage,
-} from "@/i18n"
+import { Switch } from "@/components/ui/switch"
+import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
+
+export interface AnimatedQrCompatibilityControl {
+  enabled: boolean
+  disabled?: boolean
+  onEnabledChange: (enabled: boolean) => void | Promise<void>
+}
 
 export interface AnimatedQrFramesProps {
   frames: readonly QrFrameV2[]
   frameIntervalMs: number
+  densityRaised?: boolean
+  compatibilityControl?: AnimatedQrCompatibilityControl
   outputName: string
   size?: number
   title?: string
   onFirstRendered?: () => void
   fullscreenEnabled?: boolean
+  fullscreenOpen?: boolean
+  showFullscreenTrigger?: boolean
+  exportsEnabled?: boolean
+  splitting?: boolean
+  onFullscreenOpenChange?: (open: boolean) => void
+  animationSignal?: AbortSignal
 }
 
 interface FrameSlot {
-  frame: QrFrameV2
   payload: string
 }
 
-function currentFrameInterval(value: number): number {
-  return isFrameIntervalMs(value) ? value : FRAME_INTERVAL_MS_DEFAULT
+interface CommittedFrame {
+  generation: string
+  position: number
+  payload: string
+}
+
+function transferIdentity(frames: readonly QrFrameV2[]): string {
+  const first = frames[0]
+  return first === undefined
+    ? ""
+    : `${Array.from(first.transferId).join(".")}:${first.totalByteLength}:${first.frameCount}`
 }
 
 export function AnimatedQrFrames({
   frames,
   frameIntervalMs,
+  densityRaised = false,
+  compatibilityControl,
   outputName,
   size = env.qrRenderSize,
   title: titleProp,
   onFirstRendered,
   fullscreenEnabled = true,
+  fullscreenOpen,
+  showFullscreenTrigger = true,
+  exportsEnabled = true,
+  splitting = false,
+  onFullscreenOpenChange,
+  animationSignal,
 }: AnimatedQrFramesProps) {
   const { language, t } = useI18n()
+  const compatibilityLabelId = useId()
   const title = titleProp ?? t("animatedQr.defaultTitle")
+  // A density change makes useFrameSplit project an empty set until its
+  // replacement commits. Retaining the last completed set keeps QrDisplay and
+  // its fullscreen dialog mounted across that same-session handoff.
+  const [frameBuffer, setFrameBuffer] = useState(() => ({
+    source: frames,
+    committed: frames,
+  }))
+  if (frameBuffer.source !== frames) {
+    setFrameBuffer({
+      source: frames,
+      committed: frames.length > 0 ? frames : frameBuffer.committed,
+    })
+  }
+  const displayFrames =
+    frames.length > 0
+      ? frames
+      : splitting
+        ? frameBuffer.committed
+        : frames
   const { slots, missingIndexes, frameCount } = useMemo(() => {
-    const expected = Math.max(0, ...frames.map((frame) => frame.frameCount))
+    const expected = Math.max(
+      0,
+      ...displayFrames.map((frame) => frame.frameCount),
+    )
     const nextSlots = new Map<number, FrameSlot>()
-    for (const frame of frames) {
+    for (const frame of displayFrames) {
       if (!nextSlots.has(frame.frameIndex)) {
-        nextSlots.set(frame.frameIndex, { frame, payload: encodeFrameToPayload(frame) })
+        nextSlots.set(frame.frameIndex, {
+          payload: encodeFrameToPayload(frame),
+        })
       }
     }
     const missing: number[] = []
@@ -82,91 +126,155 @@ export function AnimatedQrFrames({
       if (!nextSlots.has(index)) missing.push(index)
     }
     return { slots: nextSlots, missingIndexes: missing, frameCount: expected }
-  }, [frames])
+  }, [displayFrames])
   const availableIndexes = useMemo(
     () => [...slots.keys()].sort((left, right) => left - right),
     [slots],
   )
-  const [position, setPosition] = useState(0)
+  const frameGeneration = useMemo(
+    () => transferIdentity(displayFrames),
+    [displayFrames],
+  )
+  const [cursor, setCursor] = useState({
+    generation: frameGeneration,
+    position: 0,
+  })
+  const position = cursor.generation === frameGeneration ? cursor.position : 0
   const [paused, setPaused] = useState(false)
-  const [speed, setSpeed] = useState(() => currentFrameInterval(frameIntervalMs))
+  const [committedFrame, setCommittedFrame] = useState<CommittedFrame | null>(null)
+  const [uncontrolledFullscreen, setUncontrolledFullscreen] = useState(false)
+  const fullscreen = fullscreenOpen ?? uncontrolledFullscreen
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(error)
   const firstRenderedRef = useRef(false)
+  const currentIndex = availableIndexes[position]
+  const current = currentIndex === undefined ? undefined : slots.get(currentIndex)
+  const currentPayload = current?.payload
 
-  const handleRendered = () => {
-    if (firstRenderedRef.current) return
-    firstRenderedRef.current = true
-    onFirstRendered?.()
+  const handleRendered = (payload: string) => {
+    if (payload !== currentPayload) return
+    if (!firstRenderedRef.current) {
+      firstRenderedRef.current = true
+      onFirstRendered?.()
+    }
+    setCommittedFrame((existing) =>
+      existing?.generation === frameGeneration &&
+      existing.position === position &&
+      existing.payload === payload
+        ? existing
+        : { generation: frameGeneration, position, payload },
+    )
   }
 
-  useEffect(() => {
-    let active = true
-    queueMicrotask(() => {
-      if (active) setSpeed(currentFrameInterval(frameIntervalMs))
-    })
-    return () => {
-      active = false
-    }
-  }, [frameIntervalMs])
+  const changeFullscreen = (open: boolean) => {
+    if (fullscreenOpen === undefined) setUncontrolledFullscreen(open)
+    onFullscreenOpenChange?.(open)
+  }
+
   useEffect(() => {
     if (position < availableIndexes.length) return
     let active = true
     queueMicrotask(() => {
-      if (active) setPosition(0)
+      if (active) setCursor({ generation: frameGeneration, position: 0 })
     })
     return () => {
       active = false
     }
-  }, [availableIndexes.length, position])
+  }, [availableIndexes.length, frameGeneration, position])
   useEffect(() => {
-    if (paused || availableIndexes.length < 2) return
-    const timer = window.setInterval(
-      () => setPosition((value) => (value + 1) % availableIndexes.length),
-      speed,
+    if (
+      paused ||
+      availableIndexes.length < 2 ||
+      animationSignal?.aborted ||
+      currentPayload === undefined ||
+      committedFrame?.generation !== frameGeneration ||
+      committedFrame.position !== position ||
+      committedFrame.payload !== currentPayload
+    ) {
+      return
+    }
+    // QrDisplay reports a payload only after React has committed its rendered
+    // data URL. Starting one dwell timeout from that exact commit prevents the
+    // latest-target renderer from ever dropping an automatically selected index.
+    const timer = window.setTimeout(
+      () =>
+        setCursor((cursorState) => ({
+          generation: frameGeneration,
+          position:
+            ((cursorState.generation === frameGeneration ? cursorState.position : 0) +
+              1) %
+            availableIndexes.length,
+        })),
+      frameIntervalMs,
     )
-    return () => window.clearInterval(timer)
-  }, [availableIndexes.length, paused, speed])
+    const stopAnimation = () => window.clearTimeout(timer)
+    animationSignal?.addEventListener("abort", stopAnimation, { once: true })
+    return () => {
+      stopAnimation()
+      animationSignal?.removeEventListener("abort", stopAnimation)
+    }
+  }, [
+    animationSignal,
+    availableIndexes.length,
+    committedFrame,
+    currentPayload,
+    frameGeneration,
+    frameIntervalMs,
+    paused,
+    position,
+  ])
 
-  const currentIndex = availableIndexes[position]
-  const current = currentIndex === undefined ? undefined : slots.get(currentIndex)
-  const safeName = sanitizeQrFileName(outputName)
+  const safeName = exportsEnabled ? sanitizeQrFileName(outputName) : ""
 
-  const exportAllPng = async () => {
+  const movePrevious = () =>
+    setCursor((current) => ({
+      generation: frameGeneration,
+      position:
+        ((current.generation === frameGeneration ? current.position : 0) -
+          1 +
+          availableIndexes.length) %
+        availableIndexes.length,
+    }))
+  const moveNext = () =>
+    setCursor((current) => ({
+      generation: frameGeneration,
+      position:
+        ((current.generation === frameGeneration ? current.position : 0) + 1) %
+        availableIndexes.length,
+    }))
+  const togglePaused = () => setPaused((value) => !value)
+
+  const exportFrames = async () => {
+    if (!exportsEnabled) return
     setExporting(true)
     setError(null)
     try {
+      if (animationSignal?.aborted) return
+      if (availableIndexes.length === 1) {
+        const slot = slots.get(availableIndexes[0]!)
+        if (slot === undefined) return
+        const blob = await qrPngBlob(slot.payload, { ecLevel: "Q", size })
+        if (animationSignal?.aborted) return
+        triggerDownload(blob, `${safeName}.png`)
+        return
+      }
+
+      const entries: Array<{ name: string; data: Uint8Array }> = []
       for (const index of availableIndexes) {
+        if (animationSignal?.aborted) return
         const slot = slots.get(index)
         if (!slot) continue
         const blob = await qrPngBlob(slot.payload, { ecLevel: "Q", size })
-        triggerDownload(
-          blob,
-          `${safeName}-frame-${String(index + 1).padStart(2, "0")}.png`,
-        )
+        if (animationSignal?.aborted) return
+        const data = new Uint8Array(await blob.arrayBuffer())
+        if (animationSignal?.aborted) return
+        entries.push({
+          name: `frame-${String(index + 1).padStart(2, "0")}.png`,
+          data,
+        })
       }
-    } catch (caught) {
-        setError(toAppError(caught, "QR_TOO_LARGE").code)
-    } finally {
-      setExporting(false)
-    }
-  }
-
-  const exportZip = async () => {
-    setExporting(true)
-    setError(null)
-    try {
-      const entries = await Promise.all(
-        availableIndexes.map(async (index) => {
-          const slot = slots.get(index)!
-          const blob = await qrPngBlob(slot.payload, { ecLevel: "Q", size })
-          return {
-            name: `frame-${String(index + 1).padStart(2, "0")}.png`,
-            data: new Uint8Array(await blob.arrayBuffer()),
-          }
-        }),
-      )
+      if (animationSignal?.aborted) return
       triggerDownload(storeOnlyZip(entries), `${safeName}-frames.zip`)
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").code)
@@ -175,24 +283,8 @@ export function AnimatedQrFrames({
     }
   }
 
-  const exportSvg = async () => {
-    if (!current || currentIndex === undefined) return
-    setExporting(true)
-    setError(null)
-    try {
-      const blob = await qrSvgBlob(current.payload, { ecLevel: "Q" })
-      triggerDownload(
-        blob,
-        `${safeName}-frame-${String(currentIndex + 1).padStart(2, "0")}.svg`,
-      )
-    } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").code)
-    } finally {
-      setExporting(false)
-    }
-  }
-
   if (!current || frameCount === 0) {
+    if (splitting) return null
     return (
       <Alert variant="destructive" role="alert">
         <AlertTitle>{t("animatedQr.empty.title")}</AlertTitle>
@@ -201,11 +293,129 @@ export function AnimatedQrFrames({
     )
   }
 
+  const compatibilitySwitch = (fullscreenControls: boolean) => {
+    if (compatibilityControl === undefined) {
+      return fullscreenControls ? <span aria-hidden="true" /> : null
+    }
+    const labelId = `${compatibilityLabelId}-${fullscreenControls ? "fullscreen" : "inline"}`
+    return (
+      <div
+        data-compatibility-control={fullscreenControls ? "fullscreen" : "inline"}
+        className={
+          fullscreenControls
+            ? "flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-1 text-slate-950"
+            : "flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 text-sm"
+        }
+      >
+        <span
+          id={labelId}
+          className={
+            fullscreenControls
+              ? "min-w-0 text-center text-xs leading-tight"
+              : "font-medium"
+          }
+        >
+          {t("animatedQr.compatibility.label")}
+        </span>
+        <Switch
+          checked={compatibilityControl.enabled}
+          disabled={compatibilityControl.disabled}
+          aria-labelledby={labelId}
+          className={
+            fullscreenControls
+              ? "focus-visible:ring-slate-950 focus-visible:ring-offset-white"
+              : undefined
+          }
+          onCheckedChange={(enabled) => {
+            void compatibilityControl.onEnabledChange(enabled)
+          }}
+        />
+      </div>
+    )
+  }
+
+  const transportControls = (
+    fullscreenControls: boolean,
+    closeSlot?: ReactNode,
+  ) => (
+    <div
+      data-transport-controls={fullscreenControls ? "fullscreen" : "inline"}
+      className={
+        fullscreenControls
+          ? "grid w-full grid-cols-[2.75rem_2.75rem_2.75rem_minmax(0,1fr)_2.75rem] items-center gap-2"
+          : "flex flex-wrap items-center justify-center gap-2"
+      }
+    >
+      <Button
+        type="button"
+        variant="outline"
+        className={`h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 ${
+          fullscreenControls
+            ? "w-11 border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            : ""
+        }`}
+        onClick={movePrevious}
+      >
+        <ChevronLeft aria-hidden="true" />
+        <span className={fullscreenControls ? "sr-only" : undefined}>
+          {t("animatedQr.prev")}
+        </span>
+      </Button>
+      <Button
+        type="button"
+        variant="secondary"
+        className={`h-11 cursor-pointer px-3 focus-visible:ring-2 ${
+          fullscreenControls
+            ? "min-w-11 w-11 border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            : "min-w-28"
+        }`}
+        onClick={togglePaused}
+      >
+        {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
+        <span className={fullscreenControls ? "sr-only" : undefined}>
+          {t(paused ? "animatedQr.play" : "animatedQr.pause")}
+        </span>
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className={`h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 ${
+          fullscreenControls
+            ? "w-11 border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+            : ""
+        }`}
+        onClick={moveNext}
+      >
+        <span className={fullscreenControls ? "sr-only" : undefined}>
+          {t("animatedQr.next")}
+        </span>
+        <ChevronRight aria-hidden="true" />
+      </Button>
+      {compatibilitySwitch(fullscreenControls)}
+      {fullscreenControls && closeSlot}
+    </div>
+  )
+
+  const renderFullscreenControls = (closeSlot: ReactNode) => (
+    <div
+      data-fullscreen-controls
+      className="mx-auto flex w-full max-w-2xl flex-col items-center justify-center gap-2"
+    >
+      <p
+        aria-live="polite"
+        className="shrink-0 text-center font-mono text-base tabular-nums"
+      >
+        {currentIndex! + 1} / {frameCount}
+      </p>
+      {transportControls(true, closeSlot)}
+    </div>
+  )
+
   return (
     <section
       aria-label={t("animatedQr.section.ariaLabel", { title })}
       className="space-y-4"
-      aria-busy={exporting}
+      aria-busy={exporting || splitting}
     >
       {missingIndexes.length > 0 && (
         <Alert variant="destructive" role="alert">
@@ -216,6 +426,13 @@ export function AnimatedQrFrames({
             })}
           </AlertDescription>
         </Alert>
+      )}
+
+      {densityRaised && (
+        <p role="status" className="flex items-start gap-2 text-sm text-muted-foreground">
+          <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          {t("animatedQr.densityRaised")}
+        </p>
       )}
 
       <QrDisplay
@@ -229,107 +446,45 @@ export function AnimatedQrFrames({
         })}
         onRendered={handleRendered}
         fullscreenEnabled={fullscreenEnabled}
+        showFullscreenTrigger={showFullscreenTrigger}
+        fullscreenControls={{
+          kind: "transport",
+          render: renderFullscreenControls,
+        }}
+        fullscreenOpen={fullscreen}
+        onFullscreenOpenChange={changeFullscreen}
       />
 
-      <div className="flex items-center justify-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 cursor-pointer focus-visible:ring-2"
-          onClick={() =>
-            setPosition(
-              (value) => (value - 1 + availableIndexes.length) % availableIndexes.length,
-            )
-          }
-          aria-label={t("animatedQr.prev.ariaLabel")}
-        >
-          <ChevronLeft aria-hidden="true" />
-          {t("animatedQr.prev")}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-11 min-w-28 cursor-pointer focus-visible:ring-2"
-          onClick={() => setPaused((value) => !value)}
-        >
-          {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-          {t(paused ? "animatedQr.play" : "animatedQr.pause")}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 cursor-pointer focus-visible:ring-2"
-          onClick={() => setPosition((value) => (value + 1) % availableIndexes.length)}
-          aria-label={t("animatedQr.next.ariaLabel")}
-        >
-          {t("animatedQr.next")}
-          <ChevronRight aria-hidden="true" />
-        </Button>
-      </div>
+      {!fullscreen && (
+        <>
+          {transportControls(false)}
 
-      <p aria-live="polite" className="text-center font-mono text-base tabular-nums">
-        {currentIndex! + 1} / {frameCount}
-      </p>
+          <p aria-live="polite" className="text-center font-mono text-base tabular-nums">
+            {currentIndex! + 1} / {frameCount}
+          </p>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="frame-speed">{t("animatedQr.speed.label")}</Label>
-          <span className="font-mono text-xs tabular-nums">{speed} ms</span>
-        </div>
-        <Input
-          id="frame-speed"
-          aria-label={t("animatedQr.speed.label")}
-          type="range"
-          min={FRAME_INTERVAL_MS_MIN}
-          max={FRAME_INTERVAL_MS_MAX}
-          step={FRAME_INTERVAL_MS_STEP}
-          value={speed}
-          onChange={(event) => {
-            const nextSpeed = Number(event.target.value)
-            if (isFrameIntervalMs(nextSpeed)) setSpeed(nextSpeed)
-          }}
-        />
-      </div>
+          <p className="flex items-start gap-2 text-sm text-muted-foreground">
+            <Sun aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            {t("animatedQr.brightnessHint")}
+          </p>
 
-      <p className="flex items-start gap-2 text-sm text-muted-foreground">
-        <Sun aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-        {t("animatedQr.brightnessHint")}
-      </p>
+          {exportsEnabled && (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full cursor-pointer focus-visible:ring-2"
+              disabled={exporting || missingIndexes.length > 0}
+              onClick={() => void exportFrames()}
+              aria-label={t("common.download")}
+            >
+              <Download aria-hidden="true" />
+              {t("common.download")}
+            </Button>
+          )}
+        </>
+      )}
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 cursor-pointer focus-visible:ring-2"
-          disabled={exporting || missingIndexes.length > 0}
-          onClick={() => void exportAllPng()}
-        >
-          <Download aria-hidden="true" />
-          {t("animatedQr.export.allPng")}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 cursor-pointer focus-visible:ring-2"
-          disabled={exporting || missingIndexes.length > 0}
-          onClick={() => void exportZip()}
-        >
-          <FileArchive aria-hidden="true" />
-          {t("animatedQr.export.zip")}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 cursor-pointer focus-visible:ring-2"
-          disabled={exporting}
-          onClick={() => void exportSvg()}
-        >
-          <FileCode2 aria-hidden="true" />
-          {t("animatedQr.export.currentSvg")}
-        </Button>
-      </div>
-
-      {error && (
+      {exportsEnabled && error && (
         <Alert variant="destructive" role="alert">
           <AlertTitle>{t("animatedQr.export.error.title")}</AlertTitle>
           <AlertDescription>{localizedError}</AlertDescription>

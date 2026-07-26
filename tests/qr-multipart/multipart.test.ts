@@ -1,17 +1,41 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { encodeCanonicalCbor } from "@/crypto/pq/canonical-cbor"
-import { sha256 } from "@/lib/bytes"
+import { toBase64Url } from "@/lib/base64url"
+import {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
+  FRAME_BYTES_VALUES,
+  FRAME_CHUNK_MAX_BYTES,
+  FRAME_INTERVAL_MS_MAX,
+  MAX_ARTIFACT_BYTES_ABSOLUTE,
+  PROTOCOL_MAX_FRAMES,
+  TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+  TRANSFER_TIMEOUT_MINUTES_MIN,
+} from "@/lib/limits"
 import { payloadFits } from "@/qr/encode"
 import { TransferAssembler } from "@/qr/multipart/assemble"
 import { splitIntoFrames } from "@/qr/multipart/split"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
 
 function pseudoArtifact(payloadBytes: number, type = "pq-message"): Uint8Array {
   return encodeCanonicalCbor({
     type,
     payload: new Uint8Array(payloadBytes).fill(0xa5),
   })
+}
+
+function pseudoArtifactOfTotalBytes(totalByteLength: number): Uint8Array {
+  let low = 0
+  let high = totalByteLength
+  while (low <= high) {
+    const payloadBytes = Math.floor((low + high) / 2)
+    const artifactBytes = pseudoArtifact(payloadBytes)
+    if (artifactBytes.byteLength === totalByteLength) return artifactBytes
+    if (artifactBytes.byteLength < totalByteLength) low = payloadBytes + 1
+    else high = payloadBytes - 1
+  }
+  throw new Error(`cannot construct pseudo artifact of ${totalByteLength} bytes`)
 }
 
 function framePayloads(frames: readonly QrFrameV2[]): string[] {
@@ -43,7 +67,7 @@ describe("splitIntoFrames", () => {
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
-      frameBytes: 400,
+      frameBytes: FRAME_BYTES_MAX,
     })
 
     expect(frames).toHaveLength(1)
@@ -56,27 +80,46 @@ describe("splitIntoFrames", () => {
       artifactType: "pq-message",
     })
     expect(frames[0]!.transferId).toHaveLength(16)
-    expect(frames[0]!.payloadSha256).toEqual(await sha256(artifactBytes))
     expect(frames[0]!.chunk).toEqual(artifactBytes)
   })
 
-  it("splits directly at the configured raw-byte boundary", async () => {
-    const artifactBytes = pseudoArtifact(500)
+  it("splits directly at the 1000/1001 raw-byte boundary", async () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1)
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
-      frameBytes: 400,
+      frameBytes: FRAME_BYTES_MAX,
     })
 
     expect(frames).toHaveLength(2)
     expect(frames.map((frame) => frame.chunk.byteLength)).toEqual([
-      400,
-      artifactBytes.byteLength - 400,
+      FRAME_BYTES_MAX,
+      artifactBytes.byteLength - FRAME_BYTES_MAX,
     ])
     const joined = new Uint8Array(artifactBytes.byteLength)
     joined.set(frames[0]!.chunk)
     joined.set(frames[1]!.chunk, frames[0]!.chunk.byteLength)
     expect(joined).toEqual(artifactBytes)
+  })
+
+  it("keeps the 100B fallback generatable across its split boundary", async () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_BYTES_MIN + 1)
+    const frames = await splitIntoFrames({
+      artifactType: "pq-message",
+      artifactBytes,
+      frameBytes: FRAME_BYTES_MIN,
+    })
+
+    expect(FRAME_BYTES_MIN).toBe(100)
+    expect(frames).toHaveLength(2)
+    expect(frames.map((frame) => frame.chunk.byteLength)).toEqual([
+      FRAME_BYTES_MIN,
+      1,
+    ])
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
+    expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
   })
 
   it("balances an explicit frame count with non-empty byte-exact chunks", async () => {
@@ -90,7 +133,11 @@ describe("splitIntoFrames", () => {
     expect(frames).toHaveLength(7)
     const chunkLengths = frames.map((frame) => frame.chunk.byteLength)
     expect(Math.max(...chunkLengths) - Math.min(...chunkLengths)).toBeLessThanOrEqual(1)
-    expect(chunkLengths.every((length) => length > 0 && length <= 900)).toBe(true)
+    expect(
+      chunkLengths.every(
+        (length) => length > 0 && length <= FRAME_CHUNK_MAX_BYTES,
+      ),
+    ).toBe(true)
     const reconstructed = new Uint8Array(artifactBytes.byteLength)
     let offset = 0
     for (const frame of frames) {
@@ -101,6 +148,28 @@ describe("splitIntoFrames", () => {
     expect(framePayloads(frames).every((payload) => payloadFits(payload, "Q"))).toBe(
       true,
     )
+  })
+
+  it("accepts balanced 1000-byte chunks and rejects balanced 1001-byte chunks", async () => {
+    const artifactAtChunkLimit = pseudoArtifactOfTotalBytes(
+      FRAME_CHUNK_MAX_BYTES * 2,
+    )
+    const frames = await splitIntoFrames({
+      artifactType: "pq-message",
+      artifactBytes: artifactAtChunkLimit,
+      frameCount: 2,
+    })
+    expect(frames.map((frame) => frame.chunk.byteLength)).toEqual([1_000, 1_000])
+
+    await expect(
+      splitIntoFrames({
+        artifactType: "pq-message",
+        artifactBytes: pseudoArtifactOfTotalBytes(
+          FRAME_CHUNK_MAX_BYTES * 2 + 1,
+        ),
+        frameCount: 2,
+      }),
+    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
   })
 
   it("supports one-byte balanced chunks without creating empty frames", async () => {
@@ -127,7 +196,7 @@ describe("splitIntoFrames", () => {
     },
   )
 
-  it("rejects counts above the artifact length, env limit, or 900-byte chunk limit", async () => {
+  it("rejects counts above the artifact length, env limit, or 1000-byte chunk limit", async () => {
     await expect(
       splitIntoFrames({
         artifactType: "pq-message",
@@ -138,14 +207,14 @@ describe("splitIntoFrames", () => {
     await expect(
       splitIntoFrames({
         artifactType: "pq-message",
-        artifactBytes: new Uint8Array(65),
-        frameCount: 65,
+        artifactBytes: new Uint8Array(PROTOCOL_MAX_FRAMES + 1),
+        frameCount: PROTOCOL_MAX_FRAMES + 1,
       }),
     ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
     await expect(
       splitIntoFrames({
         artifactType: "pq-message",
-        artifactBytes: new Uint8Array(1_801),
+        artifactBytes: new Uint8Array(FRAME_CHUNK_MAX_BYTES * 2 + 1),
         frameCount: 2,
       }),
     ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
@@ -157,24 +226,52 @@ describe("splitIntoFrames", () => {
       artifactBytes: pseudoArtifact(100),
     }
     await expect(
-      splitIntoFrames({ ...common, frameBytes: 400, frameCount: 1 } as never),
+      splitIntoFrames({
+        ...common,
+        frameBytes: FRAME_BYTES_MAX,
+        frameCount: 1,
+      } as never),
     ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
     await expect(splitIntoFrames(common as never)).rejects.toMatchObject({
       code: "QR_TOO_LARGE",
     })
   })
 
-  it("generates exactly 64 frames at the protocol limit", async () => {
+  it("accepts the exact absolute ceiling through one slowest full cycle", async () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(MAX_ARTIFACT_BYTES_ABSOLUTE)
+    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(
+      PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES,
+    )
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
-      artifactBytes: pseudoArtifact(25_550),
-      frameBytes: 400,
+      artifactBytes,
+      frameBytes: FRAME_BYTES_MAX,
     })
-    expect(frames).toHaveLength(64)
-    expect(frames.at(-1)?.frameIndex).toBe(63)
+    expect(frames).toHaveLength(PROTOCOL_MAX_FRAMES)
+    expect(
+      frames.every((frame) => frame.chunk.byteLength === FRAME_CHUNK_MAX_BYTES),
+    ).toBe(true)
+
+    let now = 0
+    const slowestFullCycleMs = PROTOCOL_MAX_FRAMES * FRAME_INTERVAL_MS_MAX
+    const timeoutMs = TRANSFER_TIMEOUT_MINUTES_MIN * 60_000
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_MIN,
+      now: () => now,
+    })
+    await assembler.add(encodeFrameToPayload(frames[0]!))
+    for (const frame of frames.slice(1, -1)) {
+      await assembler.add(encodeFrameToPayload(frame))
+    }
+    now = slowestFullCycleMs
+    expect(now).toBeLessThan(timeoutMs)
+    expectCompleteBytes(
+      await assembler.add(encodeFrameToPayload(frames.at(-1)!)),
+      artifactBytes,
+    )
   })
 
-  it.each([400, 600, 900])(
+  it.each(FRAME_BYTES_VALUES)(
     "round-trips and fits every EC-Q payload with frameBytes=%i",
     async (frameBytes) => {
       const artifactBytes = pseudoArtifact(1_700)
@@ -187,19 +284,58 @@ describe("splitIntoFrames", () => {
         true,
       )
 
-      const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+      const assembler = new TransferAssembler({
+        transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+      })
       expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
     },
   )
 
-  it("rejects transfers over env.qrMaxFrames", async () => {
-    await expect(
-      splitIntoFrames({
-        artifactType: "pq-message",
-        artifactBytes: pseudoArtifact(25_601),
-        frameBytes: 400,
-      }),
-    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+  it("rejects one byte over the absolute ceiling before hashing in every split mode", async () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(
+      MAX_ARTIFACT_BYTES_ABSOLUTE + 1,
+    )
+    expect(artifactBytes).toHaveLength(MAX_ARTIFACT_BYTES_ABSOLUTE + 1)
+    const digest = vi.spyOn(globalThis.crypto.subtle, "digest")
+    try {
+      for (const frameBytes of [FRAME_BYTES_MIN, FRAME_BYTES_MAX] as const) {
+        await expect(
+          splitIntoFrames({
+            artifactType: "pq-message",
+            artifactBytes,
+            frameBytes,
+          }),
+        ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+      }
+      await expect(
+        splitIntoFrames({
+          artifactType: "pq-message",
+          artifactBytes,
+          frameCount: PROTOCOL_MAX_FRAMES,
+        }),
+      ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+      expect(digest).not.toHaveBeenCalled()
+    } finally {
+      digest.mockRestore()
+    }
+  })
+
+  it("accepts the exact absolute ceiling in balanced frame-count mode", async () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(MAX_ARTIFACT_BYTES_ABSOLUTE)
+    const frames = await splitIntoFrames({
+      artifactType: "pq-message",
+      artifactBytes,
+      frameCount: PROTOCOL_MAX_FRAMES,
+    })
+    expect(frames).toHaveLength(PROTOCOL_MAX_FRAMES)
+    expect(
+      frames.every((frame) => frame.chunk.byteLength === FRAME_CHUNK_MAX_BYTES),
+    ).toBe(true)
+
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
+    expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
   })
 
   it("rejects generation of the reserved seed-backup artifact", async () => {
@@ -207,7 +343,7 @@ describe("splitIntoFrames", () => {
       splitIntoFrames({
         artifactType: "encrypted-seed-backup",
         artifactBytes: pseudoArtifact(10, "encrypted-seed-backup"),
-        frameBytes: 400,
+        frameBytes: FRAME_BYTES_MAX,
       }),
     ).rejects.toMatchObject({ code: "UNSUPPORTED_ALGORITHM" })
   })
@@ -215,41 +351,78 @@ describe("splitIntoFrames", () => {
 
 describe("TransferAssembler", () => {
   it.each([
-    ["one", 100, 1],
-    ["two", 500, 2],
-    ["sixty-four", 25_550, 64],
-  ] as const)("assembles a %s-frame-class transfer", async (_name, size, count) => {
-    const artifactBytes = pseudoArtifact(size)
-    const frames = await splitIntoFrames({
+    ["one", FRAME_BYTES_MAX, 1],
+    ["two", FRAME_BYTES_MAX + 1, 2],
+    [
+      "absolute-ceiling",
+      MAX_ARTIFACT_BYTES_ABSOLUTE,
+      PROTOCOL_MAX_FRAMES,
+    ],
+  ] as const)(
+    "assembles a %s-frame-class transfer",
+    async (_name, totalByteLength, count) => {
+      const artifactBytes = pseudoArtifactOfTotalBytes(totalByteLength)
+      const frames = await splitIntoFrames({
+        artifactType: "pq-message",
+        artifactBytes,
+        frameBytes: FRAME_BYTES_MAX,
+      })
+      expect(frames).toHaveLength(count)
+      const assembler = new TransferAssembler({
+        transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+      })
+      expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
+    },
+  )
+
+  it("rejects one-byte absolute overflow at the assembler receiver boundary", async () => {
+    const hostileFrame = {
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16),
       artifactType: "pq-message",
-      artifactBytes,
-      frameBytes: 400,
+      frameIndex: 0,
+      frameCount: PROTOCOL_MAX_FRAMES,
+      totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE + 1,
+      chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES),
+    } as const
+    const payload = `${QR_PREFIX_V2.frame}${toBase64Url(
+      encodeCanonicalCbor(hostileFrame),
+    )}`
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
     })
-    expect(frames).toHaveLength(count)
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
-    expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
+
+    await expect(assembler.add(payload)).resolves.toEqual({
+      kind: "error",
+      code: "INVALID_QR_PAYLOAD",
+    })
   })
 
   it("assembles frames in arbitrary order", async () => {
-    const artifactBytes = pseudoArtifact(1_500)
+    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX * 4)
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
-      frameBytes: 400,
+      frameBytes: FRAME_BYTES_MAX,
     })
     const reordered = [frames[2]!, frames[0]!, frames[3]!, frames[1]!]
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     expectCompleteBytes(await addFrames(assembler, reordered), artifactBytes)
   })
 
   it("ignores a byte-identical duplicate", async () => {
-    const artifactBytes = pseudoArtifact(500)
+    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1)
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
-      frameBytes: 400,
+      frameBytes: FRAME_BYTES_MAX,
     })
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     await assembler.add(encodeFrameToPayload(frames[0]!))
     const duplicateState = await assembler.add(encodeFrameToPayload(frames[0]!))
     expect(duplicateState.kind).toBe("collecting")
@@ -264,10 +437,12 @@ describe("TransferAssembler", () => {
   it("poisons the session on a differing duplicate", async () => {
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
-      artifactBytes: pseudoArtifact(500),
-      frameBytes: 400,
+      artifactBytes: pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1),
+      frameBytes: FRAME_BYTES_MAX,
     })
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     await assembler.add(encodeFrameToPayload(frames[0]!))
     const changedChunk = Uint8Array.from(frames[0]!.chunk)
     changedChunk[0] = changedChunk[0]! ^ 1
@@ -279,12 +454,15 @@ describe("TransferAssembler", () => {
   })
 
   it("reports every missing frame index", async () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX * 4)
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
-      artifactBytes: pseudoArtifact(1_500),
-      frameBytes: 400,
+      artifactBytes,
+      frameBytes: FRAME_BYTES_MAX,
     })
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     await assembler.add(encodeFrameToPayload(frames[2]!))
     const state = await assembler.add(encodeFrameToPayload(frames[0]!))
     expect(state.kind).toBe("collecting")
@@ -294,17 +472,21 @@ describe("TransferAssembler", () => {
   })
 
   it("rejects a different transferId and frees the poisoned session", async () => {
+    const firstArtifact = pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1)
+    const secondArtifact = pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 2)
     const first = await splitIntoFrames({
       artifactType: "pq-message",
-      artifactBytes: pseudoArtifact(500),
-      frameBytes: 400,
+      artifactBytes: firstArtifact,
+      frameBytes: FRAME_BYTES_MAX,
     })
     const second = await splitIntoFrames({
       artifactType: "pq-message",
-      artifactBytes: pseudoArtifact(600),
-      frameBytes: 400,
+      artifactBytes: secondArtifact,
+      frameBytes: FRAME_BYTES_MAX,
     })
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     await assembler.add(encodeFrameToPayload(first[0]!))
     expect(await assembler.add(encodeFrameToPayload(second[0]!))).toEqual({
       kind: "error",
@@ -313,51 +495,42 @@ describe("TransferAssembler", () => {
 
     assembler.discard()
     expect(assembler.state()).toEqual({ kind: "idle" })
-    expectCompleteBytes(await addFrames(assembler, second), pseudoArtifact(600))
+    expectCompleteBytes(await addFrames(assembler, second), secondArtifact)
   })
 
-  it("detects a changed unique chunk through the final SHA-256", async () => {
+  it("accepts a changed unique chunk when the artifact remains canonical", async () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1)
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
-      artifactBytes: pseudoArtifact(500),
-      frameBytes: 400,
+      artifactBytes,
+      frameBytes: FRAME_BYTES_MAX,
     })
     const changedChunk = Uint8Array.from(frames[1]!.chunk)
     changedChunk[0] = changedChunk[0]! ^ 1
     const changedFrames = [frames[0]!, { ...frames[1]!, chunk: changedChunk }]
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
-    expect(await addFrames(assembler, changedFrames)).toEqual({
-      kind: "error",
-      code: "INVALID_QR_PAYLOAD",
+    const changedArtifactBytes = Uint8Array.from(artifactBytes)
+    changedArtifactBytes[frames[0]!.chunk.byteLength] =
+      changedArtifactBytes[frames[0]!.chunk.byteLength]! ^ 1
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
     })
-  })
-
-  it("detects a consistently wrong whole-payload hash", async () => {
-    const frames = await splitIntoFrames({
-      artifactType: "pq-message",
-      artifactBytes: pseudoArtifact(500),
-      frameBytes: 400,
-    })
-    const wrongHash = new Uint8Array(32).fill(0xff)
-    const changedFrames = frames.map((frame) => ({
-      ...frame,
-      payloadSha256: Uint8Array.from(wrongHash),
-    }))
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
-    expect(await addFrames(assembler, changedFrames)).toEqual({
-      kind: "error",
-      code: "INVALID_QR_PAYLOAD",
-    })
+    expect(changedArtifactBytes).not.toEqual(artifactBytes)
+    expectCompleteBytes(
+      await addFrames(assembler, changedFrames),
+      changedArtifactBytes,
+    )
   })
 
   it("keeps collection state across a camera-restart-sized pause", async () => {
-    const artifactBytes = pseudoArtifact(900)
+    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1)
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
-      frameBytes: 400,
+      frameBytes: FRAME_BYTES_MAX,
     })
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     await assembler.add(encodeFrameToPayload(frames[0]!))
     expect(assembler.state()).toMatchObject({ kind: "collecting" })
     expectCompleteBytes(await addFrames(assembler, frames.slice(1)), artifactBytes)
@@ -365,19 +538,20 @@ describe("TransferAssembler", () => {
 
   it("drops collected chunks at the timeout and can start again", async () => {
     let now = 1_000
+    const timeoutMilliseconds = TRANSFER_TIMEOUT_MINUTES_MIN * 60_000
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
-      artifactBytes: pseudoArtifact(500),
-      frameBytes: 400,
+      artifactBytes: pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1),
+      frameBytes: FRAME_BYTES_MAX,
     })
     const assembler = new TransferAssembler({
-      transferTimeoutMinutes: 1,
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_MIN,
       now: () => now,
     })
     await assembler.add(encodeFrameToPayload(frames[0]!))
-    now = 60_999
+    now = 1_000 + timeoutMilliseconds - 1
     expect(assembler.state().kind).toBe("collecting")
-    now = 61_000
+    now = 1_000 + timeoutMilliseconds
     expect(assembler.state()).toEqual({ kind: "idle" })
     const restarted = await assembler.add(encodeFrameToPayload(frames[1]!))
     expect(restarted.kind).toBe("collecting")
@@ -387,17 +561,18 @@ describe("TransferAssembler", () => {
 
   it("drops the frame that first observes an expired transfer", async () => {
     let now = 0
+    const timeoutMilliseconds = TRANSFER_TIMEOUT_MINUTES_MIN * 60_000
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
-      artifactBytes: pseudoArtifact(500),
-      frameBytes: 400,
+      artifactBytes: pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1),
+      frameBytes: FRAME_BYTES_MAX,
     })
     const assembler = new TransferAssembler({
-      transferTimeoutMinutes: 1,
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_MIN,
       now: () => now,
     })
     await assembler.add(encodeFrameToPayload(frames[0]!))
-    now = 60_001
+    now = timeoutMilliseconds + 1
     expect(await assembler.add(encodeFrameToPayload(frames[1]!))).toEqual({
       kind: "idle",
     })
@@ -415,22 +590,26 @@ describe("TransferAssembler", () => {
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
-      frameBytes: 600,
+      frameBytes: FRAME_BYTES_MAX,
     })
-    expect(frames).toHaveLength(9)
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    expect(frames).toHaveLength(5)
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
   })
 
-  it("handles an 8.9KB artifact representing a 4096-byte plaintext", async () => {
-    const artifactBytes = pseudoArtifact(8_850)
+  it("handles a 126619-byte artifact representing a 120000-byte plaintext", async () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(126_619)
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
-      frameBytes: 600,
+      frameBytes: FRAME_BYTES_MAX,
     })
-    expect(frames).toHaveLength(15)
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    expect(frames).toHaveLength(127)
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
   })
 
@@ -439,9 +618,11 @@ describe("TransferAssembler", () => {
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
-      frameBytes: 400,
+      frameBytes: FRAME_BYTES_MAX,
     })
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     expect(await addFrames(assembler, frames)).toEqual({
       kind: "error",
       code: "INVALID_QR_PAYLOAD",
@@ -453,9 +634,11 @@ describe("TransferAssembler", () => {
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
-      frameBytes: 400,
+      frameBytes: FRAME_BYTES_MAX,
     })
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
     expect(await addFrames(assembler, frames)).toEqual({
       kind: "error",
       code: "UNSUPPORTED_ALGORITHM",

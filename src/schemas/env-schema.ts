@@ -4,10 +4,16 @@
 // back to defaults.
 import { z } from "zod"
 import {
-  FRAME_INTERVAL_MS_DEFAULT,
-  isFrameIntervalMs,
-} from "@/lib/frame-interval"
-import type { PqProfileId, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
+  FRAME_BYTES_MAX,
+  isFrameBytes,
+} from "@/lib/frame-bytes"
+import { isFrameIntervalMs } from "@/lib/frame-interval"
+import {
+  DEFAULT_GENERATED_DISPLAY_PAIR,
+  type PqProfileId,
+  type QrEcLevel,
+  type UiAlgorithm,
+} from "@/schemas/domain"
 
 export interface AppEnv {
   appName: string
@@ -16,6 +22,7 @@ export interface AppEnv {
   defaultPqProfile: PqProfileId
   qrErrorCorrection: QrEcLevel
   qrRenderSize: number
+  // Post-quantum multipart plaintext ceiling.
   maxPlaintextBytes: number
   // RSA has been retired. Expose the property for compatibility, but it is always false.
   enableRsa: false
@@ -31,6 +38,7 @@ export interface AppEnv {
   pqProvider: "noble"
   pqWorkerEnabled: boolean
   autoClearSeconds: number
+  autoClearFallbackSeconds: number
   buildSha: string
 }
 
@@ -47,9 +55,19 @@ const intFromString = (defaultValue: number, min: number, max: number) =>
     .transform((value) => Number(value))
     .pipe(z.number().int().min(min).max(max))
 
+const frameBytesFromString = z
+  .string()
+  .default(String(DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes))
+  .transform((value) => Number(value))
+  .pipe(
+    z.number().refine(isFrameBytes, {
+      message: "must be a current frame-byte value",
+    }),
+  )
+
 const frameIntervalMsFromString = z
   .string()
-  .default(String(FRAME_INTERVAL_MS_DEFAULT))
+  .default(String(DEFAULT_GENERATED_DISPLAY_PAIR.frameIntervalMs))
   .transform((value) => Number(value))
   .pipe(
     z.number().refine(isFrameIntervalMs, {
@@ -57,12 +75,15 @@ const frameIntervalMsFromString = z
     }),
   )
 
-// Fixed portion obtained by decomposing the measured canonical-CBOR fixture for a
-// maximum signed OCM2 into an expression. Only the plaintext byte string in
-// SignedMessageBody varies; the ML-DSA-87 signature is fixed at 4,627B, the
+// Fixed portions obtained by decomposing the measured canonical-CBOR fixture for
+// a maximum signed OCM2. Both the inner plaintext byte-string header and the
+// outer ciphertext byte-string header vary with the plaintext length; at 120KB
+// each uses a five-byte header. The ML-DSA-87 signature is fixed at 4,627B, the
 // ML-KEM-1024 ciphertext at 1,568B, and the AES-GCM tag at 16B.
 // tests/pq/maximum-artifact-size.golden.test.ts pins boundary equality with generated output.
-const MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES = 6_612
+const MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES = 6_609
+const MAXIMUM_SIGNED_INNER_FIXED_BYTES = 4_822
+const AES_GCM_TAG_BYTES = 16
 
 function canonicalByteStringHeaderBytes(byteLength: number): number {
   if (byteLength <= 23) return 1
@@ -73,23 +94,35 @@ function canonicalByteStringHeaderBytes(byteLength: number): number {
 }
 
 function maximumSignedArtifactBytes(plaintextBytes: number): number {
+  const plaintextHeaderBytes = canonicalByteStringHeaderBytes(plaintextBytes)
+  const outerCiphertextBytes =
+    MAXIMUM_SIGNED_INNER_FIXED_BYTES +
+    plaintextHeaderBytes +
+    plaintextBytes +
+    AES_GCM_TAG_BYTES
   return (
     MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES +
-    canonicalByteStringHeaderBytes(plaintextBytes) +
-    plaintextBytes
+    plaintextHeaderBytes +
+    plaintextBytes +
+    canonicalByteStringHeaderBytes(outerCiphertextBytes)
   )
 }
 
 const rawSchema = z.object({
-  VITE_APP_NAME: z.string().min(1).default("Qrypt"),
-  VITE_APP_SHORT_NAME: z.string().min(1).default("Qrypt"),
+  VITE_APP_NAME: z.string().min(1).default("QR Crypt"),
+  VITE_APP_SHORT_NAME: z.string().min(1).default("QR Crypt"),
   VITE_DEFAULT_ALGORITHM: z
     .enum(["A256GCM", "MLKEM1024_A256GCM", "MLKEM1024_MLDSA87_A256GCM"])
     .default("A256GCM"),
   VITE_DEFAULT_PQ_PROFILE: z.enum(["maximum"]).default("maximum"),
   VITE_QR_ERROR_CORRECTION: z.enum(["L", "M", "Q", "H"]).default("Q"),
-  VITE_QR_RENDER_SIZE: intFromString(512, 128, 1024),
-  VITE_MAX_PLAINTEXT_BYTES: intFromString(4096, 1, 16384),
+  // 1024 keeps a version 40 symbol (177 modules plus an 8-module quiet zone) at about
+  // 5.5 source pixels per module. At the former 512 the displayed raster, not the
+  // camera, capped what a phone could resolve at the dense end of the density range.
+  VITE_QR_RENDER_SIZE: intFromString(1024, 128, 1024),
+  // Post-quantum multipart plaintext ceiling. The A256GCM single-QR path
+  // derives its smaller pre-encryption limit from the selected EC capacity.
+  VITE_MAX_PLAINTEXT_BYTES: intFromString(120_000, 1, 120_000),
   // Retired compatibility variable. Accept true, but always produce false after parsing.
   VITE_ENABLE_RSA: boolFromString("false"),
   VITE_ENABLE_ECDH: boolFromString("false"),
@@ -98,13 +131,14 @@ const rawSchema = z.object({
   VITE_REQUIRE_SIGNATURE: boolFromString("false"),
   VITE_ENABLE_PRIVATE_KEY_EXPORT: boolFromString("false"),
   VITE_ENABLE_ENCRYPTED_SEED_BACKUP: boolFromString("false"),
-  VITE_QR_FRAME_BYTES: intFromString(300, 200, 900),
+  VITE_QR_FRAME_BYTES: frameBytesFromString,
   VITE_QR_FRAME_INTERVAL_MS: frameIntervalMsFromString,
-  VITE_QR_MAX_FRAMES: intFromString(64, 1, 64),
+  VITE_QR_MAX_FRAMES: intFromString(128, 1, 128),
   // Unknown provider names are startup errors.
   VITE_PQ_PROVIDER: z.enum(["noble"]).default("noble"),
   VITE_PQ_WORKER_ENABLED: boolFromString("true"),
-  VITE_AUTO_CLEAR_SECONDS: intFromString(300, 0, 86_400),
+  VITE_AUTO_CLEAR_SECONDS: intFromString(60, 0, 86_400),
+  VITE_AUTO_CLEAR_FALLBACK_SECONDS: intFromString(300, 0, 86_400),
   VITE_BUILD_SHA: z.string().min(1).default("development"),
 })
 
@@ -124,13 +158,14 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     )
   }
   // 2) Reject before startup any configuration where the raw artifact bytes for a
-  //    maximum signed message with maximum plaintext do not fit the configured total
-  //    OCF2 chunk capacity.
+  //    maximum signed message with maximum plaintext do not fit at the maximum
+  //    selectable density. The renderer clamps each artifact independently, so the
+  //    stored/default density is not a boot-capacity constraint.
   const maximumSignedBytes = maximumSignedArtifactBytes(v.VITE_MAX_PLAINTEXT_BYTES)
-  const configuredFrameCapacity = v.VITE_QR_MAX_FRAMES * v.VITE_QR_FRAME_BYTES
+  const configuredFrameCapacity = v.VITE_QR_MAX_FRAMES * FRAME_BYTES_MAX
   if (maximumSignedBytes > configuredFrameCapacity) {
     throw new Error(
-      "Invalid environment variables: the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × VITE_QR_FRAME_BYTES",
+      "Invalid environment variables: the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × the maximum selectable frame density",
     )
   }
   let defaultAlgorithm: UiAlgorithm = v.VITE_DEFAULT_ALGORITHM
@@ -173,6 +208,7 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     pqProvider: v.VITE_PQ_PROVIDER,
     pqWorkerEnabled: v.VITE_PQ_WORKER_ENABLED,
     autoClearSeconds: v.VITE_AUTO_CLEAR_SECONDS,
+    autoClearFallbackSeconds: v.VITE_AUTO_CLEAR_FALLBACK_SECONDS,
     buildSha: v.VITE_BUILD_SHA,
   }
 }

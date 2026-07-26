@@ -11,7 +11,17 @@ coverage/
 # CodeGraph local index (generated)
 .codegraph/
 
-# Private agent tooling (local only; freshness skill stays tracked)
-.claude/skills/herdr/
-.claude/skills/orchestration/
-.claude/skills/using-herdr-sibling-panes/
+# Local git worktrees
+.worktrees/
+
+# Private agent tooling (local only; repository skills below stay tracked)
+.claude/skills/*
+!.claude/skills/freshness/
+!.claude/skills/artful-simplicity/
+!.claude/skills/nation-state-security/
+
+# Local task workflow (untracked)
+/CLAUDE.local.md
+
+# herdrpowers repo config and pane workspace (local only)
+.herdrpowers/

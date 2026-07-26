@@ -8,8 +8,7 @@ import {
   type WipeDecisionInput,
 } from "@/app/boot/boot-contract"
 import {
-  FRAME_BYTES_MAX,
-  FRAME_BYTES_MIN,
+  isBootReadableFrameBytes,
   isBootReadableFrameIntervalMs,
   RESET_CHURN_MB_MAX,
   RESET_CHURN_MB_MIN,
@@ -30,6 +29,7 @@ const STORE_APP_METADATA = "appMetadata"
 const STORE_PQ_IDENTITIES = "pqIdentities"
 
 interface BootStore {
+  count(): Promise<number>
   get(key: IDBValidKey): Promise<unknown>
   put(value: unknown): Promise<IDBValidKey>
   delete(key: IDBValidKey): Promise<void>
@@ -37,14 +37,17 @@ interface BootStore {
 
 interface BootTransaction {
   store: BootStore
+  objectStore(name: string): BootStore
   done: Promise<void>
 }
 
 interface BootDatabase {
   objectStoreNames: DOMStringList
-  count(storeName: string): Promise<number>
   get(storeName: string, key: IDBValidKey): Promise<unknown>
-  transaction(storeName: string, mode: "readwrite"): BootTransaction
+  transaction(
+    storeNames: string | readonly string[],
+    mode: "readonly" | "readwrite",
+  ): BootTransaction
 }
 
 interface MetadataRow {
@@ -71,6 +74,7 @@ export interface SentinelProbeOptions {
 export interface WipeExecutionArgs {
   reason: "online-detected"
   resetChurnMb: number
+  endSession: () => void
   resetTransient: () => void
 }
 
@@ -89,18 +93,32 @@ export interface BootControllerOptions {
 export interface BootController {
   acquire(): void
   addTransientResetHandler(handler: () => void): () => void
+  endRelaySession(reason: RelaySessionEndReason): void
   getState(): BootState
   nudgeDisplayOffline(): boolean
   probe(): Promise<void>
+  refreshRelayEligibility(): Promise<boolean>
+  registerRelaySessionEndHandler(
+    handler: (reason: RelaySessionEndReason) => void,
+  ): () => void
   release(): void
   start(): void
   stop(): void
   subscribe(listener: () => void): () => void
 }
 
+export type RelaySessionEndReason =
+  | "display-offline"
+  | "eligibility-loss"
+  | "local-wipe"
+  | "new-probe"
+  | "peer-wipe"
+  | "controller-stop"
+
 const FALLBACK_DECISION: BootDecisionSnapshot = {
   wipeOnOnline: true,
   sensitiveDataExists: false,
+  cleanOrigin: "indeterminate",
   maintenanceTokenArmed: false,
   resetChurnMb: 0,
   preferencesReadFailed: true,
@@ -171,16 +189,9 @@ function hasStore(database: BootDatabase, storeName: string): boolean {
   return database.objectStoreNames.contains(storeName)
 }
 
-async function confirmedRowsExist(
-  database: BootDatabase,
-  storeName: string,
-): Promise<boolean> {
-  if (!hasStore(database, storeName)) return false
-  try {
-    return (await database.count(storeName)) > 0
-  } catch {
-    return false
-  }
+function confirmedCount(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) throw new AppError("STORAGE_FAILED")
+  return value
 }
 
 function maintenanceToken(value: unknown): MaintenanceToken | undefined {
@@ -244,7 +255,7 @@ function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
       correctionLevels.includes(value.qrErrorCorrection as string)) &&
     optionalBoolean(value.autoClearPlaintextAfterEncrypt) &&
     optionalBoolean(value.backgroundClearEnabled) &&
-    optionalIntegerInRange(value.frameBytes, FRAME_BYTES_MIN, FRAME_BYTES_MAX) &&
+    isBootReadableFrameBytes(value.frameBytes) &&
     (value.frameIntervalMs === undefined ||
       isBootReadableFrameIntervalMs(value.frameIntervalMs)) &&
     optionalIntegerInRange(
@@ -257,82 +268,115 @@ function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
   )
 }
 
+export interface BootDecisionReadOptions {
+  getDatabase?: () => Promise<unknown>
+}
+
 /** Read only the fields needed before repositories and Router may mount. */
-export async function readBootDecision(): Promise<BootDecisionSnapshot> {
+export async function readBootDecision(
+  options: BootDecisionReadOptions = {},
+): Promise<BootDecisionSnapshot> {
   let database: BootDatabase
   try {
-    database = (await getDb()) as unknown as BootDatabase
-    if (!database?.objectStoreNames) return { ...FALLBACK_DECISION }
+    database = (await (options.getDatabase ?? getDb)()) as BootDatabase
+    if (
+      !database?.objectStoreNames ||
+      typeof database.objectStoreNames.contains !== "function" ||
+      typeof database.transaction !== "function"
+    ) {
+      return { ...FALLBACK_DECISION }
+    }
   } catch {
     // Without a confirmed sensitive row, a storage-open failure cannot trigger
-    // destructive reset. Preference handling still remains fail-safe.
+    // destructive reset. Relay authorization separately remains fail-closed.
     return { ...FALLBACK_DECISION }
   }
 
-  const keysExist = await confirmedRowsExist(database, STORE_KEYS)
-  const pqIdentitiesExist = await confirmedRowsExist(database, STORE_PQ_IDENTITIES)
-
-  let vaultKeyExists = false
-  let maintenanceTokenArmed = false
-  if (hasStore(database, STORE_APP_METADATA)) {
-    try {
-      vaultKeyExists =
-        (await database.get(STORE_APP_METADATA, VAULT_KEY_METADATA_KEY)) !== undefined
-    } catch {
-      // A failed lookup is not evidence that sensitive data exists.
+  const requiredStores = [
+    STORE_KEYS,
+    STORE_PREFERENCES,
+    STORE_APP_METADATA,
+    STORE_PQ_IDENTITIES,
+  ] as const
+  try {
+    if (requiredStores.some((storeName) => !hasStore(database, storeName))) {
+      return { ...FALLBACK_DECISION }
     }
-    try {
-      const row = await database.get(STORE_APP_METADATA, MAINTENANCE_TOKEN_METADATA_KEY)
-      maintenanceTokenArmed = maintenanceToken(metadataValue(row)) !== undefined
-    } catch {
-      // Unreadable tokens are intentionally treated as absent.
-    }
-  }
 
-  let wipeOnOnline = true
-  let resetChurnMb = 0
-  let preferencesReadFailed = false
-  if (hasStore(database, STORE_PREFERENCES)) {
-    try {
-      const row = await database.get(STORE_PREFERENCES, PREFERENCES_KEY)
-      if (row !== undefined) {
-        const value = metadataValue(row)
-        if (typeof value !== "object" || value === null) {
-          preferencesReadFailed = true
-        } else {
-          const stored = value as Record<string, unknown>
-          if (!storedPreferencesAreReadable(stored)) preferencesReadFailed = true
-          if (stored.wipeOnOnline !== undefined) {
-            if (typeof stored.wipeOnOnline === "boolean") {
-              wipeOnOnline = stored.wipeOnOnline
-            } else {
-              preferencesReadFailed = true
-            }
+    // The sensitive stores and Vault metadata are proved in one readonly
+    // transaction. Any request or transaction failure makes cleanliness
+    // indeterminate rather than authorizing the relay.
+    const transaction = database.transaction(requiredStores, "readonly")
+    const keys = transaction.objectStore(STORE_KEYS)
+    const preferences = transaction.objectStore(STORE_PREFERENCES)
+    const appMetadata = transaction.objectStore(STORE_APP_METADATA)
+    const pqIdentities = transaction.objectStore(STORE_PQ_IDENTITIES)
+    const [
+      [
+        keyCountValue,
+        pqIdentityCountValue,
+        vaultKeyRow,
+        maintenanceTokenRow,
+        preferencesRow,
+      ],
+    ] = await Promise.all([
+      Promise.all([
+        keys.count(),
+        pqIdentities.count(),
+        appMetadata.get(VAULT_KEY_METADATA_KEY),
+        appMetadata.get(MAINTENANCE_TOKEN_METADATA_KEY),
+        preferences.get(PREFERENCES_KEY),
+      ]),
+      transaction.done,
+    ])
+
+    const keysExist = confirmedCount(keyCountValue) > 0
+    const pqIdentitiesExist = confirmedCount(pqIdentityCountValue) > 0
+    const vaultKeyExists = vaultKeyRow !== undefined
+    const sensitiveDataExists = keysExist || vaultKeyExists || pqIdentitiesExist
+    const cleanOrigin = sensitiveDataExists ? "dirty" : "confirmed-clean"
+    const maintenanceTokenArmed =
+      maintenanceToken(metadataValue(maintenanceTokenRow)) !== undefined
+
+    let wipeOnOnline = true
+    let resetChurnMb = 0
+    let preferencesReadFailed = false
+    if (preferencesRow !== undefined) {
+      const value = metadataValue(preferencesRow)
+      if (typeof value !== "object" || value === null) {
+        preferencesReadFailed = true
+      } else {
+        const stored = value as Record<string, unknown>
+        if (!storedPreferencesAreReadable(stored)) preferencesReadFailed = true
+        if (stored.wipeOnOnline !== undefined) {
+          if (typeof stored.wipeOnOnline === "boolean") {
+            wipeOnOnline = stored.wipeOnOnline
+          } else {
+            preferencesReadFailed = true
           }
-          if (stored.resetChurnMb !== undefined) {
-            if (validResetChurnMb(stored.resetChurnMb)) {
-              resetChurnMb = stored.resetChurnMb
-            } else {
-              preferencesReadFailed = true
-            }
+        }
+        if (stored.resetChurnMb !== undefined) {
+          if (validResetChurnMb(stored.resetChurnMb)) {
+            resetChurnMb = stored.resetChurnMb
+          } else {
+            preferencesReadFailed = true
           }
         }
       }
-    } catch {
-      preferencesReadFailed = true
     }
-  } else {
-    preferencesReadFailed = true
-  }
 
-  if (preferencesReadFailed) wipeOnOnline = true
+    if (preferencesReadFailed) wipeOnOnline = true
 
-  return {
-    wipeOnOnline,
-    sensitiveDataExists: keysExist || vaultKeyExists || pqIdentitiesExist,
-    maintenanceTokenArmed,
-    resetChurnMb,
-    preferencesReadFailed,
+    return {
+      wipeOnOnline,
+      sensitiveDataExists,
+      cleanOrigin,
+      maintenanceTokenArmed,
+      resetChurnMb,
+      preferencesReadFailed,
+    }
+  } catch {
+    return { ...FALLBACK_DECISION }
   }
 }
 
@@ -410,18 +454,43 @@ export function createBootController(
   let started = false
   let consumerCount = 0
   let releaseGeneration = 0
+  let relayRefreshGeneration = 0
+  let peerWipeGeneration = 0
+  let relaySessionEndHandler: ((reason: RelaySessionEndReason) => void) | undefined
   let networkTransitionHandled = false
   let confirmationEpisode:
     | {
         generation: number
         continuationPending: boolean
         offlineRequested: boolean
+        relayInvalidated: boolean
       }
     | undefined
 
   const emit = (nextState: BootState) => {
     state = nextState
     for (const listener of listeners) listener()
+  }
+
+  const endRelaySession = (reason: RelaySessionEndReason) => {
+    try {
+      relaySessionEndHandler?.(reason)
+    } catch {
+      // Teardown is best-effort and idempotent; the boot transition remains authoritative.
+    }
+    if (reason === "peer-wipe" || reason === "display-offline") {
+      if (reason === "peer-wipe") peerWipeGeneration += 1
+      relayRefreshGeneration += 1
+      if (confirmationEpisode) confirmationEpisode.relayInvalidated = true
+      if (state.kind === "network-confirmed") {
+        emit({ kind: "network-confirmed", relayEligibility: "ineligible" })
+      }
+    }
+  }
+
+  const invalidateRelay = (reason: RelaySessionEndReason) => {
+    relayRefreshGeneration += 1
+    endRelaySession(reason)
   }
 
   const resetTransient = () => {
@@ -437,8 +506,36 @@ export function createBootController(
   const isDestructiveTerminal = () =>
     state.kind === "wiping" || state.kind === "wiped" || state.kind === "partial-failure"
 
+  const relayEligibleFrom = (decision: BootDecisionSnapshot): boolean =>
+    decision.cleanOrigin === "confirmed-clean" && !decision.sensitiveDataExists
+
+  const publishRelayDecision = (
+    episode: NonNullable<typeof confirmationEpisode>,
+    decision: BootDecisionSnapshot,
+  ): boolean => {
+    if (
+      confirmationEpisode !== episode ||
+      episode.offlineRequested ||
+      state.kind !== "network-confirmed"
+    ) {
+      return false
+    }
+    if (episode.relayInvalidated) {
+      emit({ kind: "network-confirmed", relayEligibility: "ineligible" })
+      return false
+    }
+    const eligible = relayEligibleFrom(decision)
+    if (!eligible) endRelaySession("eligibility-loss")
+    emit({
+      kind: "network-confirmed",
+      relayEligibility: eligible ? "eligible" : "ineligible",
+    })
+    return eligible
+  }
+
   const finishNonDestructiveConfirmation = (
     episode: NonNullable<typeof confirmationEpisode>,
+    decision: BootDecisionSnapshot,
   ) => {
     resetTransient()
     episode.continuationPending = false
@@ -448,13 +545,18 @@ export function createBootController(
       state.kind === "network-confirmed"
     ) {
       networkTransitionHandled = false
+      invalidateRelay("display-offline")
       emit({ kind: "offline-confirmed" })
+      return
     }
+    publishRelayDecision(episode, decision)
   }
 
   const probe = async (): Promise<void> => {
     if (isDestructiveTerminal() || confirmationEpisode?.continuationPending) return
     const probeGeneration = ++generation
+    invalidateRelay("new-probe")
+    const peerWipeGenerationAtStart = peerWipeGeneration
     activeProbe?.abort()
     confirmationEpisode = undefined
     const controller = new AbortController()
@@ -475,6 +577,7 @@ export function createBootController(
     activeProbe = undefined
     if (!confirmed) {
       networkTransitionHandled = false
+      invalidateRelay("display-offline")
       emit({ kind: "offline-confirmed" })
       return
     }
@@ -484,10 +587,11 @@ export function createBootController(
       generation: probeGeneration,
       continuationPending: true,
       offlineRequested: false,
+      relayInvalidated: peerWipeGeneration !== peerWipeGenerationAtStart,
     }
     confirmationEpisode = episode
     setAckPending()
-    emit({ kind: "network-confirmed" })
+    emit({ kind: "network-confirmed", relayEligibility: "pending" })
 
     // Sentinel success is the one-way boundary. From here onward no offline
     // request, generation update, or AbortSignal may cancel token consumption
@@ -497,20 +601,22 @@ export function createBootController(
     if (decision.maintenanceTokenArmed) {
       const tokenConsumed = await consumeToken()
       if (tokenConsumed) {
-        finishNonDestructiveConfirmation(episode)
+        finishNonDestructiveConfirmation(episode, decision)
         return
       }
     }
     if (!decision.sensitiveDataExists || !decision.wipeOnOnline) {
-      finishNonDestructiveConfirmation(episode)
+      finishNonDestructiveConfirmation(episode, decision)
       return
     }
 
+    invalidateRelay("local-wipe")
     emit({ kind: "wiping" })
     try {
       const report = await performWipe({
         reason: "online-detected",
         resetChurnMb: decision.resetChurnMb,
+        endSession: () => endRelaySession("local-wipe"),
         resetTransient,
       })
       episode.continuationPending = false
@@ -530,6 +636,7 @@ export function createBootController(
     const episode = confirmationEpisode
     if (!episode || episode.offlineRequested) return false
 
+    invalidateRelay("display-offline")
     episode.offlineRequested = true
     if (!episode.continuationPending) {
       networkTransitionHandled = false
@@ -551,6 +658,7 @@ export function createBootController(
     }
     networkTransitionHandled = false
     if (state.kind === "probing") {
+      invalidateRelay("display-offline")
       activeProbe?.abort()
       activeProbe = undefined
       generation += 1
@@ -567,15 +675,47 @@ export function createBootController(
   }
 
   const stop = () => {
-    if (!started) return
-    started = false
-    eventTarget?.removeEventListener("online", handleOnline)
-    eventTarget?.removeEventListener("offline", handleOffline)
+    invalidateRelay("controller-stop")
+    if (started) {
+      started = false
+      eventTarget?.removeEventListener("online", handleOnline)
+      eventTarget?.removeEventListener("offline", handleOffline)
+    }
     activeProbe?.abort()
     activeProbe = undefined
     generation += 1
     networkTransitionHandled = false
     if (!isDestructiveTerminal()) emit({ kind: "unknown" })
+  }
+
+  const refreshRelayEligibility = async (): Promise<boolean> => {
+    const episode = confirmationEpisode
+    if (
+      !episode ||
+      episode.continuationPending ||
+      episode.offlineRequested ||
+      episode.relayInvalidated ||
+      state.kind !== "network-confirmed"
+    ) {
+      endRelaySession("eligibility-loss")
+      return false
+    }
+
+    const refreshGeneration = ++relayRefreshGeneration
+    endRelaySession("eligibility-loss")
+    emit({ kind: "network-confirmed", relayEligibility: "pending" })
+    const decision = await safeDecision(readDecision)
+    if (
+      refreshGeneration !== relayRefreshGeneration ||
+      confirmationEpisode !== episode ||
+      episode.continuationPending ||
+      episode.offlineRequested ||
+      episode.relayInvalidated ||
+      state.kind !== "network-confirmed"
+    ) {
+      return false
+    }
+    return publishRelayDecision(episode, decision)
   }
 
   return {
@@ -588,9 +728,20 @@ export function createBootController(
       transientResetHandlers.add(handler)
       return () => transientResetHandlers.delete(handler)
     },
+    endRelaySession,
     getState: () => state,
     nudgeDisplayOffline,
     probe,
+    refreshRelayEligibility,
+    registerRelaySessionEndHandler(handler) {
+      if (relaySessionEndHandler && relaySessionEndHandler !== handler) {
+        endRelaySession("eligibility-loss")
+      }
+      relaySessionEndHandler = handler
+      return () => {
+        if (relaySessionEndHandler === handler) relaySessionEndHandler = undefined
+      }
+    },
     release() {
       consumerCount = Math.max(0, consumerCount - 1)
       const pendingRelease = ++releaseGeneration

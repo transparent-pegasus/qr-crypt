@@ -1,4 +1,4 @@
-// Key fingerprints; see docs/qr-protocol.md §8.
+// Key fingerprints; see docs/spec/qr-protocol.md §8.
 // Internal identity uses the complete sha256Hex; display is an abbreviated visual check.
 import { exportAesKeyRaw } from "@/crypto/key-import-export"
 import { AppError, toAppError } from "@/crypto/errors"

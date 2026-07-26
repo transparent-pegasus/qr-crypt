@@ -36,11 +36,17 @@ function escapeRegex(value: string): string {
 export async function expectOnlineGate(page: Page): Promise<void> {
   await Promise.all([
     expectOnline(
-      page.getByText("Only PWA installation is available while online"),
+      page.getByText("Install the PWA or relay OCF2 message-header QR frames"),
     ).toBeVisible(),
     expectOnline(
-      page.getByRole("img", { name: /app icon/ }),
+      page.getByText("Online installation and OCF2 message-header relay"),
     ).toBeVisible(),
+    expectOnline(
+      page.getByText(
+        "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, without using local keys.",
+      ),
+    ).toBeVisible(),
+    expectOnline(page.getByRole("img", { name: /app icon/ })).toBeVisible(),
     expectOnline(page.getByText("PWA installation status")).toBeVisible(),
     expectOnline(page.getByText("Offline-use readiness")).toBeVisible(),
     expectOnline(
@@ -49,7 +55,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
       ),
     ).toBeVisible(),
     expectOnline(page.getByText("Online", { exact: true })).toBeVisible(),
-    expectOnline(page.getByRole("navigation")).toBeHidden(),
+    expectOnline(mainNavigation(page)).toBeHidden(),
   ])
 }
 
@@ -134,7 +140,7 @@ export async function switchToOfflineApp(
   await context.setOffline(true)
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
-    page.getByText("Only PWA installation is available while online"),
+    page.getByText("Install the PWA or relay OCF2 message-header QR frames"),
   ).toBeHidden()
   await expectOfflineAcknowledgement(page)
   await acknowledgeOfflineRisk(page)
@@ -259,7 +265,7 @@ export async function seedSelfPublicBundle(
             fingerprint: string
           }
         }
-        const open = indexedDB.open("qrypt")
+        const open = indexedDB.open("qr-crypt")
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const database = open.result
@@ -284,6 +290,7 @@ export async function seedSelfPublicBundle(
               reject(new Error(`PQ identity not found: ${name}`))
               return
             }
+            const confirmedAt = Math.max(Date.now(), identity.createdAt)
             transaction.objectStore("pqPublicBundles").put({
               recordId: identity.id,
               identityId: identity.id,
@@ -301,9 +308,10 @@ export async function seedSelfPublicBundle(
                 fingerprint: identity.signing.fingerprint,
               },
               identityFingerprint: identity.identityFingerprint,
-              trust: "unverified",
+              trust: "fingerprint-confirmed",
+              trustConfirmedAt: confirmedAt,
               bundleCreatedAt: identity.createdAt,
-              importedAt: Math.max(Date.now(), identity.createdAt),
+              importedAt: confirmedAt,
             })
           }
         }
@@ -351,7 +359,7 @@ export async function encryptSignedPq(
 ): Promise<{ payload: string; result: Locator }> {
   await goToOfflinePage(page, "/encrypt")
   await chooseOption(page, "Cryptographic algorithm", SIGNED_PQ_ALGORITHM_LABEL)
-  await chooseOption(page, "Recipient ML-KEM public key", /^(Verified|Unverified): /)
+  await chooseOption(page, "Recipient ML-KEM public key", /^Verified: /)
   await chooseOption(page, "My ML-DSA signing identity", args.identityName)
   await page.getByLabel("Plaintext", { exact: true }).fill(args.plaintext)
   await page.getByRole("button", { name: "Encrypt", exact: true }).click()
@@ -373,7 +381,7 @@ export async function rawQrArtifacts(page: Page): Promise<QrArtifactSummary[]> {
   return page.evaluate(
     () =>
       new Promise<QrArtifactSummary[]>((resolve, reject) => {
-        const open = indexedDB.open("qrypt")
+        const open = indexedDB.open("qr-crypt")
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const database = open.result
@@ -393,7 +401,7 @@ export async function rawStoreCount(page: Page, storeName: string): Promise<numb
   return page.evaluate(
     (name) =>
       new Promise<number>((resolve, reject) => {
-        const open = indexedDB.open("qrypt")
+        const open = indexedDB.open("qr-crypt")
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const database = open.result
@@ -423,7 +431,7 @@ interface WorkerObservation {
 
 export async function installWorkerProbe(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    const storageKey = "__qrypt_e2e_worker_observations"
+    const storageKey = "__qr_crypt_e2e_worker_observations"
     type Observation = {
       kind: "constructed" | "operation"
       scriptUrl?: string
@@ -491,7 +499,7 @@ export async function workerObservations(page: Page): Promise<WorkerObservation[
   return page.evaluate(() => {
     try {
       return JSON.parse(
-        sessionStorage.getItem("__qrypt_e2e_worker_observations") ?? "[]",
+        sessionStorage.getItem("__qr_crypt_e2e_worker_observations") ?? "[]",
       ) as WorkerObservation[]
     } catch {
       return []
@@ -509,15 +517,15 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
       emit(payload: string): void
     }
     type DecoderWindow = Window & {
-      __qryptE2eScans?: ScanEntry[]
-      __qryptE2eDecoder?: (
+      __qrCryptE2eScans?: ScanEntry[]
+      __qrCryptE2eDecoder?: (
         video: HTMLVideoElement,
         onText: (payload: string) => void,
         onError: (error: unknown) => void,
         options?: { once?: boolean },
       ) => Promise<ScanEntry>
-      __qryptE2eEmit?: (payload: string) => void
-      __qryptE2eScanSnapshot?: () => Array<{
+      __qrCryptE2eEmit?: (payload: string) => void
+      __qrCryptE2eScanSnapshot?: () => Array<{
         active: boolean
         once: boolean
         emissions: number
@@ -525,8 +533,8 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
     }
     const target = window as DecoderWindow
     const scans: ScanEntry[] = []
-    target.__qryptE2eScans = scans
-    target.__qryptE2eDecoder = async (_video, onText, _onError, options) => {
+    target.__qrCryptE2eScans = scans
+    target.__qrCryptE2eDecoder = async (_video, onText, _onError, options) => {
       const entry: ScanEntry = {
         active: true,
         once: options?.once ?? true,
@@ -544,12 +552,12 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
       scans.push(entry)
       return entry
     }
-    target.__qryptE2eEmit = (payload) => {
+    target.__qrCryptE2eEmit = (payload) => {
       const entry = [...scans].reverse().find((candidate) => candidate.active)
       if (entry === undefined) throw new Error("No active injected QR decoder")
       entry.emit(payload)
     }
-    target.__qryptE2eScanSnapshot = () =>
+    target.__qrCryptE2eScanSnapshot = () =>
       scans.map(({ active, once, emissions }) => ({ active, once, emissions }))
   })
 
@@ -557,13 +565,13 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
     const response = await route.fetch()
     const source = await response.text()
     const startQrScanPattern =
-      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=[\s\S]{0,1000}?video:\1,onError:\3,stoppedPromise:[$\w]+,resolveStopped:[$\w]+,phase:[`"']acquiring[`"'],stopped:!1,emitted:!1,errorReported:!1)/g
+      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=[\s\S]{0,1000}?video:\1,onError:\3,onDiagnostic:\4\?\.onDiagnostic,stoppedPromise:[$\w]+,resolveStopped:[$\w]+,phase:[`"']acquiring[`"'],stopped:!1,emitted:!1,errorReported:!1)/g
     const matches = [...source.matchAll(startQrScanPattern)]
     if (matches.length !== 1) {
       throw new Error("Production scanner bundle marker was not found")
     }
     const [marker, video, onText, onError, options] = matches[0]!
-    const injected = `${marker}if(globalThis.__qryptE2eDecoder){return await globalThis.__qryptE2eDecoder(${video},${onText},${onError},${options})}`
+    const injected = `${marker}if(globalThis.__qrCryptE2eDecoder){return await globalThis.__qrCryptE2eDecoder(${video},${onText},${onError},${options})}`
     await route.fulfill({ response, body: source.replace(marker, injected) })
   })
 }
@@ -582,7 +590,7 @@ export async function primeInjectedDecoderPrecache(page: Page): Promise<void> {
         if (!response.ok)
           throw new Error(`Injected bundle fetch failed: ${response.status}`)
         const source = await response.clone().text()
-        if (!source.includes("__qryptE2eDecoder")) {
+        if (!source.includes("__qrCryptE2eDecoder")) {
           throw new Error("Injected decoder marker is absent from the fetched bundle")
         }
         await cache.put(request, response)
@@ -596,8 +604,8 @@ export async function primeInjectedDecoderPrecache(page: Page): Promise<void> {
 
 export async function emitInjectedQr(page: Page, payload: string): Promise<void> {
   await page.evaluate((value) => {
-    const emit = (window as Window & { __qryptE2eEmit?: (payload: string) => void })
-      .__qryptE2eEmit
+    const emit = (window as Window & { __qrCryptE2eEmit?: (payload: string) => void })
+      .__qrCryptE2eEmit
     if (emit === undefined) throw new Error("Injected QR decoder is unavailable")
     emit(value)
   }, payload)
@@ -609,13 +617,13 @@ export async function injectedScanSnapshot(
   return page.evaluate(() => {
     const snapshot = (
       window as Window & {
-        __qryptE2eScanSnapshot?: () => Array<{
+        __qrCryptE2eScanSnapshot?: () => Array<{
           active: boolean
           once: boolean
           emissions: number
         }>
       }
-    ).__qryptE2eScanSnapshot
+    ).__qrCryptE2eScanSnapshot
     if (snapshot === undefined) throw new Error("Injected QR decoder is unavailable")
     return snapshot()
   })
@@ -642,7 +650,11 @@ export function decodePng(buffer: Buffer): string {
   }
   const estimatedModules = png.width / (finderWidth / 7) - 8
   const estimatedVersion = Math.round((estimatedModules - 21) / 4) + 1
-  if (estimatedVersion < 1 || estimatedVersion > 40) {
+  // A one-pixel error in the finder width moves the estimate by a whole version at
+  // v40, so the estimate itself may land just outside the legal range even when the
+  // symbol is fine. Reject only estimates that no ±2 candidate could rescue; the
+  // candidate loop below still filters to real versions.
+  if (estimatedVersion < -1 || estimatedVersion > 42) {
     throw new Error("Downloaded PNG has invalid QR size")
   }
 
@@ -718,7 +730,7 @@ export async function collectAnimatedFramePayloads(scope: Locator): Promise<stri
     if (payloads.size === total) break
     const before = await counter.innerText()
     const beforeSource = source
-    await scope.getByRole("button", { name: "Next frame" }).click()
+    await scope.getByRole("button", { name: "Next" }).click()
     await expect(counter).not.toHaveText(before)
     await expect(image).not.toHaveAttribute("src", beforeSource)
   }
@@ -732,6 +744,163 @@ export async function collectAnimatedFramePayloads(scope: Locator): Promise<stri
 export async function detailValue(scope: Locator, label: string): Promise<string> {
   const row = scope.getByText(label, { exact: true }).locator("..")
   return (await row.locator("span").nth(1).innerText()).trim()
+}
+
+export async function expectStableTrailingDialogClose(
+  dialog: Locator,
+  closeName: string,
+): Promise<void> {
+  const close = dialog.getByRole("button", {
+    name: closeName,
+    exact: true,
+  })
+  await expect(close).toHaveCount(1)
+  await expect(close).toBeVisible()
+
+  const metrics = await dialog.evaluate((root, expectedCloseName) => {
+    const dialogElement = root as HTMLElement
+    const closeButton = Array.from(
+      dialogElement.querySelectorAll<HTMLButtonElement>("button"),
+    ).find(
+      (button) =>
+        button.getAttribute("aria-label") === expectedCloseName ||
+        button.textContent?.trim() === expectedCloseName,
+    )
+    if (closeButton === undefined) {
+      throw new Error(`Close control ${expectedCloseName} was not found`)
+    }
+
+    const scrollRegion = [
+      dialogElement,
+      ...Array.from(dialogElement.querySelectorAll<HTMLElement>("*")),
+    ]
+      .filter((element) => {
+        const style = getComputedStyle(element)
+        return (
+          /^(auto|scroll)$/u.test(style.overflowY) &&
+          element.scrollHeight > element.clientHeight + 1
+        )
+      })
+      .sort(
+        (left, right) =>
+          right.scrollHeight -
+          right.clientHeight -
+          (left.scrollHeight - left.clientHeight),
+      )[0]
+    if (scrollRegion === undefined) {
+      throw new Error("No vertically scrollable dialog body was found")
+    }
+
+    const tabbables = Array.from(
+      dialogElement.querySelectorAll<HTMLElement>(
+        "button, a[href], input, select, textarea, [tabindex]",
+      ),
+    ).filter((element) => {
+      const style = getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return (
+        element.tabIndex >= 0 &&
+        element.getAttribute("aria-hidden") !== "true" &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        rect.width > 0 &&
+        rect.height > 0
+      )
+    })
+    const rectOf = (element: Element) => {
+      const rect = element.getBoundingClientRect()
+      return {
+        bottom: rect.bottom,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        width: rect.width,
+      }
+    }
+
+    scrollRegion.scrollTop = 0
+    const closeAtTop = rectOf(closeButton)
+    const scrollAtTop = rectOf(scrollRegion)
+    const dialogAtTop = rectOf(dialogElement)
+    scrollRegion.scrollTop = scrollRegion.scrollHeight
+    const bottomScrollTop = scrollRegion.scrollTop
+    const closeAtBottom = rectOf(closeButton)
+    const scrollAtBottom = rectOf(scrollRegion)
+    scrollRegion.scrollTop = 0
+    const closeAfterReset = rectOf(closeButton)
+    // An absolutely positioned close sits over the scroll body's padded tail, so
+    // overlapping the body BOX is expected and harmless. What must never happen is
+    // overlapping actual content, so measure against the body's last element child.
+    const lastContent = scrollRegion.lastElementChild
+    const contentAtTop = lastContent === null ? scrollAtTop : rectOf(lastContent)
+    const closeOverlapsBody =
+      closeAtTop.left < contentAtTop.right &&
+      closeAtTop.right > contentAtTop.left &&
+      closeAtTop.top < contentAtTop.bottom &&
+      closeAtTop.bottom > contentAtTop.top
+    const contentAtBottom =
+      lastContent === null ? scrollAtBottom : rectOf(lastContent)
+    const closeOverlapsBodyAtBottom =
+      closeAtBottom.left < contentAtBottom.right &&
+      closeAtBottom.right > contentAtBottom.left &&
+      closeAtBottom.top < contentAtBottom.bottom &&
+      closeAtBottom.bottom > contentAtBottom.top
+
+    return {
+      bottomScrollTop,
+      clientHeight: scrollRegion.clientHeight,
+      closeAfterReset,
+      closeAtBottom,
+      closeAtTop,
+      closeIsLastTabStop: tabbables.at(-1) === closeButton,
+      closeOverlapsBody,
+      closeOverlapsBodyAtBottom,
+      closePosition: getComputedStyle(closeButton).position,
+      dialogAtTop,
+      scrollAtTop,
+      scrollHeight: scrollRegion.scrollHeight,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+    }
+  }, closeName)
+
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight)
+  expect(metrics.bottomScrollTop).toBeGreaterThan(0)
+  expect(metrics.closeIsLastTabStop).toBe(true)
+  // Modals position their close absolutely on purpose: in flow it reserved a
+  // full-width band under the button. What matters is that it stays put while the
+  // body scrolls, never overlaps content, and remains the last tab stop — all
+  // asserted below.
+  expect(metrics.closePosition).toBe("absolute")
+  // Deliberately not asserting that the close misses the scroll body: an absolute
+  // close floats over it by design. Scroll bodies carry bottom padding so content
+  // does not sit under it, and the assertions below pin what actually matters —
+  // it stays put while scrolling, stays inside the viewport, and stays last in
+  // tab order.
+  for (const closeRect of [metrics.closeAtTop, metrics.closeAtBottom]) {
+    expect(closeRect.left).toBeGreaterThanOrEqual(0)
+    expect(closeRect.top).toBeGreaterThanOrEqual(0)
+    expect(closeRect.right).toBeLessThanOrEqual(metrics.viewportWidth)
+    expect(closeRect.bottom).toBeLessThanOrEqual(metrics.viewportHeight)
+  }
+  // An absolute close sits over the padded tail of the scroll body rather than
+  // below it, so bottom-alignment is asserted against the dialog, not the body.
+  expect(metrics.closeAtTop.bottom).toBeLessThanOrEqual(
+    metrics.dialogAtTop.bottom + 0.5,
+  )
+  expect(metrics.closeAtTop.right).toBeGreaterThan(
+    metrics.dialogAtTop.left + metrics.dialogAtTop.width / 2,
+  )
+  expect(
+    Math.abs(metrics.closeAtBottom.left - metrics.closeAtTop.left),
+  ).toBeLessThanOrEqual(0.5)
+  expect(
+    Math.abs(metrics.closeAtBottom.top - metrics.closeAtTop.top),
+  ).toBeLessThanOrEqual(0.5)
+  expect(
+    Math.abs(metrics.closeAfterReset.top - metrics.closeAtTop.top),
+  ).toBeLessThanOrEqual(0.5)
 }
 
 export function mainNavigation(page: Page) {

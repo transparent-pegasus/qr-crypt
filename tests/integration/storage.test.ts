@@ -5,10 +5,12 @@ import { createSymmetricKeyRecord } from "@/crypto/key-generation"
 import { generateKeyId } from "@/crypto/random"
 import { toBase64Url } from "@/lib/base64url"
 import { bytesToHex, utf8ToBytes } from "@/lib/bytes"
-import type {
-  PqProfileId,
-  StoredKeyRecord,
-  UiAlgorithm,
+import {
+  COMPATIBLE_GENERATED_DISPLAY_PAIR,
+  DEFAULT_GENERATED_DISPLAY_PAIR,
+  type PqProfileId,
+  type StoredKeyRecord,
+  type UiAlgorithm,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
@@ -35,6 +37,24 @@ import {
 import { getPreferences, updatePreferences } from "@/storage/preferences-repository"
 
 const NOW = 1_700_000_000_000
+const HISTORICAL_DISPLAY_ROWS = [
+  {
+    label: "200 bytes with 1000 milliseconds",
+    value: { frameBytes: 200, frameIntervalMs: 1_000 },
+  },
+  {
+    label: "250 bytes with 3000 milliseconds",
+    value: { frameBytes: 250, frameIntervalMs: 3_000 },
+  },
+  {
+    label: "a missing interval member",
+    value: { frameBytes: 200 },
+  },
+  {
+    label: "a missing density member",
+    value: { frameIntervalMs: 1_000 },
+  },
+] as const
 
 afterEach(async () => {
   await deleteEntireDatabase()
@@ -80,7 +100,7 @@ describe("database creation", () => {
 
   it("upgrades a pre-existing v2 DB by wiping stores and creating the current schema", async () => {
     await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open("qrypt", 2)
+      const request = indexedDB.open("qr-crypt", 2)
       request.onupgradeneeded = () => {
         const db = request.result
         if (!db.objectStoreNames.contains("legacyDummyStore")) {
@@ -187,7 +207,8 @@ describe("preferences and plaintext non-persistence", () => {
       qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
-      frameIntervalMs: 1_000,
+      frameBytes: DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes,
+      frameIntervalMs: DEFAULT_GENERATED_DISPLAY_PAIR.frameIntervalMs,
     })
     expect(
       await updatePreferences({
@@ -223,6 +244,32 @@ describe("preferences and plaintext non-persistence", () => {
     expect(migrated).not.toHaveProperty("backgroundClearSeconds")
   })
 
+  it("writes only one complete generated-display pair atomically", async () => {
+    await expect(
+      updatePreferences(COMPATIBLE_GENERATED_DISPLAY_PAIR),
+    ).resolves.toMatchObject(COMPATIBLE_GENERATED_DISPLAY_PAIR)
+    await expect(
+      updatePreferences(DEFAULT_GENERATED_DISPLAY_PAIR),
+    ).resolves.toMatchObject(DEFAULT_GENERATED_DISPLAY_PAIR)
+
+    for (const patch of [
+      { frameBytes: COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes },
+      { frameIntervalMs: COMPATIBLE_GENERATED_DISPLAY_PAIR.frameIntervalMs },
+      {
+        frameBytes: DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes,
+        frameIntervalMs: COMPATIBLE_GENERATED_DISPLAY_PAIR.frameIntervalMs,
+      },
+      {
+        frameBytes: COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes,
+        frameIntervalMs: DEFAULT_GENERATED_DISPLAY_PAIR.frameIntervalMs,
+      },
+    ]) {
+      await expect(updatePreferences(patch)).rejects.toMatchObject({
+        code: "STORAGE_FAILED",
+      })
+    }
+  })
+
   it("normalizes legacy PQ/RSA preferences while boot preserves wipeOnOnline=false", async () => {
     const database = await getDb()
     await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
@@ -255,82 +302,80 @@ describe("preferences and plaintext non-persistence", () => {
     }
   })
 
-  it("normalizes only persisted legacy frame intervals before merging a current patch", async () => {
-    const database = await getDb()
-    for (const [legacyInterval, normalizedInterval] of [
-      [800, 1_000],
-      [1_250, 1_500],
-      [1_750, 2_000],
-    ] as const) {
+  it.each(HISTORICAL_DISPLAY_ROWS)(
+    "canonicalizes $label to the default pair without endangering sensitive data",
+    async ({ value }) => {
+      const database = await getDb()
+      await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
       await database.put(STORE_PREFERENCES, {
         key: "preferences",
         value: {
-          frameIntervalMs: legacyInterval,
+          ...value,
           wipeOnOnline: false,
         },
       })
 
       await expect(readBootDecision()).resolves.toMatchObject({
         preferencesReadFailed: false,
+        sensitiveDataExists: true,
         wipeOnOnline: false,
       })
       await expect(getPreferences()).resolves.toMatchObject({
-        frameIntervalMs: normalizedInterval,
+        ...DEFAULT_GENERATED_DISPLAY_PAIR,
         wipeOnOnline: false,
       })
       await expect(
         updatePreferences({ qrErrorCorrection: "M" }),
       ).resolves.toMatchObject({
-        frameIntervalMs: normalizedInterval,
+        ...DEFAULT_GENERATED_DISPLAY_PAIR,
         qrErrorCorrection: "M",
         wipeOnOnline: false,
       })
-    }
+      expect(await database.count(STORE_KEYS)).toBe(1)
+    },
+  )
 
-    await database.put(STORE_PREFERENCES, {
-      key: "preferences",
-      value: { frameIntervalMs: 800 },
-    })
-    await expect(
-      updatePreferences({ frameIntervalMs: 1_250 }),
-    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
-  })
+  it.each([99, 1_001] as const)(
+    "fails closed for stored frameBytes=%i outside the boot-readable range",
+    async (frameBytes) => {
+      const database = await getDb()
+      await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
+      await database.put(STORE_PREFERENCES, {
+        key: "preferences",
+        value: { frameBytes, wipeOnOnline: false },
+      })
 
-  it("accepts current 2500/3000 intervals in storage and boot readability", async () => {
-    for (const frameIntervalMs of [2_500, 3_000]) {
-      await expect(
-        updatePreferences({ frameIntervalMs, wipeOnOnline: false }),
-      ).resolves.toMatchObject({
-        frameIntervalMs,
-        wipeOnOnline: false,
+      await expect(getPreferences()).rejects.toMatchObject({
+        code: "STORAGE_FAILED",
       })
       await expect(readBootDecision()).resolves.toMatchObject({
-        preferencesReadFailed: false,
-        wipeOnOnline: false,
+        preferencesReadFailed: true,
+        sensitiveDataExists: true,
+        wipeOnOnline: true,
       })
-    }
-  })
+    },
+  )
 
-  it("rejects 2250 as both a new write and a stored boot value", async () => {
-    await expect(
-      updatePreferences({ frameIntervalMs: 2_250 }),
-    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+  it.each([149, 3_001] as const)(
+    "fails closed for stored frameIntervalMs=%i outside the boot-readable range",
+    async (frameIntervalMs) => {
+      const database = await getDb()
+      await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
+      await database.put(STORE_PREFERENCES, {
+        key: "preferences",
+        value: { frameIntervalMs, wipeOnOnline: false },
+      })
 
-    await (
-      await getDb()
-    ).put(STORE_PREFERENCES, {
-      key: "preferences",
-      value: {
-        frameIntervalMs: 2_250,
-        wipeOnOnline: false,
-      },
-    })
-    await expect(getPreferences()).rejects.toMatchObject({ code: "STORAGE_FAILED" })
-    await expect(readBootDecision()).resolves.toMatchObject({
-      preferencesReadFailed: true,
-      wipeOnOnline: true,
-    })
-  })
+      await expect(getPreferences()).rejects.toMatchObject({
+        code: "STORAGE_FAILED",
+      })
+      await expect(readBootDecision()).resolves.toMatchObject({
+        preferencesReadFailed: true,
+        sensitiveDataExists: true,
+        wipeOnOnline: true,
+      })
+    },
+  )
 
   it("rejects legacy algorithm and balanced profile injection through updates", async () => {
     for (const defaultAlgorithm of ["MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"]) {

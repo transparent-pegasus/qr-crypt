@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { Link } from "react-router"
 import {
   AlertCircle,
@@ -6,7 +12,6 @@ import {
   Clipboard,
   Download,
   Eraser,
-  FileCode2,
   LoaderCircle,
   Lock,
 } from "lucide-react"
@@ -55,6 +60,7 @@ import {
 } from "@/features/presentation"
 import { useAutoClear } from "@/hooks/use-auto-clear"
 import { useKeys } from "@/hooks/use-keys"
+import { useFrameSplit } from "@/hooks/use-frame-split"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
@@ -65,31 +71,40 @@ import {
   type LocalizedMessage,
 } from "@/i18n"
 import { bytesToUtf8, sha256Hex, utf8ToBytes } from "@/lib/bytes"
-import { ecLevelFor, payloadFits } from "@/qr/encode"
+import {
+  FRAME_BYTES_MAX,
+  maximumSymmetricPlaintextBytesForPayloadCapacity,
+  minimumFrameBytesForArtifact,
+} from "@/lib/limits"
+import { ecLevelFor, payloadFits, qrByteCapacity } from "@/qr/encode"
 import {
   buildExportFileName,
   copyTextToClipboard,
   qrPngBlob,
-  qrSvgBlob,
   triggerDownload,
 } from "@/qr/export-image"
-import { splitIntoFrames } from "@/qr/multipart/split"
 import { buildV2Payload } from "@/qr/payload-v2"
 import { decodePayload, encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
-import type {
-  MlKemMessageEnvelopeV2,
-  PostQuantumIdentity,
-  PqPublicBundleRecord,
-  QrFrameV2,
-  StoredKeyRecord,
-  UiAlgorithm,
-  WireSuite,
+import {
+  COMPATIBLE_GENERATED_DISPLAY_PAIR,
+  DEFAULT_GENERATED_DISPLAY_PAIR,
+  type GeneratedDisplayPair,
+  type MlKemMessageEnvelopeV2,
+  type PostQuantumIdentity,
+  type PqPublicBundleRecord,
+  type Preferences,
+  type StoredKeyRecord,
+  type UiAlgorithm,
+  type WireSuite,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { qrNameSchema } from "@/schemas/key-schema"
 import { markKeyUsed } from "@/storage/key-repository"
 import { markBundleUsed } from "@/storage/pq-bundle-repository"
-import { markIdentityUsed } from "@/storage/pq-identity-repository"
+import {
+  findIdentityByKemKeyId,
+  markIdentityUsed,
+} from "@/storage/pq-identity-repository"
 
 type PageMode = "encrypt" | "decrypt"
 
@@ -107,7 +122,9 @@ type EncryptionResult =
       kind: "pq"
       payload: string
       envelope: MlKemMessageEnvelopeV2
-      frames: QrFrameV2[]
+      artifactType: "pq-message"
+      artifactBytes: Uint8Array
+      generation: number
       recipient: PqPublicBundleRecord
       sender?: PostQuantumIdentity
       createdAt: number
@@ -125,6 +142,18 @@ type DecryptionResult =
     }
   | { kind: "signed-key-unknown"; senderSigningKeyId: string }
   | { kind: "aes"; text: string }
+
+const EMPTY_ARTIFACT_BYTES = new Uint8Array()
+
+function selectedGeneratedDisplayPair(
+  preferences: Pick<Preferences, "frameBytes" | "frameIntervalMs">,
+): GeneratedDisplayPair {
+  return preferences.frameBytes === COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes &&
+    preferences.frameIntervalMs ===
+      COMPATIBLE_GENERATED_DISPLAY_PAIR.frameIntervalMs
+    ? COMPATIBLE_GENERATED_DISPLAY_PAIR
+    : DEFAULT_GENERATED_DISPLAY_PAIR
+}
 
 function algorithmOptions(requireSignature: boolean): UiAlgorithm[] {
   const options: UiAlgorithm[] = ["A256GCM"]
@@ -177,7 +206,12 @@ export function EncryptPage() {
     error: pqError,
     refresh: refreshPq,
   } = usePqRecords()
-  const { preferences, error: preferencesError } = usePreferences()
+  const {
+    preferences,
+    loading: preferencesLoading,
+    error: preferencesError,
+    updatePreferences,
+  } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const { camera } = useFeatureSupport()
   const { nonce } = useTransientClear()
@@ -190,16 +224,64 @@ export function EncryptPage() {
   const [plaintext, setPlaintext] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
+  const [compatibilityUpdating, setCompatibilityUpdating] = useState(false)
+  const [compatibilityError, setCompatibilityError] =
+    useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(
-    error ?? keysError ?? pqError ?? preferencesError,
+    error ?? compatibilityError ?? keysError ?? pqError ?? preferencesError,
   )
   const [result, setResult] = useState<EncryptionResult | null>(null)
   const [outputName, setOutputName] = useState("")
   const [decryptInput, setDecryptInput] = useState("")
   const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
-  const [clearStatus, setClearStatus] = useState<
-    "encrypt.toast.autoCleared" | null
-  >(null)
+  const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
+  const resultGenerationRef = useRef(0)
+  const pqResult = result?.kind === "pq" ? result : null
+  const selectedFramePair = selectedGeneratedDisplayPair(preferences)
+  const compatibilityEnabled =
+    selectedFramePair === COMPATIBLE_GENERATED_DISPLAY_PAIR
+  const effectiveFrameBytes =
+    pqResult === null
+      ? selectedFramePair.frameBytes
+      : Math.max(
+          selectedFramePair.frameBytes,
+          minimumFrameBytesForArtifact(pqResult.artifactBytes.byteLength),
+        )
+  const frameProfile = {
+    frameBytes: effectiveFrameBytes,
+    frameIntervalMs: selectedFramePair.frameIntervalMs,
+    densityRaised:
+      compatibilityEnabled &&
+      effectiveFrameBytes > COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes,
+  }
+  const frameSplit = useFrameSplit({
+    bytes: pqResult?.artifactBytes ?? EMPTY_ARTIFACT_BYTES,
+    artifactType: pqResult?.artifactType ?? "pq-message",
+    frameBytes: frameProfile.frameBytes,
+    enabled: pqResult !== null,
+    generation: `${pqResult?.generation ?? 0}:${frameProfile.frameBytes}`,
+  })
+  const localizedFrameError = useLocalizedMessage(frameSplit.error)
+  const changeCompatibilityMode = useCallback(
+    async (enabled: boolean) => {
+      setCompatibilityUpdating(true)
+      setCompatibilityError(null)
+      const pair = enabled
+        ? COMPATIBLE_GENERATED_DISPLAY_PAIR
+        : DEFAULT_GENERATED_DISPLAY_PAIR
+      try {
+        await updatePreferences({
+          frameBytes: pair.frameBytes,
+          frameIntervalMs: pair.frameIntervalMs,
+        })
+      } catch (caught) {
+        setCompatibilityError(toAppError(caught, "STORAGE_FAILED").code)
+      } finally {
+        setCompatibilityUpdating(false)
+      }
+    },
+    [updatePreferences],
+  )
 
   const algorithms = useMemo(
     () => algorithmOptions(preferences.requireSignature),
@@ -220,7 +302,12 @@ export function EncryptPage() {
   const recipients = useMemo(
     () =>
       bundles.filter(
-        (record) => record.revokedAt === undefined && isActiveBundle(record),
+        (record) =>
+          record.revokedAt === undefined &&
+          isActiveBundle(record) &&
+          // An in-band check the sender can forge is not an identity proof. Only a
+          // fingerprint compared out of band may authorise encryption to this key.
+          record.trust === "fingerprint-confirmed",
       ),
     [bundles],
   )
@@ -248,7 +335,19 @@ export function EncryptPage() {
     (identity) => identity.id === senderIdentityId,
   )
   const plaintextBytes = useMemo(() => utf8ToBytes(plaintext), [plaintext])
-  const overPlaintextLimit = plaintextBytes.byteLength > env.maxPlaintextBytes
+  // The ceilings are algorithm-specific: the PQ path is multipart and uses the
+  // environment limit, while A256GCM still renders one v1 QR, so its plaintext is
+  // bounded by the encoded-payload and error-correction capacity instead.
+  const plaintextLimitBytes = useMemo(
+    () =>
+      algorithm === "A256GCM"
+        ? maximumSymmetricPlaintextBytesForPayloadCapacity(
+            qrByteCapacity(ecLevelFor("message", preferences)),
+          )
+        : env.maxPlaintextBytes,
+    [algorithm, preferences],
+  )
+  const overPlaintextLimit = plaintextBytes.byteLength > plaintextLimitBytes
   const canEncrypt =
     plaintext.length > 0 &&
     !overPlaintextLimit &&
@@ -365,16 +464,18 @@ export function EncryptPage() {
           now,
         })
         const artifactBytes = encodeMlKemEnvelopeV2(envelope)
-        const frames = await splitIntoFrames({
-          artifactType: "pq-message",
-          artifactBytes,
-          frameBytes: preferences.frameBytes,
-        })
+        const minimumFrameBytes = minimumFrameBytesForArtifact(artifactBytes.byteLength)
+        if (minimumFrameBytes > FRAME_BYTES_MAX) {
+          throw new AppError("QR_TOO_LARGE")
+        }
+        resultGenerationRef.current += 1
         setResult({
           kind: "pq",
           payload: buildV2Payload("pq-message", artifactBytes),
           envelope,
-          frames,
+          artifactType: "pq-message",
+          artifactBytes,
+          generation: resultGenerationRef.current,
           recipient: selectedRecipient,
           ...(sender === undefined ? {} : { sender }),
           createdAt: now,
@@ -415,10 +516,20 @@ export function EncryptPage() {
         setDecrypted({ kind: "aes", text: bytesToUtf8(plaintextResult) })
         await markKeyUsed(decryptAesKey.id, Date.now()).catch(() => undefined)
       } else if (parsedDecrypt.kind === "pq-message" && decryptIdentity) {
+        // The cached list only gates the button. Re-resolve from storage at action
+        // time so a generation discarded elsewhere cannot be decrypted from a stale
+        // in-memory object. A delete landing between this lookup and the worker call
+        // is a residual race, recorded in docs/security/threat-model.md T14.
+        const recipient = await findIdentityByKemKeyId(
+          parsedDecrypt.envelope.recipientKemKeyId,
+        )
+        if (recipient === undefined || !isActiveIdentity(recipient)) {
+          throw new AppError("KEY_NOT_FOUND")
+        }
         const pqResult = await decryptPqMessage({
           client: getPqClient(),
           envelope: parsedDecrypt.envelope,
-          recipient: decryptIdentity,
+          recipient,
           vaultKey: await getOrCreateVaultKey(),
           resolveSigningKey: async (keyId) => {
             const record = bundles.find(
@@ -449,7 +560,7 @@ export function EncryptPage() {
             ),
           })
         }
-        await markIdentityUsed(decryptIdentity.id, Date.now()).catch(() => undefined)
+        await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
       }
     } catch (caught) {
       setDecrypted(null)
@@ -469,7 +580,7 @@ export function EncryptPage() {
     }
   }
 
-  const exportSingle = async (format: "png" | "svg") => {
+  const exportSingle = async () => {
     if (result?.kind !== "aes") return
     const parsedName = qrNameSchema.safeParse(outputName)
     if (!parsedName.success) {
@@ -484,11 +595,11 @@ export function EncryptPage() {
     try {
       const id = generateArtifactId()
       const ecLevel = ecLevelFor("message", preferences)
-      const blob =
-        format === "png"
-          ? await qrPngBlob(result.payload, { ecLevel, size: env.qrRenderSize })
-          : await qrSvgBlob(result.payload, { ecLevel })
-      triggerDownload(blob, buildExportFileName(parsedName.data, id, format))
+      const blob = await qrPngBlob(result.payload, {
+        ecLevel,
+        size: env.qrRenderSize,
+      })
+      triggerDownload(blob, buildExportFileName(parsedName.data, id, "png"))
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").code)
     }
@@ -520,9 +631,7 @@ export function EncryptPage() {
       {mode === "encrypt" ? (
         <>
           <div className="space-y-2">
-            <Label htmlFor="algorithm-select">
-              {t("encrypt.algorithmLabel")}
-            </Label>
+            <Label htmlFor="algorithm-select">{t("encrypt.algorithmLabel")}</Label>
             <Select
               value={algorithm}
               onValueChange={(value) => {
@@ -574,6 +683,11 @@ export function EncryptPage() {
                   }`,
                 }))}
               />
+              {!pqLoading && recipients.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {t("encrypt.recipient.needsConfirmation")}
+                </p>
+              )}
               {signed && (
                 <RecordSelect
                   id="sender-select"
@@ -619,7 +733,7 @@ export function EncryptPage() {
             >
               <span>{t("encrypt.charCount", { count: plaintext.length })}</span>
               <span>
-                {plaintextBytes.byteLength} / {env.maxPlaintextBytes} bytes
+                {plaintextBytes.byteLength} / {plaintextLimitBytes} bytes
               </span>
             </p>
             {overPlaintextLimit && (
@@ -628,7 +742,7 @@ export function EncryptPage() {
                 <AlertTitle>{t("encrypt.overLimit.title")}</AlertTitle>
                 <AlertDescription>
                   {t("encrypt.overLimit.body", {
-                    max: env.maxPlaintextBytes,
+                    max: plaintextLimitBytes,
                   })}
                 </AlertDescription>
               </Alert>
@@ -646,11 +760,7 @@ export function EncryptPage() {
             ) : (
               <Lock aria-hidden="true" />
             )}
-            {t(
-              busy
-                ? "encrypt.encryptButton.busy"
-                : "encrypt.encryptButton.idle",
-            )}
+            {t(busy ? "encrypt.encryptButton.busy" : "encrypt.encryptButton.idle")}
           </Button>
         </>
       ) : (
@@ -725,9 +835,7 @@ export function EncryptPage() {
               {decryptInputInvalid && (
                 <Alert variant="destructive" role="alert">
                   <AlertTitle>{t("encrypt.decrypt.invalidTitle")}</AlertTitle>
-                  <AlertDescription>
-                    {t("encrypt.decrypt.invalidBody")}
-                  </AlertDescription>
+                  <AlertDescription>{t("encrypt.decrypt.invalidBody")}</AlertDescription>
                 </Alert>
               )}
               {parsedDecrypt && (
@@ -754,9 +862,7 @@ export function EncryptPage() {
               {parsedPqUnsupported && (
                 <Alert variant="destructive" role="alert">
                   <AlertTitle>{t("keyDetail.badge.legacyProfile")}</AlertTitle>
-                  <AlertDescription>
-                    {t("encrypt.pqUnsupported.body")}
-                  </AlertDescription>
+                  <AlertDescription>{t("encrypt.pqUnsupported.body")}</AlertDescription>
                 </Alert>
               )}
               {parsedDecrypt && !parsedPqUnsupported && !canDecrypt && (
@@ -772,11 +878,7 @@ export function EncryptPage() {
                 onClick={() => void handleDecrypt()}
               >
                 {busy && <LoaderCircle aria-hidden="true" className="animate-spin" />}
-                {t(
-                  busy
-                    ? "encrypt.decryptButton.busy"
-                    : "encrypt.decryptButton.idle",
-                )}
+                {t(busy ? "encrypt.decryptButton.busy" : "encrypt.decryptButton.idle")}
               </Button>
             </CardContent>
           </Card>
@@ -806,14 +908,10 @@ export function EncryptPage() {
               </CardHeader>
               <CardContent className="space-y-3 p-4 pt-0">
                 {decrypted.kind === "unsigned" && (
-                  <p className="text-sm font-medium">
-                    {t("encrypt.result.unsigned")}
-                  </p>
+                  <p className="text-sm font-medium">{t("encrypt.result.unsigned")}</p>
                 )}
                 {decrypted.kind === "aes" && (
-                  <p className="text-sm font-medium">
-                    {t("encrypt.result.aesUnsigned")}
-                  </p>
+                  <p className="text-sm font-medium">{t("encrypt.result.aesUnsigned")}</p>
                 )}
                 {decrypted.kind === "signed-valid" && (
                   <div className="space-y-1 text-sm">
@@ -854,7 +952,7 @@ export function EncryptPage() {
         </>
       )}
 
-      {(keysError || pqError || preferencesError || error) && (
+      {(keysError || pqError || preferencesError || error || compatibilityError) && (
         <Alert variant="destructive" role="alert">
           <AlertCircle aria-hidden="true" className="size-4" />
           <AlertTitle>{t("common.operationFailed")}</AlertTitle>
@@ -866,10 +964,7 @@ export function EncryptPage() {
       </p>
 
       {result && mode === "encrypt" && (
-        <section
-          aria-label={t("encrypt.result.sectionAria")}
-          className="space-y-5"
-        >
+        <section aria-label={t("encrypt.result.sectionAria")} className="space-y-5">
           <Card>
             <CardHeader className="p-4 pb-3">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -901,18 +996,42 @@ export function EncryptPage() {
               title={t("encrypt.result.qrTitle")}
             />
           ) : (
-            <AnimatedQrFrames
-              frames={result.frames}
-              frameIntervalMs={preferences.frameIntervalMs}
-              outputName={outputName || "pq-message"}
-              title={t("encrypt.result.pqTitle")}
-            />
+            <>
+              {frameSplit.error && (
+                <Alert variant="destructive" role="alert">
+                  <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>
+                  <AlertDescription>{localizedFrameError}</AlertDescription>
+                </Alert>
+              )}
+              {frameSplit.frames.length === 0 && frameSplit.splitting && (
+                <p aria-live="polite" className="text-sm text-muted-foreground">
+                  {t("qrDisplay.generating")}
+                </p>
+              )}
+              {(frameSplit.frames.length > 0 || frameSplit.splitting) && (
+                <AnimatedQrFrames
+                  key={result.generation}
+                  frames={frameSplit.frames}
+                  frameIntervalMs={frameProfile.frameIntervalMs}
+                  densityRaised={frameProfile.densityRaised}
+                  compatibilityControl={{
+                    enabled: compatibilityEnabled,
+                    disabled:
+                      preferencesLoading ||
+                      preferencesError !== null ||
+                      compatibilityUpdating,
+                    onEnabledChange: changeCompatibilityMode,
+                  }}
+                  outputName={outputName || "pq-message"}
+                  title={t("encrypt.result.pqTitle")}
+                  splitting={frameSplit.splitting}
+                />
+              )}
+            </>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="output-name">
-              {t("encrypt.result.outputNameLabel")}
-            </Label>
+            <Label htmlFor="output-name">{t("encrypt.result.outputNameLabel")}</Label>
             <Input
               id="output-name"
               value={outputName}
@@ -923,26 +1042,15 @@ export function EncryptPage() {
           </div>
 
           {result.kind === "aes" && (
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 cursor-pointer"
-                onClick={() => void exportSingle("png")}
-              >
-                <Download aria-hidden="true" />
-                PNG
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 cursor-pointer"
-                onClick={() => void exportSingle("svg")}
-              >
-                <FileCode2 aria-hidden="true" />
-                SVG
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full cursor-pointer"
+              onClick={() => void exportSingle()}
+            >
+              <Download aria-hidden="true" />
+              {t("common.download")}
+            </Button>
           )}
 
           <Card aria-label={t("encrypt.result.detailAria")}>
@@ -982,7 +1090,7 @@ export function EncryptPage() {
               <DetailRow
                 label={t("encrypt.detail.frameCount")}
                 value={t("encrypt.detail.frameCountValue", {
-                  count: result.kind === "pq" ? result.frames.length : 1,
+                  count: result.kind === "pq" ? frameSplit.frames.length : 1,
                 })}
                 mono
               />
@@ -993,9 +1101,7 @@ export function EncryptPage() {
               <DetailRow
                 label={t("encrypt.detail.signature")}
                 value={
-                  result.kind === "pq" && result.sender
-                    ? t("common.yes")
-                    : t("common.na")
+                  result.kind === "pq" && result.sender ? t("common.yes") : t("common.na")
                 }
               />
               <DetailRow
@@ -1015,7 +1121,6 @@ export function EncryptPage() {
           </Card>
         </section>
       )}
-
     </section>
   )
 }

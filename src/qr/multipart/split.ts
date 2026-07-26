@@ -1,4 +1,4 @@
-// Raw artifact bytes → OCF2 frame sequence; see docs/qr-protocol-v2.md §6.
+// Raw artifact bytes → OCF2 frame sequence; see docs/spec/qr-protocol-v2.md §6.
 // Split raw artifact-CBOR bytes directly into chunks; re-encoding an inner string as
 // base64url is prohibited. transferId is 16B from the CSPRNG. After generation, verify
 // with payloadFits(…, "Q") that every frame string fits EC-Q; otherwise fail with
@@ -6,11 +6,11 @@
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { randomBytes } from "@/crypto/random"
-import { sha256 } from "@/lib/bytes"
 import {
   FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
   FRAME_CHUNK_MAX_BYTES,
-  FRAME_CHUNK_MIN_BYTES,
+  MAX_ARTIFACT_BYTES_ABSOLUTE,
 } from "@/lib/limits"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import { payloadFits } from "@/qr/encode"
@@ -24,8 +24,8 @@ interface SplitIntoFramesBaseArgs {
 export type SplitIntoFramesArgs = SplitIntoFramesBaseArgs &
   (
     | {
-        // FRAME_CHUNK_MIN_BYTES..FRAME_BYTES_MAX (from Preferences or the fixed
-        // single-key QR chunk size).
+        // FRAME_BYTES_MIN..FRAME_BYTES_MAX (from Preferences or an automatic
+        // per-artifact clamp).
         frameBytes: number
         frameCount?: never
       }
@@ -45,6 +45,9 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
   if (!(artifactBytes instanceof Uint8Array) || artifactBytes.byteLength === 0) {
     throw new AppError("INVALID_QR_PAYLOAD")
   }
+  if (artifactBytes.byteLength > MAX_ARTIFACT_BYTES_ABSOLUTE) {
+    throw new AppError("QR_TOO_LARGE")
+  }
 
   const frameBytes = "frameBytes" in args ? args.frameBytes : undefined
   const requestedFrameCount = "frameCount" in args ? args.frameCount : undefined
@@ -58,7 +61,7 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
   if (frameBytes !== undefined) {
     if (
       !Number.isSafeInteger(frameBytes) ||
-      frameBytes < FRAME_CHUNK_MIN_BYTES ||
+      frameBytes < FRAME_BYTES_MIN ||
       frameBytes > FRAME_BYTES_MAX
     ) {
       throw new AppError("QR_TOO_LARGE")
@@ -83,11 +86,10 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
   }
   if (frameCount > env.qrMaxFrames) throw new AppError("QR_TOO_LARGE")
 
-  // Pin an owned copy first so the hash and chunks cannot observe different snapshots
-  // if the caller mutates the input view while the digest is pending.
+  // Pin an owned copy first so every chunk is sliced from the same snapshot even
+  // if the caller mutates the input view while frames are being built.
   const stableArtifactBytes = Uint8Array.from(artifactBytes)
   const transferId = randomBytes(16)
-  const payloadSha256 = await sha256(stableArtifactBytes)
   const frames: QrFrameV2[] = []
   let chunkStart = 0
 
@@ -103,7 +105,6 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
       frameIndex,
       frameCount,
       totalByteLength: stableArtifactBytes.byteLength,
-      payloadSha256: Uint8Array.from(payloadSha256),
       chunk: stableArtifactBytes.slice(chunkStart, chunkEnd),
     }
     const payload = encodeFrameToPayload(frame)

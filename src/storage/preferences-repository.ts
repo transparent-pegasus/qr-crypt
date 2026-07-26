@@ -1,16 +1,26 @@
 // Preferences persistence.
 // The environment supplies defaults for defaultAlgorithm, qrErrorCorrection,
 // defaultPqProfile, and requireSignature. VITE_REQUIRE_SIGNATURE=true is a floor
-// the user cannot lower. Do not persist delay as a preference; use the fixed
-// env.autoClearSeconds value. As in v1, theme belongs to localStorage("oc-theme")
-// and is outside this store.
-import type { PqProfileId, Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
+// the user cannot lower. Do not persist delays as preferences; use the
+// WebAssembly-runtime-selected env.autoClearSeconds or
+// env.autoClearFallbackSeconds value. As in v1, theme belongs to
+// localStorage("oc-theme") and is outside this store.
+import {
+  COMPATIBLE_GENERATED_DISPLAY_PAIR,
+  DEFAULT_GENERATED_DISPLAY_PAIR,
+  PQ_PREFERENCE_DEFAULTS,
+  type PqProfileId,
+  type Preferences,
+  type QrEcLevel,
+  type UiAlgorithm,
+} from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
-  FRAME_BYTES_MAX,
-  FRAME_BYTES_MIN,
+  isBootReadableFrameBytes,
   isBootReadableFrameIntervalMs,
+  isFrameBytes,
   isFrameIntervalMs,
+  normalizeLegacyFrameBytes,
   normalizeLegacyFrameIntervalMs,
   RESET_CHURN_MB_MAX,
   RESET_CHURN_MB_MIN,
@@ -18,7 +28,6 @@ import {
   TRANSFER_TIMEOUT_MINUTES_MIN,
 } from "@/lib/limits"
 import { env } from "@/schemas/env-schema"
-import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
 import { getDb, STORE_PREFERENCES, type KeyValueRow } from "@/storage/database"
 
 const PREFERENCES_KEY = "preferences"
@@ -56,6 +65,18 @@ function isIntInRange(value: unknown, min: number, max: number): value is number
   )
 }
 
+function isGeneratedDisplayPreferencePair(
+  frameBytes: unknown,
+  frameIntervalMs: unknown,
+): boolean {
+  return (
+    (frameBytes === DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes &&
+      frameIntervalMs === DEFAULT_GENERATED_DISPLAY_PAIR.frameIntervalMs) ||
+    (frameBytes === COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes &&
+      frameIntervalMs === COMPATIBLE_GENERATED_DISPLAY_PAIR.frameIntervalMs)
+  )
+}
+
 function normalizeLegacyStoredPreferences(
   value: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -73,6 +94,31 @@ function normalizeLegacyStoredPreferences(
   }
   if (normalized.defaultPqProfile === "balanced") {
     normalized.defaultPqProfile = "maximum"
+  }
+  const frameBytesBootReadable = isBootReadableFrameBytes(normalized.frameBytes)
+  const frameIntervalMsBootReadable =
+    normalized.frameIntervalMs === undefined ||
+    isBootReadableFrameIntervalMs(normalized.frameIntervalMs)
+  // Check the raw stored combination before per-field legacy normalization. A
+  // historical/off-grid combination must not round into the compatible pair.
+  if (
+    frameBytesBootReadable &&
+    frameIntervalMsBootReadable &&
+    !isGeneratedDisplayPreferencePair(
+      normalized.frameBytes,
+      normalized.frameIntervalMs,
+    )
+  ) {
+    normalized.frameBytes = DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes
+    normalized.frameIntervalMs =
+      DEFAULT_GENERATED_DISPLAY_PAIR.frameIntervalMs
+  }
+  if (
+    typeof normalized.frameBytes === "number" &&
+    isBootReadableFrameBytes(normalized.frameBytes) &&
+    !isFrameBytes(normalized.frameBytes)
+  ) {
+    normalized.frameBytes = normalizeLegacyFrameBytes(normalized.frameBytes)
   }
   if (
     isBootReadableFrameIntervalMs(normalized.frameIntervalMs) &&
@@ -98,12 +144,21 @@ function validatePreferencesPatch(patch: unknown): asserts patch is Partial<Pref
     throw new AppError("STORAGE_FAILED")
   }
   const candidate = patch as Record<string, unknown>
+  const hasFrameBytes = "frameBytes" in candidate
+  const hasFrameIntervalMs = "frameIntervalMs" in candidate
   if (
     ("defaultAlgorithm" in candidate &&
       !UI_ALGORITHMS.includes(candidate.defaultAlgorithm as UiAlgorithm)) ||
     ("defaultPqProfile" in candidate &&
       !PQ_PROFILES_ALLOWED.includes(candidate.defaultPqProfile as PqProfileId)) ||
-    ("frameIntervalMs" in candidate && !isFrameIntervalMs(candidate.frameIntervalMs))
+    hasFrameBytes !== hasFrameIntervalMs ||
+    (hasFrameBytes &&
+      (!isFrameBytes(candidate.frameBytes) ||
+        !isFrameIntervalMs(candidate.frameIntervalMs) ||
+        !isGeneratedDisplayPreferencePair(
+          candidate.frameBytes,
+          candidate.frameIntervalMs,
+        )))
   ) {
     throw new AppError("STORAGE_FAILED")
   }
@@ -128,7 +183,7 @@ function validatePreferences(value: unknown): Preferences {
     !EC_LEVELS.includes(candidate.qrErrorCorrection as QrEcLevel) ||
     typeof candidate.autoClearPlaintextAfterEncrypt !== "boolean" ||
     typeof candidate.backgroundClearEnabled !== "boolean" ||
-    !isIntInRange(candidate.frameBytes, FRAME_BYTES_MIN, FRAME_BYTES_MAX) ||
+    !isFrameBytes(candidate.frameBytes) ||
     !isFrameIntervalMs(candidate.frameIntervalMs) ||
     !isIntInRange(
       candidate.transferTimeoutMinutes,

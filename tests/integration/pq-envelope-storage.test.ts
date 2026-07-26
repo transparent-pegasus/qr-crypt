@@ -29,6 +29,7 @@ import {
   saveBundle,
 } from "@/storage/pq-bundle-repository"
 import {
+  deleteSupersededIdentities,
   findIdentityByKemKeyId,
   findIdentityBySigningKeyId,
   getIdentity,
@@ -131,6 +132,7 @@ describe("PQ envelope and storage integration", () => {
         trustConfirmedAt: NOW + 3,
       }),
     ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+    await confirmBundleFingerprint(recipientRecord.recordId, NOW + 3)
     await confirmBundleFingerprint(senderRecord.recordId, NOW + 3)
     expect(await getBundle(senderRecord.recordId)).toMatchObject({
       trust: "fingerprint-confirmed",
@@ -246,7 +248,7 @@ describe("PQ envelope and storage integration", () => {
     await expect(
       encryptPq({
         client,
-        recipient: recipientRecord,
+        recipient: selectedRecipient!,
         plaintext,
         sign: { identity: revokedSender!, vaultKey },
         now: NOW + 7,
@@ -268,4 +270,131 @@ describe("PQ envelope and storage integration", () => {
       }),
     ).rejects.toMatchObject({ code: "KEY_NOT_FOUND" })
   }, 30_000)
+})
+
+describe("deleteSupersededIdentities", () => {
+  it("closes the storage-resolved decrypt route but not an identity already held in memory", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const first = await createIdentity({
+      client,
+      vaultKey,
+      name: "first generation",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(first)
+    const recipient: PqPublicBundleRecord = {
+      ...publicRecord(first, NOW + 1),
+      trust: "fingerprint-confirmed",
+      trustConfirmedAt: NOW + 1,
+    }
+    const plaintext = utf8ToBytes("discard boundary")
+    const envelope = await encryptPq({
+      client,
+      recipient,
+      plaintext,
+      now: NOW + 2,
+    })
+    const rotation = await rotateIdentity({
+      client,
+      vaultKey,
+      current: first,
+      now: NOW + 3,
+    })
+    await saveRotation(rotation)
+
+    const oldRecipient = await findIdentityByKemKeyId(first.kem.keyId)
+    expect(oldRecipient).toMatchObject({ id: first.id, status: "rotated" })
+    const before = await decryptPqMessage({
+      client,
+      envelope,
+      recipient: oldRecipient!,
+      vaultKey,
+      resolveSigningKey: async () => undefined,
+    })
+    expect(before).toMatchObject({ kind: "unsigned", plaintext })
+
+    await deleteSupersededIdentities([first.id])
+    expect(await findIdentityByKemKeyId(first.kem.keyId)).toBeUndefined()
+
+    // Documents the boundary: discarding closes the storage-resolved route, not a
+    // PostQuantumIdentity object another context already holds in memory.
+    const afterWithCachedObject = await decryptPqMessage({
+      client,
+      envelope,
+      recipient: oldRecipient!,
+      vaultKey,
+      resolveSigningKey: async () => undefined,
+    })
+    expect(afterWithCachedObject).toMatchObject({
+      kind: "unsigned",
+      plaintext,
+    })
+  }, 30_000)
+
+  it("deletes rotated and revoked generations after deduplicating the request", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const first = await createIdentity({
+      client,
+      vaultKey,
+      name: "first generation",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(first)
+    const rotation = await rotateIdentity({
+      client,
+      vaultKey,
+      current: first,
+      now: NOW + 1,
+    })
+    await saveRotation(rotation)
+    await revokeIdentity(rotation.next.id, NOW + 2)
+
+    await deleteSupersededIdentities([
+      rotation.previous.id,
+      rotation.next.id,
+      rotation.previous.id,
+    ])
+
+    expect(await getIdentity(rotation.previous.id)).toBeUndefined()
+    expect(await getIdentity(rotation.next.id)).toBeUndefined()
+  }, 30_000)
+
+  it("refuses the whole request when any id is still active and deletes nothing", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const first = await createIdentity({
+      client,
+      vaultKey,
+      name: "first generation",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(first)
+    const rotation = await rotateIdentity({
+      client,
+      vaultKey,
+      current: first,
+      now: NOW + 1,
+    })
+    await saveRotation(rotation)
+
+    await expect(
+      deleteSupersededIdentities([rotation.previous.id, rotation.next.id]),
+    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+    expect(await getIdentity(rotation.previous.id)).toBeDefined()
+    expect(await getIdentity(rotation.next.id)).toBeDefined()
+  }, 30_000)
+
+  it("ignores ids that are not present", async () => {
+    await expect(
+      deleteSupersededIdentities(["A".repeat(22)]),
+    ).resolves.toBeUndefined()
+  })
 })

@@ -1,4 +1,4 @@
-// Best-effort local-data reset; see docs/boot-and-reset-v2.md §4 and §5.
+// Best-effort local-data reset; see docs/spec/boot-and-reset-v2.md §4 and §5.
 // Do not use "secure" or "wipe" in its name. Physical erasure cannot be assured because
 // LevelDB is append-oriented and SSDs use wear leveling; complete device formatting is
 // the only reliable erasure path.
@@ -8,7 +8,7 @@
 //   2. Cancel/terminate Workers and drop application-owned secret buffers and the
 //      Vault-key cache.
 //   3. Hide and reset transient state/SensitiveSession.
-//   4. Use navigator.locks (with a fallback) plus BroadcastChannel("qrypt-wipe")
+//   4. Use navigator.locks (with a fallback) plus BroadcastChannel("qr-crypt-wipe")
 //      to request that all tabs stop and close.
 //   5. Delete EncryptedSecret values under the Vault first, then delete the Vault-key
 //      record. This is cryptographic shredding; do not claim to overwrite bytes in a
@@ -33,7 +33,7 @@ const VAULT_KEY_METADATA_KEY = "vault-key"
 const STORE_APP_METADATA = "appMetadata"
 const VAULT_ENCRYPTED_SECRET_STORES = ["pqIdentities"] as const
 
-export const RESET_CHURN_DATABASE_NAME = "qrypt-reset-churn"
+export const RESET_CHURN_DATABASE_NAME = "qr-crypt-reset-churn"
 export const RESET_CHURN_CHUNK_BYTES = 1024 * 1024
 const RANDOM_FILL_CHUNK_BYTES = 65_536
 

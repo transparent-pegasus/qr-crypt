@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import {
   ArrowLeft,
   ChevronDown,
   Clipboard,
   Download,
-  FileCode2,
+  Expand,
   QrCode,
   RefreshCw,
   Trash2,
+  TriangleAlert,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useSensitiveSession } from "@/app/providers"
@@ -55,34 +57,33 @@ import {
   formatFingerprint,
   formatSuggestedDate,
 } from "@/features/presentation"
+import { useFrameSplit } from "@/hooks/use-frame-split"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePreferences } from "@/hooks/use-preferences"
-import {
-  useI18n,
-  useLocalizedMessage,
-  type LocalizedMessage,
-} from "@/i18n"
-import { PQ_KEY_QR_FRAME_BYTES, pqIdentityQrFrameCount } from "@/lib/limits"
+import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
+import { FRAME_BYTES_MAX, minimumFrameBytesForArtifact } from "@/lib/limits"
 import { ecLevelFor } from "@/qr/encode"
 import {
   buildExportFileName,
   copyTextToClipboard,
   qrPngBlob,
-  qrSvgBlob,
   triggerDownload,
 } from "@/qr/export-image"
-import { splitIntoFrames } from "@/qr/multipart/split"
 import { encodeEnvelopeToPayload } from "@/qr/payload"
-import type {
-  PostQuantumIdentity,
-  QrFrameV2,
-  StoredKeyRecord,
-  StorablePqArtifactKind,
+import {
+  COMPATIBLE_GENERATED_DISPLAY_PAIR,
+  DEFAULT_GENERATED_DISPLAY_PAIR,
+  type GeneratedDisplayPair,
+  type PostQuantumIdentity,
+  type Preferences,
+  type StoredKeyRecord,
+  type StorablePqArtifactKind,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { deleteKeyRecord } from "@/storage/key-repository"
 import {
   deleteIdentity,
+  deleteSupersededIdentities,
   revokeIdentity,
   saveRotation,
 } from "@/storage/pq-identity-repository"
@@ -95,7 +96,9 @@ interface IdentityQrView {
   qrKind: "bundle" | "kem" | "signing"
   targetName: string
   generatedAt: number
-  frames: QrFrameV2[]
+  artifactType: StorablePqArtifactKind
+  artifactBytes: Uint8Array
+  generation: number
 }
 
 interface SymmetricQrView {
@@ -105,6 +108,16 @@ interface SymmetricQrView {
 }
 
 type DetailView = { kind: "detail" } | IdentityQrView | SymmetricQrView
+
+function selectedGeneratedDisplayPair(
+  preferences: Pick<Preferences, "frameBytes" | "frameIntervalMs">,
+): GeneratedDisplayPair {
+  return preferences.frameBytes === COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes &&
+    preferences.frameIntervalMs ===
+      COMPATIBLE_GENERATED_DISPLAY_PAIR.frameIntervalMs
+    ? COMPATIBLE_GENERATED_DISPLAY_PAIR
+    : DEFAULT_GENERATED_DISPLAY_PAIR
+}
 
 interface PendingDelete {
   kind: "identity" | "symmetric"
@@ -143,15 +156,31 @@ export function KeyDetailDialog({
   onOpenChange,
   onChanged,
 }: KeyDetailDialogProps) {
-  const { t } = useI18n()
-  const { preferences } = usePreferences()
+  const { language, t } = useI18n()
+  const {
+    preferences,
+    loading: preferencesLoading,
+    error: preferencesError,
+    updatePreferences,
+  } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const { setSensitiveSession } = useSensitiveSession()
   const [view, setView] = useState<DetailView>({ kind: "detail" })
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
+  const [pendingDestroy, setPendingDestroy] = useState<
+    PostQuantumIdentity[] | null
+  >(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
-  const localizedError = useLocalizedMessage(error)
+  const [compatibilityUpdating, setCompatibilityUpdating] = useState(false)
+  const [compatibilityError, setCompatibilityError] =
+    useState<LocalizedMessage | null>(null)
+  const [fullscreenOpen, setFullscreenOpen] = useState(false)
+  const [qrReady, setQrReady] = useState(false)
+  const [qrHost, setQrHost] = useState<HTMLDivElement | null>(null)
+  const qrGenerationRef = useRef(0)
+  const presentedError = error ?? compatibilityError ?? preferencesError
+  const localizedError = useLocalizedMessage(presentedError)
   const record =
     selection?.kind === "identity"
       ? identity
@@ -159,6 +188,33 @@ export function KeyDetailDialog({
         ? symmetric
         : undefined
   const open = selection !== null && record !== undefined
+  const sourceRef = useRef({
+    selection: selection === null ? "" : `${selection.kind}:${selection.id}`,
+    record,
+  })
+  const setQrHostRef = useCallback((node: HTMLDivElement | null) => {
+    setQrHost(node)
+  }, [])
+  const changeCompatibilityMode = useCallback(
+    async (enabled: boolean) => {
+      setCompatibilityUpdating(true)
+      setCompatibilityError(null)
+      const pair = enabled
+        ? COMPATIBLE_GENERATED_DISPLAY_PAIR
+        : DEFAULT_GENERATED_DISPLAY_PAIR
+      try {
+        await updatePreferences({
+          frameBytes: pair.frameBytes,
+          frameIntervalMs: pair.frameIntervalMs,
+        })
+      } catch (caught) {
+        setCompatibilityError(toAppError(caught, "STORAGE_FAILED").code)
+      } finally {
+        setCompatibilityUpdating(false)
+      }
+    },
+    [updatePreferences],
+  )
 
   useEffect(() => {
     setSensitiveSession({
@@ -168,14 +224,43 @@ export function KeyDetailDialog({
   }, [busy, open, setSensitiveSession, view.kind])
   useEffect(
     () => () => {
+      qrGenerationRef.current += 1
       setSensitiveSession({ cryptoBusy: false, secretVisible: false })
     },
     [setSensitiveSession],
   )
-
-  const close = () => {
+  useEffect(() => {
+    const source = selection === null ? "" : `${selection.kind}:${selection.id}`
+    const changed =
+      sourceRef.current.selection !== source || sourceRef.current.record !== record
+    sourceRef.current = { selection: source, record }
+    if (!changed) return
+    qrGenerationRef.current += 1
+    setFullscreenOpen(false)
+    setQrReady(false)
     setView({ kind: "detail" })
     setPendingDelete(null)
+    setPendingDestroy(null)
+    setError(null)
+    setSensitiveSession({ cryptoBusy: false, secretVisible: false })
+  }, [record, selection, setSensitiveSession])
+
+  const leaveQrView = () => {
+    qrGenerationRef.current += 1
+    setFullscreenOpen(false)
+    setQrReady(false)
+    setView({ kind: "detail" })
+    setError(null)
+    setSensitiveSession({ secretVisible: false })
+  }
+
+  const close = () => {
+    qrGenerationRef.current += 1
+    setFullscreenOpen(false)
+    setQrReady(false)
+    setView({ kind: "detail" })
+    setPendingDelete(null)
+    setPendingDestroy(null)
     setBusy(false)
     setError(null)
     setSensitiveSession({ cryptoBusy: false, secretVisible: false })
@@ -186,6 +271,7 @@ export function KeyDetailDialog({
     target: PostQuantumIdentity,
     kind: "bundle" | "kem" | "signing",
   ) => {
+    setQrReady(false)
     setBusy(true)
     setError(null)
     try {
@@ -220,23 +306,19 @@ export function KeyDetailDialog({
           createdAt: target.createdAt,
         })
       }
+      const minimumFrameBytes = minimumFrameBytesForArtifact(artifactBytes.byteLength)
+      if (minimumFrameBytes > FRAME_BYTES_MAX) {
+        throw new RangeError("artifact exceeds the maximum QR density")
+      }
+      qrGenerationRef.current += 1
       setView({
         kind: "identity-qr",
         qrKind: kind,
         targetName: target.name,
         generatedAt: Date.now(),
-        frames:
-          artifactType === "pq-public-identity"
-            ? await splitIntoFrames({
-                artifactType,
-                artifactBytes,
-                frameCount: pqIdentityQrFrameCount(artifactBytes.byteLength),
-              })
-            : await splitIntoFrames({
-                artifactType,
-                artifactBytes,
-                frameBytes: PQ_KEY_QR_FRAME_BYTES,
-              }),
+        artifactType,
+        artifactBytes,
+        generation: qrGenerationRef.current,
       })
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").code)
@@ -246,10 +328,14 @@ export function KeyDetailDialog({
   }
 
   const showSymmetricQr = async (target: StoredKeyRecord) => {
+    const generation = qrGenerationRef.current + 1
+    qrGenerationRef.current = generation
+    setQrReady(false)
     setBusy(true)
     setError(null)
     try {
       const envelope = await buildSymmetricKeyEnvelope(target)
+      if (qrGenerationRef.current !== generation) return
       setView({
         kind: "symmetric-qr",
         payload: encodeEnvelopeToPayload(envelope),
@@ -311,6 +397,7 @@ export function KeyDetailDialog({
         toast.success(t("keyDetail.toast.identityDeleted"))
       }
       setPendingDelete(null)
+      setPendingDestroy(null)
       await onChanged(selection)
     } catch (caught) {
       setError(toAppError(caught, "STORAGE_FAILED").code)
@@ -319,7 +406,25 @@ export function KeyDetailDialog({
     }
   }
 
-  const exportSymmetricQr = async (format: "png" | "svg") => {
+  const destroySuperseded = async () => {
+    if (!pendingDestroy || !selection) return
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteSupersededIdentities(
+        pendingDestroy.map((generation) => generation.id),
+      )
+      setPendingDestroy(null)
+      await onChanged(selection)
+      toast.success(t("keyDetail.toast.supersededDestroyed"))
+    } catch (caught) {
+      setError(toAppError(caught, "STORAGE_FAILED").code)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const exportSymmetricQr = async () => {
     if (!symmetric || view.kind !== "symmetric-qr" || !view.acknowledged) {
       return
     }
@@ -327,11 +432,11 @@ export function KeyDetailDialog({
     setError(null)
     try {
       const ecLevel = ecLevelFor("stored-key", preferences)
-      const blob =
-        format === "png"
-          ? await qrPngBlob(view.payload, { ecLevel, size: env.qrRenderSize })
-          : await qrSvgBlob(view.payload, { ecLevel })
-      triggerDownload(blob, buildExportFileName(symmetric.name, symmetric.id, format))
+      const blob = await qrPngBlob(view.payload, {
+        ecLevel,
+        size: env.qrRenderSize,
+      })
+      triggerDownload(blob, buildExportFileName(symmetric.name, symmetric.id, "png"))
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
@@ -353,169 +458,217 @@ export function KeyDetailDialog({
     view.kind === "identity-qr"
       ? t(`keyDetail.qr.${view.qrKind}Title`, { name: view.targetName })
       : null
+  const symmetricFullscreenControls = (
+    <div
+      data-fullscreen-controls
+      className="mx-auto flex w-full max-w-2xl flex-col items-stretch gap-3"
+    >
+      <div className="flex items-start gap-2 rounded-md border border-destructive/60 p-3 text-sm text-destructive">
+        <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+        <span className="font-medium">{t("keyDetail.symmetricQr.secretTitle")}</span>
+      </div>
+    </div>
+  )
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && close()}>
+      <Dialog
+        open={open}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !fullscreenOpen) close()
+        }}
+      >
         <NoAutofocusDialogContent
-          className="max-h-[95dvh] max-w-lg overflow-y-auto"
+          className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden"
           aria-busy={busy}
+          aria-hidden={fullscreenOpen || undefined}
+          inert={fullscreenOpen || undefined}
         >
-          <DialogHeader>
-            <DialogTitle>
-              {view.kind === "identity-qr"
-                ? identityQrTitle
-                : view.kind === "symmetric-qr"
-                  ? t("keyDetail.symmetricQr.title")
-                  : record?.name}
-            </DialogTitle>
-            {view.kind === "identity-qr" && (
-              <DialogDescription>
-                {t("keyDetail.identityQr.desc")}
-              </DialogDescription>
-            )}
-            {view.kind === "symmetric-qr" && (
-              <DialogDescription>
-                {t("keyDetail.symmetricQr.desc")}
-              </DialogDescription>
-            )}
-          </DialogHeader>
+          <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
+            <DialogHeader>
+              <DialogTitle>
+                {view.kind === "identity-qr"
+                  ? identityQrTitle
+                  : view.kind === "symmetric-qr"
+                    ? t("keyDetail.symmetricQr.title")
+                    : record?.name}
+              </DialogTitle>
+              {view.kind === "identity-qr" && (
+                <DialogDescription>{t("keyDetail.identityQr.desc")}</DialogDescription>
+              )}
+              {view.kind === "symmetric-qr" && (
+                <DialogDescription>{t("keyDetail.symmetricQr.desc")}</DialogDescription>
+              )}
+            </DialogHeader>
 
-          {error && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>{t("common.operationFailed")}</AlertTitle>
-              <AlertDescription>{localizedError}</AlertDescription>
-            </Alert>
-          )}
-
-          {view.kind !== "detail" && (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-fit"
-              disabled={busy}
-              onClick={() => {
-                setView({ kind: "detail" })
-                setError(null)
-              }}
-            >
-              <ArrowLeft aria-hidden="true" />
-              {t("keyDetail.backToDetail")}
-            </Button>
-          )}
-
-          {view.kind === "detail" && identity && (
-            <IdentityDetails
-              identity={identity}
-              previous={previous ?? []}
-              busy={busy}
-              onShow={showIdentityQr}
-              onRotate={rotate}
-              onRevoke={revoke}
-              onDelete={(target) =>
-                setPendingDelete({
-                  kind: "identity",
-                  id: target.id,
-                  name: target.name,
-                })
-              }
-            />
-          )}
-
-          {view.kind === "detail" && symmetric && (
-            <SymmetricDetails
-              record={symmetric}
-              busy={busy}
-              onShow={() => void showSymmetricQr(symmetric)}
-              onDelete={() =>
-                setPendingDelete({
-                  kind: "symmetric",
-                  id: symmetric.id,
-                  name: symmetric.name,
-                })
-              }
-            />
-          )}
-
-          {view.kind === "identity-qr" && (
-            <AnimatedQrFrames
-              frames={view.frames}
-              frameIntervalMs={preferences.frameIntervalMs}
-              outputName={t("keyDetail.qr.outputName", {
-                title: identityQrTitle ?? "",
-                date: formatSuggestedDate(view.generatedAt),
-              })}
-              title={identityQrTitle ?? ""}
-              fullscreenEnabled={false}
-            />
-          )}
-
-          {view.kind === "symmetric-qr" && symmetric && (
-            <div className="space-y-4">
-              <QrDisplay
-                payload={view.payload}
-                ecLevel={ecLevelFor("stored-key", preferences)}
-                size={env.qrRenderSize}
-                title={t("keyDetail.symmetricQr.title")}
-                fullscreenEnabled={false}
-              />
-              <Alert variant="destructive">
-                <AlertTitle>{t("keyDetail.symmetricQr.secretTitle")}</AlertTitle>
-                <AlertDescription>
-                  {t("keyDetail.symmetricQr.secretBody")}
-                </AlertDescription>
+            {presentedError && (
+              <Alert variant="destructive" role="alert">
+                <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+                <AlertDescription>{localizedError}</AlertDescription>
               </Alert>
-              <div className="flex items-start gap-2">
-                <Checkbox
-                  id="secret-ack"
-                  checked={view.acknowledged}
-                  onCheckedChange={(checked) =>
-                    setView({ ...view, acknowledged: checked === true })
-                  }
-                />
-                <Label htmlFor="secret-ack">{t("common.riskUnderstood")}</Label>
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            )}
+
+            {view.kind !== "detail" && (
+              <div className="flex items-center justify-between gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11"
-                  disabled={!view.acknowledged || busy}
-                  onClick={() => void exportSymmetricQr("png")}
+                  className="h-11 w-fit"
+                  disabled={busy}
+                  onClick={leaveQrView}
                 >
-                  <Download aria-hidden="true" />
-                  PNG
+                  <ArrowLeft aria-hidden="true" />
+                  {t("keyDetail.backToDetail")}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11"
-                  disabled={!view.acknowledged || busy}
-                  onClick={() => void exportSymmetricQr("svg")}
+                  size="icon"
+                  className="size-11 shrink-0"
+                  aria-label={t("qrDisplay.fullscreen.button")}
+                  disabled={!qrReady}
+                  onClick={() => setFullscreenOpen(true)}
                 >
-                  <FileCode2 aria-hidden="true" />
-                  SVG
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11"
-                  disabled={!view.acknowledged || busy}
-                  onClick={() => void copySymmetricQr()}
-                >
-                  <Clipboard aria-hidden="true" />
-                  {t("common.copy")}
+                  <Expand aria-hidden="true" />
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+
+            {view.kind === "detail" && identity && (
+              <IdentityDetails
+                identity={identity}
+                previous={previous ?? []}
+                busy={busy}
+                onShow={showIdentityQr}
+                onRotate={rotate}
+                onRevoke={revoke}
+                onDestroySuperseded={(generations) =>
+                  setPendingDestroy(generations)
+                }
+                onDelete={(target) =>
+                  setPendingDelete({
+                    kind: "identity",
+                    id: target.id,
+                    name: target.name,
+                  })
+                }
+              />
+            )}
+
+            {view.kind === "detail" && symmetric && (
+              <SymmetricDetails
+                record={symmetric}
+                busy={busy}
+                onShow={() => void showSymmetricQr(symmetric)}
+                onDelete={() =>
+                  setPendingDelete({
+                    kind: "symmetric",
+                    id: symmetric.id,
+                    name: symmetric.name,
+                  })
+                }
+              />
+            )}
+
+            {view.kind === "identity-qr" && <div ref={setQrHostRef} />}
+
+            {view.kind === "symmetric-qr" && symmetric && (
+              <div className="space-y-4">
+                <div ref={setQrHostRef} />
+                <Alert variant="destructive">
+                  <AlertTitle>{t("keyDetail.symmetricQr.secretTitle")}</AlertTitle>
+                  <AlertDescription>
+                    {t("keyDetail.symmetricQr.secretBody")}
+                  </AlertDescription>
+                </Alert>
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="secret-ack"
+                    checked={view.acknowledged}
+                    onCheckedChange={(checked) =>
+                      setView({ ...view, acknowledged: checked === true })
+                    }
+                  />
+                  <Label htmlFor="secret-ack">{t("common.riskUnderstood")}</Label>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11"
+                    disabled={!view.acknowledged || busy}
+                    onClick={() => void exportSymmetricQr()}
+                  >
+                    <Download aria-hidden="true" />
+                    {t("common.download")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11"
+                    disabled={!view.acknowledged || busy}
+                    onClick={() => void copySymmetricQr()}
+                  >
+                    <Clipboard aria-hidden="true" />
+                    {t("common.copy")}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </NoAutofocusDialogContent>
       </Dialog>
+
+      {qrHost &&
+        view.kind === "identity-qr" &&
+        createPortal(
+          <IdentityQrSession
+            key={view.generation}
+            view={view}
+            title={identityQrTitle ?? ""}
+            enabled={open}
+            fullscreenOpen={fullscreenOpen}
+            showFullscreenTrigger={false}
+            preferences={preferences}
+            compatibilityDisabled={
+              preferencesLoading ||
+              preferencesError !== null ||
+              compatibilityUpdating
+            }
+            onCompatibilityModeChange={changeCompatibilityMode}
+            onFirstRendered={() => setQrReady(true)}
+            onFullscreenOpenChange={setFullscreenOpen}
+          />,
+          qrHost,
+        )}
+
+      {qrHost &&
+        view.kind === "symmetric-qr" &&
+        createPortal(
+          <QrDisplay
+            payload={view.payload}
+            ecLevel={ecLevelFor("stored-key", preferences)}
+            size={env.qrRenderSize}
+            title={t("keyDetail.symmetricQr.title")}
+            fullscreenControls={{
+              kind: "arbitrary",
+              content: symmetricFullscreenControls,
+            }}
+            fullscreenOpen={fullscreenOpen}
+            showFullscreenTrigger={false}
+            onRendered={() => setQrReady(true)}
+            onFullscreenOpenChange={setFullscreenOpen}
+          />,
+          qrHost,
+        )}
 
       <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(nextOpen) => {
-          if (!nextOpen) setPendingDelete(null)
+          if (!nextOpen) {
+            setPendingDelete(null)
+            setPendingDestroy(null)
+          }
         }}
       >
         <AlertDialogContent>
@@ -543,6 +696,124 @@ export function KeyDetailDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog
+        open={pendingDestroy !== null}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setPendingDestroy(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("keyDetail.destroy.title", {
+                count: pendingDestroy?.length ?? 0,
+              })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("keyDetail.destroy.body", {
+                dates: (pendingDestroy ?? [])
+                  .map((generation) =>
+                    formatDateTime(generation.createdAt, language),
+                  )
+                  .join(", "),
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => void destroySuperseded()}
+            >
+              {t("keyDetail.destroy.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}
+
+function IdentityQrSession({
+  view,
+  title,
+  enabled,
+  fullscreenOpen,
+  showFullscreenTrigger,
+  preferences,
+  compatibilityDisabled,
+  onCompatibilityModeChange,
+  onFirstRendered,
+  onFullscreenOpenChange,
+}: {
+  view: IdentityQrView
+  title: string
+  enabled: boolean
+  fullscreenOpen: boolean
+  showFullscreenTrigger: boolean
+  preferences: Pick<Preferences, "frameBytes" | "frameIntervalMs">
+  compatibilityDisabled: boolean
+  onCompatibilityModeChange: (enabled: boolean) => void | Promise<void>
+  onFirstRendered: () => void
+  onFullscreenOpenChange: (open: boolean) => void
+}) {
+  const { t } = useI18n()
+  const selectedFramePair = selectedGeneratedDisplayPair(preferences)
+  const compatibilityEnabled =
+    selectedFramePair === COMPATIBLE_GENERATED_DISPLAY_PAIR
+  const effectiveFrameBytes = Math.max(
+    selectedFramePair.frameBytes,
+    minimumFrameBytesForArtifact(view.artifactBytes.byteLength),
+  )
+  const densityRaised =
+    compatibilityEnabled &&
+    effectiveFrameBytes > COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes
+  const split = useFrameSplit({
+    bytes: view.artifactBytes,
+    artifactType: view.artifactType,
+    frameBytes: effectiveFrameBytes,
+    enabled,
+    generation: `${view.generation}:${effectiveFrameBytes}`,
+  })
+  const localizedError = useLocalizedMessage(split.error)
+
+  return (
+    <>
+      {split.error && (
+        <Alert variant="destructive" role="alert">
+          <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>
+          <AlertDescription>{localizedError}</AlertDescription>
+        </Alert>
+      )}
+      {split.frames.length === 0 && split.splitting && (
+        <p aria-live="polite" className="text-sm text-muted-foreground">
+          {t("qrDisplay.generating")}
+        </p>
+      )}
+      {(split.frames.length > 0 || split.splitting) && (
+        <AnimatedQrFrames
+          frames={split.frames}
+          frameIntervalMs={selectedFramePair.frameIntervalMs}
+          densityRaised={densityRaised}
+          compatibilityControl={{
+            enabled: compatibilityEnabled,
+            disabled: compatibilityDisabled,
+            onEnabledChange: onCompatibilityModeChange,
+          }}
+          outputName={t("keyDetail.qr.outputName", {
+            title,
+            date: formatSuggestedDate(view.generatedAt),
+          })}
+          title={title}
+          splitting={split.splitting}
+          fullscreenOpen={fullscreenOpen}
+          showFullscreenTrigger={showFullscreenTrigger}
+          onFirstRendered={onFirstRendered}
+          onFullscreenOpenChange={onFullscreenOpenChange}
+        />
+      )}
     </>
   )
 }
@@ -554,6 +825,7 @@ function IdentityDetails({
   onShow,
   onRotate,
   onRevoke,
+  onDestroySuperseded,
   onDelete,
 }: {
   identity: PostQuantumIdentity
@@ -565,6 +837,7 @@ function IdentityDetails({
   ) => Promise<void>
   onRotate: (identity: PostQuantumIdentity) => Promise<void>
   onRevoke: (identity: PostQuantumIdentity) => Promise<void>
+  onDestroySuperseded: (generations: PostQuantumIdentity[]) => void
   onDelete: (identity: PostQuantumIdentity) => void
 }) {
   const { language, t } = useI18n()
@@ -681,9 +954,19 @@ function IdentityDetails({
           {t("common.delete")}
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {t("keyDetail.revokeNote")}
-      </p>
+      <p className="text-xs text-muted-foreground">{t("keyDetail.revokeNote")}</p>
+      {previous.length > 0 && (
+        <Button
+          type="button"
+          variant="destructive"
+          className="h-11 w-full"
+          disabled={busy}
+          onClick={() => onDestroySuperseded(previous)}
+        >
+          <Trash2 aria-hidden="true" />
+          {t("keyDetail.previous.destroyAll", { count: previous.length })}
+        </Button>
+      )}
       {previous.length > 0 && (
         <Collapsible>
           <CollapsibleTrigger asChild>
@@ -712,7 +995,7 @@ function IdentityDetails({
                     </p>
                     <Badge variant="secondary">
                       {generationSupported
-                        ? generation.status
+                        ? t(`keyStatus.${generation.status}`)
                         : t("keyDetail.badge.legacyProfile")}
                     </Badge>
                   </div>

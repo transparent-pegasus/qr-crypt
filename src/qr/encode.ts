@@ -9,7 +9,7 @@ import { encodeEnvelopeToPayload } from "@/qr/payload"
 
 export type { QrEcLevel } from "@/schemas/domain"
 
-// QR version 40 byte-mode capacities (docs/qr-protocol.md §7).
+// QR version 40 byte-mode capacities (docs/spec/qr-protocol.md §7).
 const QR_BYTE_CAPACITY: Record<QrEcLevel, number> = {
   L: 2953,
   M: 2331,
@@ -27,7 +27,8 @@ export function payloadFits(payload: string, ecLevel: QrEcLevel): boolean {
 }
 
 // EC-level policy: only single-image v1 messages follow preferences.
-// Persisted key QRs are fixed at H, and OCF2 frames are fixed at Q.
+// The v1 OCK1 symmetric-key QR is fixed at H; PQ key artifacts are never
+// single images and always display as OCF2 frames at Q.
 export type QrPayloadEcKind = "message" | "stored-key" | "multipart-frame"
 
 export function ecLevelFor(

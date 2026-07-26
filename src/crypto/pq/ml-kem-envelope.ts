@@ -1,4 +1,4 @@
-// High-level API for PQ message encryption; see docs/qr-protocol-v2.md §3–§5.
+// High-level API for PQ message encryption; see docs/spec/qr-protocol-v2.md §3–§5.
 // Derive the suite from the selected keys' actual algorithms via resolveSuite
 // rather than from a preference. Delegate to the encryptPqMessage Worker RPC so the main thread
 // does not handle secret material.
@@ -37,6 +37,12 @@ export async function encryptPq(args: EncryptPqArgs): Promise<MlKemMessageEnvelo
       throw new AppError("ENCRYPTION_FAILED")
     }
     if (args.recipient.revokedAt !== undefined) {
+      throw new AppError("KEY_NOT_FOUND")
+    }
+    if (args.recipient.trust !== "fingerprint-confirmed") {
+      // Parity with the revocation check above: an imported bundle whose fingerprint
+      // was never compared out of band must not reach KEM encapsulation. The UI
+      // filters first, so this is the backstop for any other caller.
       throw new AppError("KEY_NOT_FOUND")
     }
     if (args.sign !== undefined && args.sign.identity.status !== "active") {

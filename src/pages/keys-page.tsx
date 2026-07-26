@@ -563,8 +563,10 @@ export function KeysPage() {
       </Tabs>
 
       <Dialog open={pendingBundle !== null} onOpenChange={() => undefined}>
+        {/* Security confirmation: deliberately not dismissible. */}
         <NoAutofocusDialogContent
-          className="max-h-[95dvh] max-w-lg overflow-y-auto [&>button.absolute]:hidden"
+          hideCloseButton
+          className="max-h-[95dvh] max-w-lg overflow-y-auto"
           onEscapeKeyDown={(event) => event.preventDefault()}
           onPointerDownOutside={(event) => event.preventDefault()}
         >
@@ -770,7 +772,7 @@ function CreateField({
             role="note"
             className={cn(
               buttonVariants({ variant: "outline" }),
-              "h-11 w-full cursor-default text-muted-foreground hover:bg-background hover:text-muted-foreground",
+              "h-11 w-full cursor-default select-text touch-auto text-muted-foreground hover:bg-background hover:text-muted-foreground",
             )}
           >
             <ShieldCheck aria-hidden="true" />

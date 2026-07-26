@@ -3,6 +3,7 @@ import * as fakes from "./fakes"
 
 vi.mock("@/lib/feature-detect", () => ({
   detectFeatures: fakes.detectFeatures,
+  probeWebAssemblyRuntime: fakes.probeWebAssemblyRuntime,
 }))
 
 vi.mock("@/lib/bytes", () => ({
@@ -122,8 +123,10 @@ vi.mock("@/storage/pq-identity-repository", () => ({
   saveRotation: fakes.saveRotation,
   revokeIdentity: fakes.revokeIdentity,
   deleteIdentity: fakes.deleteIdentity,
+  deleteSupersededIdentities: fakes.deleteSupersededIdentities,
   clearAllIdentities: fakes.clearAllIdentities,
   markIdentityUsed: fakes.markIdentityUsed,
+  findIdentityByKemKeyId: fakes.findIdentityByKemKeyId,
 }))
 vi.mock("@/storage/pq-bundle-repository", () => ({
   listBundles: fakes.listBundles,

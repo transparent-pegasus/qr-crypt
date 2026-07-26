@@ -1,8 +1,8 @@
-# Qrypt QR Protocol Specification v1
+# QR Crypt QR Protocol Specification v1
 
 This document is the authoritative specification of the v1 payloads exchanged via QR codes. The implementation (`src/qr/payload.ts`, `src/crypto/*`) and the unit tests follow this document.
 
-> **Status (v2):** the AES-256-GCM message payload (`OCM1` with `alg: "A256GCM"`) remains produced and accepted. The RSA hybrid portions of this document are **historical**: the RSA path was removed in the v2 update, and schema validation rejects non-`A256GCM` `OCM1` messages. See [qr-protocol-v2.md](qr-protocol-v2.md) and the README's "Breaking changes" section.
+> **Status (v2):** the AES-256-GCM message payload (`OCM1` with `alg: "A256GCM"`) remains produced and accepted. The RSA hybrid portions of this document are **historical**: the RSA path was removed in the v2 update, and schema validation rejects non-`A256GCM` `OCM1` messages. See [qr-protocol-v2.md](qr-protocol-v2.md).
 
 ## 1. Payload String
 
@@ -89,7 +89,8 @@ All decryption-time failures (AAD mismatch, tag mismatch, wrong key) are normali
 | Kind | EC | quiet zone | Size |
 |---|---|---|---|
 | Ciphertext (OCM1) | Q (default; configurable in settings) | 4 | 512px |
-| Keys (OCK1/OCP1) | **H, fixed** | 4 | 512px |
+| Symmetric key (OCK1) | **H, fixed** | 4 | 512px |
+| Frames (OCF2: ciphertext, public key, identity) | **Q, fixed** | 4 | 512px |
 
 Capacity (QR v40, byte mode): L=2953 / M=2331 / Q=1663 / H=1273 bytes. Oversize payloads fail with `QR_TOO_LARGE` (caught both by a pre-generation check and by trapping the generation exception). The expected size is shown to the user in advance via `estimatePayloadChars(plaintextBytes, alg)` (tests guarantee it stays within ±10% of measured values).
 

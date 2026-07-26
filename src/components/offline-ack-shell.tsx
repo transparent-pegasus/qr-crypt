@@ -40,7 +40,7 @@ export function OfflineAckShell({
         <div className="flex items-center justify-between gap-3">
           <label
             htmlFor={languageSelectId}
-            className="text-sm font-medium text-muted-foreground"
+            className="select-none touch-manipulation text-sm font-medium text-muted-foreground"
           >
             {t("language.field")}
           </label>
@@ -103,7 +103,7 @@ export function OfflineAckShell({
             />
             <label
               htmlFor={checkboxId}
-              className="cursor-pointer text-sm leading-relaxed"
+              className="cursor-pointer select-none touch-manipulation text-sm leading-relaxed"
             >
               {t("offlineAck.ackLabel")}
             </label>

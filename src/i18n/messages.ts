@@ -21,6 +21,7 @@ const en = {
     "The content could not be copied. Check the browser permission.",
   "common.riskUnderstood": "I understand the risk",
   "common.copy": "Copy",
+  "common.download": "Download",
   "common.delete": "Delete",
   "common.deleteAriaLabel": "Delete {name}",
   "common.created": "Created: {datetime}",
@@ -50,6 +51,9 @@ const en = {
   "nav.keyList": "Key list",
   "nav.settings": "Settings",
   "nav.ariaLabel": "Main navigation",
+  "nav.top": "Top",
+  "nav.relay": "Relay",
+  "nav.onlineAriaLabel": "Online navigation",
 
   "errors.UNSUPPORTED_BROWSER":
     "This browser does not provide the required features. Open the app in a supported browser.",
@@ -70,6 +74,12 @@ const en = {
   "errors.CAMERA_PERMISSION_DENIED":
     "Camera access is not permitted. Allow it in the browser settings.",
   "errors.CAMERA_NOT_AVAILABLE": "The camera is unavailable.",
+  "errors.QR_READER_PREPARATION_TIMEOUT":
+    "The QR reader did not finish preparing on this device.",
+  "errors.QR_DECODE_PROGRESS_TIMEOUT":
+    "The QR decoding pipeline stopped making progress on this device.",
+  "errors.QR_READER_BLOCKED":
+    "This browser blocks the QR reader. On iPhone, use Safari 16 or newer.",
   "errors.DUPLICATE_KEY": "A key with the same contents is already stored.",
   "errors.DUPLICATE_QR": "A QR code with the same contents is already stored.",
   "errors.SIGNATURE_INVALID":
@@ -99,10 +109,10 @@ const en = {
   "gate.install.error":
     "Installation could not be started. Use the browser menu instead.",
   "gate.appIcon.alt": "{appName} app icon",
-  "gate.mode.label": "Online installation mode",
-  "gate.heading": "Only PWA installation is available while online",
+  "gate.mode.label": "Online installation and OCF2 message-header relay",
+  "gate.heading": "Install the PWA or relay OCF2 message-header QR frames",
   "gate.description":
-    "Encryption, decryption, key creation, key lists, and settings are shown only while offline.",
+    "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, without using local keys.",
   "pwa.installState.label": "PWA installation status",
   "pwa.installState.installed": "Installed",
   "pwa.installState.notInstalled": "Not installed",
@@ -119,6 +129,54 @@ const en = {
   "gate.switchOffline.title": "Switch to offline mode",
   "gate.switchOffline.body":
     "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
+  "gate.about.link": "What this app does",
+
+  "relay.card.title": "OCF2 message-header QR relay",
+  "relay.card.description":
+    "Move canonical OCF2 frame text between a messenger and an offline device. The relay does not intentionally place frame-derived values in app-managed storage or frame-bearing network requests.",
+  "relay.boundary.title": "Untrusted relay boundary",
+  "relay.boundary.body":
+    "The relay accepts frames whose untrusted outer header declares pq-message. It does not assemble the artifact or verify its total hash, inner type, AEAD, signature, sender, or safety; the receiving offline device is authoritative. Face-to-face key exchange is the supported workflow.",
+  "relay.capture.open": "QR → text",
+  "relay.capture.unavailable":
+    "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
+  "relay.capture.title": "QR frames to text",
+  "relay.capture.description":
+    "Start the camera explicitly, then scan every frame from the offline device. Malformed or mismatched frames are rejected without replacing accepted frames.",
+  "relay.capture.video.ariaLabel": "OCF2 message-header relay camera preview",
+  "relay.capture.startCamera": "Start camera",
+  "relay.capture.cameraActive": "Camera active",
+  "relay.capture.progress": "{collected} / {total} frames collected",
+  "relay.capture.missing": "Missing frames: {indexes}",
+  "relay.capture.output.label": "Relay text",
+  "relay.capture.copy": "Copy relay text",
+  "relay.copy.warning":
+    "Copying exports the relay text to the system clipboard. Clipboard contents may persist or sync outside this app and are not cleared by an app reset.",
+  "relay.playback.open": "Text → QR",
+  "relay.playback.title": "Turn relay text into QR frames",
+  "relay.playback.description":
+    "Paste a complete canonical frame set. Lines may use LF or CRLF; order does not matter.",
+  "relay.playback.input.label": "Relay text",
+  "relay.playback.show": "Show QR frames",
+  "relay.playback.missing": "Missing frames: {indexes}",
+  "relay.playback.screenCaptureWarning":
+    "Displayed QR images can still be saved by long-press, printing, screenshots, or screen recording.",
+  "relay.playback.qrTitle": "Relayed OCF2 frames",
+  "relay.playback.noDownloadControls":
+    "This relay provides no app file-download controls.",
+  "relay.error.title": "Relay input rejected",
+  "relay.error.empty": "Enter or scan at least one frame.",
+  "relay.error.prefix": "Only canonical OCF2 frame strings are accepted.",
+  "relay.error.outerType": "The frame's outer header does not declare pq-message.",
+  "relay.error.invalidFrame": "The frame is not a canonical OCF2 frame.",
+  "relay.error.mismatch": "The frame does not belong to the accepted frame set.",
+  "relay.error.length": "The frame set has inconsistent declared and collected lengths.",
+  "relay.error.incomplete":
+    "The frame set is incomplete. Add every missing frame before playback.",
+  "relay.error.inputSize": "The relay text exceeds the protocol limit.",
+  "relay.error.timeout":
+    "The relay session timed out and its app-held frame references were cleared.",
+  "relay.error.copy": "The relay text could not be copied.",
 
   "offlineAck.status": "The device is now offline",
   "offlineAck.title": "Confirm before continuing",
@@ -144,7 +202,7 @@ const en = {
     "Signed post-quantum ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
 
   "qrDisplay.defaultTitle": "QR code",
-  "qrDisplay.notQryptPayload":
+  "qrDisplay.notQrCryptPayload":
     "A QR code cannot be generated because this is not an app payload.",
   "qrDisplay.error.title": "The QR code could not be generated",
   "qrDisplay.image.alt": "{title} image",
@@ -165,18 +223,15 @@ const en = {
   "animatedQr.missing.body":
     "Missing frames: {indexes}. Recovery is not possible while frames are missing.",
   "animatedQr.frameTitle": "{title} {current} / {total}",
-  "animatedQr.prev.ariaLabel": "Previous frame",
   "animatedQr.prev": "Previous",
   "animatedQr.play": "Play",
   "animatedQr.pause": "Pause",
-  "animatedQr.next.ariaLabel": "Next frame",
   "animatedQr.next": "Next",
-  "animatedQr.speed.label": "Display speed",
+  "animatedQr.compatibility.label": "Compatibility mode",
+  "animatedQr.densityRaised":
+    "Frame density could not be lowered further because this transfer must stay within the frame limit.",
   "animatedQr.brightnessHint":
     "Increase the screen brightness and keep the device still for more reliable scanning.",
-  "animatedQr.export.allPng": "Export all PNGs",
-  "animatedQr.export.zip": "Export ZIP",
-  "animatedQr.export.currentSvg": "Current SVG",
   "animatedQr.export.error.title": "The frames could not be exported",
 
   "keyDetail.qr.bundleTitle": "{name} public-key bundle",
@@ -187,6 +242,7 @@ const en = {
   "keyDetail.toast.revoked": "The identity was revoked on this device",
   "keyDetail.toast.symmetricDeleted": "The symmetric key was deleted",
   "keyDetail.toast.identityDeleted": "The post-quantum identity was deleted",
+  "keyDetail.toast.supersededDestroyed": "Older key material was discarded",
   "keyDetail.toast.copied":
     "Copied. Be aware that the clipboard may be synchronized.",
   "keyDetail.symmetricQr.title": "Symmetric-key QR",
@@ -205,6 +261,10 @@ const en = {
   "keyDetail.delete.body.symmetric":
     "Ciphertext encrypted with this key will no longer be decryptable. This cannot be undone.",
   "keyDetail.delete.confirm": "Delete",
+  "keyDetail.destroy.title": "Discard {count} older generation(s)?",
+  "keyDetail.destroy.body":
+    "Created {dates}. This closes the decryption route this app keeps open for those generations: messages sent to them that have not been decrypted yet can no longer be opened here. It is a logical delete, so it does not assure the bytes leave the storage medium, and a copy already loaded in another open tab is outside this action.",
+  "keyDetail.destroy.confirm": "Discard",
   "keyDetail.badge.legacyProfile": "Unsupported (legacy profile)",
   "keyDetail.identity.legacyNote":
     "Unsupported (legacy profile): cryptographic operations and QR re-export are unavailable.",
@@ -218,9 +278,11 @@ const en = {
   "keyDetail.button.rotate": "Rotate",
   "keyDetail.button.revoke": "Revoke on this device",
   "keyDetail.revokeNote":
-    "Revocation disables use on this device and is not propagated to other parties.",
+    "Revocation stops this identity from signing and from being published as a current recipient on this device, and is not propagated to other parties. It does not stop decryption with this identity: use Delete to discard its key material.",
   "keyDetail.previous.toggle":
     "{count} previous generations, decryption only",
+  "keyDetail.previous.destroyAll":
+    "Discard the key material of {count} older generation(s)",
   "keyDetail.symmetric.fingerprintLabel": "Key fingerprint",
   "keyDetail.button.showSecretQr": "Show secret-key QR",
 
@@ -240,6 +302,8 @@ const en = {
   "keyList.filter.pqIdentity": "Post-quantum identity",
   "keyList.filter.symmetric": "Symmetric key",
   "keyList.item.identityMeta": "Post-quantum identity · {datetime}",
+  "keyList.item.supersededWarning":
+    "{count} older generation(s) can still decrypt",
   "keyList.item.symmetricMeta": "Symmetric key · {datetime}",
   "keyList.empty.ownAll": "You have no keys.",
   "keyList.empty.ownFiltered": "There are no keys of the selected type.",
@@ -254,6 +318,14 @@ const en = {
   "keyList.bundle.legacyNote":
     "This legacy profile is unsupported, so only deletion is available.",
   "keyList.bundle.revoke": "Disable on this device",
+  "keyList.bundle.confirmOpen": "Compare and confirm the fingerprint",
+  "keyList.bundle.confirmTitle": "Confirm this identity's fingerprint",
+  "keyList.bundle.confirmBody":
+    "Compare every group below with the value shown on the other party's own device, through another channel such as a call or in person. Confirming records that you did so and makes this identity selectable as an encryption recipient; the app cannot check the comparison for you.",
+  "keyList.bundle.confirmCheck":
+    "I compared the fingerprint through another channel and it matched",
+  "keyList.bundle.confirmSubmit": "Confirm",
+  "keyList.toast.bundleConfirmed": "The fingerprint was confirmed",
 
   "keys.validation.keyNameFallback": "Check the key name.",
   "keys.validation.idNameFallback": "Check the identity name.",
@@ -285,7 +357,7 @@ const en = {
     "To verify the association with a person and use this key persistently, import the OCI2 public-key bundle.",
   "keys.bundle.dialogTitle": "Compare the fingerprint through another channel",
   "keys.bundle.dialogDesc":
-    "Before completing the import, compare the full hex with the other party through another channel, such as a call or in person. A self-signature alone does not prove a person's identity.",
+    "Before completing the import, compare the full hex with the other party through another channel, such as a call or in person. A self-signature alone does not prove a person's identity. If you save without verification, this identity cannot be selected for encryption until you confirm it later under Saved keys.",
   "keys.bundle.fingerprintKem": "ML-KEM fingerprint",
   "keys.bundle.fingerprintSigning": "ML-DSA fingerprint",
   "keys.bundle.confirmLabel": "I confirmed a match through another channel",
@@ -325,6 +397,8 @@ const en = {
   "encrypt.recipientLabel": "Recipient ML-KEM public key",
   "encrypt.recipient.confirmed": "Verified",
   "encrypt.recipient.unverified": "Unverified",
+  "encrypt.recipient.needsConfirmation":
+    "No confirmed recipient. A public identity becomes selectable here once its fingerprint has been compared with the other party through another channel and confirmed under Saved keys.",
   "encrypt.senderLabel": "My ML-DSA signing identity",
   "encrypt.plaintextLabel": "Plaintext",
   "encrypt.clearPlaintext": "Clear plaintext",
@@ -453,6 +527,10 @@ const en = {
   "scanner.error.title": "The scan could not be completed",
   "scanner.diagnostic.ariaLabel": "Camera diagnostic",
   "scanner.diagnostic": "Diagnostic: {name} @{phase} [{detail}]",
+  "scanner.pipelineDiagnostic.ariaLabel": "QR decode pipeline diagnostic",
+  "scanner.pipelineDiagnostic":
+    "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
+  "scanner.pipelineDiagnostic.noError": "none",
   "scanner.button.discard": "Discard scan state",
   "scanner.button.stopCamera": "Stop camera",
   "scanner.closed.multipartProgress":
@@ -460,7 +538,6 @@ const en = {
   "scanner.closed.integrityImported":
     "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
 
-  "settings.toast.saved": "Settings saved",
   "settings.error.saveFailed":
     "Settings could not be saved. Check the device storage.",
   "settings.toast.plaintextCleared": "All plaintext was cleared",
@@ -481,22 +558,20 @@ const en = {
   "settings.field.defaultAlgorithm": "Default cryptographic algorithm",
   "settings.field.defaultEc": "Default QR error-correction level",
   "settings.ec.hint":
-    "Higher levels are easier to scan but hold less data. Key QR codes always use H, regardless of this setting.",
+    "Higher levels are easier to scan but hold less data. This setting applies only to the single-image AES message QR; the symmetric-key QR is fixed at H, and all frame-based QRs (ciphertext, public key, and identity) are fixed at Q.",
   "settings.card.pqMessage": "Post-quantum messages",
   "settings.requireSignature.label": "Require a signature",
   "settings.requireSignature.forced":
     "This cannot be disabled because it is required by the environment configuration.",
   "settings.requireSignature.hint":
     "When enabled, unsigned post-quantum options are hidden.",
-  "settings.field.frameBytes": "Raw data per frame: {min}–{max} bytes",
-  "settings.field.frameInterval": "Frame interval: {min}–{max} ms",
   "settings.field.transferTimeout": "Scan-state lifetime: {min}–{max} minutes",
   "settings.frameEc.hint": "OCF2 frames always use Q error correction.",
   "settings.card.plaintext": "Plaintext handling",
   "settings.autoClearAfterEncrypt.label": "Clear plaintext after encryption",
   "settings.backgroundClear.label": "Clear after moving to the background",
   "settings.backgroundClear.desc":
-    "When enabled, plaintext is cleared about five minutes after the app moves to the background.",
+    "When enabled, plaintext is cleared {normalSeconds} seconds after the app moves to the background. If the WebAssembly runtime required by the QR reader is unavailable, it is cleared after {fallbackSeconds} seconds instead.",
   "settings.clearAllPlaintext": "Clear all plaintext",
   "settings.card.onlineProtection": "Protection when online connectivity is detected",
   "settings.wipeOnOnline.label": "Reset local data after confirmed online connectivity",
@@ -596,6 +671,7 @@ const ja = {
     "コピーできませんでした。ブラウザーの権限を確認してください。",
   "common.riskUnderstood": "リスクを理解しました",
   "common.copy": "コピー",
+  "common.download": "ダウンロード",
   "common.delete": "削除",
   "common.deleteAriaLabel": "{name}を削除",
   "common.created": "作成: {datetime}",
@@ -625,6 +701,9 @@ const ja = {
   "nav.keyList": "鍵一覧",
   "nav.settings": "設定",
   "nav.ariaLabel": "メインナビゲーション",
+  "nav.top": "トップ",
+  "nav.relay": "リレー",
+  "nav.onlineAriaLabel": "オンラインナビゲーション",
 
   "errors.UNSUPPORTED_BROWSER":
     "このブラウザーでは必要な機能を利用できません。対応ブラウザーで開いてください。",
@@ -645,6 +724,12 @@ const ja = {
   "errors.CAMERA_PERMISSION_DENIED":
     "カメラの使用が許可されていません。ブラウザーの設定で許可してください。",
   "errors.CAMERA_NOT_AVAILABLE": "カメラを利用できません。",
+  "errors.QR_READER_PREPARATION_TIMEOUT":
+    "この端末でQRリーダーの準備が完了しませんでした。",
+  "errors.QR_DECODE_PROGRESS_TIMEOUT":
+    "この端末でQR復号パイプラインの進行が停止しました。",
+  "errors.QR_READER_BLOCKED":
+    "このブラウザーではQRコードリーダーがブロックされています。iPhoneではSafari 16以降を使用してください。",
   "errors.DUPLICATE_KEY": "同じ内容の鍵がすでに保存されています。",
   "errors.DUPLICATE_QR": "同じ内容のQRコードがすでに保存されています。",
   "errors.SIGNATURE_INVALID":
@@ -674,10 +759,10 @@ const ja = {
   "gate.install.error":
     "インストールを開始できませんでした。ブラウザーのメニューから操作してください。",
   "gate.appIcon.alt": "{appName}のアプリアイコン",
-  "gate.mode.label": "オンライン導入モード",
-  "gate.heading": "オンラインではPWAの導入のみ利用できます",
+  "gate.mode.label": "オンライン導入・OCF2メッセージヘッダーリレーモード",
+  "gate.heading": "PWAの導入またはOCF2メッセージヘッダーQRフレームの中継",
   "gate.description":
-    "暗号・復号、鍵追加、鍵一覧、設定はオフライン時だけ表示します。",
+    "暗号・復号、鍵作成、鍵一覧、設定は引き続きオフライン専用です。機微ストア走査がエラーなく完了し、鍵行・PQ identity・Vaultが無い場合に限り、クリーンオリジンは外側の信頼できないヘッダーがpq-messageと表明する正規OCF2フレームを、鍵を使わず中継できます。",
   "pwa.installState.label": "PWAインストール状態",
   "pwa.installState.installed": "インストール済み",
   "pwa.installState.notInstalled": "未インストール",
@@ -695,6 +780,54 @@ const ja = {
   "gate.switchOffline.title": "オフラインに切り替えてください",
   "gate.switchOffline.body":
     "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。",
+  "gate.about.link": "このアプリが何をするか",
+
+  "relay.card.title": "OCF2メッセージヘッダーQRリレー",
+  "relay.card.description":
+    "メッセンジャーとオフライン端末の間で、正規OCF2フレーム文字列を中継します。フレーム由来の値をアプリ管理の保存領域やフレームを含むネットワーク要求へ意図的に書き込みません。",
+  "relay.boundary.title": "信頼しない中継境界",
+  "relay.boundary.body":
+    "外側の信頼できないヘッダーがpq-messageと表明するフレームを受け入れます。成果物の組立、全体ハッシュ、内側の種類、AEAD、署名、送信者、安全性は検証しません。受信側のオフライン端末が最終判断者です。鍵交換は対面で行う運用を前提とします。",
+  "relay.capture.open": "QR → テキスト",
+  "relay.capture.unavailable":
+    "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",
+  "relay.capture.title": "QRフレームをテキスト化",
+  "relay.capture.description":
+    "明示的にカメラを開始し、オフライン端末の全フレームを読み取ってください。不正または不一致のフレームは、受理済みフレームを置き換えず拒否します。",
+  "relay.capture.video.ariaLabel": "OCF2メッセージヘッダーリレーのカメラプレビュー",
+  "relay.capture.startCamera": "カメラを開始",
+  "relay.capture.cameraActive": "カメラ動作中",
+  "relay.capture.progress": "{collected} / {total} フレーム収集済み",
+  "relay.capture.missing": "不足フレーム: {indexes}",
+  "relay.capture.output.label": "中継テキスト",
+  "relay.capture.copy": "中継テキストをコピー",
+  "relay.copy.warning":
+    "コピーすると中継テキストをシステムのクリップボードへ書き出します。内容はアプリ外に残存・同期する可能性があり、アプリのresetでは消去されません。",
+  "relay.playback.open": "テキスト → QR",
+  "relay.playback.title": "中継テキストをQRフレーム化",
+  "relay.playback.description":
+    "正規フレーム一式をすべて貼り付けてください。改行はLF・CRLFのどちらでもよく、順序は問いません。",
+  "relay.playback.input.label": "中継テキスト",
+  "relay.playback.show": "QRフレームを表示",
+  "relay.playback.missing": "不足フレーム: {indexes}",
+  "relay.playback.screenCaptureWarning":
+    "表示したQR画像は長押し保存、印刷、スクリーンショット、画面録画で保存される可能性があります。",
+  "relay.playback.qrTitle": "中継されたOCF2フレーム",
+  "relay.playback.noDownloadControls":
+    "このリレーはアプリによるファイルダウンロード操作を提供しません。",
+  "relay.error.title": "中継入力を拒否しました",
+  "relay.error.empty": "1つ以上のフレームを入力またはスキャンしてください。",
+  "relay.error.prefix": "正規OCF2フレーム文字列だけを受け入れます。",
+  "relay.error.outerType": "フレームの外側ヘッダーがpq-messageを表明していません。",
+  "relay.error.invalidFrame": "正規OCF2フレームではありません。",
+  "relay.error.mismatch": "受理済みのフレーム一式に属さないフレームです。",
+  "relay.error.length": "表明された長さと収集した長さが一致しません。",
+  "relay.error.incomplete":
+    "フレーム一式が不完全です。再生前に不足フレームをすべて追加してください。",
+  "relay.error.inputSize": "中継テキストがプロトコル上限を超えています。",
+  "relay.error.timeout":
+    "中継セッションが時間切れになり、アプリが保持していたフレーム参照を解放しました。",
+  "relay.error.copy": "中継テキストをコピーできませんでした。",
 
   "offlineAck.status": "オフラインへ切り替わりました",
   "offlineAck.title": "続行前の確認",
@@ -721,7 +854,7 @@ const ja = {
     "署名付きポスト量子 ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
 
   "qrDisplay.defaultTitle": "QRコード",
-  "qrDisplay.notQryptPayload":
+  "qrDisplay.notQrCryptPayload":
     "本アプリのペイロードではないためQRコードを生成できません。",
   "qrDisplay.error.title": "QRコードを生成できません",
   "qrDisplay.image.alt": "{title}の画像",
@@ -742,18 +875,15 @@ const ja = {
   "animatedQr.missing.body":
     "欠損フレーム: {indexes}。欠損したままでは復元できません。",
   "animatedQr.frameTitle": "{title} {current} / {total}",
-  "animatedQr.prev.ariaLabel": "前のフレーム",
   "animatedQr.prev": "前へ",
   "animatedQr.play": "再生",
   "animatedQr.pause": "一時停止",
-  "animatedQr.next.ariaLabel": "次のフレーム",
   "animatedQr.next": "次へ",
-  "animatedQr.speed.label": "表示速度",
+  "animatedQr.compatibility.label": "互換モード",
+  "animatedQr.densityRaised":
+    "フレーム数の上限内に収めるため、フレーム密度をこれ以上下げられませんでした。",
   "animatedQr.brightnessHint":
     "画面の輝度を上げ、端末を動かさずに読み取ると安定します。",
-  "animatedQr.export.allPng": "PNGを一括出力",
-  "animatedQr.export.zip": "ZIPで出力",
-  "animatedQr.export.currentSvg": "現在のSVG",
   "animatedQr.export.error.title": "フレームを出力できません",
 
   "keyDetail.qr.bundleTitle": "{name} 公開鍵セット",
@@ -764,6 +894,7 @@ const ja = {
   "keyDetail.toast.revoked": "この端末でIDを失効しました",
   "keyDetail.toast.symmetricDeleted": "共通鍵を削除しました",
   "keyDetail.toast.identityDeleted": "ポスト量子IDを削除しました",
+  "keyDetail.toast.supersededDestroyed": "旧世代の鍵素材を破棄しました",
   "keyDetail.toast.copied":
     "コピーしました。クリップボード同期に注意してください。",
   "keyDetail.symmetricQr.title": "共通鍵QR",
@@ -782,6 +913,10 @@ const ja = {
   "keyDetail.delete.body.symmetric":
     "この鍵で暗号化した暗号文は復号できなくなります。元に戻せません。",
   "keyDetail.delete.confirm": "削除する",
+  "keyDetail.destroy.title": "旧世代 {count} 件を破棄しますか?",
+  "keyDetail.destroy.body":
+    "作成日時: {dates}。このアプリがこれらの世代のために開いたままにしている復号経路を閉じます。これらの鍵宛に送られ、まだ復号していないメッセージは、ここでは開けなくなります。論理削除のため記録媒体からバイト列が消える保証はなく、既に別タブへ読み込まれた複製はこの操作の対象外です。",
+  "keyDetail.destroy.confirm": "破棄する",
   "keyDetail.badge.legacyProfile": "非対応（旧プロファイル）",
   "keyDetail.identity.legacyNote":
     "非対応（旧プロファイル）: 暗号処理とQR再出力はできません。",
@@ -795,8 +930,9 @@ const ja = {
   "keyDetail.button.rotate": "ローテーション",
   "keyDetail.button.revoke": "この端末で失効",
   "keyDetail.revokeNote":
-    "失効はこの端末での利用停止であり、外部の相手には伝播しません。",
+    "失効はこの識別子での署名と、現在の宛先としての公開をこの端末で止めるもので、外部の相手には伝播しません。この識別子での復号は止まりません。鍵素材を手放すには削除を使ってください。",
   "keyDetail.previous.toggle": "旧世代 {count} 件、復号専用",
+  "keyDetail.previous.destroyAll": "旧世代 {count} 件の鍵素材を破棄",
   "keyDetail.symmetric.fingerprintLabel": "鍵指紋",
   "keyDetail.button.showSecretQr": "秘密鍵QRを表示",
 
@@ -816,6 +952,7 @@ const ja = {
   "keyList.filter.pqIdentity": "ポスト量子ID",
   "keyList.filter.symmetric": "共通鍵",
   "keyList.item.identityMeta": "ポスト量子ID · {datetime}",
+  "keyList.item.supersededWarning": "旧世代 {count} 件が復号可能",
   "keyList.item.symmetricMeta": "共通鍵 · {datetime}",
   "keyList.empty.ownAll": "自分の鍵がありません。",
   "keyList.empty.ownFiltered": "選択した種別の鍵がありません。",
@@ -830,6 +967,14 @@ const ja = {
   "keyList.bundle.legacyNote":
     "非対応（旧プロファイル）のため、削除以外の操作はできません。",
   "keyList.bundle.revoke": "利用停止",
+  "keyList.bundle.confirmOpen": "指紋を比較して確認する",
+  "keyList.bundle.confirmTitle": "この識別子の指紋を確認しますか?",
+  "keyList.bundle.confirmBody":
+    "以下の各グループを、相手本人の端末に表示された値と、通話や対面など別の経路で突き合わせてください。確認するとその事実が記録され、この識別子が暗号化の宛先として選べるようになります。比較そのものをアプリが検証することはできません。",
+  "keyList.bundle.confirmCheck":
+    "別の経路で指紋を比較し、一致することを確認しました",
+  "keyList.bundle.confirmSubmit": "確認する",
+  "keyList.toast.bundleConfirmed": "指紋を確認しました",
 
   "keys.validation.keyNameFallback": "鍵名を確認してください。",
   "keys.validation.idNameFallback": "ID名を確認してください。",
@@ -861,7 +1006,7 @@ const ja = {
     "人物との対応を確認して永続利用するには、OCI2公開鍵セットを取り込んでください。",
   "keys.bundle.dialogTitle": "別経路で指紋を比較してください",
   "keys.bundle.dialogDesc":
-    "取込を完了する前に、相手と通話・対面など別経路で full hex を照合します。自己署名だけでは人物を証明しません。",
+    "取込を完了する前に、相手と通話・対面など別経路で full hex を照合します。自己署名だけでは人物を証明しません。未確認のまま保存した識別子は暗号化の宛先に選べませんが、保存済み鍵の画面から後で指紋を確認できます。",
   "keys.bundle.fingerprintKem": "ML-KEM鍵指紋",
   "keys.bundle.fingerprintSigning": "ML-DSA鍵指紋",
   "keys.bundle.confirmLabel": "別経路で一致を確認した",
@@ -901,6 +1046,8 @@ const ja = {
   "encrypt.recipientLabel": "受信者のML-KEM公開鍵",
   "encrypt.recipient.confirmed": "確認済み",
   "encrypt.recipient.unverified": "未確認",
+  "encrypt.recipient.needsConfirmation":
+    "確認済みの宛先がありません。公開識別子は、相手と別の経路で指紋を比較し、保存済み鍵の画面で確認したものだけがここで選べるようになります。",
   "encrypt.senderLabel": "自分のML-DSA署名ID",
   "encrypt.plaintextLabel": "平文",
   "encrypt.clearPlaintext": "平文を消去",
@@ -1032,6 +1179,10 @@ const ja = {
   "scanner.error.title": "読み取りを完了できません",
   "scanner.diagnostic.ariaLabel": "カメラ診断",
   "scanner.diagnostic": "診断: {name} @{phase} [{detail}]",
+  "scanner.pipelineDiagnostic.ariaLabel": "QR復号パイプライン診断",
+  "scanner.pipelineDiagnostic":
+    "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
+  "scanner.pipelineDiagnostic.noError": "なし",
   "scanner.button.discard": "読取状態を破棄",
   "scanner.button.stopCamera": "カメラを停止",
   "scanner.closed.multipartProgress":
@@ -1039,7 +1190,6 @@ const ja = {
   "scanner.closed.integrityImported":
     "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
 
-  "settings.toast.saved": "設定を保存しました",
   "settings.error.saveFailed":
     "設定を保存できませんでした。保存領域を確認してください。",
   "settings.toast.plaintextCleared": "すべての平文を消去しました",
@@ -1060,17 +1210,13 @@ const ja = {
   "settings.field.defaultAlgorithm": "デフォルト暗号方式",
   "settings.field.defaultEc": "デフォルトQR誤り訂正レベル",
   "settings.ec.hint":
-    "高いほど読み取りに強く、入る量は減ります。鍵QRは設定にかかわらず常にHです。",
+    "高いほど読み取りに強く、入る量は減ります。この設定が効くのは単一画像のAESメッセージQRだけです。共通鍵QRは常にH、フレーム分割QR（暗号文・公開鍵・公開鍵セット）は常にQです。",
   "settings.card.pqMessage": "ポスト量子メッセージ",
   "settings.requireSignature.label": "署名を必須にする",
   "settings.requireSignature.forced":
     "環境設定で必須化されているため解除できません。",
   "settings.requireSignature.hint":
     "有効時は非署名のポスト量子方式を選択肢から隠します。",
-  "settings.field.frameBytes":
-    "1フレームの生データ {min}〜{max} bytes",
-  "settings.field.frameInterval":
-    "フレーム切替間隔 {min}〜{max} ms",
   "settings.field.transferTimeout":
     "読取状態の期限 {min}〜{max} 分",
   "settings.frameEc.hint": "OCF2フレームの誤り訂正は常にQです。",
@@ -1078,7 +1224,7 @@ const ja = {
   "settings.autoClearAfterEncrypt.label": "暗号化後に平文を自動消去",
   "settings.backgroundClear.label": "バックグラウンド移行後に自動消去",
   "settings.backgroundClear.desc":
-    "有効時はバックグラウンド移行から約5分後に平文を消去します。",
+    "有効時はバックグラウンド移行から{normalSeconds}秒後に平文を消去します。QRリーダーが必要とするWebAssemblyランタイムが使えない場合は、代わりに{fallbackSeconds}秒後に消去します。",
   "settings.clearAllPlaintext": "すべての平文を消去",
   "settings.card.onlineProtection": "オンライン検出時の保護",
   "settings.wipeOnOnline.label":

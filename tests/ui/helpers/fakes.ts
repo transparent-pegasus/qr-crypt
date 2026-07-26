@@ -22,6 +22,7 @@ import type {
   V2ArtifactType,
 } from "@/schemas/domain"
 import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
+import { MAX_ARTIFACT_BYTES_ABSOLUTE } from "@/lib/limits"
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -140,6 +141,8 @@ export const fakeBundles: PqPublicBundleRecord[] = [
 export const fakePreferences: Preferences = {
   ...PQ_PREFERENCE_DEFAULTS,
   defaultAlgorithm: "A256GCM",
+  frameBytes: 1_000,
+  frameIntervalMs: 200,
   qrErrorCorrection: "Q",
   autoClearPlaintextAfterEncrypt: true,
   backgroundClearEnabled: true,
@@ -178,6 +181,7 @@ export const FakeAppError = AppError
 export type FakeAppError = AppError
 
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
+export const probeWebAssemblyRuntime = vi.fn(async () => true)
 
 export const utf8ToBytes = vi.fn((value: string) => encoder.encode(value))
 export const bytesToUtf8 = vi.fn((value: Uint8Array) => decoder.decode(value))
@@ -420,6 +424,14 @@ interface FakeCameraDiagnostic {
   detail: string
 }
 
+interface FakeCameraPipelineDiagnostic {
+  readerModuleState: "idle" | "preparing" | "ready" | "failed" | "timed-out"
+  videoFramesDrawn: number
+  decodeAttemptsCompleted: number
+  decodeResultsSeen: number
+  lastErrorName: string | null
+}
+
 export const scannerStop = vi.fn()
 let scanTextCallback: ((payload: string) => void) | null = null
 let scanErrorCallback:
@@ -433,7 +445,11 @@ export const startQrScan = vi.fn(
       error: FakeAppError,
       diagnostic: FakeCameraDiagnostic,
     ) => void,
-    _options?: { once?: boolean; signal?: AbortSignal },
+    _options?: {
+      once?: boolean
+      signal?: AbortSignal
+      onDiagnostic?: (diagnostic: FakeCameraPipelineDiagnostic) => void
+    },
   ): Promise<{ stop: () => void }> => {
     void _options
     scanTextCallback = onText
@@ -565,6 +581,9 @@ export const splitIntoFrames = vi.fn(
     frameBytes?: number
     frameCount?: number
   }): Promise<QrFrameV2[]> => {
+    if (artifactBytes.byteLength > MAX_ARTIFACT_BYTES_ABSOLUTE) {
+      throw new FakeAppError("QR_TOO_LARGE")
+    }
     const frameCount =
       requestedFrameCount ??
       Math.max(1, Math.ceil(artifactBytes.byteLength / (frameBytes ?? 1)))
@@ -584,7 +603,6 @@ export const splitIntoFrames = vi.fn(
         frameIndex,
         frameCount,
         totalByteLength: artifactBytes.byteLength,
-        payloadSha256: new Uint8Array(32),
         chunk: artifactBytes.slice(offset, offset + chunkBytes),
       }
       offset += chunkBytes
@@ -789,6 +807,9 @@ export const clearAllKeys = vi.fn(async () => {
   fakeKeys.splice(0)
 })
 
+export const findIdentityByKemKeyId = vi.fn(async (keyId: string) =>
+  fakeIdentities.find((identity) => identity.kem.keyId === keyId),
+)
 export const listIdentities = vi.fn(async () => [...fakeIdentities])
 export const saveIdentity = vi.fn(async (identity: PostQuantumIdentity) => {
   fakeIdentities.unshift(identity)
@@ -820,6 +841,19 @@ export const deleteIdentity = vi.fn(async (id: string) => {
   const index = fakeIdentities.findIndex((identity) => identity.id === id)
   if (index >= 0) fakeIdentities.splice(index, 1)
 })
+export const deleteSupersededIdentities = vi.fn(
+  async (ids: readonly string[]) => {
+    const requested = new Set(ids)
+    const present = fakeIdentities.filter((identity) => requested.has(identity.id))
+    if (present.some((identity) => identity.status === "active")) {
+      throw new AppError("STORAGE_FAILED")
+    }
+    const presentIds = new Set(present.map((identity) => identity.id))
+    for (let index = fakeIdentities.length - 1; index >= 0; index -= 1) {
+      if (presentIds.has(fakeIdentities[index]!.id)) fakeIdentities.splice(index, 1)
+    }
+  },
+)
 export const clearAllIdentities = vi.fn(async () => {
   fakeIdentities.splice(0)
 })
@@ -884,6 +918,8 @@ export function resetFakes(): void {
   Object.assign(fakePreferences, {
     ...PQ_PREFERENCE_DEFAULTS,
     defaultAlgorithm: "A256GCM",
+    frameBytes: 1_000,
+    frameIntervalMs: 200,
     qrErrorCorrection: "Q",
     autoClearPlaintextAfterEncrypt: true,
     backgroundClearEnabled: true,

@@ -624,7 +624,7 @@ function createBrowserWorkerClient(timeoutMs: number): PqCryptoClient {
   try {
     worker = new Worker(new URL("../../workers/pq-crypto.worker.ts", import.meta.url), {
       type: "module",
-      name: "qrypt-pq-crypto",
+      name: "qr-crypt-pq-crypto",
     })
   } catch {
     throw new AppError("WORKER_UNAVAILABLE")

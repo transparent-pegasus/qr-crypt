@@ -36,9 +36,9 @@ couple of weeks, with no guaranteed fix timeline.
 
 Public availability of this repository does **not** mean it has passed a
 release gate. The codebase is **not independently audited**. See
-[docs/security-review.md](docs/security-review.md) for current release
+[docs/security/security-review.md](docs/security/security-review.md) for current release
 blockers and review status, and
-[docs/threat-model.md](docs/threat-model.md) for accepted risks and known
+[docs/security/threat-model.md](docs/security/threat-model.md) for accepted risks and known
 limitations (including that wipe-on-online is best-effort logical deletion —
 physical erasure is not guaranteed).
 

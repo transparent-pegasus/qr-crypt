@@ -1,0 +1,177 @@
+name: Promote dev
+
+# Every push to dev creates or updates the promotion pull request that ships
+# dev to main.  The body always lists every PR merged into dev since the last
+# dev->main merge so the reviewer sees what this release contains.
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: dev-to-main-pr
+  cancel-in-progress: false
+
+jobs:
+  open-promotion-pr:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout for merge-base
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build the PR body with merged-PR manifest
+        id: body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # --- find the boundary: last commit reachable from both main and dev ---
+          base=$(git merge-base origin/main origin/dev)
+
+          # --- extract PR numbers from merge commits on dev since that boundary ---
+          pr_numbers=$(
+            git log "${base}..origin/dev" --merges --oneline |
+            grep -oP '#\K[0-9]+' |
+            sort -un
+          ) || true
+
+          if [[ -z "$pr_numbers" ]]; then
+            {
+              echo 'PR_BODY<<EOFBODY'
+              echo '_(No pull requests merged into dev since the last promotion.)_'
+              echo ''
+              echo '---'
+              echo ''
+              echo 'Merging this pull request deploys production and publishes the signed release.'
+              echo ''
+              echo 'Compare: https://github.com/'"${GH_REPO}"'/compare/main...dev'
+              echo 'EOFBODY'
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # --- fetch title + labels for each PR, classify as content vs meta ---
+          content_lines=""
+          meta_lines=""
+
+          for num in $pr_numbers; do
+            pr_json=$(gh api "repos/${GH_REPO}/pulls/${num}" \
+              --jq '{title: .title, user: .user.login}' 2>/dev/null) || continue
+
+            title=$(echo "$pr_json" | jq -r '.title')
+            author=$(echo "$pr_json" | jq -r '.user')
+
+            line="- #${num} ${title} (@${author})"
+
+            # CI, docs, chore, release-process PRs go to the meta section
+            if echo "$title" | grep -qiE '^(ci|docs|chore|build|release)\b'; then
+              meta_lines="${meta_lines}${line}"$'\n'
+            else
+              content_lines="${content_lines}${line}"$'\n'
+            fi
+          done
+
+          # --- assemble the body ---
+          {
+            echo 'PR_BODY<<EOFBODY'
+
+            if [[ -n "$content_lines" ]]; then
+              echo '## What ships'
+              echo ''
+              printf '%s' "$content_lines"
+              echo ''
+            fi
+
+            if [[ -n "$meta_lines" ]]; then
+              echo '<details><summary>CI / docs / chore</summary>'
+              echo ''
+              printf '%s' "$meta_lines"
+              echo '</details>'
+              echo ''
+            fi
+
+            echo '---'
+            echo ''
+            echo 'Merging this pull request deploys production and publishes the signed release.'
+            echo ''
+            # shellcheck disable=SC2016 # backticks are Markdown code spans in the PR body
+            echo 'Required checks: `validate`, `e2e`.'
+            echo ''
+            echo 'Compare: https://github.com/'"${GH_REPO}"'/compare/main...dev'
+            echo 'EOFBODY'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create or update the promotion pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_TITLE: "release: promote dev to production"
+          PR_BODY: ${{ steps.body.outputs.PR_BODY }}
+        run: |
+          set -euo pipefail
+
+          # --- gate: anything to promote? ---
+          ahead=$(gh api "repos/${GH_REPO}/compare/main...dev" --jq '.ahead_by')
+          if [[ "$ahead" == "0" ]]; then
+            echo "::notice::dev has no commits ahead of main; nothing to promote"
+            exit 0
+          fi
+
+          main_tree=$(gh api "repos/${GH_REPO}/commits/main" --jq '.commit.tree.sha')
+          dev_tree=$(gh api "repos/${GH_REPO}/commits/dev" --jq '.commit.tree.sha')
+          if [[ "$main_tree" == "$dev_tree" ]]; then
+            echo "::notice::main already has dev's tree; nothing to promote"
+            exit 0
+          fi
+
+          # --- if PR already open, update its body and exit ---
+          existing=$(gh pr list --base main --head dev --state open --json number --jq '.[].number')
+          if [[ -n "$existing" ]]; then
+            gh api --method PATCH "repos/${GH_REPO}/pulls/${existing}" \
+              -f body="$PR_BODY" > /dev/null
+            echo "::notice::updated body of promotion pull request #${existing}"
+            exit 0
+          fi
+
+          # --- create ---
+          jq -n \
+            --arg base main \
+            --arg head dev \
+            --arg title "$PR_TITLE" \
+            --arg body "$PR_BODY" \
+            '{base: $base, head: $head, title: $title, body: $body}' > payload.json
+
+          if ! response=$(gh api --method POST "repos/${GH_REPO}/pulls" --input payload.json 2>&1); then
+            case "$response" in
+              *"pull request already exists"*)
+                echo "::notice::another run created the promotion pull request first"
+                exit 0
+                ;;
+              *"not permitted"*|*"403"*)
+                printf '%s\n' "$response"
+                echo "::error::Actions is not allowed to open pull requests. Enable Settings > Actions > General > Workflow permissions > Allow GitHub Actions to create and approve pull requests."
+                exit 1
+                ;;
+              *)
+                printf '%s\n' "$response"
+                echo "::error::could not open the promotion pull request"
+                exit 1
+                ;;
+            esac
+          fi
+
+          printf '%s\n' "$response" |
+            jq -r '"::notice::opened promotion pull request #\(.number)"' ||
+            echo "::notice::opened the promotion pull request"

@@ -1,6 +1,23 @@
 // Single derivation table for size constraints.
 // Redefining these constraints in individual modules is prohibited.
+import {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_STEP,
+} from "@/lib/frame-bytes"
+import { FRAME_INTERVAL_MS_MAX } from "@/lib/frame-interval"
 import { env } from "@/schemas/env-schema"
+export {
+  FRAME_BYTES_MAX,
+  FRAME_BYTES_MIN,
+  FRAME_BYTES_STEP,
+  FRAME_BYTES_VALUES,
+  isBootReadableFrameBytes,
+  isFrameBytes,
+  LEGACY_FRAME_BYTES_MAX,
+  LEGACY_FRAME_BYTES_MIN,
+  normalizeLegacyFrameBytes,
+  type FrameBytes,
+} from "@/lib/frame-bytes"
 export {
   FRAME_INTERVAL_MS_DEFAULT,
   FRAME_INTERVAL_MS_MAX,
@@ -15,11 +32,12 @@ export {
   type FrameIntervalMs,
 } from "@/lib/frame-interval"
 
-// Maximum plaintext size in UTF-8 bytes, configurable via the environment.
-export const MAX_PLAINTEXT_BYTES = env.maxPlaintextBytes
+// The environment-configured plaintext ceiling belongs to the post-quantum
+// multipart path. MAX_PLAINTEXT_BYTES remains the shared crypto allocation
+// ceiling; the A256GCM UI must additionally apply the v1 single-QR bound below.
+export const MAX_PQ_PLAINTEXT_BYTES = env.maxPlaintextBytes
+export const MAX_PLAINTEXT_BYTES = MAX_PQ_PLAINTEXT_BYTES
 
-// AES-256-GCM size is plaintext length + a 16B authentication tag appended by WebCrypto.
-export const MAX_CIPHERTEXT_BYTES = MAX_PLAINTEXT_BYTES + 16
 
 // AAD ("OCAAD1|v|type|alg|keyId|createdAt") is about 60B in practice.
 // This limit includes headroom.
@@ -31,6 +49,43 @@ export const MAX_AAD_BYTES = 128
 // → base64url ≈ ceil(4700×4/3) ≈ 6267 + 5-character prefix ≈ 6.3K < 8192
 // (including headroom).
 export const MAX_PAYLOAD_CHARS = 8192
+
+// A v1 A256GCM message has a five-character OCM1 prefix and at most 201
+// non-plaintext CBOR bytes: the fixed eight-entry map, fixed fields, a
+// 16-byte GCM tag, and the longest valid decimal createdAt in both the map
+// and AAD. cbor-x uses a three-byte map header in this profile.
+const V1_MESSAGE_PREFIX_CHARS = 5
+const V1_MESSAGE_MAX_FIXED_CBOR_BYTES = 201
+
+// Derive the pre-encryption A256GCM limit from both independent encoded-text
+// ceilings. The caller supplies qrByteCapacity(selectedEcLevel), keeping the
+// QR capacity table owned by qr/encode.ts and making preference changes explicit.
+export function maximumSymmetricPlaintextBytesForPayloadCapacity(
+  qrPayloadCapacityChars: number,
+): number {
+  if (
+    !Number.isSafeInteger(qrPayloadCapacityChars) ||
+    qrPayloadCapacityChars <= V1_MESSAGE_PREFIX_CHARS
+  ) {
+    throw new RangeError("v1 QR payload capacity is out of range")
+  }
+  const payloadChars = Math.min(MAX_PAYLOAD_CHARS, qrPayloadCapacityChars)
+  const base64UrlChars = payloadChars - V1_MESSAGE_PREFIX_CHARS
+  const maximumCborBytes = Math.floor((base64UrlChars * 3) / 4)
+  return Math.max(0, maximumCborBytes - V1_MESSAGE_MAX_FIXED_CBOR_BYTES)
+}
+
+// Structural v1 ceiling: the most a single OCM1 payload can carry at any EC level.
+// The UI narrows this further with the selected level's QR capacity.
+export const MAX_SYMMETRIC_PLAINTEXT_BYTES =
+  maximumSymmetricPlaintextBytesForPayloadCapacity(MAX_PAYLOAD_CHARS)
+
+// AES-256-GCM size is plaintext length + a 16B authentication tag appended by WebCrypto.
+// The v1 envelope is bounded by what a single OCM1 payload can carry, NOT by the
+// post-quantum multipart ceiling: tying it to MAX_PLAINTEXT_BYTES would let the v1
+// decoder accept envelopes no legitimate v1 QR could ever contain.
+export const MAX_CIPHERTEXT_BYTES = MAX_SYMMETRIC_PLAINTEXT_BYTES + 16
+
 
 // Key IDs / artifact IDs: base64url of 16 random bytes (22 characters).
 export const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/
@@ -46,7 +101,7 @@ export const IV_BYTES = 12
 export const AES_KEY_BYTES = 32
 
 // ---------------------------------------------------------------------------
-// v2 post-quantum limits; see docs/qr-protocol-v2.md §4–§6.
+// v2 post-quantum limits; see docs/spec/qr-protocol-v2.md §4–§6.
 // ---------------------------------------------------------------------------
 
 // HKDF-SHA-256 salt is 32B from the CSPRNG for each encryption.
@@ -59,74 +114,47 @@ export const MESSAGE_ID_BYTES = 16
 export const KEM_SEED_BYTES = 64
 export const DSA_SEED_BYTES = 32
 
-// Frame-setting ranges and defaults from docs/qr-protocol-v2.md §6.
-// Preferences/environment validation references this table.
-// Halved from 400/600: smaller chunks pick a lower QR version, so modules render larger
-// and cameras lock on faster. An older bundle on the same origin would reject a stored
-// frameBytes < 400 and force a wipe, but this app is never updated after install.
-export const FRAME_BYTES_MIN = 200
-export const FRAME_BYTES_MAX = 900
-export const FRAME_BYTES_DEFAULT = 300
-// Minimum chunk size used only by sender-side splitting; below the Preferences floor
-// because the fixed key-QR chunk sizes are smaller than any selectable frameBytes.
-export const FRAME_CHUNK_MIN_BYTES = 100
-// Fixed chunk size used only to display OCP2/OCS2 single-key QRs.
-// It is not tied to settings/Preferences and is not persisted.
-// Halved from 280B for the same scan-reliability reason as the OCI2 target below.
-export const PQ_KEY_QR_FRAME_BYTES = 140
-// For scanning stability, split OCI2 evenly into 40–50 frames targeting about 100B each.
-// Halved from 200B/20–25 frames: 100B chunks drop each frame to a lower QR version, so
-// modules render larger and phone cameras lock on faster, at twice the frame count.
-export const PQ_IDENTITY_QR_TARGET_FRAME_BYTES = 100
-export const PQ_IDENTITY_QR_FRAME_COUNT_MIN = 40
-export const PQ_IDENTITY_QR_FRAME_COUNT_MAX = 50
-
-export function pqIdentityQrFrameCount(artifactByteLength: number): number {
-  if (!Number.isSafeInteger(artifactByteLength) || artifactByteLength < 1) {
-    throw new RangeError("artifactByteLength out of range")
+// Round the per-artifact floor onto the density grid. The renderer clamps
+// to this value before its first split, while leaving the stored preference unchanged.
+export function minimumFrameBytesForArtifact(
+  artifactByteLength: number,
+  maximumFrames = env.qrMaxFrames,
+): number {
+  if (
+    !Number.isSafeInteger(artifactByteLength) ||
+    artifactByteLength < 1 ||
+    !Number.isSafeInteger(maximumFrames) ||
+    maximumFrames < 1 ||
+    maximumFrames > PROTOCOL_MAX_FRAMES
+  ) {
+    throw new RangeError("artifact framing inputs out of range")
   }
-  return Math.min(
-    PQ_IDENTITY_QR_FRAME_COUNT_MAX,
-    Math.max(
-      PQ_IDENTITY_QR_FRAME_COUNT_MIN,
-      Math.ceil(artifactByteLength / PQ_IDENTITY_QR_TARGET_FRAME_BYTES),
-    ),
+  return (
+    FRAME_BYTES_STEP *
+    Math.ceil(Math.ceil(artifactByteLength / maximumFrames) / FRAME_BYTES_STEP)
   )
 }
-export const TRANSFER_TIMEOUT_MINUTES_MIN = 1
+// The active internal density reaches the 1,000-byte chunk ceiling, so the
+// density-derived artifact capacity and the algebraic wire budget now coincide.
+// This intentionally permits at most 128,000 bytes of attacker-controlled
+// artifact input across 128 frames; CBOR applies separate structural limits.
+// A maximum 120,000-byte signed message is 126,619 bytes and uses 127 frames.
+export const PROTOCOL_MAX_FRAMES = 128
+export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX
+export const MAX_ARTIFACT_BYTES_ABSOLUTE =
+  PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES
+
+// Cover a complete cycle at the slowest admitted display interval. The maximum
+// signed message takes 127 × 2,000ms = 254s; deriving from the full 128-frame
+// protocol budget is conservative (256s) and rounds up to a five-minute floor.
+const MILLISECONDS_PER_MINUTE = 60_000
+export const TRANSFER_TIMEOUT_MINUTES_MIN = Math.ceil(
+  (PROTOCOL_MAX_FRAMES * FRAME_INTERVAL_MS_MAX) / MILLISECONDS_PER_MINUTE,
+)
 export const TRANSFER_TIMEOUT_MINUTES_MAX = 120
 export const TRANSFER_TIMEOUT_MINUTES_DEFAULT = 10
 export const RESET_CHURN_MB_MIN = 0
 export const RESET_CHURN_MB_MAX = 512
-
-// Absolute protocol limit for receiver-side resource checks.
-// The sender generation limit is separately constrained by env.qrMaxFrames (≤64).
-// Measured maximum canonical CBOR on 2026-07-23 (maxPlaintext=4,096B,
-// name=<three-character, 9-byte non-ASCII UTF-8 fixture>):
-// artifact                         bytes   OCF2 frames (400 / 600 / 900B)
-// unsigned empty / max          1,887 / 5,986       5/4/3 / 15/10/7
-// signed empty / max            6,613 / 10,711     17/12/8 / 27/18/12
-// OCI2 bundle                    4,402              12/8/5
-// OCP2 KEM / OCS2 DSA           1,733 / 2,755       5/3/2 / 7/5/4
-// OCB2 reserved sizing fixture   4,637              12/8/6
-// OCI2 splits evenly by count: 4,402B → 45 frames (97/98B).
-// Fixed 140B single-key chunks (PQ_KEY_QR_FRAME_BYTES): OCP2 1,733 → 13 / OCS2 2,755 → 20.
-// maximum-artifact-size.golden.test.ts also pins actual EC-Q generation for every OCF2 string.
-export const PROTOCOL_MAX_FRAMES = 64
-export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX
-export const MAX_ARTIFACT_BYTES_ABSOLUTE = PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES
-
-// Sender: maximum raw artifact bytes generatable under the current frameBytes setting.
-export function maxArtifactBytes(frameBytes: number): number {
-  if (
-    !Number.isSafeInteger(frameBytes) ||
-    frameBytes < FRAME_BYTES_MIN ||
-    frameBytes > FRAME_BYTES_MAX
-  ) {
-    throw new RangeError("frameBytes out of range")
-  }
-  return env.qrMaxFrames * frameBytes
-}
 
 // The OCF2 frame-string limit, including the prefix, equals QR v40 EC-Q byte capacity.
 // Payloads are ASCII-only, so character count equals byte count; golden tests under
