@@ -1,5 +1,5 @@
 // v2 deterministic CBOR; changes require a protocol revision.
-// See docs/qr-protocol-v2.md §2 and §8.
+// See docs/spec/qr-protocol-v2.md §2 and §8.
 //
 // Profile: a subset of RFC 8949 §4.2.1 core deterministic encoding.
 //   - Values are restricted to maps (text keys only), text strings, byte strings,
@@ -481,7 +481,7 @@ export function decodeUnsignedMessageBodyV2(bytes: Uint8Array): UnsignedMessageB
 }
 
 // Signing target = canonical CBOR of the standalone SignedMessageBodyV2 map
-// (docs/qr-protocol-v2.md §5).
+// (docs/spec/qr-protocol-v2.md §5).
 export function signingTargetBytes(body: SignedMessageBodyV2): Uint8Array {
   return encodeCanonicalCbor(
     guardSignedMessageBodyV2(body) as unknown as CanonicalCborValue,
@@ -501,7 +501,7 @@ export function decodeSignedMessageV2(bytes: Uint8Array): Omit<SignedMessageV2, 
 }
 
 // ---------------------------------------------------------------------------
-// PublicIdentityBundleV2; see docs/qr-protocol-v2.md §7.1.
+// PublicIdentityBundleV2; see docs/spec/qr-protocol-v2.md §7.1.
 // ---------------------------------------------------------------------------
 
 export function guardPublicIdentityBundleV2(value: unknown): PublicIdentityBundleV2 {
@@ -629,7 +629,7 @@ export function decodeDsaPublicKeyEnvelopeV2(bytes: Uint8Array): DsaPublicKeyEnv
 }
 
 // ---------------------------------------------------------------------------
-// QrFrameV2, including the protocol-constant validation in docs/qr-protocol-v2.md §6.
+// QrFrameV2, including the protocol-constant validation in docs/spec/qr-protocol-v2.md §6.
 // ---------------------------------------------------------------------------
 
 export function guardQrFrameV2(value: unknown): QrFrameV2 {

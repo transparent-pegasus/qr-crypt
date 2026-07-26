@@ -1,4 +1,4 @@
-// OCF2 frame assembly; see docs/qr-protocol-v2.md §6.
+// OCF2 frame assembly; see docs/spec/qr-protocol-v2.md §6.
 //
 // Invariants (frozen):
 //   - index is 0..frameCount-1. Freeze immutable metadata from the first frame:

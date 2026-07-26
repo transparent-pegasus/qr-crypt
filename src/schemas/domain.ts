@@ -43,7 +43,7 @@ export function toUiAlgorithm(algorithm: WireAlgorithm): UiAlgorithm {
 }
 
 // ---------------------------------------------------------------------------
-// v2 post-quantum algorithms and suites; see docs/qr-protocol-v2.md §4.
+// v2 post-quantum algorithms and suites; see docs/spec/qr-protocol-v2.md §4.
 // ---------------------------------------------------------------------------
 
 export const ML_KEM_ALGORITHMS = ["ML-KEM-768", "ML-KEM-1024"] as const
@@ -64,7 +64,7 @@ export const WIRE_SUITES = [
 export type WireSuite = (typeof WIRE_SUITES)[number]
 
 // ---------------------------------------------------------------------------
-// v2 Vault; see docs/qr-protocol-v2.md §7.
+// v2 Vault; see docs/spec/qr-protocol-v2.md §7.
 // ---------------------------------------------------------------------------
 
 export interface EncryptedSecret {
@@ -75,7 +75,7 @@ export interface EncryptedSecret {
 export type VaultSecretRole = "ml-kem-seed" | "ml-dsa-seed"
 
 // ---------------------------------------------------------------------------
-// v2 post-quantum identities; see docs/qr-protocol-v2.md §7.1.
+// v2 post-quantum identities; see docs/spec/qr-protocol-v2.md §7.1.
 // ---------------------------------------------------------------------------
 
 // active: may encrypt and sign / rotated: decryption and verification only (old generation) /
@@ -117,7 +117,7 @@ export interface PostQuantumIdentity {
 }
 
 // ---------------------------------------------------------------------------
-// v2 public-key bundles and imported records; see docs/qr-protocol-v2.md §7.1.
+// v2 public-key bundles and imported records; see docs/spec/qr-protocol-v2.md §7.1.
 // ---------------------------------------------------------------------------
 
 export interface PublicIdentityBundleV2 {
@@ -168,7 +168,7 @@ export interface PqPublicBundleRecord {
 }
 
 // ---------------------------------------------------------------------------
-// v2 inner messages as a strict discriminated union; see docs/qr-protocol-v2.md §5.
+// v2 inner messages as a strict discriminated union; see docs/spec/qr-protocol-v2.md §5.
 // ---------------------------------------------------------------------------
 
 export interface MessageBodyCommonV2 {
@@ -189,7 +189,7 @@ export interface SignedMessageBodyV2 extends MessageBodyCommonV2 {
 
 // kind is an in-memory discriminator and is not included in wire CBOR; the outer suite
 // is authoritative. Wire shape: unsigned suite → a standalone UnsignedMessageBodyV2 map /
-// signed suite → a { body, signature } map (docs/qr-protocol-v2.md §5).
+// signed suite → a { body, signature } map (docs/spec/qr-protocol-v2.md §5).
 export interface UnsignedMessageV2 {
   kind: "unsigned"
   body: UnsignedMessageBodyV2
@@ -207,7 +207,7 @@ export interface SignedMessageV2 {
 export type InnerMessageV2 = UnsignedMessageV2 | SignedMessageV2
 
 // ---------------------------------------------------------------------------
-// v2 outer envelopes and AAD; see docs/qr-protocol-v2.md §3.
+// v2 outer envelopes and AAD; see docs/spec/qr-protocol-v2.md §3.
 // ---------------------------------------------------------------------------
 
 export interface MlKemMessageEnvelopeV2 {
@@ -240,12 +240,12 @@ export type PqDecryptResult =
   | { kind: "signed-key-unknown"; senderSigningKeyId: string }
 
 // ---------------------------------------------------------------------------
-// v2 multipart QR frames; see docs/qr-protocol-v2.md §6.
+// v2 multipart QR frames; see docs/spec/qr-protocol-v2.md §6.
 // ---------------------------------------------------------------------------
 
 // OCP2/OCS2 single keys are also transported in frames, so the artifact vocabulary
 // includes pq-kem-public-key / pq-dsa-public-key as documented managed additions
-// (docs/qr-protocol-v2.md §6).
+// (docs/spec/qr-protocol-v2.md §6).
 export const V2_ARTIFACT_TYPES = [
   "pq-message",
   "pq-public-identity",
@@ -272,7 +272,7 @@ export interface QrFrameV2 {
 }
 
 // ---------------------------------------------------------------------------
-// v2 single public-key envelopes (OCP2/OCS2); see docs/qr-protocol-v2.md §1 and §7.1.
+// v2 single public-key envelopes (OCP2/OCS2); see docs/spec/qr-protocol-v2.md §1 and §7.1.
 // ---------------------------------------------------------------------------
 
 export interface KemPublicKeyEnvelopeV2 {

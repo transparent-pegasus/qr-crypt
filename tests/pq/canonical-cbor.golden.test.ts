@@ -1,5 +1,5 @@
 // Golden fixtures for v2 canonical CBOR.
-// These hex values must match docs/qr-protocol-v2.md §8.
+// These hex values must match docs/spec/qr-protocol-v2.md §8.
 // Changing a value requires a wire-protocol revision; do not update them casually.
 import { describe, expect, it } from "vitest"
 import type { MlKemMessageEnvelopeV2, QrFrameV2 } from "@/schemas/domain"

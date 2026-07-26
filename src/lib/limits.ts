@@ -62,7 +62,7 @@ export const IV_BYTES = 12
 export const AES_KEY_BYTES = 32
 
 // ---------------------------------------------------------------------------
-// v2 post-quantum limits; see docs/qr-protocol-v2.md §4–§6.
+// v2 post-quantum limits; see docs/spec/qr-protocol-v2.md §4–§6.
 // ---------------------------------------------------------------------------
 
 // HKDF-SHA-256 salt is 32B from the CSPRNG for each encryption.

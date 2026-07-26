@@ -143,3 +143,20 @@ Windows Chrome / macOS Safari / Edge, etc. Not a mandatory release-gate target, 
 | QR frame render completion time | not yet measured | not yet measured | not yet measured |
 | QR scan completion time | not yet measured | not yet measured | not yet measured |
 | Worker load check after offline reload | not yet measured | not yet measured | not yet measured |
+
+### Node reference bench (development machine, not a release gate)
+
+Values from a single run of `aube bench:pq` on 2026-07-25 (Vitest 4.1.10, Linux x86_64,
+Intel Core i7-10870H). `hz` is operations per second; mean is the average milliseconds per
+operation.
+
+| Operation | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| ML-KEM-1024 keygen | 1,090.15 | 0.9173 | 1,031.95 | 0.9690 |
+| ML-KEM-1024 encapsulate | 1,025.61 | 0.9750 | 979.89 | 1.0205 |
+| ML-KEM-1024 decapsulate | 787.64 | 1.2696 | 781.58 | 1.2795 |
+| ML-DSA-87 sign | 83.4877 | 11.9778 | 96.8792 | 10.3221 |
+| ML-DSA-87 verify | 295.14 | 3.3883 | 285.53 | 3.5025 |
+
+These are reference values from a development machine. They do not substitute for the
+on-device measurements above, nor for the `release-approved` determination.

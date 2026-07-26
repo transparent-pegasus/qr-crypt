@@ -1,4 +1,4 @@
-// Boot state-machine contract; see docs/boot-and-reset-v2.md.
+// Boot state-machine contract; see docs/spec/boot-and-reset-v2.md.
 //
 // Separation:
 //   - Display connectivity: navigator.onLine + the existing reachability probe

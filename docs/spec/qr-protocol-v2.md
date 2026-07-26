@@ -3,7 +3,7 @@
 This document is the normative specification of the v2 (ML-KEM / ML-DSA)
 wire format. The implementation (`src/crypto/pq/*`, `src/qr/payload-v2.ts`,
 `src/qr/multipart/*`) and the golden fixtures in `tests/pq/*` follow this
-document. The v1 format remains specified in `docs/qr-protocol.md`
+document. The v1 format remains specified in `docs/spec/qr-protocol.md`
 (reusing v1 prefixes for ML purposes is forbidden). This document is the
 authoritative committed specification of this contract.
 
@@ -27,8 +27,8 @@ authoritative committed specification of this contract.
   because `VITE_ENABLE_ENCRYPTED_SEED_BACKUP=false` is fixed.
 - Managed deviation: `pq-kem-public-key` / `pq-dsa-public-key` were added to
   the three artifactType values of the original draft specification
-  (single keys are also always carried via framing; see the deviation table
-  in the README).
+  (single keys are also always carried via framing; see
+  [../develop/deviations.md](../develop/deviations.md)).
 
 ## 2. Canonical CBOR profile (shared by all v2 structures)
 

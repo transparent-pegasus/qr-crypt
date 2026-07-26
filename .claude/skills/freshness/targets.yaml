@@ -42,12 +42,12 @@ units:
         - "@noble/post-quantum" — handled ONLY via unit crypto-noble.
         - zxing-wasm — on any bump, recompute the reader wasm SHA-256 and size,
           re-check the upstream zxing-cpp commit, and update the record in
-          docs/security-review.md §1. Confirm the asset still resolves
+          docs/security/security-review.md §1. Confirm the asset still resolves
           same-origin (no CDN) and stays precached, and that
           tests/e2e/security.spec.ts still pins 'wasm-unsafe-eval' present and
           bare 'unsafe-eval' absent.
         - react-hook-form 7.82.0, eslint-config-prettier 10.1.8 — supply-chain
-          incident history in docs/threat-model.md §5.1; re-check advisories
+          incident history in docs/security/threat-model.md §5.1; re-check advisories
           before moving.
       aube.overrides (rollup OMT) stays until upstream trust is restored.
       After bumping vite-plugin-pwa / workbox, re-review the VitePWA options in
@@ -64,7 +64,7 @@ units:
       - aube-lock.yaml # frozen graph must move with the pin
       - src/crypto/pq/provider-noble.ts # API-surface header comments
       - src/crypto/pq/profiles.ts # FIPS 203/204 size tables
-      - docs/security-review.md # §1 as-of version / audit status
+      - docs/security/security-review.md # §1 as-of version / audit status
     why: >
       The PQ provider pin (0.6.1) is the security-critical dependency. New noble
       releases, independent-audit status changes, and NIST FIPS 203/204 errata
@@ -75,7 +75,7 @@ units:
       review the resulting aube-lock.yaml diff (noble transitive graph,
       provenance), refresh provider-noble.ts header comments, diff
       KEM_SIZES/DSA_SIZES/PQ_PROFILES in profiles.ts against the new source,
-      update docs/security-review.md §1 (version, as-of date, audit status).
+      update docs/security/security-review.md §1 (version, as-of date, audit status).
     verify: aube audit && aube test:pq && aube test:pq-vectors && aube bench:pq
     constraint: >
       Never bump the pin without KAT (test:pq-vectors) and golden passes.
@@ -88,13 +88,13 @@ units:
     last_checked: 2026-07-25
     files:
       - mise.toml # node / aube pins
-      - README.md # duplicates the pinned versions in prose
+      - docs/develop/development.md # duplicates the pinned versions in prose
     why: >
-      Toolchain pins (node 26.5.0, aube 1.32.0) fall behind releases; README
-      repeats them and drifts silently.
+      Toolchain pins (node 26.5.0, aube 1.32.0) fall behind releases; the
+      development guide repeats them and drifts silently.
     method: |
       Check current node LTS / aube releases; edit mise.toml; mise install;
-      sync the versions named in README.md.
+      sync the versions named in docs/develop/development.md.
     verify: mise install && node -v && aube -V && aube ci && aube test
 
   - id: ci-actions
@@ -105,9 +105,12 @@ units:
       - .github/workflows/cloudflare-pages.yml
       - .github/workflows/dev-to-main-pr.yml
       - .github/workflows/github-release.yml
+      - docs/develop/deployment.md # prose mirror of the deploy/CI/release flow
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
       image, and GitHub runner/CLI behavior all drift with upstream releases.
+      docs/develop/deployment.md restates the same flow in prose, and the README
+      install route B publishes the cosign verification policy values.
     method: |
       Review all three workflows. Check each action repository for newer majors and
       security advisories. Keep release-workflow actions pinned to full SHAs;
@@ -122,7 +125,11 @@ units:
       leave them held at "Approve workflows to run", and that gh pr create reads
       local branch configuration (so this workflow must use gh api --input
       without checkout). Reconfirm that the repository-wide setting allowing
-      Actions to create and approve pull requests is enabled.
+      Actions to create and approve pull requests is enabled. Reconcile
+      docs/develop/deployment.md with the workflows, and the cosign verify-blob
+      policy values quoted in README.md / README.ja.md (certificate identity,
+      OIDC issuer, repository, ref, trigger) with github-release.yml.
+    sync: [readme]
     verify: |
       Local only — a freshness sweep must not push:
       mise x \
@@ -146,7 +153,7 @@ units:
     cadence_days: 90
     last_checked: 2026-07-26
     files:
-      - docs/threat-model.md
+      - docs/security/threat-model.md
     why: >
       Living threat model. §5.1 supply-chain advisories are dated (2026-07-21);
       §7 v2 addendum cites algorithm defaults that can diverge from the active
@@ -168,7 +175,7 @@ units:
     cadence_days: 30 # and before every release candidate
     last_checked: 2026-07-26
     files:
-      - docs/security-review.md
+      - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
       - tests/e2e/security.spec.ts # executable half of the CSP claims
     why: >
@@ -188,10 +195,10 @@ units:
     cadence_days: 60
     last_checked: null
     files:
-      - docs/browser-matrix.md # release-gate device measurements
+      - docs/develop/browser-matrix.md # release-gate device measurements
       - src/app/App.tsx # UNSUPPORTED_BROWSER gate copy
       - src/lib/feature-detect.ts # WebCrypto/IDB/camera/SW probes
-      - docs/qr-protocol.md # WebCrypto AES-GCM / QR capacity claims
+      - docs/spec/qr-protocol.md # WebCrypto AES-GCM / QR capacity claims
     why: >
       Browser/OS releases invalidate measured rows (未計測 cells), support
       claims, and feature-detection assumptions.
@@ -208,16 +215,21 @@ units:
       move it to a dedicated Worker. Re-check
       detectFeatures() assumptions against MDN/caniuse for target browsers;
       update gate copy if reality moved. Align profile names in the matrix
-      with the active profile.
-    verify: aube test:e2e && aube test -- tests/ui/app-shell.test.tsx
+      with the active profile. Re-run aube bench:pq and replace the "Node
+      reference bench" table (dated development-machine values) in the same
+      document. Reconcile the README "Requirements" sections (target browsers,
+      Web Crypto / IndexedDB gate, WebAssembly decoder behaviour) with
+      detectFeatures(), App.tsx, and src/qr/decode.ts.
+    verify: aube bench:pq && aube test:e2e && aube test -- tests/ui/app-shell.test.tsx
+    sync: [readme]
 
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
     last_checked: 2026-07-26
     files:
-      - docs/qr-protocol-v2.md
-      - docs/boot-and-reset-v2.md
+      - docs/spec/qr-protocol-v2.md
+      - docs/spec/boot-and-reset-v2.md
       - src/crypto/pq/wire-bytes.ts # mirrors documented wire layout
       - src/crypto/pq/canonical-cbor.ts # mirrors documented canonical encoding
       - tests/pq/wire-bytes.golden.test.ts # frozen hex must match the docs
@@ -257,7 +269,7 @@ units:
       Re-run the golden test; if intentional drift, update fixtures, the
       comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
       env-schema.ts, and the .env.prod/.env.example defaults together, then
-      sync the copy of the table in docs/security-review.md.
+      sync the copy of the table in docs/security/security-review.md.
       Verify the active preference-controlled density grid 200–1,000B in 100B
       steps for messages, OCI2, OCP2, and OCS2 (200B shipped default; active
       writes reject off-grid values such as 250B); the grid-rounded
@@ -270,7 +282,7 @@ units:
       interval grid is 200–1,000ms in 100ms steps with a 1,000ms default, while
       boot readability and repository normalization retain every historical
       interval integer 150–2,000 plus 2,500/3,000. Keep limits.ts, env-schema.ts,
-      both env files, docs/qr-protocol-v2.md, docs/security-review.md, and the
+      both env files, docs/spec/qr-protocol-v2.md, docs/security/security-review.md, and the
       golden test in agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [security-review]
@@ -317,7 +329,7 @@ units:
       assertion, so it moves with them.
     method: |
       Diff the disclosure copy (both locales in src/i18n/messages.ts) against
-      docs/security-review.md and docs/threat-model.md; update banners when
+      docs/security/security-review.md and docs/security/threat-model.md; update banners when
       audit/release status moves. Re-read the landing page's dated AES-256
       sentence and PQ ("store now, open later") rationale against the same
       docs, and keep public/about/index.html and messages.js in step — the
@@ -328,21 +340,41 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-07-25
+    last_checked: 2026-07-26
     files:
-      - README.md
-      - README.ja.md
+      - README.md # general-audience entry point (en)
+      - README.ja.md # same content, ja; both must move together
       - SECURITY.md # duplicates release-status claims (repo-public ≠ release-approved)
       - index.html # static meta description; must stay aligned with product claims, never relay-derived
+      - docs/develop/deviations.md # dated maintainer decisions (2026-07-23/24) and active-policy wording
     why: >
-      Dated PQ bench table (2026-07-23), experimental/audit status claims,
-      release checklist, supply-chain history, managed-deviation dates, and
-      duplicated toolchain versions all drift.
+      Experimental / not-independently-audited claims, active-suite wording,
+      the install route B cosign policy values, the documentation list, and the
+      dated maintainer decisions in deviations.md all drift. The two READMEs
+      are a translation pair and stale independently.
     method: |
-      Re-run aube bench:pq and replace the bench table. Re-check
-      §リリース前確認 against docs/security-review.md. Reconcile suite/profile
-      wording with the active profile. Sync toolchain versions from mise.toml.
-    verify: aube bench:pq
+      Reconcile the experimental / audit-status wording with
+      docs/security/security-review.md §1 and SECURITY.md. Reconcile
+      suite/profile wording with the active profile. Confirm the install
+      route B cosign policy values still match
+      .github/workflows/github-release.yml (unit ci-actions). Confirm the
+      documentation list matches the docs/ tree. In deviations.md, drop rows
+      that no longer constrain the current implementation — history-only
+      entries do not belong there (CLAUDE.md: no backward compatibility).
+      Any edit to one README must be mirrored in the other.
+    verify: |
+      # Every relative link in the registered Markdown files resolves.
+      # Must print nothing; --no-filename is required or every match is
+      # prefixed with its file and tested as a nonexistent path.
+      for f in README.md README.ja.md SECURITY.md docs/develop/deviations.md; do
+        for target in $(rg -oN --no-filename '\]\(([^):#]+)\)' -r '$1' "$f" |
+          sort -u); do
+          case "$target" in http*|mailto:*) continue;; esac
+          test -e "$(dirname "$f")/$target" || echo "MISSING $f -> $target"
+        done
+      done
+      # Then read index.html's meta description and confirm it still matches
+      # the product claims in the READMEs (no relay-derived wording).
 
   - id: external-links
     category: links
@@ -360,7 +392,7 @@ units:
       - public/about/install-qr.svg # encodes the production app URL; regenerate whenever that URL moves
     why: >
       External URLs rot; provenance paths/versions drift from reality.
-      (README.md and docs/threat-model.md carry bare advisory IDs, not URLs —
+      (README.md and docs/security/threat-model.md carry bare advisory IDs, not URLs —
       advisory-ID resolution belongs to the deps/threat-model units.)
       The landing page's install QR is an opaque mirror of the production
       URL: a stale one silently sends readers to the wrong origin.

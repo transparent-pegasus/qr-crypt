@@ -1,4 +1,4 @@
-// Transfer-progress state for docs/qr-protocol-v2.md §6. Release chunk state on
+// Transfer-progress state for docs/spec/qr-protocol-v2.md §6. Release chunk state on
 // timeout (10-minute default), explicit discard, completion, or error.
 import type { ErrorCode } from "@/crypto/errors"
 import type { V2ArtifactType } from "@/schemas/domain"

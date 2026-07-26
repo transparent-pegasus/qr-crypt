@@ -1,0 +1,51 @@
+# Managed Deviations from the Specification
+
+Deliberate, maintainer-approved departures from the originally specified stack and
+protocol that **still constrain the current implementation**. Each row states what the
+code does today and why, so a future change does not silently undo the decision.
+
+Purely historical entries ("feature X was withdrawn", "algorithm Y was removed") are not
+kept here. This project has no backward compatibility and no update path — installs never
+update — so a record of what the software once did constrains nothing.
+
+## Stack
+
+| Deviation | Reason / basis |
+| --- | --- |
+| `sonner` instead of `toast` | The shadcn v3 registry has no `toast`, so its official successor `sonner` provides the toast surface |
+| No shadcn CLI; manual vendoring | The CLI generates an npm-style lockfile, so it is not used. Components are placed manually into `src/components/ui/` from the official registry JSON |
+| `radix-ui` umbrella package not adopted | Only `radix-ui@1.6.4` lacked provenance, so the scoped `@radix-ui/react-*` packages are used. Supply-chain incident details: [../security/threat-model.md](../security/threat-model.md) §5.1 |
+| `typescript@6` pin | Major version 6 is pinned explicitly (`"typescript": "6"` in `package.json`) |
+| `@playwright/test` instead of `playwright` | `@playwright/test` is the test runner. Browsers are installed via `aube exec playwright install chromium` (CI uses `--with-deps`) |
+| Test-support dev deps (`fake-indexeddb` / `pngjs` / `@types/pngjs` / `@testing-library/jest-dom`, etc.) and Tailwind / Radix packages | Outside the originally recommended dependency list but required by the stack (e.g. PNG round-trip decoding with `pngjs`) |
+| Additional shadcn components `checkbox` / `radio-group` / `collapsible` | Needed for strong confirmation, scan-target selection, and collapsible detail views |
+| Camera QR reading runs on `zxing-wasm` (reader-only build) | `@zxing/browser` is not used. The WebAssembly binary is served same-origin and precached, so `script-src` carries `'wasm-unsafe-eval'`. See [../security/security-review.md](../security/security-review.md) §1 |
+| `@zxing/library` kept as a devDependency | Pixel decode of generated PNGs in unit and Playwright helpers only. Not in the shipped bundle |
+| Supply-chain pins and overrides (`react-hook-form@7.82.0` / `eslint-config-prettier@10.1.8` / rollup OMT via `aube.overrides`) | Responses to advisories and a trust downgrade during initial setup. Full list: [../security/threat-model.md](../security/threat-model.md) §5.1 |
+
+## Deployment and CI
+
+| Deviation | Reason / basis |
+| --- | --- |
+| `_headers` carries `Cache-Control: no-cache` for `/sw.js`, `/registerSW.js`, and `/manifest.webmanifest` | Keeps the service worker and manifest fresh. A managed addition to the deployment headers |
+| CI runs `e2e` as a job independent of `validate` | `.github/workflows/cloudflare-pages.yml` splits validation, e2e, and deploy into three jobs; `deploy` needs both `validate` and `e2e`, so a failing e2e blocks deployment |
+
+## Crypto and protocol
+
+| Deviation | Reason / basis |
+| --- | --- |
+| Active policy is **maximum** (ML-KEM-1024 / ML-DSA-87) only | Narrower than the originally recommended suite range (maintainer decision, 2026-07-23). The wire contract keeps 4 suites, but balanced (768/65) exists as reserved types and suite codes only and is rejected at the operational boundary with `UNSUPPORTED_ALGORITHM` |
+| ML-KEM-512 / ML-DSA-44 not implemented | Not supported, including for interoperability testing |
+| `QrFrameV2.artifactType` includes `pq-kem-public-key` / `pq-dsa-public-key` | Two values beyond the three of the original specification, so single public keys can be carried as frames |
+| Error codes `RESET_FAILED`, `SIGNATURE_INVALID`, `SIGNING_KEY_NOT_FOUND`, `FRAME_MISMATCH`, `WORKER_UNAVAILABLE` beyond the specified set | `RESET_FAILED` carries the honest-naming policy for best-effort logical deletion — no error name may imply guaranteed erasure. The others cover signature verification failure, missing signing key, frame mismatch, and Worker unavailability |
+| `VITE_DEFAULT_ALGORITHM=A256GCM` (symmetric AES-256-GCM is the default) | Maintainer requirement, 2026-07-24. Post-quantum modes remain selectable |
+
+## Product surface
+
+| Deviation | Reason / basis |
+| --- | --- |
+| No in-app update mechanism | Maintainer decision: after installation, devices that hold or have held protected material run offline permanently. A new version requires sanitizing the device and installing fresh |
+| No in-app QR storage | Maintainer requirement, 2026-07-24. Both ciphertext and key QR codes are limited to on-screen display, PNG/SVG/ZIP export, and clipboard; there is no `qrArtifacts` store in IndexedDB |
+| Plaintext auto-clear defaults ON | Maintainer decision: auto-clear after successful encryption and after the app moves to the background are both default ON, and the delay uses the fixed env value `VITE_AUTO_CLEAR_SECONDS=300` |
+| Online use limited to installation plus the clean-origin optical relay | Maintainer decision: online encryption/decryption/key-management/storage/settings stay blocked. A fail-closed clean-origin relay may forward exact canonical OCF2 strings whose untrusted outer header declares `pq-message` ([../security/threat-model.md](../security/threat-model.md) T19). On the offline→online transition, in-memory transient data is cleared immediately |
+| `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` reserved only | The env vars remain, but there are no UI or module branches |
