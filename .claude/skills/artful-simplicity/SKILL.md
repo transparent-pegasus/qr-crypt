@@ -1,6 +1,6 @@
 ---
 name: artful-simplicity
-description: Judge whether this repository's design simplicity holds up — implementation logic, test scope, and the wording of docs and comments. Read-only: findings go to .tmp/, nothing is edited. Use for 設計レビュー, シンプルさ監査, 過剰なテスト, 冗長なコメント, over-engineering audit, /artful-simplicity.
+description: Judge whether this repository's design simplicity holds up — implementation logic, test scope, and the wording of docs and comments. Read-only: findings go to .tmp/, nothing is edited. Use for design review, simplicity audit, excessive tests, redundant comments, over-engineering audit, /artful-simplicity.
 ---
 
 # Artful simplicity
@@ -56,7 +56,7 @@ Write `.tmp/artful-simplicity-<today, YYYY-MM-DD>.md`; change nothing else.
 
 One section per axis, headed `## Logic`, `## Tests`, `## Words`. Each opens with
 
-`判定: 合格|要修正 (N件)`
+`Verdict: pass|needs work (N)`
 
 then one line per finding:
 
