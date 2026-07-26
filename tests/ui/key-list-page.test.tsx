@@ -2,9 +2,9 @@ import "./helpers/module-mocks"
 import { useState } from "react"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppProviders, useSensitiveSession } from "@/app/providers"
-import { KeyDetailDialog, type KeySelection } from "@/components/key-detail-dialog"
+import type { KeySelection } from "@/components/key-detail-dialog"
 import { LanguageProvider } from "@/i18n"
 import {
   deleteBundle,
@@ -19,9 +19,23 @@ import {
   renderQrDataUrl,
   revokeIdentity,
   saveRotation,
+  setQrReaderModuleUsable,
   splitIntoFrames,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
+
+let KeyDetailDialog: typeof import("@/components/key-detail-dialog").KeyDetailDialog
+
+beforeAll(async () => {
+  const fakes = await import("./helpers/fakes")
+  vi.doMock("@/qr/decode", () => ({
+    isQrReaderModuleUsable: fakes.isQrReaderModuleUsable,
+    prepareQrReaderModule: fakes.prepareQrReaderModule,
+    startQrScan: fakes.startQrScan,
+    subscribeQrReaderModuleState: fakes.subscribeQrReaderModuleState,
+  }))
+  ;({ KeyDetailDialog } = await import("@/components/key-detail-dialog"))
+})
 
 function rowFor(text: string): HTMLButtonElement {
   const row = screen.getByText(text).closest("button")
@@ -186,7 +200,6 @@ describe("key list page", () => {
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-public-identity",
-          frameBytes: 200,
         }),
       ),
     )
@@ -195,14 +208,6 @@ describe("key list page", () => {
     let fullscreen = await screen.findByRole("dialog", {
       name: /View .*public-key bundle.* full screen/,
     })
-    const density = within(fullscreen).getByRole("slider", {
-      name: "Frame density",
-    })
-    expect(density).toHaveAttribute("min", "200")
-    expect(density).toHaveAttribute("max", "1000")
-    expect(density).toHaveAttribute("step", "100")
-    expect(density).toHaveValue("200")
-    expect(within(fullscreen).getByLabelText("Display speed")).toBeInTheDocument()
     await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
     expect(screen.getByRole("dialog", { name: /public-key bundle/ })).toBeInTheDocument()
 
@@ -214,7 +219,6 @@ describe("key list page", () => {
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-kem-public-key",
-          frameBytes: 200,
         }),
       ),
     )
@@ -240,7 +244,6 @@ describe("key list page", () => {
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
           artifactType: "pq-dsa-public-key",
-          frameBytes: 200,
         }),
       ),
     )
@@ -275,24 +278,70 @@ describe("key list page", () => {
       "aria-hidden",
       "true",
     )
-    expect(within(fullscreen).queryByRole("button", { name: "PNG" })).toBeNull()
+    expect(within(fullscreen).queryByRole("button", { name: "Download" })).toBeNull()
     await user.keyboard("{Escape}")
     expect(screen.getByRole("dialog", { name: "Symmetric-key QR" })).toBeInTheDocument()
     expect(within(dialog).getByText("Sensitive information")).toBeInTheDocument()
-    const png = within(dialog).getByRole("button", { name: "PNG" })
-    const svg = within(dialog).getByRole("button", { name: "SVG" })
+    const download = within(dialog).getByRole("button", { name: "Download" })
     const copy = within(dialog).getByRole("button", { name: "Copy" })
-    expect(png).toBeDisabled()
-    expect(svg).toBeDisabled()
+    expect(download).toBeDisabled()
     expect(copy).toBeDisabled()
+    expect(within(dialog).queryByRole("button", { name: /SVG/i })).toBeNull()
     await user.click(
       within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
     )
-    expect(png).toBeEnabled()
-    expect(svg).toBeEnabled()
+    expect(download).toBeEnabled()
     expect(copy).toBeEnabled()
     expect(within(dialog).queryByText(/Saved/)).toBeNull()
   })
+
+  it.each([
+    {
+      label: "wasm reader usable",
+      wasmReaderUsable: true,
+      frameBytes: 1_000,
+      dwellMs: 200,
+    },
+    {
+      label: "wasm reader unusable",
+      wasmReaderUsable: false,
+      frameBytes: 100,
+      dwellMs: 2_000,
+    },
+  ])(
+    "selects the automatic display profile when the $label",
+    async ({ wasmReaderUsable, frameBytes, dwellMs }) => {
+      const user = userEvent.setup()
+      const firstQrRender = deferred<string>()
+      setQrReaderModuleUsable(wasmReaderUsable)
+      renderQrDataUrl.mockImplementationOnce(() => firstQrRender.promise)
+      await renderKeyList()
+
+      await user.click(rowFor("自分のPQ ID"))
+      const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+      await user.click(
+        within(dialog).getByRole("button", { name: "Public-key bundle QR" }),
+      )
+      await waitFor(() =>
+        expect(splitIntoFrames).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            artifactType: "pq-public-identity",
+            frameBytes,
+          }),
+        ),
+      )
+
+      const timeout = vi.spyOn(window, "setTimeout")
+      firstQrRender.resolve("data:image/png;base64,cHJvZmlsZQ==")
+      await waitFor(() =>
+        expect(
+          within(dialog).getByRole("button", { name: "View full screen" }),
+        ).toBeEnabled(),
+      )
+      expect(timeout.mock.calls.some(([, delay]) => delay === dwellMs)).toBe(true)
+      timeout.mockRestore()
+    },
+  )
 
   it("keeps the fullscreen trigger disabled while identity frame splitting is pending", async () => {
     const user = userEvent.setup()

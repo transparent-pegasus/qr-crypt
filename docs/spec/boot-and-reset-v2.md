@@ -74,22 +74,27 @@ offline-confirmed -- display online re-commit --> probing (at most once)
   The allowlist is append-only so that a stored preference can never turn into
   a read failure and misfire the fail-safe above.
 - The numeric read allowlists are append-only for the same reason. Active
-  density is every 100B grid value from 200 through 1,000B; boot accepts every
-  safe density integer from 100 through 1,000B, retaining every historical
-  integer from 100 through 900. Active interval is every 100ms grid value from
-  200 through 1,000ms; boot accepts every safe interval integer from 150
-  through 3,000ms, retaining every historical integer from 150 through 2,000
-  together with 2,500 and 3,000. Neither boot-readable set may be narrowed
-  when the active controls change.
+  internal density is every 100B grid value from 100 through 1,000B; boot
+  accepts every safe density integer from 100 through 1,000B, retaining every
+  historical integer from 100 through 900. The admitted internal interval set
+  is every 100ms grid value from 200 through 1,000ms plus 2,000ms; boot accepts
+  every safe interval integer from 150 through 3,000ms, retaining every
+  historical integer from 150 through 2,000 together with 2,500 and 3,000.
+  Neither boot-readable set may be narrowed when the internal display policy
+  changes.
 - Boot only decides whether the stored row is readable. When the normal
   preferences repository later loads that row, a boot-readable density or
-  interval that is no longer active is normalized rather than rejected:
-  clamp to the active 200–1,000 range, then round to the nearest 100-unit grid
-  value with midpoint ties upward. Thus a retired 100B density loads as 200B,
-  150ms loads as 200ms, and retired intervals above 1,000ms load as 1,000ms;
-  already-active values are unchanged. This normalization applies only to
-  readable stored values before validation or a current patch merge.
-  Preference patches and environment values remain strict active-grid writes.
+  interval that is no longer admitted is normalized rather than rejected:
+  density rounds to the nearest 100B value in 100–1,000B, while interval
+  chooses the nearest admitted value in 200–1,000ms plus 2,000ms; midpoint
+  ties choose the larger value. Thus 150ms loads as 200ms and 1,500ms loads as
+  2,000ms; already-admitted values are unchanged. The stored
+  `frameBytes`/`frameIntervalMs` fields remain readable for this boot-safety
+  contract, but generated-artifact producers no longer expose user controls,
+  consult the stored values when selecting a profile, or write automatic
+  choices back. This normalization applies only to readable stored values
+  before validation or a current patch merge. Preference patches and
+  environment values remain strict admitted-set writes.
 - Once the sentinel body matches, the destructive decision is latched. A
   subsequent offline request does not cancel maintenance-token consumption, a
   transient reset, or a wipe whose conditions are met. Generation numbers and

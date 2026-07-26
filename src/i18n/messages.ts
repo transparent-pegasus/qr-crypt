@@ -21,6 +21,7 @@ const en = {
     "The content could not be copied. Check the browser permission.",
   "common.riskUnderstood": "I understand the risk",
   "common.copy": "Copy",
+  "common.download": "Download",
   "common.delete": "Delete",
   "common.deleteAriaLabel": "Delete {name}",
   "common.created": "Created: {datetime}",
@@ -220,17 +221,9 @@ const en = {
   "animatedQr.play": "Play",
   "animatedQr.pause": "Pause",
   "animatedQr.next": "Next",
-  "animatedQr.speed.label": "Display speed",
-  "animatedQr.density.label": "Frame density",
-  "animatedQr.density.restartWarning":
-    "Changing density starts a new transfer",
-  "animatedQr.density.restartDetail":
-    "A receiver that already scanned frames must discard them and restart.",
+  "animatedQr.densityRaised": "Frame density was raised so this transfer fits.",
   "animatedQr.brightnessHint":
     "Increase the screen brightness and keep the device still for more reliable scanning.",
-  "animatedQr.export.allPng": "Export all PNGs",
-  "animatedQr.export.zip": "Export ZIP",
-  "animatedQr.export.currentSvg": "Current SVG",
   "animatedQr.export.error.title": "The frames could not be exported",
 
   "keyDetail.qr.bundleTitle": "{name} public-key bundle",
@@ -541,8 +534,6 @@ const en = {
     "This cannot be disabled because it is required by the environment configuration.",
   "settings.requireSignature.hint":
     "When enabled, unsigned post-quantum options are hidden.",
-  "settings.field.frameBytes": "Raw data per frame: {min}–{max} bytes",
-  "settings.field.frameInterval": "Frame interval: {min}–{max} ms",
   "settings.field.transferTimeout": "Scan-state lifetime: {min}–{max} minutes",
   "settings.frameEc.hint": "OCF2 frames always use Q error correction.",
   "settings.card.plaintext": "Plaintext handling",
@@ -649,6 +640,7 @@ const ja = {
     "コピーできませんでした。ブラウザーの権限を確認してください。",
   "common.riskUnderstood": "リスクを理解しました",
   "common.copy": "コピー",
+  "common.download": "ダウンロード",
   "common.delete": "削除",
   "common.deleteAriaLabel": "{name}を削除",
   "common.created": "作成: {datetime}",
@@ -850,17 +842,10 @@ const ja = {
   "animatedQr.play": "再生",
   "animatedQr.pause": "一時停止",
   "animatedQr.next": "次へ",
-  "animatedQr.speed.label": "表示速度",
-  "animatedQr.density.label": "フレーム密度",
-  "animatedQr.density.restartWarning":
-    "密度を変更すると新しい転送が始まります",
-  "animatedQr.density.restartDetail":
-    "読取済みのフレームは破棄し、最初から読み直す必要があります。",
+  "animatedQr.densityRaised":
+    "この転送を収めるため、フレーム密度を上げました。",
   "animatedQr.brightnessHint":
     "画面の輝度を上げ、端末を動かさずに読み取ると安定します。",
-  "animatedQr.export.allPng": "PNGを一括出力",
-  "animatedQr.export.zip": "ZIPで出力",
-  "animatedQr.export.currentSvg": "現在のSVG",
   "animatedQr.export.error.title": "フレームを出力できません",
 
   "keyDetail.qr.bundleTitle": "{name} 公開鍵セット",
@@ -1173,10 +1158,6 @@ const ja = {
     "環境設定で必須化されているため解除できません。",
   "settings.requireSignature.hint":
     "有効時は非署名のポスト量子方式を選択肢から隠します。",
-  "settings.field.frameBytes":
-    "1フレームの生データ {min}〜{max} bytes",
-  "settings.field.frameInterval":
-    "フレーム切替間隔 {min}〜{max} ms",
   "settings.field.transferTimeout":
     "読取状態の期限 {min}〜{max} 分",
   "settings.frameEc.hint": "OCF2フレームの誤り訂正は常にQです。",

@@ -13,7 +13,7 @@ This table maps the target browser environments to the primary verification item
 | QR display | automated (e2e) | automated (e2e) | automated (e2e) | automated (e2e) | manual-pending |
 | QR scanning | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Camera decoder WebAssembly instantiation on first use **while offline** (zxing-wasm reader, precached same-origin) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| QR range-extension gate: sustained full transfers at 200B@1,000ms, 1,000B@1,000ms, 200B@200ms, and 1,000B@200ms, including poor light and refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
+| Automatic QR profile gate: sustained full transfers with the shipped WebAssembly-reader-usable profile (1,000B / 200ms minimum dwell) and the reader-unusable fallback (100B / 2,000ms minimum dwell, density raised when required), including poor light and refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
 | QR range-extension telemetry: actual decode cadence/duration, long tasks, sustained CPU/thermal behaviour, teardown latency, sender v40 render time, and post-downscale decoder dimensions | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
 | Non-extractable CryptoKey persistence in IndexedDB (generate → close tab → restore → decrypt) | automated (e2e) | manual-pending | automated (e2e) | automated (e2e) | manual-pending |
 | Online relay: camera scan → text (getUserMedia start on explicit action only) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
@@ -39,14 +39,22 @@ On-device measurement sheet. This sheet was originally drawn up for the balanced
 Recorded fields (common to every environment): Device / OS / Browser version / Build hash (`VITE_BUILD_SHA` or equivalent).
 
 Promotion beyond `dev` for the widened QR range is additionally conditional
-on sustained full-transfer passes in all four density/interval combinations
-below on both release-gate platforms. Each combination must include poor-light
-operation and recovery after focus is lost and reacquired. A configured 200ms
-interval is not evidence of 5 fps: cadence is measured from actual decode
-start to actual decode start. Record p95 decode duration and long tasks,
-sustained CPU and thermal behaviour, scanner teardown latency, version 40 QR
-render completion time on the sending device, and the exact post-downscale
-`ImageData` dimensions seen by the decoder.
+on sustained full-transfer passes with both automatic profiles below on both
+release-gate platforms. The primary shipped profile is 1,000B with a 200ms
+minimum dwell when the WebAssembly reader is usable. The reader-unusable
+fallback prefers 100B with a 2,000ms minimum dwell; the application raises
+density automatically when an artifact cannot fit in 128 frames. Users do not
+select density or dwell.
+
+Each profile must include poor-light operation and recovery after focus is
+lost and reacquired. The cursor advances only after the rendered code has
+committed and then receives its full dwell, so 200ms is not evidence of 5 fps
+and 2,000ms is not a complete per-frame cycle time. Record the actual full
+cycle separately from the configured dwell, along with actual start-to-start
+decode cadence, p95 decode duration and long tasks, sustained CPU and thermal
+behaviour, scanner teardown latency, version 40 QR render completion time on
+the sending device, and the exact post-downscale `ImageData` dimensions seen
+by the decoder.
 
 The decoder now caps the post-downscale camera frame at a 1,280-pixel long
 edge. Source-camera resolution must not be substituted for the recorded
@@ -76,19 +84,20 @@ Every value cell in the QR range-extension tables is **not yet measured**.
 
 #### QR range-extension scanner/sender gate
 
-| Measurement | 200B @ 1,000ms | 1,000B @ 1,000ms | 200B @ 200ms | 1,000B @ 200ms |
-| --- | --- | --- | --- | --- |
-| Sustained full-transfer completion | not yet measured | not yet measured | not yet measured | not yet measured |
-| Poor-light sustained transfer | not yet measured | not yet measured | not yet measured | not yet measured |
-| Refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured |
-| Actual start-to-start decode cadence | not yet measured | not yet measured | not yet measured | not yet measured |
-| p95 decode duration | not yet measured | not yet measured | not yet measured | not yet measured |
-| Long tasks | not yet measured | not yet measured | not yet measured | not yet measured |
-| Sustained CPU behaviour | not yet measured | not yet measured | not yet measured | not yet measured |
-| Sustained thermal behaviour | not yet measured | not yet measured | not yet measured | not yet measured |
-| Scanner teardown latency | not yet measured | not yet measured | not yet measured | not yet measured |
-| Sender-side version 40 render completion time | not yet measured | not yet measured | not yet measured | not yet measured |
-| Post-downscale decoder `ImageData` dimensions | not yet measured | not yet measured | not yet measured | not yet measured |
+| Measurement | WebAssembly reader usable: 1,000B / 200ms minimum dwell | Reader-unusable fallback: 100B / 2,000ms minimum dwell (density auto-raised if required) |
+| --- | --- | --- |
+| Sustained full-transfer completion | not yet measured | not yet measured |
+| Poor-light sustained transfer | not yet measured | not yet measured |
+| Refocus recovery | not yet measured | not yet measured |
+| Actual full-cycle time (render commit + dwell for every frame) | not yet measured | not yet measured |
+| Actual start-to-start decode cadence | not yet measured | not yet measured |
+| p95 decode duration | not yet measured | not yet measured |
+| Long tasks | not yet measured | not yet measured |
+| Sustained CPU behaviour | not yet measured | not yet measured |
+| Sustained thermal behaviour | not yet measured | not yet measured |
+| Scanner teardown latency | not yet measured | not yet measured |
+| Sender-side version 40 render completion time | not yet measured | not yet measured |
+| Post-downscale decoder `ImageData` dimensions | not yet measured | not yet measured |
 
 ### iOS Safari (release gate)
 
@@ -109,19 +118,20 @@ Every value cell in the QR range-extension tables is **not yet measured**.
 
 #### QR range-extension scanner/sender gate
 
-| Measurement | 200B @ 1,000ms | 1,000B @ 1,000ms | 200B @ 200ms | 1,000B @ 200ms |
-| --- | --- | --- | --- | --- |
-| Sustained full-transfer completion | not yet measured | not yet measured | not yet measured | not yet measured |
-| Poor-light sustained transfer | not yet measured | not yet measured | not yet measured | not yet measured |
-| Refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured |
-| Actual start-to-start decode cadence | not yet measured | not yet measured | not yet measured | not yet measured |
-| p95 decode duration | not yet measured | not yet measured | not yet measured | not yet measured |
-| Long tasks | not yet measured | not yet measured | not yet measured | not yet measured |
-| Sustained CPU behaviour | not yet measured | not yet measured | not yet measured | not yet measured |
-| Sustained thermal behaviour | not yet measured | not yet measured | not yet measured | not yet measured |
-| Scanner teardown latency | not yet measured | not yet measured | not yet measured | not yet measured |
-| Sender-side version 40 render completion time | not yet measured | not yet measured | not yet measured | not yet measured |
-| Post-downscale decoder `ImageData` dimensions | not yet measured | not yet measured | not yet measured | not yet measured |
+| Measurement | WebAssembly reader usable: 1,000B / 200ms minimum dwell | Reader-unusable fallback: 100B / 2,000ms minimum dwell (density auto-raised if required) |
+| --- | --- | --- |
+| Sustained full-transfer completion | not yet measured | not yet measured |
+| Poor-light sustained transfer | not yet measured | not yet measured |
+| Refocus recovery | not yet measured | not yet measured |
+| Actual full-cycle time (render commit + dwell for every frame) | not yet measured | not yet measured |
+| Actual start-to-start decode cadence | not yet measured | not yet measured |
+| p95 decode duration | not yet measured | not yet measured |
+| Long tasks | not yet measured | not yet measured |
+| Sustained CPU behaviour | not yet measured | not yet measured |
+| Sustained thermal behaviour | not yet measured | not yet measured |
+| Scanner teardown latency | not yet measured | not yet measured |
+| Sender-side version 40 render completion time | not yet measured | not yet measured |
+| Post-downscale decoder `ImageData` dimensions | not yet measured | not yet measured |
 
 ### Desktop (reference, recorded alongside)
 

@@ -21,6 +21,7 @@ export interface AppEnv {
   defaultPqProfile: PqProfileId
   qrErrorCorrection: QrEcLevel
   qrRenderSize: number
+  // Post-quantum multipart plaintext ceiling.
   maxPlaintextBytes: number
   // RSA has been retired. Expose the property for compatibility, but it is always false.
   enableRsa: false
@@ -72,12 +73,15 @@ const frameIntervalMsFromString = z
     }),
   )
 
-// Fixed portion obtained by decomposing the measured canonical-CBOR fixture for a
-// maximum signed OCM2 into an expression. Only the plaintext byte string in
-// SignedMessageBody varies; the ML-DSA-87 signature is fixed at 4,627B, the
+// Fixed portions obtained by decomposing the measured canonical-CBOR fixture for
+// a maximum signed OCM2. Both the inner plaintext byte-string header and the
+// outer ciphertext byte-string header vary with the plaintext length; at 120KB
+// each uses a five-byte header. The ML-DSA-87 signature is fixed at 4,627B, the
 // ML-KEM-1024 ciphertext at 1,568B, and the AES-GCM tag at 16B.
 // tests/pq/maximum-artifact-size.golden.test.ts pins boundary equality with generated output.
-const MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES = 6_612
+const MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES = 6_609
+const MAXIMUM_SIGNED_INNER_FIXED_BYTES = 4_822
+const AES_GCM_TAG_BYTES = 16
 
 function canonicalByteStringHeaderBytes(byteLength: number): number {
   if (byteLength <= 23) return 1
@@ -88,10 +92,17 @@ function canonicalByteStringHeaderBytes(byteLength: number): number {
 }
 
 function maximumSignedArtifactBytes(plaintextBytes: number): number {
+  const plaintextHeaderBytes = canonicalByteStringHeaderBytes(plaintextBytes)
+  const outerCiphertextBytes =
+    MAXIMUM_SIGNED_INNER_FIXED_BYTES +
+    plaintextHeaderBytes +
+    plaintextBytes +
+    AES_GCM_TAG_BYTES
   return (
     MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES +
-    canonicalByteStringHeaderBytes(plaintextBytes) +
-    plaintextBytes
+    plaintextHeaderBytes +
+    plaintextBytes +
+    canonicalByteStringHeaderBytes(outerCiphertextBytes)
   )
 }
 
@@ -107,7 +118,9 @@ const rawSchema = z.object({
   // 5.5 source pixels per module. At the former 512 the displayed raster, not the
   // camera, capped what a phone could resolve at the dense end of the density range.
   VITE_QR_RENDER_SIZE: intFromString(1024, 128, 1024),
-  VITE_MAX_PLAINTEXT_BYTES: intFromString(4096, 1, 16384),
+  // Post-quantum multipart plaintext ceiling. The A256GCM single-QR path
+  // derives its smaller pre-encryption limit from the selected EC capacity.
+  VITE_MAX_PLAINTEXT_BYTES: intFromString(120_000, 1, 120_000),
   // Retired compatibility variable. Accept true, but always produce false after parsing.
   VITE_ENABLE_RSA: boolFromString("false"),
   VITE_ENABLE_ECDH: boolFromString("false"),

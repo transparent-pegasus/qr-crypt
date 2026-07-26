@@ -181,6 +181,24 @@ export type FakeAppError = AppError
 
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
 
+let fakeQrReaderModuleUsable = false
+const qrReaderModuleStateListeners = new Set<() => void>()
+
+export const isQrReaderModuleUsable = vi.fn(() => fakeQrReaderModuleUsable)
+export const prepareQrReaderModule = vi.fn(async () => undefined)
+export const subscribeQrReaderModuleState = vi.fn((listener: () => void) => {
+  qrReaderModuleStateListeners.add(listener)
+  return () => {
+    qrReaderModuleStateListeners.delete(listener)
+  }
+})
+
+export function setQrReaderModuleUsable(usable: boolean): void {
+  if (fakeQrReaderModuleUsable === usable) return
+  fakeQrReaderModuleUsable = usable
+  for (const listener of qrReaderModuleStateListeners) listener()
+}
+
 export const utf8ToBytes = vi.fn((value: string) => encoder.encode(value))
 export const bytesToUtf8 = vi.fn((value: Uint8Array) => decoder.decode(value))
 export const utf8ByteLength = vi.fn((value: string) => encoder.encode(value).byteLength)
@@ -900,6 +918,8 @@ export function resetFakes(): void {
     camera: true,
     serviceWorker: true,
   } satisfies FeatureSupport)
+  fakeQrReaderModuleUsable = false
+  qrReaderModuleStateListeners.clear()
   fakePwa.offlineReady = false
   artifactCounter = 0
   keyCounter = 0

@@ -25,7 +25,7 @@ scanning, and offline startup as a PWA.
 **What it does not do**: transmit plaintext or private keys off the device, store keys in
 the cloud, use custom cryptographic algorithms, depend on CDNs at runtime, treat an
 offline indicator as proof of safety, or keep message ciphertext inside the app. Files you
-export yourself (PNG / SVG / ZIP) and anything you copy to the clipboard are outside the
+export yourself (PNG, or a ZIP of the frames) and anything you copy to the clipboard are outside the
 app's control and outside the scope of its wipe.
 
 ### How it differs from other encryption apps
@@ -59,6 +59,10 @@ The algorithms themselves are the standard ones. The claim is about where they a
   * Where WebAssembly runs without JIT compilation (some hardened or lockdown
     configurations), decoding is expected to be much slower. How much slower has not been
     measured on real devices ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)).
+  * The QR display follows the same signal, and you do not configure it: with a usable
+    decoder the app shows dense frames at a short dwell (1,000 B every 200 ms); without
+    one it falls back to small frames held far longer (100 B every 2,000 ms), raising the
+    density only when an artifact cannot fit otherwise.
   * The only remaining input path is then typing or pasting the payload text by hand, and
     that field accepts a complete payload string — not the individual QR frames. A
     post-quantum message is split across many frames, and post-quantum public keys and

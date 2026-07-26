@@ -45,9 +45,7 @@ describe("validateQrFrameV2Strict", () => {
   it("accepts independent frame-count, chunk-byte, and total-byte maxima", () => {
     expect(PROTOCOL_MAX_FRAMES).toBe(128)
     expect(FRAME_CHUNK_MAX_BYTES).toBe(1_000)
-    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(25_600)
-    expect(PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES).toBe(128_000)
-    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBeLessThan(
+    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(
       PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES,
     )
     const frame = {

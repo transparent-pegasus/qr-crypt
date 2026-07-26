@@ -289,14 +289,18 @@ describe("boot decisions", () => {
     )
   })
 
-  it.each([100, 250, 900] as const)(
-    "keeps stored frameBytes=%i and retired interval 3000 boot-readable without wiping sensitive data",
-    async (frameBytes) => {
+  it.each([
+    [100, 2_000],
+    [250, 3_000],
+    [900, 1_500],
+  ] as const)(
+    "keeps stored frameBytes=%i and interval %i boot-readable without wiping sensitive data",
+    async (frameBytes, frameIntervalMs) => {
       const { database } = fakeBootDatabase({
         keyCount: 1,
         preferencesValue: {
           frameBytes,
-          frameIntervalMs: 3_000,
+          frameIntervalMs,
           wipeOnOnline: false,
         },
       })

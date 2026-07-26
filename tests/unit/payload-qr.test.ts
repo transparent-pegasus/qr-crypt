@@ -11,7 +11,10 @@ import {
 import { buildAad, type AnyEnvelopeV1 } from "@/crypto/envelope"
 import { toBase64Url } from "@/lib/base64url"
 import { concatBytes } from "@/lib/bytes"
-import { MAX_PLAINTEXT_BYTES } from "@/lib/limits"
+import {
+  MAX_CIPHERTEXT_BYTES,
+  MAX_SYMMETRIC_PLAINTEXT_BYTES,
+} from "@/lib/limits"
 import {
   ecLevelFor,
   estimatePayloadChars,
@@ -195,7 +198,9 @@ describe("deterministic payload encoding and strict decoding", () => {
     expect(() => decodePayload(`OCK1:${"A".repeat(8192)}`)).toThrow("INVALID_QR_PAYLOAD")
     const oversized = {
       ...(aesEnvelope() as unknown as Record<string, unknown>),
-      ciphertext: new Uint8Array(4113),
+      // One byte past what a single OCM1 payload can carry. The v1 bound is
+      // structural, not the post-quantum multipart ceiling.
+      ciphertext: new Uint8Array(MAX_CIPHERTEXT_BYTES + 1),
     }
     expect(() => decodePayload(rawPayload("OCM1:", oversized))).toThrow(
       "INVALID_QR_PAYLOAD",
@@ -238,17 +243,17 @@ describe("QR sizing, rendering, and production decoder round-trips", () => {
   })
 
   it("estimates by constructing same-sized envelopes", async () => {
-    for (const length of [0, 512, MAX_PLAINTEXT_BYTES]) {
+    for (const length of [0, 512, MAX_SYMMETRIC_PLAINTEXT_BYTES]) {
       const aesActual = encodeEnvelopeToPayload(aesEnvelope(length)).length
       const aesEstimate = estimatePayloadChars(length, "A256GCM")
       expect(aesEstimate).toBeGreaterThanOrEqual(aesActual)
       expect(aesEstimate - aesActual).toBeLessThanOrEqual(16)
     }
-    expect(estimatePayloadChars(MAX_PLAINTEXT_BYTES, "A256GCM")).toBeGreaterThan(
+    expect(estimatePayloadChars(MAX_SYMMETRIC_PLAINTEXT_BYTES, "A256GCM")).toBeGreaterThan(
       qrByteCapacity("Q"),
     )
     await expect(
-      renderQrSvgString(encodeEnvelopeToPayload(aesEnvelope(MAX_PLAINTEXT_BYTES)), {
+      renderQrSvgString(encodeEnvelopeToPayload(aesEnvelope(MAX_SYMMETRIC_PLAINTEXT_BYTES)), {
         ecLevel: "Q",
       }),
     ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })

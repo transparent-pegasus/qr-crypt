@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react"
 import { Link } from "react-router"
 import {
   AlertCircle,
@@ -6,7 +13,6 @@ import {
   Clipboard,
   Download,
   Eraser,
-  FileCode2,
   LoaderCircle,
   Lock,
 } from "lucide-react"
@@ -68,15 +74,19 @@ import {
 import { bytesToUtf8, sha256Hex, utf8ToBytes } from "@/lib/bytes"
 import {
   FRAME_BYTES_MAX,
-  FRAME_BYTES_MIN,
+  maximumSymmetricPlaintextBytesForPayloadCapacity,
   minimumFrameBytesForArtifact,
 } from "@/lib/limits"
-import { ecLevelFor, payloadFits } from "@/qr/encode"
+import {
+  isQrReaderModuleUsable,
+  prepareQrReaderModule,
+  subscribeQrReaderModuleState,
+} from "@/qr/decode"
+import { ecLevelFor, payloadFits, qrByteCapacity } from "@/qr/encode"
 import {
   buildExportFileName,
   copyTextToClipboard,
   qrPngBlob,
-  qrSvgBlob,
   triggerDownload,
 } from "@/qr/export-image"
 import { buildV2Payload } from "@/qr/payload-v2"
@@ -85,7 +95,6 @@ import type {
   MlKemMessageEnvelopeV2,
   PostQuantumIdentity,
   PqPublicBundleRecord,
-  Preferences,
   StoredKeyRecord,
   UiAlgorithm,
   WireSuite,
@@ -114,7 +123,6 @@ type EncryptionResult =
       envelope: MlKemMessageEnvelopeV2
       artifactType: "pq-message"
       artifactBytes: Uint8Array
-      frameBytes: number
       generation: number
       recipient: PqPublicBundleRecord
       sender?: PostQuantumIdentity
@@ -135,6 +143,43 @@ type DecryptionResult =
   | { kind: "aes"; text: string }
 
 const EMPTY_ARTIFACT_BYTES = new Uint8Array()
+const WASM_FRAME_BYTES = 1_000
+const WASM_FRAME_INTERVAL_MS = 200
+const FALLBACK_FRAME_BYTES = 100
+const FALLBACK_FRAME_INTERVAL_MS = 2_000
+const readerUnavailable = () => false
+const subscribeToNothing = () => () => undefined
+
+function automaticQrDisplayProfile(
+  artifactByteLength: number,
+  wasmReaderUsable: boolean,
+) {
+  const preferredFrameBytes = wasmReaderUsable ? WASM_FRAME_BYTES : FALLBACK_FRAME_BYTES
+  const frameBytes = Math.max(
+    preferredFrameBytes,
+    minimumFrameBytesForArtifact(artifactByteLength),
+  )
+  return {
+    frameBytes,
+    frameIntervalMs: wasmReaderUsable
+      ? WASM_FRAME_INTERVAL_MS
+      : FALLBACK_FRAME_INTERVAL_MS,
+    densityRaised: !wasmReaderUsable && frameBytes > FALLBACK_FRAME_BYTES,
+  }
+}
+
+function useQrReaderModuleUsable(enabled: boolean): boolean {
+  const usable = useSyncExternalStore(
+    enabled ? subscribeQrReaderModuleState : subscribeToNothing,
+    enabled ? isQrReaderModuleUsable : readerUnavailable,
+    readerUnavailable,
+  )
+  useEffect(() => {
+    if (!enabled) return
+    void prepareQrReaderModule().catch(() => undefined)
+  }, [enabled])
+  return usable
+}
 
 function algorithmOptions(requireSignature: boolean): UiAlgorithm[] {
   const options: UiAlgorithm[] = ["A256GCM"]
@@ -187,7 +232,7 @@ export function EncryptPage() {
     error: pqError,
     refresh: refreshPq,
   } = usePqRecords()
-  const { preferences, error: preferencesError, updatePreferences } = usePreferences()
+  const { preferences, error: preferencesError } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const { camera } = useFeatureSupport()
   const { nonce } = useTransientClear()
@@ -210,12 +255,21 @@ export function EncryptPage() {
   const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
   const resultGenerationRef = useRef(0)
   const pqResult = result?.kind === "pq" ? result : null
+  const wasmReaderUsable = useQrReaderModuleUsable(pqResult !== null)
+  const frameProfile =
+    pqResult === null
+      ? {
+          frameBytes: FALLBACK_FRAME_BYTES,
+          frameIntervalMs: FALLBACK_FRAME_INTERVAL_MS,
+          densityRaised: false,
+        }
+      : automaticQrDisplayProfile(pqResult.artifactBytes.byteLength, wasmReaderUsable)
   const frameSplit = useFrameSplit({
     bytes: pqResult?.artifactBytes ?? EMPTY_ARTIFACT_BYTES,
     artifactType: pqResult?.artifactType ?? "pq-message",
-    frameBytes: pqResult?.frameBytes ?? FRAME_BYTES_MIN,
+    frameBytes: frameProfile.frameBytes,
     enabled: pqResult !== null,
-    generation: pqResult?.generation ?? 0,
+    generation: `${pqResult?.generation ?? 0}:${frameProfile.frameBytes}`,
   })
   const localizedFrameError = useLocalizedMessage(frameSplit.error)
 
@@ -266,7 +320,19 @@ export function EncryptPage() {
     (identity) => identity.id === senderIdentityId,
   )
   const plaintextBytes = useMemo(() => utf8ToBytes(plaintext), [plaintext])
-  const overPlaintextLimit = plaintextBytes.byteLength > env.maxPlaintextBytes
+  // The ceilings are algorithm-specific: the PQ path is multipart and uses the
+  // environment limit, while A256GCM still renders one v1 QR, so its plaintext is
+  // bounded by the encoded-payload and error-correction capacity instead.
+  const plaintextLimitBytes = useMemo(
+    () =>
+      algorithm === "A256GCM"
+        ? maximumSymmetricPlaintextBytesForPayloadCapacity(
+            qrByteCapacity(ecLevelFor("message", preferences)),
+          )
+        : env.maxPlaintextBytes,
+    [algorithm, preferences],
+  )
+  const overPlaintextLimit = plaintextBytes.byteLength > plaintextLimitBytes
   const canEncrypt =
     plaintext.length > 0 &&
     !overPlaintextLimit &&
@@ -342,19 +408,6 @@ export function EncryptPage() {
     clearNonce: nonce,
   })
 
-  const saveDisplayPreference = useCallback(
-    async (patch: Partial<Pick<Preferences, "frameBytes" | "frameIntervalMs">>) => {
-      setError(null)
-      try {
-        await updatePreferences(patch)
-      } catch {
-        setError("settings.error.saveFailed")
-        toast.error(t("settings.error.saveFailed"))
-      }
-    },
-    [t, updatePreferences],
-  )
-
   const handleEncrypt = async () => {
     if (!canEncrypt) return
     setBusy(true)
@@ -407,7 +460,6 @@ export function EncryptPage() {
           envelope,
           artifactType: "pq-message",
           artifactBytes,
-          frameBytes: Math.max(preferences.frameBytes, minimumFrameBytes),
           generation: resultGenerationRef.current,
           recipient: selectedRecipient,
           ...(sender === undefined ? {} : { sender }),
@@ -503,7 +555,7 @@ export function EncryptPage() {
     }
   }
 
-  const exportSingle = async (format: "png" | "svg") => {
+  const exportSingle = async () => {
     if (result?.kind !== "aes") return
     const parsedName = qrNameSchema.safeParse(outputName)
     if (!parsedName.success) {
@@ -518,11 +570,11 @@ export function EncryptPage() {
     try {
       const id = generateArtifactId()
       const ecLevel = ecLevelFor("message", preferences)
-      const blob =
-        format === "png"
-          ? await qrPngBlob(result.payload, { ecLevel, size: env.qrRenderSize })
-          : await qrSvgBlob(result.payload, { ecLevel })
-      triggerDownload(blob, buildExportFileName(parsedName.data, id, format))
+      const blob = await qrPngBlob(result.payload, {
+        ecLevel,
+        size: env.qrRenderSize,
+      })
+      triggerDownload(blob, buildExportFileName(parsedName.data, id, "png"))
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").code)
     }
@@ -651,7 +703,7 @@ export function EncryptPage() {
             >
               <span>{t("encrypt.charCount", { count: plaintext.length })}</span>
               <span>
-                {plaintextBytes.byteLength} / {env.maxPlaintextBytes} bytes
+                {plaintextBytes.byteLength} / {plaintextLimitBytes} bytes
               </span>
             </p>
             {overPlaintextLimit && (
@@ -660,7 +712,7 @@ export function EncryptPage() {
                 <AlertTitle>{t("encrypt.overLimit.title")}</AlertTitle>
                 <AlertDescription>
                   {t("encrypt.overLimit.body", {
-                    max: env.maxPlaintextBytes,
+                    max: plaintextLimitBytes,
                   })}
                 </AlertDescription>
               </Alert>
@@ -929,20 +981,11 @@ export function EncryptPage() {
               {frameSplit.frames.length > 0 && (
                 <AnimatedQrFrames
                   frames={frameSplit.frames}
-                  frameIntervalMs={preferences.frameIntervalMs}
+                  frameIntervalMs={frameProfile.frameIntervalMs}
+                  densityRaised={frameProfile.densityRaised}
                   outputName={outputName || "pq-message"}
                   title={t("encrypt.result.pqTitle")}
-                  frameBytes={result.frameBytes}
                   splitting={frameSplit.splitting}
-                  onFrameBytesChange={(frameBytes) => {
-                    setResult((current) =>
-                      current?.kind === "pq" ? { ...current, frameBytes } : current,
-                    )
-                    void saveDisplayPreference({ frameBytes })
-                  }}
-                  onFrameIntervalMsChange={(frameIntervalMs) =>
-                    void saveDisplayPreference({ frameIntervalMs })
-                  }
                 />
               )}
             </>
@@ -960,26 +1003,15 @@ export function EncryptPage() {
           </div>
 
           {result.kind === "aes" && (
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 cursor-pointer"
-                onClick={() => void exportSingle("png")}
-              >
-                <Download aria-hidden="true" />
-                PNG
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 cursor-pointer"
-                onClick={() => void exportSingle("svg")}
-              >
-                <FileCode2 aria-hidden="true" />
-                SVG
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full cursor-pointer"
+              onClick={() => void exportSingle()}
+            >
+              <Download aria-hidden="true" />
+              {t("common.download")}
+            </Button>
           )}
 
           <Card aria-label={t("encrypt.result.detailAria")}>

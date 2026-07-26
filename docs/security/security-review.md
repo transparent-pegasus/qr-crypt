@@ -22,10 +22,11 @@ the active policy and is rejected at the operational boundary as
     algorithms and of balanced; legacy preferences are normalized on read to
     maximum while preserving `wipeOnOnline=false`.
   - `tests/pq/maximum-artifact-size.golden.test.ts` pins the canonical CBOR raw
-    byte counts in the table below, the OCF2 frame counts at the active chunk
-    sizes from 200 through 1,000B, real EC-Q generation for every displayable
-    frame, the 1,591-character worst-metadata payload at the 1,000B ceiling,
-    and boundary agreement with the env capacity guard.
+    byte counts in the table below, the OCF2 frame counts across the internal
+    100–1,000B chunk set, the automatic-profile density lift, real EC-Q
+    generation for every displayable frame, the 1,593-character
+    worst-metadata payload at the 1,000B ceiling, and boundary agreement with
+    the env capacity guard.
   - The ML-KEM-1024 / ML-DSA-87 KATs and `aube test` / `aube typecheck` pass,
     and the `aube bench:pq` maximum reference figures plus the README and
     protocol documents are updated.
@@ -37,50 +38,72 @@ the active policy and is rejected at the operational boundary as
 Self-investigation and self-authored documents (including this one) are no
 substitute for independent review and do not close the blocker.
 
-Measured maximum fixture (`maxPlaintext=4,096B`, `name="テスト"` — the literal
+Measured maximum fixture (`maxPlaintext=120,000B`, `name="テスト"` — the literal
 fixture string):
 
-| artifact | canonical CBOR (bytes) | OCF2 frames (200 / 1,000B) |
-|---|---:|---:|
-| unsigned empty / max | 1,887 / 5,986 | 10/2 / 30/6 |
-| signed empty / max | 6,613 / 10,711 | 34/7 / 54/11 |
-| OCI2 bundle | 4,402 | 23/5 |
-| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 9/2 / 14/3 |
-| OCB2 reserved sizing fixture | 4,637 | 24/5 |
+| artifact | canonical CBOR (bytes) | fallback frames | WebAssembly-reader-usable frames |
+|---|---:|---:|---:|
+| unsigned empty / max | 1,887 / 121,894 | 19 / 122* | 2 / 122 |
+| signed empty / max | 6,613 / 126,619 | 67 / 127* | 7 / 127 |
+| OCI2 bundle | 4,402 | 45 | 5 |
+| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 18 / 28 | 2 / 3 |
+| OCB2 reserved sizing fixture | 4,637 | 47 | 5 |
 
-All displayed OCF2 artifacts use the same active density grid: every 100B
-value from 200 through 1,000B (shipped default 200B). The table shows the two
-endpoints; golden coverage exercises every active density. The renderer
-grid-rounds a theoretical per-artifact minimum from total bytes and
-`VITE_QR_MAX_FRAMES`, clamps that selectable floor to at least the active
-200B minimum, then uses the greater of that floor and the stored preference
-without persisting an automatic clamp. Every measured fixture fits below the
-128-frame cap at 200B; a required minimum above 1,000B fails closed as
-`QR_TOO_LARGE`. Active writes reject off-grid integers such as 250B.
+Plaintext ceilings are algorithm-specific. Both post-quantum paths accept at
+most 120,000 UTF-8 bytes. The single-QR A256GCM path derives its smaller
+pre-encryption ceiling from the v1 8,192-character payload ceiling and the
+selected version 40 error-correction capacity: L 2,010B, M 1,543B, Q 1,042B,
+or H 750B.
 
-The receiver allocation ceiling is the independently pinned
-`MAX_ARTIFACT_BYTES_ABSOLUTE = 25,600B`, not
-`PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES`; increasing the chunk ceiling
-therefore cannot increase receiver allocation. The separate per-frame chunk
-maximum is 1,000B. With worst-case metadata across every artifact type, a
-1,000B chunk produces a 1,591-character OCF2 payload against the 1,663-character
-EC-Q version 40 capacity.
+The usable-reader profile is 1,000B with a 200ms minimum dwell. The
+reader-unusable fallback prefers 100B with a 2,000ms minimum dwell; `*` marks
+maximum fixtures whose fallback density is raised automatically to 1,000B so
+the artifact fits within 128 frames. Users cannot select either density or
+dwell. The density lift uses the 100B internal grid and fails closed as
+`QR_TOO_LARGE` if the required value exceeds 1,000B.
 
-A full 128-frame cycle takes 25.6 seconds at the fastest selectable 200ms
-interval and 128 seconds at the slowest selectable 1,000ms interval. The
-assembly timeout default remains 10 minutes;
-`TRANSFER_TIMEOUT_MINUTES_MIN` is 3 minutes, so the legal floor covers one
-full worst-case-count cycle at the slowest interval.
+The receiver allocation ceiling now equals the complete wire budget:
+`MAX_ARTIFACT_BYTES_ABSOLUTE =
+PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES = 128,000B`. With worst-case
+metadata across every artifact type, a 1,000B chunk produces a
+1,593-character OCF2 payload against the 1,663-character EC-Q version 40
+capacity.
 
-The current multipart transition interval is every 100ms grid value from 200
-through 1,000ms, defaulting to 1,000ms. New preferences and environment
-values off that grid are rejected. Boot readability remains append-only:
-density accepts every safe integer from 100 through 1,000B and interval
-accepts every safe integer from 150 through 3,000ms. On preference load,
-readable values that are not active are clamped to the corresponding active
-200–1,000 range and rounded to the nearest 100-unit grid value, with midpoint
-ties upward. This keeps legacy rows (including `wipeOnOnline=false`) readable;
-it does not relax the active write contract.
+The frame cursor advances only after the exact rendered code has committed,
+then waits the configured dwell. A maximum signed message has 127 frames, so
+its dwell-only floor is 25.4 seconds with the usable reader and 254 seconds
+with the 2,000ms fallback. The protocol-wide conservative budget is 128 ×
+2,000ms = 256 seconds, which makes `TRANSFER_TIMEOUT_MINUTES_MIN` 5 minutes;
+the assembly timeout default remains 10 minutes. These are not measured cycle
+times: actual cycles also include every frame's render latency and must be
+measured separately.
+
+**Long-text export, measured 2026-07-26** on the CI-class Linux desktop
+(mobile-chromium Playwright project, `aube run test:e2e`), 120,000-byte signed
+PQ fixture:
+
+| step | measurement |
+| --- | --- |
+| encryption | 141 ms |
+| split into frames | 247 ms |
+| first frame render | 31 ms |
+| complete 127-frame ZIP export | 7,085 ms |
+| archive size | 9,633,007 B (≈9.6 MB) |
+| artifact / frames | 126,619 B / 127 frames at 1,000B |
+
+These are desktop numbers. **On-device figures for Android Chrome and iOS Safari
+are not yet measured** — see `docs/develop/browser-matrix.md`. The ZIP path renders
+frames serially, so its peak memory is bounded by roughly one 1024px raster
+rather than by 127 of them, but its ~7s wall clock on desktop implies a
+materially longer wait on a phone.
+
+Boot readability remains append-only: density accepts every safe integer from
+100 through 1,000B and interval accepts every safe integer from 150 through
+3,000ms. The internal admitted sets are 100, 200, …, 1,000B and 200, 300, …,
+1,000ms plus 2,000ms. Readable off-set stored values normalize to the nearest
+admitted value with midpoint ties upward. Generated-artifact producers do not
+expose or write the stored density/interval fields; strict patch/env
+validation remains in place for the retained schema.
 
 ## 1. Facts About the Adopted Libraries (as of 2026-07-25)
 
