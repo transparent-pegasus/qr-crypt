@@ -180,18 +180,52 @@
           <div class="route">
             <p class="route__tag" data-i18n="install.a.tag">Route A</p>
             <div class="route__main">
-              <h3 class="h3" data-i18n="install.a.heading">
-                Install it, then keep this device offline
-              </h3>
+              <h3 class="h3" data-i18n="install.a.heading">Verify the signed ZIP</h3>
               <p class="prose" data-i18n="install.a.body">
-                On the device you will keep offline, open the site in a browser and choose
-                Install or Add to Home Screen. Then disconnect that device from every
-                network and never connect it again. On a device that has been online,
-                airplane mode is not something to trust.
+                This is the default route. On a computer you trust, download the signed
+                release and verify its signature and checksum there, using values you
+                obtained some other way. Move it to the offline device, unzip it, and serve
+                the folder from a static web server bound to 127.0.0.1 alone. As the
+                bundled INSTALL.txt requires, use a server obtained through an independent
+                trusted process, and apply the headers and redirects shipped with it.
+                Opening index.html straight from a file path does not work: storage
+                isolation does not hold there, and another local HTML file can end up able
+                to read your keys. Whatever you carry it on, a USB stick or an SD card, has
+                to be trusted too: anything that can alter the storage can alter the app.
+              </p>
+              <p class="route__link">
+                <a
+                  class="cta"
+                  href="https://github.com/transparent-pegasus/qr-crypt/releases/latest"
+                >
+                  <span data-i18n="install.a.link">Get the latest release</span>
+                  <span class="cta__url">github.com/transparent-pegasus/qr-crypt</span>
+                </a>
+              </p>
+            </div>
+          </div>
+
+          <div class="route">
+            <p class="route__tag" data-i18n="install.b.tag">Route B</p>
+            <div class="route__main">
+              <h3 class="h3" data-i18n="install.b.heading">
+                Install it from the live origin
+              </h3>
+              <p class="prose" data-i18n="install.b.body">
+                On the device you will keep offline, open this site and choose Install or
+                Add to Home Screen, then disconnect it from every network. This route has
+                no integrity check you can perform: control of the origin, TLS, or CDN lets
+                an attacker send an altered bundle to just one device without detection,
+                and the Service Worker persists it. The device also keeps that live origin.
+                If it reconnects, a reachability probe goes to the same origin; wipe waits
+                for the sentinel response, so that beacon necessarily leaves before wipe.
+                Route A points only at 127.0.0.1; after its dedicated server is stopped and
+                its reserved port is not reused, there is nobody listening. Never rely on
+                airplane mode to make a device trustworthy.
               </p>
               <p class="route__link">
                 <a class="cta" href="https://qr-crypt.pages.dev/">
-                  <span data-i18n="install.a.link">Open the app</span>
+                  <span data-i18n="install.b.link">Open the app</span>
                   <span class="cta__url">qr-crypt.pages.dev</span>
                 </a>
               </p>
@@ -204,38 +238,10 @@
                 alt="QR code that opens qr-crypt.pages.dev"
                 data-i18n-alt="a11y.installQr"
               />
-              <figcaption data-i18n="install.a.qrHint">
+              <figcaption data-i18n="install.b.qrHint">
                 Scan this with the device you will keep offline.
               </figcaption>
             </figure>
-          </div>
-
-          <div class="route">
-            <p class="route__tag" data-i18n="install.b.tag">Route B</p>
-            <div class="route__main">
-              <h3 class="h3" data-i18n="install.b.heading">Install from a ZIP file</h3>
-              <p class="prose" data-i18n="install.b.body">
-                On a computer you trust, download the signed release and verify its
-                signature and checksum there, using values you obtained some other way.
-                Move it to the offline device, unzip it, and serve the folder from a static
-                web server bound to 127.0.0.1 alone. As the bundled INSTALL.txt requires,
-                use a server obtained through an independent trusted process, and apply the
-                headers and redirects shipped with it. Opening index.html straight from a
-                file path does not work: storage isolation does not hold there, and another
-                local HTML file can end up able to read your keys.
-                Whatever you carry it on, a USB stick or an SD card, has to be trusted
-                too: anything that can alter the storage can alter the app.
-              </p>
-              <p class="route__link">
-                <a
-                  class="cta"
-                  href="https://github.com/transparent-pegasus/qr-crypt/releases/latest"
-                >
-                  <span data-i18n="install.b.link">Get the latest release</span>
-                  <span class="cta__url">github.com/transparent-pegasus/qr-crypt</span>
-                </a>
-              </p>
-            </div>
           </div>
         </div>
       </section>

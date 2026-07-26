@@ -49,7 +49,7 @@ The algorithms themselves are the standard ones. The claim is about where they a
   reference environments
   ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)). Without Web Crypto or
   IndexedDB the app stops at a start-up screen and no feature is available.
-* **Origin.** The app must be served over `https://`, or locally over `http://localhost` /
+* **Origin.** The app must be served over `https://`, or locally over
   `http://127.0.0.1`. Opening `index.html` from a `file://` path does not work, and plain
   HTTP over a LAN address does not either — the camera and the service worker are not
   available in those contexts.
@@ -76,17 +76,10 @@ The algorithms themselves are the standard ones. The claim is about where they a
 
 ## Usage
 
-### Install route A: PWA
+### Install route A: signed ZIP
 
-1. On the device you will keep offline, open the app URL in a browser.
-2. Install it with the browser's **Install** / **Add to Home Screen** action.
-3. Wait until the install screen reports **Offline-use readiness: Ready**.
-4. Disconnect that device from every network and leave it that way.
-5. Use the app from the normal screens that appear once the device is offline.
-
-### Install route B: signed ZIP
-
-Use this when the offline device should never contact the app's origin at all.
+This is the default route. It keeps the offline device from ever contacting the live app
+origin.
 
 1. On a computer you trust, download the three assets of a release: the
    `qr-crypt-…-static-install.zip` archive, its `.sigstore.json` bundle, and `SHA256SUMS`.
@@ -111,20 +104,54 @@ Use this when the offline device should never contact the app's origin at all.
    card — has to be trusted too: anything that can alter the storage can alter the app.
 4. Extract it. The ZIP creates a single directory; that directory is the document root.
 5. Serve it with a static server that was already installed on the offline device through
-   a trusted route, bound to `127.0.0.1` / `localhost` only. It must apply the bundled
+   a trusted route, bound to `127.0.0.1` only. It must apply the bundled
    `_headers` and `_redirects` semantics: the security headers, correct MIME types, the SPA
    fallback to `/index.html`, and `no-store` for the reachability sentinel. The production
    build also carries the supported part of the same CSP in a meta tag as a fallback, but
    `frame-ancestors` cannot be enforced there and remains available only through the
-   `_headers` response header.
-6. Open `http://localhost` and wait until the app reports that offline use is ready.
+   `_headers` response header. Choose one uncommon fixed high port (not a collision-prone
+   default such as 8000 or 8080) and reserve that port for QR Crypt.
+6. Open the exact `http://127.0.0.1:PORT` origin and wait until the app reports that offline
+   use is ready.
 7. Stop the server, remove the transport medium, physically disconnect networking, and
    confirm QR Crypt reports offline **before** entering or restoring any secret. The
    install server's own sentinel deliberately makes the app treat that origin as
    reachable, so never enter secrets while it is running.
 
+That exact host and port are a security and storage boundary. If another page is later
+served on the same host:port, it has same-origin access to the stored keys and Vault key;
+if the port is changed after installation, QR Crypt becomes a different origin and cannot
+reach its stored data.
+
 The `INSTALL.txt` inside the archive repeats these steps for whoever performs the
 deployment.
+
+It also gives the complete rebuild-and-compare commands for the archive-internal
+`SHA256SUMS.files`: use a clean checkout of the authenticated source commit and the
+toolchain pinned by `mise.toml`, keep the extracted archive and every copied build tree
+outside the checkout so Tailwind cannot change the rebuild, verify the archive's complete
+member set, then compare both sorted payload file names and per-file hashes. The CI gate
+shows only same-environment determinism, not environment-independent reproducibility.
+Cosign attests workflow/commit provenance, not source-to-binary correspondence; an
+attacker controlling the CI environment can still publish a correctly signed backdoor,
+which only an independent rebuild comparison can detect.
+
+### Install route B: direct-origin PWA
+
+1. On the device you will keep offline, open the app URL in a browser.
+2. Install it with the browser's **Install** / **Add to Home Screen** action.
+3. Wait until the install screen reports **Offline-use readiness: Ready**.
+4. Disconnect that device from every network and leave it that way.
+5. Use the app from the normal screens that appear once the device is offline.
+
+Route B provides no integrity check that the receiving user can perform. An attacker who
+controls the origin, TLS, or CDN can serve an altered bundle to just one targeted device;
+the recipient cannot detect it, and the Service Worker persists it. The device also keeps
+that live origin: if it reconnects, a reachability probe goes to the same origin, and
+because wipe fires only after the sentinel confirms reachability, that beacon necessarily
+leaves before wipe. By contrast, route A's origin is `127.0.0.1`; after its dedicated
+server is stopped and its reserved port is not reused, there is no peer for the probe to
+contact.
 
 ### Sending a message through an online device
 

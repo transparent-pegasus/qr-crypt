@@ -112,7 +112,7 @@ units:
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
       image, and GitHub runner/CLI behavior all drift with upstream releases.
       docs/develop/deployment.md restates the same flow in prose, and the README
-      install route B publishes the cosign verification policy values.
+      install route A publishes the cosign verification policy values.
     method: |
       Review all three workflows. Check each action repository for newer majors and
       security advisories. Keep release-workflow actions pinned to full SHAs;
@@ -404,7 +404,7 @@ units:
       - docs/develop/deviations.md # dated maintainer decisions and active-policy wording
     why: >
       Experimental / not-independently-audited claims, active-suite wording,
-      the install route B cosign policy values, the user-selected display
+      the install route A cosign policy values, the user-selected display
       compatibility preference, per-artifact effective clamps, PNG/ZIP export
       behaviour, the documentation list, and the dated
       maintainer decisions in deviations.md all drift. The two READMEs are a
@@ -415,7 +415,7 @@ units:
       suite/profile wording, per-algorithm plaintext ceilings, the atomic
       default/compatible display preference pairs, per-artifact effective
       clamps, the independent relay playback cadence, and PNG/ZIP export
-      behaviour with the active implementation. Confirm the install route B
+      behaviour with the active implementation. Confirm the install route A
       cosign policy values still match
       .github/workflows/github-release.yml (unit ci-actions). Confirm the
       documentation list matches the docs/ tree. In deviations.md, drop rows
