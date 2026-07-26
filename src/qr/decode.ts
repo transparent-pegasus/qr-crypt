@@ -63,6 +63,77 @@ const zxingReaderOptions: ReaderOptions = {
 
 let zxingModulePromise: Promise<void> | undefined
 
+export type QrReaderModuleState =
+  | "unknown"
+  | "preparing"
+  | "usable"
+  | "failed"
+
+type QrReaderModuleStateListener = () => void
+
+const EMPTY_WASM_MODULE = Uint8Array.of(
+  0x00,
+  0x61,
+  0x73,
+  0x6d,
+  0x01,
+  0x00,
+  0x00,
+  0x00,
+)
+const qrReaderModuleStateListeners = new Set<QrReaderModuleStateListener>()
+
+function detectWebAssemblySupport(): boolean {
+  try {
+    return (
+      typeof WebAssembly === "object" &&
+      typeof WebAssembly.instantiate === "function" &&
+      typeof WebAssembly.validate === "function" &&
+      WebAssembly.validate(EMPTY_WASM_MODULE)
+    )
+  } catch {
+    return false
+  }
+}
+
+const webAssemblySupported = detectWebAssemblySupport()
+let qrReaderModuleState: QrReaderModuleState = webAssemblySupported
+  ? "unknown"
+  : "failed"
+
+function setQrReaderModuleState(state: QrReaderModuleState): void {
+  if (qrReaderModuleState === state) return
+  qrReaderModuleState = state
+  for (const listener of qrReaderModuleStateListeners) {
+    try {
+      listener()
+    } catch {
+      // A consumer notification must not change module preparation state.
+    }
+  }
+}
+
+export function getQrReaderModuleState(): QrReaderModuleState {
+  return qrReaderModuleState
+}
+
+export function isQrReaderModuleUsable(): boolean {
+  return (
+    webAssemblySupported &&
+    qrReaderModuleState === "usable" &&
+    zxingModulePromise !== undefined
+  )
+}
+
+export function subscribeQrReaderModuleState(
+  listener: QrReaderModuleStateListener,
+): () => void {
+  qrReaderModuleStateListeners.add(listener)
+  return () => {
+    qrReaderModuleStateListeners.delete(listener)
+  }
+}
+
 interface ScannerControls {
   stop(): void
 }
@@ -119,10 +190,20 @@ let cameraAcquisitionQueue: Promise<void> = Promise.resolve()
 // fetching plus compiling a one-megabyte binary outlives that window. Acquisition must
 // therefore reach getUserMedia first; the decoder awaits this promise later, after the
 // first frame has been drawn.
-function beginZXingModulePreparation(): Promise<void> {
+export function prepareQrReaderModule(): Promise<void> {
   const existing = zxingModulePromise
   if (existing !== undefined) return existing
 
+  if (!webAssemblySupported) {
+    setQrReaderModuleState("failed")
+    const unsupported = Promise.reject(
+      new Error("WebAssembly is unavailable for the QR reader"),
+    )
+    void unsupported.catch(() => undefined)
+    return unsupported
+  }
+
+  setQrReaderModuleState("preparing")
   let started: Promise<unknown>
   try {
     started = prepareZXingModule({
@@ -131,10 +212,17 @@ function beginZXingModulePreparation(): Promise<void> {
     })
   } catch (error) {
     purgeZXingModule()
-    return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+    setQrReaderModuleState("failed")
+    const rejected = Promise.reject(
+      error instanceof Error ? error : new Error(String(error)),
+    )
+    void rejected.catch(() => undefined)
+    return rejected
   }
 
-  const preparation = started.then(() => undefined)
+  const preparation = started.then(() => {
+    setQrReaderModuleState("usable")
+  })
   zxingModulePromise = preparation
   // Reset on failure so the restart button can retry, and swallow the rejection here:
   // an attempt can stop before any decode awaits this promise.
@@ -142,6 +230,7 @@ function beginZXingModulePreparation(): Promise<void> {
     if (zxingModulePromise === preparation) {
       zxingModulePromise = undefined
       purgeZXingModule()
+      setQrReaderModuleState("failed")
     }
   })
   return preparation
@@ -772,7 +861,7 @@ async function startQrScanImplementation(
   // iOS Safari never shows the permission prompt. The decoder awaits this after its
   // first drawn frame instead, and a preparation failure surfaces there as
   // CAMERA_NOT_AVAILABLE.
-  const modulePreparation = beginZXingModulePreparation()
+  const modulePreparation = prepareQrReaderModule()
 
   const operation: Promise<AttemptOutcome> = startAttempt(
     attempt,

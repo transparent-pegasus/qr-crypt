@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import {
   ArrowLeft,
@@ -6,7 +6,6 @@ import {
   Clipboard,
   Download,
   Expand,
-  FileCode2,
   QrCode,
   RefreshCw,
   Trash2,
@@ -65,16 +64,19 @@ import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
 import { FRAME_BYTES_MAX, minimumFrameBytesForArtifact } from "@/lib/limits"
 import { ecLevelFor } from "@/qr/encode"
 import {
+  isQrReaderModuleUsable,
+  prepareQrReaderModule,
+  subscribeQrReaderModuleState,
+} from "@/qr/decode"
+import {
   buildExportFileName,
   copyTextToClipboard,
   qrPngBlob,
-  qrSvgBlob,
   triggerDownload,
 } from "@/qr/export-image"
 import { encodeEnvelopeToPayload } from "@/qr/payload"
 import type {
   PostQuantumIdentity,
-  Preferences,
   StoredKeyRecord,
   StorablePqArtifactKind,
 } from "@/schemas/domain"
@@ -96,7 +98,6 @@ interface IdentityQrView {
   generatedAt: number
   artifactType: StorablePqArtifactKind
   artifactBytes: Uint8Array
-  frameBytes: number
   generation: number
 }
 
@@ -107,6 +108,44 @@ interface SymmetricQrView {
 }
 
 type DetailView = { kind: "detail" } | IdentityQrView | SymmetricQrView
+
+const WASM_FRAME_BYTES = 1_000
+const WASM_FRAME_INTERVAL_MS = 200
+const FALLBACK_FRAME_BYTES = 100
+const FALLBACK_FRAME_INTERVAL_MS = 2_000
+const readerUnavailable = () => false
+const subscribeToNothing = () => () => undefined
+
+function automaticQrDisplayProfile(
+  artifactByteLength: number,
+  wasmReaderUsable: boolean,
+) {
+  const preferredFrameBytes = wasmReaderUsable ? WASM_FRAME_BYTES : FALLBACK_FRAME_BYTES
+  const frameBytes = Math.max(
+    preferredFrameBytes,
+    minimumFrameBytesForArtifact(artifactByteLength),
+  )
+  return {
+    frameBytes,
+    frameIntervalMs: wasmReaderUsable
+      ? WASM_FRAME_INTERVAL_MS
+      : FALLBACK_FRAME_INTERVAL_MS,
+    densityRaised: !wasmReaderUsable && frameBytes > FALLBACK_FRAME_BYTES,
+  }
+}
+
+function useQrReaderModuleUsable(enabled: boolean): boolean {
+  const usable = useSyncExternalStore(
+    enabled ? subscribeQrReaderModuleState : subscribeToNothing,
+    enabled ? isQrReaderModuleUsable : readerUnavailable,
+    readerUnavailable,
+  )
+  useEffect(() => {
+    if (!enabled) return
+    void prepareQrReaderModule().catch(() => undefined)
+  }, [enabled])
+  return usable
+}
 
 interface PendingDelete {
   kind: "identity" | "symmetric"
@@ -146,7 +185,7 @@ export function KeyDetailDialog({
   onChanged,
 }: KeyDetailDialogProps) {
   const { t } = useI18n()
-  const { preferences, updatePreferences } = usePreferences()
+  const { preferences } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const { setSensitiveSession } = useSensitiveSession()
   const [view, setView] = useState<DetailView>({ kind: "detail" })
@@ -200,19 +239,6 @@ export function KeyDetailDialog({
     setError(null)
     setSensitiveSession({ cryptoBusy: false, secretVisible: false })
   }, [record, selection, setSensitiveSession])
-
-  const saveDisplayPreference = useCallback(
-    async (patch: Partial<Pick<Preferences, "frameBytes" | "frameIntervalMs">>) => {
-      setError(null)
-      try {
-        await updatePreferences(patch)
-      } catch {
-        setError("settings.error.saveFailed")
-        toast.error(t("settings.error.saveFailed"))
-      }
-    },
-    [t, updatePreferences],
-  )
 
   const leaveQrView = () => {
     qrGenerationRef.current += 1
@@ -286,7 +312,6 @@ export function KeyDetailDialog({
         generatedAt: Date.now(),
         artifactType,
         artifactBytes,
-        frameBytes: Math.max(preferences.frameBytes, minimumFrameBytes),
         generation: qrGenerationRef.current,
       })
     } catch (caught) {
@@ -374,7 +399,7 @@ export function KeyDetailDialog({
     }
   }
 
-  const exportSymmetricQr = async (format: "png" | "svg") => {
+  const exportSymmetricQr = async () => {
     if (!symmetric || view.kind !== "symmetric-qr" || !view.acknowledged) {
       return
     }
@@ -382,11 +407,11 @@ export function KeyDetailDialog({
     setError(null)
     try {
       const ecLevel = ecLevelFor("stored-key", preferences)
-      const blob =
-        format === "png"
-          ? await qrPngBlob(view.payload, { ecLevel, size: env.qrRenderSize })
-          : await qrSvgBlob(view.payload, { ecLevel })
-      triggerDownload(blob, buildExportFileName(symmetric.name, symmetric.id, format))
+      const blob = await qrPngBlob(view.payload, {
+        ecLevel,
+        size: env.qrRenderSize,
+      })
+      triggerDownload(blob, buildExportFileName(symmetric.name, symmetric.id, "png"))
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
@@ -537,26 +562,16 @@ export function KeyDetailDialog({
                 />
                 <Label htmlFor="secret-ack">{t("common.riskUnderstood")}</Label>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Button
                   type="button"
                   variant="outline"
                   className="h-11"
                   disabled={!view.acknowledged || busy}
-                  onClick={() => void exportSymmetricQr("png")}
+                  onClick={() => void exportSymmetricQr()}
                 >
                   <Download aria-hidden="true" />
-                  PNG
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11"
-                  disabled={!view.acknowledged || busy}
-                  onClick={() => void exportSymmetricQr("svg")}
-                >
-                  <FileCode2 aria-hidden="true" />
-                  SVG
+                  {t("common.download")}
                 </Button>
                 <Button
                   type="button"
@@ -581,21 +596,11 @@ export function KeyDetailDialog({
             key={view.generation}
             view={view}
             title={identityQrTitle ?? ""}
-            frameIntervalMs={preferences.frameIntervalMs}
             enabled={open}
             fullscreenOpen={fullscreenOpen}
             showFullscreenTrigger={false}
             onFirstRendered={() => setQrReady(true)}
             onFullscreenOpenChange={setFullscreenOpen}
-            onFrameBytesChange={(frameBytes) => {
-              setView((current) =>
-                current.kind === "identity-qr" ? { ...current, frameBytes } : current,
-              )
-              void saveDisplayPreference({ frameBytes })
-            }}
-            onFrameIntervalMsChange={(frameIntervalMs) =>
-              void saveDisplayPreference({ frameIntervalMs })
-            }
           />,
           qrHost,
         )}
@@ -655,33 +660,32 @@ export function KeyDetailDialog({
 function IdentityQrSession({
   view,
   title,
-  frameIntervalMs,
   enabled,
   fullscreenOpen,
   showFullscreenTrigger,
   onFirstRendered,
   onFullscreenOpenChange,
-  onFrameBytesChange,
-  onFrameIntervalMsChange,
 }: {
   view: IdentityQrView
   title: string
-  frameIntervalMs: number
   enabled: boolean
   fullscreenOpen: boolean
   showFullscreenTrigger: boolean
   onFirstRendered: () => void
   onFullscreenOpenChange: (open: boolean) => void
-  onFrameBytesChange: (frameBytes: number) => void
-  onFrameIntervalMsChange: (frameIntervalMs: number) => void
 }) {
   const { t } = useI18n()
+  const wasmReaderUsable = useQrReaderModuleUsable(enabled)
+  const frameProfile = automaticQrDisplayProfile(
+    view.artifactBytes.byteLength,
+    wasmReaderUsable,
+  )
   const split = useFrameSplit({
     bytes: view.artifactBytes,
     artifactType: view.artifactType,
-    frameBytes: view.frameBytes,
+    frameBytes: frameProfile.frameBytes,
     enabled,
-    generation: view.generation,
+    generation: `${view.generation}:${frameProfile.frameBytes}`,
   })
   const localizedError = useLocalizedMessage(split.error)
 
@@ -701,19 +705,17 @@ function IdentityQrSession({
       {split.frames.length > 0 && (
         <AnimatedQrFrames
           frames={split.frames}
-          frameIntervalMs={frameIntervalMs}
+          frameIntervalMs={frameProfile.frameIntervalMs}
+          densityRaised={frameProfile.densityRaised}
           outputName={t("keyDetail.qr.outputName", {
             title,
             date: formatSuggestedDate(view.generatedAt),
           })}
           title={title}
-          frameBytes={view.frameBytes}
           splitting={split.splitting}
           fullscreenOpen={fullscreenOpen}
           showFullscreenTrigger={showFullscreenTrigger}
           onFirstRendered={onFirstRendered}
-          onFrameBytesChange={onFrameBytesChange}
-          onFrameIntervalMsChange={onFrameIntervalMsChange}
           onFullscreenOpenChange={onFullscreenOpenChange}
         />
       )}

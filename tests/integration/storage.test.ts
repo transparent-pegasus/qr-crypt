@@ -187,7 +187,7 @@ describe("preferences and plaintext non-persistence", () => {
       qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
-      frameBytes: 200,
+      frameBytes: 100,
       frameIntervalMs: 1_000,
     })
     expect(
@@ -257,7 +257,7 @@ describe("preferences and plaintext non-persistence", () => {
   })
 
   it.each([
-    [100, 200, false],
+    [100, 100, true],
     [250, 300, false],
     [900, 900, true],
   ] as const)(
@@ -281,14 +281,14 @@ describe("preferences and plaintext non-persistence", () => {
       })
       await expect(getPreferences()).resolves.toMatchObject({
         frameBytes: normalizedFrameBytes,
-        frameIntervalMs: 1_000,
+        frameIntervalMs: 2_000,
         wipeOnOnline: false,
       })
       await expect(
         updatePreferences({ qrErrorCorrection: "M" }),
       ).resolves.toMatchObject({
         frameBytes: normalizedFrameBytes,
-        frameIntervalMs: 1_000,
+        frameIntervalMs: 2_000,
         qrErrorCorrection: "M",
         wipeOnOnline: false,
       })
@@ -323,17 +323,18 @@ describe("preferences and plaintext non-persistence", () => {
     },
   )
 
-  it("normalizes boot-readable retired intervals before merging an unrelated patch", async () => {
+  it("normalizes boot-readable intervals and preserves the active 2000ms fallback", async () => {
     const database = await getDb()
-    for (const [legacyInterval, normalizedInterval] of [
-      [150, 200],
-      [250, 300],
-      [1_050, 1_000],
-      [1_500, 1_000],
-      [2_000, 1_000],
-      [2_250, 1_000],
-      [2_500, 1_000],
-      [3_000, 1_000],
+    for (const [legacyInterval, normalizedInterval, activeWriteAllowed] of [
+      [150, 200, false],
+      [250, 300, false],
+      [1_050, 1_000, false],
+      [1_499, 1_000, false],
+      [1_500, 2_000, false],
+      [2_000, 2_000, true],
+      [2_250, 2_000, false],
+      [2_500, 2_000, false],
+      [3_000, 2_000, false],
     ] as const) {
       await database.put(STORE_PREFERENCES, {
         key: "preferences",
@@ -358,9 +359,16 @@ describe("preferences and plaintext non-persistence", () => {
         qrErrorCorrection: "M",
         wipeOnOnline: false,
       })
-      await expect(
+      const activeWrite = expect(
         updatePreferences({ frameIntervalMs: legacyInterval }),
-      ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+      )
+      if (activeWriteAllowed) {
+        await activeWrite.resolves.toMatchObject({
+          frameIntervalMs: legacyInterval,
+        })
+      } else {
+        await activeWrite.rejects.toMatchObject({ code: "STORAGE_FAILED" })
+      }
     }
   })
 

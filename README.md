@@ -2,7 +2,7 @@
 
 日本語版: [README.ja.md](README.ja.md)
 
-Offline-encryption QR PWA. A Progressive Web App that encrypts plaintext on-device and displays/scans ciphertext and key material as QR codes. Message ciphertext is never persisted to app-managed IndexedDB/localStorage. PNG/SVG/ZIP downloads and clipboard copies explicitly initiated by the user may remain in the OS, browser, or sync targets, and are outside the scope of wipe/purge.
+Offline-encryption QR PWA. A Progressive Web App that encrypts plaintext on-device and displays/scans ciphertext and key material as QR codes. Message ciphertext is never persisted to app-managed IndexedDB/localStorage. PNG/ZIP downloads and clipboard copies explicitly initiated by the user may remain in the OS, browser, or sync targets, and are outside the scope of wipe/purge.
 
 **What it does**: offline encryption with AES-256-GCM and the v2 post-quantum suites (ML-KEM / ML-DSA), key generation and management, QR display and scanning, and offline startup as a PWA.
 
@@ -14,7 +14,7 @@ There are plenty of apps that merely "encrypt and decrypt strings". What QR Cryp
 
 * **Data-exfiltration paths eliminated from the runtime** — The app has no external networking as an application feature (no third-party or cross-origin clients). Permitted runtime requests are the same-origin `GET /reachability-sentinel.txt` probe that gates wipe-on-online, the recurring same-origin `HEAD /manifest.webmanifest?reach=…` display probe, and static/PWA asset fetch/revalidation — none carries user or frame data. It loads no external fonts, CDNs, analytics, error-reporting SDKs, or remote configuration. CSP (`connect-src 'self'` and more) blocks outbound traffic at the browser level as well. Where a typical "encryption web app" loads CDNs, fonts, and measurement tags — a latent exfiltration surface — QR Crypt keeps requests same-origin and non-payload-bearing.
 * **Offline-only crypto with a narrow online gate** — While online, encryption, decryption, key management, storage, and settings stay blocked. The online screen covers PWA installation and, on a logically clean origin whose sensitive-store scan completed without error, an optical relay that forwards exact canonical OCF2 strings whose untrusted outer header declares `pq-message` (no assembly, no decryption, no frame-derived app persistence, no frame-bearing network request; see [docs/threat-model.md](docs/threat-model.md) T19). wipe-on-online (default ON) fires only when network-confirmed (reachability sentinel body match) and attempts best-effort logical deletion of local data (physical erasure is not guaranteed). Residual risk is documented in the threat model (T18: probe false-negative window; T19: untrusted relay hop).
-* **Air-gapped key exchange with no server in between** — Keys and public keys are exchanged as QR codes face-to-face; message ciphertext is also QR-framed and may additionally pass through a dedicated online relay as verbatim OCF2 text. There is no cloud key escrow and no account sync. Keys live only in the device's IndexedDB; the app itself never transmits or stores them externally, and the only way key material leaves the device is a deliberate, strongly-confirmed user export of a key QR (see threat model T3). Message ciphertext is never persisted to app-managed IndexedDB/localStorage — only transient on-screen display and user-initiated PNG/SVG/ZIP or clipboard export (the latter may remain in the OS, browser, or sync targets and are outside the scope of wipe/purge).
+* **Air-gapped key exchange with no server in between** — Keys and public keys are exchanged as QR codes face-to-face; message ciphertext is also QR-framed and may additionally pass through a dedicated online relay as verbatim OCF2 text. There is no cloud key escrow and no account sync. Keys live only in the device's IndexedDB; the app itself never transmits or stores them externally, and the only way key material leaves the device is a deliberate, strongly-confirmed user export of a key QR (see threat model T3). Message ciphertext is never persisted to app-managed IndexedDB/localStorage — only transient on-screen display and user-initiated PNG/ZIP or clipboard export (the latter may remain in the OS, browser, or sync targets and are outside the scope of wipe/purge).
 * **Authenticated encryption with strict failure behavior** — AEAD (AES-GCM) with AAD provides tamper detection; on authentication failure, no partial plaintext is ever shown. Internal decryption exceptions are normalized into fixed user-facing messages; key material and stack traces never reach the screen or logs. This rules out the "unauthenticated mode" and "partial output on failure" common in naive crypto apps.
 * **No plaintext left behind** — Plaintext and decryption results are never persisted; they exist only in React memory. Auto-clear after successful encryption and auto-clear after the app moves to the background are enabled by default. Plaintext is never passed to the QR generation library; only post-encryption ciphertext is handled.
 * **Standard algorithms only, no custom crypto** — Randomness comes from a CSPRNG (`crypto.getRandomValues`), cryptographic operations are built on Web Crypto, and IV reuse, fixed IVs, and ad-hoc key combination are forbidden. Crypto code is isolated in dedicated modules (`src/crypto/*`); UI pages invoke those modules' high-level operations and never touch Web Crypto primitives or key material directly.
@@ -51,11 +51,17 @@ v2 is **experimental**. We distinguish `implementation-complete` — the impleme
 
 ### Available suites
 
-| Suite | Contents | Notes |
-| --- | --- | --- |
-| AES-256-GCM | Symmetric encryption only | **Default** (`A256GCM`) |
-| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | Post-quantum KEM hybrid | Selectable (`MLKEM1024_A256GCM`) |
-| The above + ML-DSA-87 signature | sign-then-encrypt | Signed messages |
+| Suite | Contents | Maximum plaintext (UTF-8 bytes) | Notes |
+| --- | --- | ---: | --- |
+| AES-256-GCM | Symmetric encryption only | EC-L: 2,010; EC-M: 1,543; EC-Q: 1,042; EC-H: 750 | **Default** (`A256GCM`); the selected QR error-correction level determines the single-OCM1 limit |
+| ML-KEM-1024 + HKDF-SHA256 + AES-256-GCM | Post-quantum KEM hybrid | 120,000 | Selectable (`MLKEM1024_A256GCM`) |
+| The above + ML-DSA-87 signature | sign-then-encrypt | 120,000 | Signed messages |
+
+The limits are algorithm-specific and count UTF-8 bytes, not JavaScript
+characters. The post-quantum paths use multipart OCF2 and accept up to 120,000
+bytes. A256GCM remains a single v1 OCM1 payload, so its smaller pre-encryption
+bound is derived from the v1 8,192-character payload ceiling and the selected
+version 40 QR error-correction capacity.
 
 The current active policy is **maximum** (1024/87) only. The wire contract keeps 4 suites
 (768/65 and 1024/87, each with and without signatures), but balanced
@@ -83,9 +89,10 @@ measurements in real browsers or on low-end devices, nor for the `release-approv
 
 Large payloads are split into `OCF2` frames for display and scanning.
 
-* Display: automatic cycling (with a default interval; pause / previous / next / speed adjustment available)
+* Display: the application chooses 1,000B chunks with a 200ms minimum dwell when the WebAssembly reader is usable, or a best-effort 100B / 2,000ms fallback when it is not; density is raised automatically when the artifact otherwise cannot fit. There are no density or speed controls
+* Cycling: the cursor advances only after the rendered code has committed and then receives the full configured dwell. The dwell is a floor, not a measured frame rate or full-cycle time
 * Scanning: any order, duplicates ignored. Missing frames are shown explicitly in the UI. Frames mixed in from a different transfer yield `FRAME_MISMATCH`
-* Export: all frame PNGs at once, and a store-only ZIP (uncompressed; no added dependency)
+* Export: one Download control produces a PNG for exactly one frame or a store-only ZIP for several frames. SVG export is not offered
 
 Details: [docs/qr-protocol-v2.md](docs/qr-protocol-v2.md).
 
@@ -251,6 +258,7 @@ The relay forwards exact canonical OCF2 strings whose untrusted outer header dec
 
 * Existing **OCM1-RSA** ciphertexts are unrecoverable. Non-extractable RSA private keys cannot be rescued (no decryption compatibility is retained).
 * The saved-QR feature has been removed. Ciphertext and key QR codes are not persisted inside the app, and there is no `qrArtifacts` store in IndexedDB. QR codes are handled only via on-screen display and user-initiated export.
+* Frame-density and display-speed settings, separate export buttons, and SVG export have been removed. The application chooses the display profile; one Download control emits PNG for one frame and ZIP for several.
 
 ## Pre-release checklist
 
@@ -307,7 +315,7 @@ Android Chrome and iOS Safari) and an independent audit record are in place.
 | Error codes `RESET_FAILED`, `SIGNATURE_INVALID`, `SIGNING_KEY_NOT_FOUND`, `FRAME_MISMATCH`, `WORKER_UNAVAILABLE` added | `RESET_FAILED` was finalized from the provisional name `WIPE_FAILED` under the honest-naming policy for best-effort logical deletion. The others cover signature verification failure, missing signing key, frame mismatch, and Worker unavailability |
 | RSA-OAEP hybrid removed; `VITE_ENABLE_RSA=false` | The RSA path removal is complete — a reversal of the RSA hybrid path in the initial specification |
 | `VITE_DEFAULT_ALGORITHM=A256GCM` (default changed to symmetric AES-256-GCM) | Maintainer requirement, 2026-07-24. Post-quantum modes remain selectable |
-| No in-app QR storage | Maintainer requirement, 2026-07-24. Both ciphertext and key QR codes are limited to on-screen display, PNG/SVG/ZIP export, and clipboard; the saved-QR feature and the `qrArtifacts` store are removed |
+| No in-app QR storage | Maintainer requirement, 2026-07-24. Both ciphertext and key QR codes are limited to on-screen display, single-frame PNG / multi-frame ZIP export, and clipboard; the saved-QR feature and the `qrArtifacts` store are removed |
 
 ## License
 

@@ -60,14 +60,6 @@ import {
 import type { Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
-  FRAME_BYTES_MAX,
-  FRAME_BYTES_MIN,
-  FRAME_BYTES_VALUES,
-  FRAME_INTERVAL_MS_MAX,
-  FRAME_INTERVAL_MS_MIN,
-  FRAME_INTERVAL_MS_STEP,
-  isFrameBytes,
-  isFrameIntervalMs,
   RESET_CHURN_MB_MAX,
   RESET_CHURN_MB_MIN,
   TRANSFER_TIMEOUT_MINUTES_MAX,
@@ -159,18 +151,16 @@ export function SettingsPage() {
   }
 
   const saveIntegerPreference = (
-    key: "frameIntervalMs" | "transferTimeoutMinutes" | "resetChurnMb",
+    key: "transferTimeoutMinutes" | "resetChurnMb",
     raw: string,
     minimum: number,
     maximum: number,
-    isAllowed: (value: number) => boolean = () => true,
   ) => {
     const value = Number(raw)
     if (
       Number.isSafeInteger(value) &&
       value >= minimum &&
-      value <= maximum &&
-      isAllowed(value)
+      value <= maximum
     ) {
       void savePreference({ [key]: value })
     }
@@ -317,58 +307,6 @@ export function SettingsPage() {
             }
           />
         </div>
-        <SettingField
-          label={t("settings.field.frameBytes", {
-            min: FRAME_BYTES_MIN,
-            max: FRAME_BYTES_MAX,
-          })}
-          htmlFor="frame-bytes"
-        >
-          <Select
-            value={String(preferences.frameBytes)}
-            disabled={preferencesLoading}
-            onValueChange={(raw) => {
-              const value = Number(raw)
-              if (isFrameBytes(value)) void savePreference({ frameBytes: value })
-            }}
-          >
-            <SelectTrigger id="frame-bytes" className="h-11 text-base">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {FRAME_BYTES_VALUES.map((bytes) => (
-                <SelectItem key={bytes} value={String(bytes)}>
-                  {bytes} B
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </SettingField>
-        <SettingField
-          label={t("settings.field.frameInterval", {
-            min: FRAME_INTERVAL_MS_MIN,
-            max: FRAME_INTERVAL_MS_MAX,
-          })}
-          htmlFor="frame-interval"
-        >
-          <Input
-            id="frame-interval"
-            type="number"
-            min={FRAME_INTERVAL_MS_MIN}
-            max={FRAME_INTERVAL_MS_MAX}
-            step={FRAME_INTERVAL_MS_STEP}
-            value={preferences.frameIntervalMs}
-            onChange={(event) =>
-              saveIntegerPreference(
-                "frameIntervalMs",
-                event.target.value,
-                FRAME_INTERVAL_MS_MIN,
-                FRAME_INTERVAL_MS_MAX,
-                isFrameIntervalMs,
-              )
-            }
-          />
-        </SettingField>
         <SettingField
           label={t("settings.field.transferTimeout", {
             min: TRANSFER_TIMEOUT_MINUTES_MIN,

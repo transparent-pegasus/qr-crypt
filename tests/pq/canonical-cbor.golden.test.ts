@@ -1,7 +1,7 @@
 // Golden fixtures for v2 canonical CBOR.
 // These hex values must match docs/qr-protocol-v2.md §8.
 // Changing a value requires a wire-protocol revision; do not update them casually.
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import type { MlKemMessageEnvelopeV2, QrFrameV2 } from "@/schemas/domain"
 import { AppError, type ErrorCode } from "@/crypto/errors"
 import {
@@ -20,7 +20,10 @@ import {
 } from "@/crypto/pq/canonical-cbor"
 import { assertActiveSuite, resolveSuite, suiteComponents } from "@/crypto/pq/suites"
 import { bytesToHex, sha256Hex } from "@/lib/bytes"
-import { MAX_FRAME_PAYLOAD_CHARS } from "@/lib/limits"
+import {
+  MAX_ARTIFACT_BYTES_ABSOLUTE,
+  MAX_FRAME_PAYLOAD_CHARS,
+} from "@/lib/limits"
 import { qrByteCapacity } from "@/qr/encode"
 import { WIRE_SUITES } from "@/schemas/domain"
 
@@ -43,6 +46,26 @@ function expectCode(fn: () => unknown, code: ErrorCode): void {
     return
   }
   expect.unreachable("expected AppError " + code)
+}
+
+function exactSizeCanonicalMap(
+  targetByteLength: number,
+  valueWithPayload: (
+    payload: Uint8Array,
+  ) => Parameters<typeof encodeCanonicalCbor>[0],
+): Uint8Array {
+  let low = 0
+  let high = targetByteLength
+  while (low <= high) {
+    const payloadBytes = Math.floor((low + high) / 2)
+    const encoded = encodeCanonicalCbor(
+      valueWithPayload(new Uint8Array(payloadBytes)),
+    )
+    if (encoded.byteLength === targetByteLength) return encoded
+    if (encoded.byteLength < targetByteLength) low = payloadBytes + 1
+    else high = payloadBytes - 1
+  }
+  throw new Error(`cannot construct ${targetByteLength}-byte canonical map`)
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +313,121 @@ describe("canonical-cbor rejections", () => {
       frameIndex: 2,
     } as unknown as Parameters<typeof encodeCanonicalCbor>[0])
     expectCode(() => decodeQrFrameV2(bytes), "INVALID_QR_PAYLOAD")
+  })
+
+  it("accepts canonical input at the absolute byte boundary and rejects one byte beyond", () => {
+    const valueWithPayload = (payload: Uint8Array) => ({
+      type: "pq-message",
+      payload,
+    })
+    const atLimit = exactSizeCanonicalMap(
+      MAX_ARTIFACT_BYTES_ABSOLUTE,
+      valueWithPayload,
+    )
+    const beyondLimit = exactSizeCanonicalMap(
+      MAX_ARTIFACT_BYTES_ABSOLUTE + 1,
+      valueWithPayload,
+    )
+
+    expect(atLimit).toHaveLength(MAX_ARTIFACT_BYTES_ABSOLUTE)
+    const decoded = decodeCanonicalCbor(atLimit) as Record<string, unknown>
+    expect(decoded["type"]).toBe("pq-message")
+    expect(decoded["payload"]).toBeInstanceOf(Uint8Array)
+    expect((decoded["payload"] as Uint8Array).byteLength).toBeGreaterThan(0)
+    expect(
+      encodeCanonicalCbor(
+        decoded as Parameters<typeof encodeCanonicalCbor>[0],
+      ),
+    ).toEqual(atLimit)
+    expect(beyondLimit).toHaveLength(MAX_ARTIFACT_BYTES_ABSOLUTE + 1)
+    expectCode(
+      () => decodeCanonicalCbor(beyondLimit),
+      "INVALID_QR_PAYLOAD",
+    )
+  })
+
+  it("rejects a maximum-size canonical map with too many unique entries", () => {
+    const manyUniqueEntries = Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => [`k${index}`, index]),
+    )
+    const bytes = exactSizeCanonicalMap(
+      MAX_ARTIFACT_BYTES_ABSOLUTE,
+      (payload) =>
+        ({
+          ...manyUniqueEntries,
+          payload,
+        }) as Parameters<typeof encodeCanonicalCbor>[0],
+    )
+
+    expect(bytes).toHaveLength(MAX_ARTIFACT_BYTES_ABSOLUTE)
+    expectCode(() => decodeCanonicalCbor(bytes), "INVALID_QR_PAYLOAD")
+  })
+
+  it("rejects aggregate map entries, oversized keys, and oversized text", () => {
+    const nestedNineEntries = Object.fromEntries(
+      Array.from({ length: 9 }, (_, index) => [`k${index}`, index]),
+    )
+    const aggregateFourteenEntries = encodeCanonicalCbor({
+      a: 1,
+      b: 2,
+      c: 3,
+      d: 4,
+      nested: nestedNineEntries,
+    })
+    const oversizedKey = encodeCanonicalCbor({
+      ["k".repeat(20)]: 1,
+    })
+    const oversizedText = encodeCanonicalCbor({
+      a: "x".repeat(301),
+    })
+
+    for (const bytes of [
+      aggregateFourteenEntries,
+      oversizedKey,
+      oversizedText,
+    ]) {
+      expectCode(() => decodeCanonicalCbor(bytes), "INVALID_QR_PAYLOAD")
+    }
+  })
+
+  it("retains no attacker-selected key encoding across repeated decodes", () => {
+    const attackerKeys = Array.from(
+      { length: 24 },
+      (_, index) => `k${String(index).padStart(18, "0")}`,
+    )
+    const submissions = attackerKeys.map((key, index) =>
+      encodeCanonicalCbor({ [key]: index }),
+    )
+    const encodeSpy = vi.spyOn(TextEncoder.prototype, "encode")
+
+    try {
+      const firstRound = submissions.map((bytes) =>
+        decodeCanonicalCbor(bytes),
+      )
+      const secondRound = submissions.map((bytes) =>
+        decodeCanonicalCbor(bytes),
+      )
+
+      for (let index = 0; index < attackerKeys.length; index += 1) {
+        expect(Object.getPrototypeOf(firstRound[index] as object)).toBeNull()
+        expect(Object.getPrototypeOf(secondRound[index] as object)).toBeNull()
+        expect(secondRound[index]).not.toBe(firstRound[index])
+      }
+
+      const attackerKeyEncodes = encodeSpy.mock.calls
+        .map(([value]) => value)
+        .filter(
+          (value): value is string =>
+            typeof value === "string" && attackerKeys.includes(value),
+        )
+      for (const key of attackerKeys) {
+        expect(attackerKeyEncodes.filter((value) => value === key)).toHaveLength(
+          2,
+        )
+      }
+    } finally {
+      encodeSpy.mockRestore()
+    }
   })
 })
 

@@ -4,7 +4,10 @@ import { buildAad, type AesMessageEnvelopeV1 } from "@/crypto/envelope"
 import { fingerprintAesKey, formatFingerprintDisplay } from "@/crypto/fingerprint"
 import { importAesKeyRaw } from "@/crypto/key-import-export"
 import { toOwnedArrayBuffer, utf8ToBytes } from "@/lib/bytes"
-import { MAX_PLAINTEXT_BYTES } from "@/lib/limits"
+import {
+  MAX_PLAINTEXT_BYTES,
+  MAX_SYMMETRIC_PLAINTEXT_BYTES,
+} from "@/lib/limits"
 import { encodeEnvelopeToPayload } from "@/qr/payload"
 
 const KEY_ID = "A".repeat(22)
@@ -17,7 +20,7 @@ function changed(bytes: Uint8Array, index = 0): Uint8Array {
 }
 
 describe("AES-256-GCM", () => {
-  it("round-trips Japanese 30 chars, emoji, empty, and the 4096-byte maximum", async () => {
+  it("round-trips Japanese 30 chars, emoji, empty, and the symmetric maximum", async () => {
     const key = await generateAesKey()
     expect(key.extractable).toBe(true)
     expect(key.usages).toEqual(["encrypt", "decrypt"])
@@ -25,7 +28,7 @@ describe("AES-256-GCM", () => {
       utf8ToBytes("日".repeat(30)),
       utf8ToBytes("暗号🔐 QR📱 emoji"),
       new Uint8Array(),
-      new Uint8Array(MAX_PLAINTEXT_BYTES).fill(0x61),
+      new Uint8Array(MAX_SYMMETRIC_PLAINTEXT_BYTES).fill(0x61),
     ]
     for (const plaintext of samples) {
       const envelope = await encryptWithAesKey({

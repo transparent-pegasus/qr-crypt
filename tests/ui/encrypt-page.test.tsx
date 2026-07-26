@@ -1,27 +1,40 @@
 import "./helpers/module-mocks"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
-import { FRAME_BYTES_MAX } from "@/lib/limits"
+import {
+  FRAME_BYTES_MAX,
+  maximumSymmetricPlaintextBytesForPayloadCapacity,
+} from "@/lib/limits"
 import type { MlKemMessageEnvelopeV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
   emitScannedPayload,
+  encryptWithAesKey,
   encryptPq,
   decryptPqMessage,
   fakeBundles,
   fakeIdentities,
-  fakePreferences,
   fakePqDecrypt,
+  isQrReaderModuleUsable,
+  prepareQrReaderModule,
   renderQrDataUrl,
+  setQrReaderModuleUsable,
   splitIntoFrames,
   startQrScan,
-  updatePreferences,
+  subscribeQrReaderModuleState,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 const defaultQrMaxFrames = env.qrMaxFrames
+
+vi.doMock("@/qr/decode", () => ({
+  isQrReaderModuleUsable,
+  prepareQrReaderModule,
+  startQrScan,
+  subscribeQrReaderModuleState,
+}))
 
 async function chooseSelectOption(
   user: ReturnType<typeof userEvent.setup>,
@@ -36,6 +49,7 @@ describe("encrypt page v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
     env.qrMaxFrames = defaultQrMaxFrames
+    vi.restoreAllMocks()
     resetUi()
   })
 
@@ -110,18 +124,8 @@ describe("encrypt page v2", () => {
     expect(within(result).getByText("maximum")).toBeInTheDocument()
     expect(within(result).getByRole("button", { name: "Pause" })).toBeInTheDocument()
     expect(within(result).getByRole("button", { name: "Next" })).toBeInTheDocument()
-    const inlineDensity = within(result).getByRole("slider", {
-      name: "Frame density",
-    })
-    expect(inlineDensity).toHaveAttribute("min", "200")
-    expect(inlineDensity).toHaveAttribute("max", "1000")
-    expect(inlineDensity).toHaveAttribute("step", "100")
-    expect(inlineDensity).toHaveValue("200")
-    expect(within(result).getByLabelText("Display speed")).toBeInTheDocument()
-    expect(
-      within(result).getByRole("button", { name: /Export all PNGs/ }),
-    ).toBeInTheDocument()
-    expect(within(result).getByRole("button", { name: /Export ZIP/ })).toBeInTheDocument()
+    expect(within(result).getAllByRole("button", { name: "Download" })).toHaveLength(1)
+    expect(within(result).queryByRole("button", { name: /SVG/i })).toBeNull()
     expect(
       within(result).getByRole("button", { name: "View full screen" }),
     ).toBeInTheDocument()
@@ -129,10 +133,6 @@ describe("encrypt page v2", () => {
     expect(within(result).getByText(/^2 \/ /)).toBeInTheDocument()
     await user.click(within(result).getByRole("button", { name: "Pause" }))
     expect(within(result).getByRole("button", { name: "Play" })).toBeInTheDocument()
-    fireEvent.change(within(result).getByLabelText("Display speed"), {
-      target: { value: "500" },
-    })
-    expect(within(result).getByText("500 ms")).toBeInTheDocument()
     await waitFor(() => expect(renderQrDataUrl).toHaveBeenCalled())
     expect(renderQrDataUrl.mock.calls.at(-1)?.[0]).toMatch(/^OCF2:/)
     const fullscreen = within(result).getByRole("button", { name: "View full screen" })
@@ -142,47 +142,10 @@ describe("encrypt page v2", () => {
       name: /View Ciphertext 2 \/ .* full screen/,
     })
     expect(fullscreenDialog).toBeInTheDocument()
-    const fullscreenDensity = within(fullscreenDialog).getByRole("slider", {
-      name: "Frame density",
-    })
-    expect(fullscreenDensity).toHaveAttribute("min", "200")
-    expect(fullscreenDensity).toHaveAttribute("max", "1000")
-    expect(fullscreenDensity).toHaveAttribute("step", "100")
-    expect(fullscreenDensity).toHaveValue("200")
-    expect(within(fullscreenDialog).getByLabelText("Display speed")).toHaveValue("500")
-    const controlIds = Array.from(fullscreenDialog.querySelectorAll("input[id]")).map(
-      (input) => input.id,
-    )
-    expect(new Set(controlIds).size).toBe(controlIds.length)
-    const splitCallsBeforeSpeed = splitIntoFrames.mock.calls.length
-    fireEvent.change(within(fullscreenDialog).getByLabelText("Display speed"), {
-      target: { value: "900" },
-    })
-    await waitFor(() =>
-      expect(updatePreferences).toHaveBeenCalledWith({ frameIntervalMs: 900 }),
-    )
-    expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
-    expect(splitIntoFrames).toHaveBeenCalledTimes(splitCallsBeforeSpeed)
-    fireEvent.change(fullscreenDensity, { target: { value: "300" } })
-    await waitFor(() =>
-      expect(splitIntoFrames).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          artifactType: "pq-message",
-          frameBytes: 300,
-        }),
-      ),
-    )
-    expect(updatePreferences).toHaveBeenCalledWith({ frameBytes: 300 })
-    updatePreferences.mockRejectedValueOnce(new Error("storage failed"))
-    fireEvent.change(within(fullscreenDialog).getByLabelText("Display speed"), {
-      target: { value: "800" },
-    })
-    await waitFor(() =>
-      expect(
-        screen.getAllByText("Settings could not be saved. Check the device storage.")
-          .length,
-      ).toBeGreaterThan(0),
-    )
+    expect(within(fullscreenDialog).getByRole("img")).toBeInTheDocument()
+    expect(
+      within(fullscreenDialog).getAllByRole("button", { name: "Close" }),
+    ).toHaveLength(1)
     await user.click(within(fullscreenDialog).getByRole("button", { name: "Close" }))
 
     expect(within(result).queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
@@ -325,20 +288,65 @@ describe("encrypt page v2", () => {
     expect(screen.queryByText("Encryption is complete")).not.toBeInTheDocument()
   })
 
-  it("keeps UTF-8 limits and clears plaintext after success", async () => {
+  it("rejects the smaller symmetric limit before encryption while accepting the same plaintext for PQ", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
     await chooseSelectOption(user, "Key", "共通鍵A")
     const plaintext = screen.getByLabelText("Plaintext")
-    fireEvent.change(plaintext, { target: { value: "a".repeat(4097) } })
+    const symmetricLimit = maximumSymmetricPlaintextBytesForPayloadCapacity(1_663)
+    const symmetricOversizePlaintext = "a".repeat(4_097)
+
+    expect(symmetricLimit).toBe(1_042)
+    expect(symmetricLimit).toBeLessThan(env.maxPlaintextBytes)
+    fireEvent.change(plaintext, { target: { value: symmetricOversizePlaintext } })
+    expect(
+      screen.getByText(`${symmetricOversizePlaintext.length} / ${symmetricLimit} bytes`),
+    ).toBeInTheDocument()
     expect(screen.getByText("The plaintext limit has been exceeded")).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        `Shorten the UTF-8 text to no more than ${symmetricLimit} bytes.`,
+      ),
+    ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Encrypt" })).toBeDisabled()
+    expect(encryptWithAesKey).not.toHaveBeenCalled()
+
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    expect(
+      screen.getByText(
+        `${symmetricOversizePlaintext.length} / ${env.maxPlaintextBytes} bytes`,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText("The plaintext limit has been exceeded")).toBeNull()
+    const encryptButton = screen.getByRole("button", { name: "Encrypt" })
+    expect(encryptButton).toBeEnabled()
+    await user.click(encryptButton)
+    await screen.findByRole("region", { name: "Encryption result" })
+    expect(encryptPq).toHaveBeenCalledOnce()
+    expect(encryptPq.mock.calls[0]![0].plaintext).toHaveLength(
+      symmetricOversizePlaintext.length,
+    )
+    expect(encryptWithAesKey).not.toHaveBeenCalled()
+  })
+
+  it("clears plaintext after symmetric success and exposes no SVG affordance", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(user, "Key", "共通鍵A")
+    const plaintext = screen.getByLabelText("Plaintext")
     fireEvent.change(plaintext, { target: { value: "既定で消去される平文" } })
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
     const result = await screen.findByRole("region", { name: "Encryption result" })
     expect(within(result).getByText("Encryption is complete")).toBeInTheDocument()
     expect(plaintext).toHaveValue("")
     expect(fakeIdentities).toHaveLength(1)
+    expect(within(result).getAllByRole("button", { name: "Download" })).toHaveLength(1)
+    expect(within(result).queryByRole("button", { name: /SVG/i })).toBeNull()
     const fullscreenButton = within(result).getByRole("button", {
       name: "View full screen",
     })
@@ -348,60 +356,114 @@ describe("encrypt page v2", () => {
       name: /View Ciphertext QR full screen/,
     })
     expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
-    expect(within(fullscreen).queryByLabelText("Frame density")).toBeNull()
-    expect(within(fullscreen).queryByLabelText("Display speed")).toBeNull()
   })
 
   it.each([
-    { caseName: "signed-empty", artifactBytes: 6_613, plaintext: "x" },
     {
-      caseName: "signed-maximum",
-      artifactBytes: 10_711,
-      plaintext: "x".repeat(4_096),
+      label: "wasm reader usable",
+      wasmReaderUsable: true,
+      frameBytes: 1_000,
+      dwellMs: 200,
+    },
+    {
+      label: "wasm reader unusable",
+      wasmReaderUsable: false,
+      frameBytes: 100,
+      dwellMs: 2_000,
     },
   ])(
-    "clamps a stored 100 B density when $caseName exceeds a configured 64-frame limit",
-    async ({ artifactBytes, plaintext }) => {
-      env.qrMaxFrames = 64
-      fakePreferences.frameBytes = 100
+    "selects the automatic display profile when the $label",
+    async ({ wasmReaderUsable, frameBytes, dwellMs }) => {
+      const firstQrRender = (() => {
+        let resolve!: (value: string) => void
+        const promise = new Promise<string>((resolvePromise) => {
+          resolve = resolvePromise
+        })
+        return { promise, resolve }
+      })()
+      setQrReaderModuleUsable(wasmReaderUsable)
+      renderQrDataUrl.mockImplementationOnce(() => firstQrRender.promise)
       encryptPq.mockResolvedValueOnce({
         version: 2,
         type: "pq-message",
-        suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
+        suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
         recipientKemKeyId: fakeBundles[0]!.kem.keyId,
         kemCiphertext: new Uint8Array(1_568),
         hkdfSalt: new Uint8Array(32),
         iv: new Uint8Array(12),
-        ciphertext: new Uint8Array(artifactBytes - 1_568 - 128),
+        ciphertext: new Uint8Array(512),
       })
       const user = userEvent.setup()
       await renderApp("/encrypt")
-      await chooseSelectOption(user, "Cryptographic algorithm", /Signed post-quantum/)
+      await chooseSelectOption(
+        user,
+        "Cryptographic algorithm",
+        /Post-quantum ML-KEM-1024 \+ AES/,
+      )
       await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
-      await chooseSelectOption(user, "My ML-DSA signing identity", "自分のPQ ID")
-      fireEvent.change(screen.getByLabelText("Plaintext"), {
-        target: { value: plaintext },
-      })
+      await user.type(screen.getByLabelText("Plaintext"), "profile selection")
       await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
-      await screen.findByRole("region", { name: "Encryption result" })
+      const result = await screen.findByRole("region", { name: "Encryption result" })
       await waitFor(() =>
         expect(splitIntoFrames).toHaveBeenLastCalledWith(
           expect.objectContaining({
             artifactType: "pq-message",
-            frameBytes: 200,
+            frameBytes,
           }),
         ),
       )
-      expect(updatePreferences).not.toHaveBeenCalledWith({ frameBytes: 200 })
+
+      const timeout = vi.spyOn(window, "setTimeout")
+      firstQrRender.resolve("data:image/png;base64,cHJvZmlsZQ==")
+      await waitFor(() => expect(within(result).getByRole("img")).toBeInTheDocument())
+      expect(timeout.mock.calls.some(([, delay]) => delay === dwellMs)).toBe(true)
+      timeout.mockRestore()
     },
   )
+
+  it("raises the unusable-reader fallback density and shows the clamp notice", async () => {
+    const artifactByteLength = 12_801
+    setQrReaderModuleUsable(false)
+    encryptPq.mockResolvedValueOnce({
+      version: 2,
+      type: "pq-message",
+      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      recipientKemKeyId: fakeBundles[0]!.kem.keyId,
+      kemCiphertext: new Uint8Array(1_568),
+      hkdfSalt: new Uint8Array(32),
+      iv: new Uint8Array(12),
+      ciphertext: new Uint8Array(artifactByteLength - 1_568 - 128),
+    })
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "fallback clamp")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const result = await screen.findByRole("region", { name: "Encryption result" })
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-message",
+          frameBytes: 200,
+        }),
+      ),
+    )
+    expect(
+      within(result).getByText("Frame density was raised so this transfer fits."),
+    ).toHaveAttribute("role", "status")
+  })
 
   it("fails through QR_TOO_LARGE when even the maximum density cannot fit", async () => {
     const frameCeiling = 10
     const artifactByteLength = frameCeiling * FRAME_BYTES_MAX + 1
     env.qrMaxFrames = frameCeiling
-    fakePreferences.frameBytes = 100
     encryptPq.mockResolvedValueOnce({
       version: 2,
       type: "pq-message",

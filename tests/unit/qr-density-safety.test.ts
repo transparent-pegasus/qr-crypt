@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import { toBase64Url } from "@/lib/base64url"
 import {
   FRAME_BYTES_VALUES,
+  FRAME_CHUNK_MAX_BYTES,
   FRAME_INTERVAL_MS_MAX,
   FRAME_INTERVAL_MS_VALUES,
   isBootReadableFrameBytes,
@@ -30,15 +31,20 @@ const ACCEPTED_BARE_V2_KINDS = [
 ] as const
 
 describe("QR transfer timing safety budgets", () => {
-  it("lets the legal minimum timeout cover one slowest selectable full cycle", () => {
+  it("derives the minimum timeout from one slowest supported full cycle", () => {
     const minimumTimeoutMs =
       TRANSFER_TIMEOUT_MINUTES_MIN * MILLISECONDS_PER_MINUTE
-    const slowestSelectableFullCycleMs =
+    const slowestSupportedFullCycleMs =
       PROTOCOL_MAX_FRAMES * FRAME_INTERVAL_MS_MAX
-
-    expect(minimumTimeoutMs).toBeGreaterThanOrEqual(
-      slowestSelectableFullCycleMs,
+    const derivedMinimumMinutes = Math.ceil(
+      slowestSupportedFullCycleMs / MILLISECONDS_PER_MINUTE,
     )
+
+    expect(TRANSFER_TIMEOUT_MINUTES_MIN).toBe(derivedMinimumMinutes)
+    expect(minimumTimeoutMs).toBeGreaterThanOrEqual(slowestSupportedFullCycleMs)
+    expect(
+      (TRANSFER_TIMEOUT_MINUTES_MIN - 1) * MILLISECONDS_PER_MINUTE,
+    ).toBeLessThan(slowestSupportedFullCycleMs)
   })
 
   it("keeps one slowest full protocol cycle strictly below the default timeout", () => {
@@ -53,10 +59,10 @@ describe("QR transfer timing safety budgets", () => {
 describe("persisted QR range compatibility", () => {
   it("keeps every active density and interval boot-readable and write-valid", () => {
     expect(FRAME_BYTES_VALUES).toEqual([
-      200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+      100, 200, 300, 400, 500, 600, 700, 800, 900, 1_000,
     ])
     expect(FRAME_INTERVAL_MS_VALUES).toEqual([
-      200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+      200, 300, 400, 500, 600, 700, 800, 900, 1_000, 2_000,
     ])
 
     for (const frameBytes of FRAME_BYTES_VALUES) {
@@ -69,7 +75,7 @@ describe("persisted QR range compatibility", () => {
     }
   })
 
-  it.each([100, 150, 250] as const)(
+  it.each([150, 250] as const)(
     "keeps retired density %i boot-readable while the active write validator rejects it",
     (frameBytes) => {
       expect(isBootReadableFrameBytes(frameBytes)).toBe(true)
@@ -81,12 +87,12 @@ describe("persisted QR range compatibility", () => {
     for (let frameBytes = 100; frameBytes <= 900; frameBytes += 1) {
       expect(isBootReadableFrameBytes(frameBytes)).toBe(true)
       expect(normalizeLegacyFrameBytes(frameBytes)).toBe(
-        Math.max(200, Math.round(frameBytes / 100) * 100),
+        Math.round(frameBytes / 100) * 100,
       )
     }
   })
 
-  it.each([1_500, 2_000, 2_500, 3_000] as const)(
+  it.each([1_500, 2_500, 3_000] as const)(
     "keeps retired interval %i boot-readable while the active write validator rejects it",
     (frameIntervalMs) => {
       expect(isBootReadableFrameIntervalMs(frameIntervalMs)).toBe(true)
@@ -94,25 +100,27 @@ describe("persisted QR range compatibility", () => {
     },
   )
 
-  it("normalizes every historically stored interval integer plus the 2500/3000 stops", () => {
-    const historicalIntervals = [
-      ...Array.from({ length: 2_000 - 150 + 1 }, (_, index) => 150 + index),
-      2_500,
-      3_000,
-    ]
-    for (const frameIntervalMs of historicalIntervals) {
+  it("normalizes every historically stored interval integer to the nearest active stop", () => {
+    for (let frameIntervalMs = 150; frameIntervalMs <= 3_000; frameIntervalMs += 1) {
       expect(isBootReadableFrameIntervalMs(frameIntervalMs)).toBe(true)
-      expect(normalizeLegacyFrameIntervalMs(frameIntervalMs)).toBe(
-        Math.min(
-          1_000,
-          Math.max(200, Math.round(frameIntervalMs / 100) * 100),
-        ),
-      )
+      const expected =
+        frameIntervalMs <= 1_000
+          ? Math.max(200, Math.round(frameIntervalMs / 100) * 100)
+          : frameIntervalMs < 1_500
+            ? 1_000
+            : 2_000
+      expect(normalizeLegacyFrameIntervalMs(frameIntervalMs)).toBe(expected)
     }
   })
 })
 
 describe("bare v2 paste allocation ceiling", () => {
+  it("pins the absolute receiver ceiling to the frame and chunk budgets", () => {
+    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(
+      PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES,
+    )
+  })
+
   it("derives the character ceiling from the unpadded maximum artifact encoding", () => {
     const maximumArtifactBody = toBase64Url(
       new Uint8Array(MAX_ARTIFACT_BYTES_ABSOLUTE),

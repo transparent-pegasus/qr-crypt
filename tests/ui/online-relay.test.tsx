@@ -953,9 +953,8 @@ describe("online relay UI", () => {
     expect(
       await screen.findByText("This relay provides no app file-download controls."),
     ).toBeInTheDocument()
-    for (const name of ["Download all PNG", "Download ZIP", "Download current SVG"]) {
-      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument()
-    }
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull()
+    expect(screen.queryByRole("button", { name: /SVG/i })).toBeNull()
     expect(decodeFramePayload(first).frameIndex).toBe(0)
   })
 

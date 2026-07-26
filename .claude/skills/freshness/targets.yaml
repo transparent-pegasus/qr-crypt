@@ -147,15 +147,22 @@ units:
     last_checked: 2026-07-26
     files:
       - docs/threat-model.md
+      - src/crypto/pq/canonical-cbor.ts # structural allocation caps and retained-key behavior cited by T20
+      - src/lib/limits.ts # frames × chunk receiver-allocation bound cited by T20
+      - src/qr/payload-v2.ts # bare-paste character and decoded-byte bounds cited by T20
+      - src/qr/multipart/assemble.ts # receiver assembly enforcement cited by T20
     why: >
       Living threat model. §5.1 supply-chain advisories are dated (2026-07-21);
       §7 v2 addendum cites algorithm defaults that can diverge from the active
-      maximum policy; attacker capabilities and mitigations age.
+      maximum policy; attacker capabilities, allocation bounds, CBOR
+      structural defenses, and mitigations age.
     method: |
       Re-run aube audit; refresh §5.1 advisory status for the pinned deps.
       Reconcile threat/mitigation entries (T14/T15 algorithm names) with the
       active policy in src/crypto/pq/suites.ts and boot behavior in
-      src/app/boot/. Convert any new relative dates to absolute.
+      src/app/boot/. Reconcile T20's frame/paste allocation and CBOR caps with
+      limits.ts, payload-v2.ts, assemble.ts, and canonical-cbor.ts. Convert any
+      new relative dates to absolute.
     verify: >
       Diff claims against README security section and the settings page
       "About security" copy (settings.security.* keys in
@@ -171,15 +178,23 @@ units:
       - docs/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
       - tests/e2e/security.spec.ts # executable half of the CSP claims
+      - src/lib/limits.ts # artifact ceiling, algorithm-specific bounds, and cycle budget
+      - src/schemas/env-schema.ts # PQ plaintext ceiling and maximum signed-artifact formula
+      - tests/pq/maximum-artifact-size.golden.test.ts # executable artifact size/frame table
+      - tests/e2e/downloads.spec.ts # long-text export measurement attachment
     why: >
       Point-in-time snapshot: noble 0.6.1 facts as of 2026-07-22, the
       zxing-wasm reader pin/hash/provenance, independent
       audit 未了, release-approved blocker, FIPS errata checklist, artifact
-      size table. All of it is dated by construction.
+      size/cycle table, and long-text export measurements. All of it is dated
+      by construction.
     method: |
       Follow the §3 checklist. Update §1 as-of date, noble version/audit
       status, advisory results, and the artifact size table from
-      tests/pq/maximum-artifact-size.golden.test.ts output.
+      tests/pq/maximum-artifact-size.golden.test.ts output. Long-text
+      encryption/split/render/ZIP time and archive size come only from a
+      recorded measurement attachment; retain an explicit not-yet-measured
+      placeholder rather than estimating them.
     verify: aube audit && aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [threat-model, ui-security-copy]
 
@@ -198,10 +213,12 @@ units:
     method: |
       Re-measure on at least Android Chrome + iOS Safari with current browser
       versions and VITE_BUILD_SHA; fill matrix rows. The zxing-wasm scanner
-      rows include offline first-use instantiation and the widened-range gate:
-      sustained full transfers at 200B@1000ms, 1000B@1000ms, 200B@200ms, and
-      1000B@200ms, including poor light and refocus recovery. For every case,
-      record actual start-to-start decode cadence, p95 decode duration and long
+      rows include offline first-use instantiation and both automatic profiles:
+      1000B with a 200ms minimum dwell when the WebAssembly reader is usable,
+      and the 100B/2000ms reader-unusable fallback with automatic density
+      raising when required. Include poor light and refocus recovery. For each
+      profile, record the actual full-cycle time separately from the configured
+      dwell, actual start-to-start decode cadence, p95 decode duration and long
       tasks, sustained CPU/thermal behaviour, teardown latency, sender-side
       version 40 render completion time, and post-downscale decoder dimensions
       (camera resolution is not a substitute). If p95 decode is a long task,
@@ -220,6 +237,12 @@ units:
       - docs/boot-and-reset-v2.md
       - src/crypto/pq/wire-bytes.ts # mirrors documented wire layout
       - src/crypto/pq/canonical-cbor.ts # mirrors documented canonical encoding
+      - src/lib/limits.ts # artifact ceiling, algorithm-specific sizes, and timeout floor
+      - src/lib/frame-bytes.ts # automatic density set
+      - src/lib/frame-interval.ts # automatic dwell set and legacy normalization
+      - src/qr/payload-v2.ts # bare-paste and decoded-artifact ceilings
+      - src/qr/decode.ts # WebAssembly reader usability state used for profile selection
+      - src/components/animated-qr-frames.tsx # commit-gated dwell and one-button export
       - tests/pq/wire-bytes.golden.test.ts # frozen hex must match the docs
       - tests/pq/canonical-cbor.golden.test.ts
       - tests/pq/composition-golden.test.ts
@@ -231,7 +254,10 @@ units:
     method: |
       Diff qr-protocol-v2.md against src/crypto/pq/{profiles,suites,wire-bytes}.ts
       and the golden tests (goldens change only for deliberate, documented
-      protocol revisions — never "refreshed" to make tests pass). Diff
+      protocol revisions — never "refreshed" to make tests pass). Reconcile
+      the documented allocation/profile/cycle/export contracts with limits.ts,
+      frame-bytes.ts, frame-interval.ts, payload-v2.ts, decode.ts, and
+      animated-qr-frames.tsx. Diff
       boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
       and wipe coordinator behavior. Update dated statements to current state.
     verify: aube test:pq && aube test -- tests/ui/boot-controller.test.tsx
@@ -241,39 +267,38 @@ units:
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
     last_checked: 2026-07-26
     files:
-      - src/lib/limits.ts # measured CBOR/OCF2 sizes and active 200–1,000B density grid / minimum
-      - src/lib/frame-bytes.ts # active density set and the append-only boot-readable range
-      - src/lib/frame-interval.ts # persisted/displayed QR interval policy grid
-      - tests/pq/maximum-artifact-size.golden.test.ts # active density / clamp / boot-readable fixtures
-      - src/schemas/env-schema.ts # golden size guard at the maximum selectable density
-      - .env.prod # runtime crypto/framing policy and shipped 200B density default
-      - .env.example # same density default, kept in step with .env.prod
+      - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
+      - src/lib/frame-bytes.ts # internal 100–1,000B density set and append-only boot range
+      - src/lib/frame-interval.ts # internal dwell set and append-only boot range
+      - tests/pq/maximum-artifact-size.golden.test.ts # automatic density / clamp / boundary fixtures
+      - src/schemas/env-schema.ts # PQ ceiling and golden maximum-artifact guard
+      - .env.prod # runtime crypto/framing contract
+      - .env.example # same contract, kept in step with .env.prod
     why: >
-      Measured byte/frame tables (dated 2026-07-23) are cited by
-      security-review and limits comments; env-schema.ts carries the
-      golden-derived fixed-bytes constant and .env.prod the production policy
-      defaults. All stale when wire encoding, schema, or plaintext limits change.
+      Measured byte/frame tables are cited by security-review and protocol
+      docs; env-schema.ts carries the golden-derived fixed-bytes formula and
+      the env files carry the production policy. All stale when wire encoding,
+      schema, plaintext limits, internal profiles, or cycle budgets change.
     method: |
       Re-run the golden test; if intentional drift, update fixtures, the
-      comment table in limits.ts, MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES in
-      env-schema.ts, and the .env.prod/.env.example defaults together, then
-      sync the copy of the table in docs/security-review.md.
-      Verify the active preference-controlled density grid 200–1,000B in 100B
-      steps for messages, OCI2, OCP2, and OCS2 (200B shipped default; active
-      writes reject off-grid values such as 250B); the grid-rounded
-      per-artifact minimum clamped to the 200B active floor; the independent
-      25,600B absolute artifact ceiling; the 1,000B per-chunk ceiling; and the
-      1,591-character worst-metadata payload against EC-Q v40 capacity 1,663.
+      size formula in env-schema.ts, and the .env.prod/.env.example PQ ceiling
+      together, then sync the table in docs/security-review.md.
+      Verify the internal density grid 100–1,000B in 100B steps for messages,
+      OCI2, OCP2, and OCS2; the application-selected 1000B/200ms usable-reader
+      profile and 100B/2000ms fallback; the grid-rounded automatic density
+      lift; the frames × chunk 128,000B absolute artifact ceiling; the 1,000B
+      per-chunk ceiling; and the 1,593-character worst-metadata payload against
+      EC-Q v40 capacity 1,663.
       Confirm the append-only boot-readable range still accepts every
       historical density integer 100–900 and repository loading normalizes
-      readable retired values onto the active grid. Confirm the selectable
-      interval grid is 200–1,000ms in 100ms steps with a 1,000ms default, while
-      boot readability and repository normalization retain every historical
-      interval integer 150–2,000 plus 2,500/3,000. Keep limits.ts, env-schema.ts,
-      both env files, docs/qr-protocol-v2.md, docs/security-review.md, and the
-      golden test in agreement.
+      readable off-grid values onto the admitted grid. Confirm the internal
+      dwell set is 200–1,000ms in 100ms steps plus 2,000ms, while boot
+      readability and repository normalization retain every historical
+      interval integer 150–2,000 plus 2,500/3,000. Keep limits.ts,
+      env-schema.ts, both env files, docs/qr-protocol-v2.md,
+      docs/security-review.md, and the golden test in agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
-    sync: [security-review]
+    sync: [protocol-docs, threat-model, security-review]
 
   - id: acvp-vectors
     category: crypto
@@ -341,7 +366,9 @@ units:
     method: |
       Re-run aube bench:pq and replace the bench table. Re-check
       §リリース前確認 against docs/security-review.md. Reconcile suite/profile
-      wording with the active profile. Sync toolchain versions from mise.toml.
+      wording, per-algorithm plaintext ceilings, automatic display profiles,
+      and PNG/ZIP export behavior with the active implementation. Sync
+      toolchain versions from mise.toml.
     verify: aube bench:pq
 
   - id: external-links
@@ -385,15 +412,16 @@ invariants:
     rule: >
       The boot read-allowlist (algorithms incl. legacy RSA-HYBRID/MLKEM768_*,
       profiles ["balanced","maximum"], and numeric density/interval contracts)
-      is APPEND-ONLY. Every active density value (200–1,000B in 100B steps) and
-      interval value (200–1,000ms in 100ms steps) must be boot-readable, as
-      must every historical density integer 100–900 and interval integer
-      150–2,000 together with 2,500/3,000. The repository must normalize a
-      boot-readable numeric value that is no longer active onto the current
-      grid before strict preference validation; active patch/env writes remain
-      strict. Dropping an old id/value or its normalization makes stored
-      preferences unreadable → preferencesReadFailed → wipeOnOnline forced
-      true → a later network-confirmed contact can wipe user data.
+      is APPEND-ONLY. Every admitted density value (100–1,000B in 100B steps)
+      and interval value (200–1,000ms in 100ms steps plus 2,000ms) must be
+      boot-readable, as must every historical density integer 100–900 and
+      interval integer 150–2,000 together with 2,500/3,000. The repository
+      must normalize a boot-readable numeric value that is no longer admitted
+      onto the current set before strict preference validation; patch/env
+      writes remain strict. Dropping an old id/value or its normalization
+      makes stored preferences unreadable → preferencesReadFailed →
+      wipeOnOnline forced true → a later network-confirmed contact can wipe
+      user data.
     verify: >
       aube test -- tests/unit/qr-density-safety.test.ts
       tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx

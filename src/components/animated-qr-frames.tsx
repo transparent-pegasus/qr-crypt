@@ -1,51 +1,29 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   ChevronLeft,
   ChevronRight,
   Download,
-  FileArchive,
-  FileCode2,
-  LoaderCircle,
   Pause,
   Play,
   Sun,
   TriangleAlert,
-  X,
 } from "lucide-react"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
-import {
-  qrPngBlob,
-  qrSvgBlob,
-  sanitizeQrFileName,
-  triggerDownload,
-} from "@/qr/export-image"
+import { qrPngBlob, sanitizeQrFileName, triggerDownload } from "@/qr/export-image"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
-import {
-  FRAME_BYTES_MAX,
-  FRAME_BYTES_MIN,
-  FRAME_BYTES_STEP,
-  FRAME_INTERVAL_MS_DEFAULT,
-  FRAME_INTERVAL_MS_MAX,
-  FRAME_INTERVAL_MS_MIN,
-  FRAME_INTERVAL_MS_STEP,
-  isFrameBytes,
-  isFrameIntervalMs,
-  minimumFrameBytesForArtifact,
-} from "@/lib/limits"
 import { toAppError } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"
 import { env } from "@/schemas/env-schema"
 import { QrDisplay } from "@/components/qr-display"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
 
 export interface AnimatedQrFramesProps {
   frames: readonly QrFrameV2[]
   frameIntervalMs: number
+  densityRaised?: boolean
   outputName: string
   size?: number
   title?: string
@@ -54,21 +32,19 @@ export interface AnimatedQrFramesProps {
   fullscreenOpen?: boolean
   showFullscreenTrigger?: boolean
   exportsEnabled?: boolean
-  onFrameIntervalMsChange?: (ms: number) => void
-  frameBytes?: number
-  onFrameBytesChange?: (bytes: number) => void
   splitting?: boolean
   onFullscreenOpenChange?: (open: boolean) => void
   animationSignal?: AbortSignal
 }
 
 interface FrameSlot {
-  frame: QrFrameV2
   payload: string
 }
 
-function currentFrameInterval(value: number): number {
-  return isFrameIntervalMs(value) ? value : FRAME_INTERVAL_MS_DEFAULT
+interface CommittedFrame {
+  generation: string
+  position: number
+  payload: string
 }
 
 function transferIdentity(frames: readonly QrFrameV2[]): string {
@@ -81,6 +57,7 @@ function transferIdentity(frames: readonly QrFrameV2[]): string {
 export function AnimatedQrFrames({
   frames,
   frameIntervalMs,
+  densityRaised = false,
   outputName,
   size = env.qrRenderSize,
   title: titleProp,
@@ -89,27 +66,18 @@ export function AnimatedQrFrames({
   fullscreenOpen,
   showFullscreenTrigger = true,
   exportsEnabled = true,
-  onFrameIntervalMsChange,
-  frameBytes,
-  onFrameBytesChange,
   splitting = false,
   onFullscreenOpenChange,
   animationSignal,
 }: AnimatedQrFramesProps) {
   const { language, t } = useI18n()
   const title = titleProp ?? t("animatedQr.defaultTitle")
-  const controlId = useId()
-  const inlineSpeedInputId = `frame-speed-${controlId}-inline`
-  const fullscreenSpeedInputId = `frame-speed-${controlId}-fullscreen`
-  const inlineDensityInputId = `frame-density-${controlId}-inline`
-  const fullscreenDensityInputId = `frame-density-${controlId}-fullscreen`
   const { slots, missingIndexes, frameCount } = useMemo(() => {
     const expected = Math.max(0, ...frames.map((frame) => frame.frameCount))
     const nextSlots = new Map<number, FrameSlot>()
     for (const frame of frames) {
       if (!nextSlots.has(frame.frameIndex)) {
         nextSlots.set(frame.frameIndex, {
-          frame,
           payload: encodeFrameToPayload(frame),
         })
       }
@@ -131,18 +99,30 @@ export function AnimatedQrFrames({
   })
   const position = cursor.generation === frameGeneration ? cursor.position : 0
   const [paused, setPaused] = useState(false)
-  const [speed, setSpeed] = useState(() => currentFrameInterval(frameIntervalMs))
+  const [committedFrame, setCommittedFrame] = useState<CommittedFrame | null>(null)
   const [uncontrolledFullscreen, setUncontrolledFullscreen] = useState(false)
   const fullscreen = fullscreenOpen ?? uncontrolledFullscreen
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(error)
   const firstRenderedRef = useRef(false)
+  const currentIndex = availableIndexes[position]
+  const current = currentIndex === undefined ? undefined : slots.get(currentIndex)
+  const currentPayload = current?.payload
 
-  const handleRendered = () => {
-    if (firstRenderedRef.current) return
-    firstRenderedRef.current = true
-    onFirstRendered?.()
+  const handleRendered = (payload: string) => {
+    if (payload !== currentPayload) return
+    if (!firstRenderedRef.current) {
+      firstRenderedRef.current = true
+      onFirstRendered?.()
+    }
+    setCommittedFrame((existing) =>
+      existing?.generation === frameGeneration &&
+      existing.position === position &&
+      existing.payload === payload
+        ? existing
+        : { generation: frameGeneration, position, payload },
+    )
   }
 
   const changeFullscreen = (open: boolean) => {
@@ -150,15 +130,6 @@ export function AnimatedQrFrames({
     onFullscreenOpenChange?.(open)
   }
 
-  useEffect(() => {
-    let active = true
-    queueMicrotask(() => {
-      if (active) setSpeed(currentFrameInterval(frameIntervalMs))
-    })
-    return () => {
-      active = false
-    }
-  }, [frameIntervalMs])
   useEffect(() => {
     if (position < availableIndexes.length) return
     let active = true
@@ -170,39 +141,49 @@ export function AnimatedQrFrames({
     }
   }, [availableIndexes.length, frameGeneration, position])
   useEffect(() => {
-    if (paused || availableIndexes.length < 2 || animationSignal?.aborted) {
+    if (
+      paused ||
+      availableIndexes.length < 2 ||
+      animationSignal?.aborted ||
+      currentPayload === undefined ||
+      committedFrame?.generation !== frameGeneration ||
+      committedFrame.position !== position ||
+      committedFrame.payload !== currentPayload
+    ) {
       return
     }
-    const timer = window.setInterval(
+    // QrDisplay reports a payload only after React has committed its rendered
+    // data URL. Starting one dwell timeout from that exact commit prevents the
+    // latest-target renderer from ever dropping an automatically selected index.
+    const timer = window.setTimeout(
       () =>
-        setCursor((current) => ({
+        setCursor((cursorState) => ({
           generation: frameGeneration,
           position:
-            ((current.generation === frameGeneration ? current.position : 0) + 1) %
+            ((cursorState.generation === frameGeneration ? cursorState.position : 0) +
+              1) %
             availableIndexes.length,
         })),
-      speed,
+      frameIntervalMs,
     )
-    const stopAnimation = () => window.clearInterval(timer)
+    const stopAnimation = () => window.clearTimeout(timer)
     animationSignal?.addEventListener("abort", stopAnimation, { once: true })
     return () => {
       stopAnimation()
       animationSignal?.removeEventListener("abort", stopAnimation)
     }
-  }, [animationSignal, availableIndexes.length, frameGeneration, paused, speed])
+  }, [
+    animationSignal,
+    availableIndexes.length,
+    committedFrame,
+    currentPayload,
+    frameGeneration,
+    frameIntervalMs,
+    paused,
+    position,
+  ])
 
-  const currentIndex = availableIndexes[position]
-  const current = currentIndex === undefined ? undefined : slots.get(currentIndex)
   const safeName = exportsEnabled ? sanitizeQrFileName(outputName) : ""
-  const densityEnabled =
-    frameBytes !== undefined && onFrameBytesChange !== undefined && current !== undefined
-  const densityMinimum =
-    current === undefined
-      ? FRAME_BYTES_MIN
-      : Math.max(
-          FRAME_BYTES_MIN,
-          minimumFrameBytesForArtifact(current.frame.totalByteLength),
-        )
 
   const movePrevious = () =>
     setCursor((current) => ({
@@ -221,73 +202,38 @@ export function AnimatedQrFrames({
         availableIndexes.length,
     }))
   const togglePaused = () => setPaused((value) => !value)
-  const changeSpeed = (raw: string) => {
-    const nextSpeed = Number(raw)
-    if (!isFrameIntervalMs(nextSpeed)) return
-    setSpeed(nextSpeed)
-    onFrameIntervalMsChange?.(nextSpeed)
-  }
-  const changeDensity = (raw: string) => {
-    if (!densityEnabled) return
-    const nextFrameBytes = Number(raw)
-    if (!isFrameBytes(nextFrameBytes) || nextFrameBytes < densityMinimum) return
-    onFrameBytesChange(nextFrameBytes)
-  }
 
-  const exportAllPng = async () => {
+  const exportFrames = async () => {
     if (!exportsEnabled) return
     setExporting(true)
     setError(null)
     try {
+      if (animationSignal?.aborted) return
+      if (availableIndexes.length === 1) {
+        const slot = slots.get(availableIndexes[0]!)
+        if (slot === undefined) return
+        const blob = await qrPngBlob(slot.payload, { ecLevel: "Q", size })
+        if (animationSignal?.aborted) return
+        triggerDownload(blob, `${safeName}.png`)
+        return
+      }
+
+      const entries: Array<{ name: string; data: Uint8Array }> = []
       for (const index of availableIndexes) {
+        if (animationSignal?.aborted) return
         const slot = slots.get(index)
         if (!slot) continue
         const blob = await qrPngBlob(slot.payload, { ecLevel: "Q", size })
-        triggerDownload(
-          blob,
-          `${safeName}-frame-${String(index + 1).padStart(2, "0")}.png`,
-        )
+        if (animationSignal?.aborted) return
+        const data = new Uint8Array(await blob.arrayBuffer())
+        if (animationSignal?.aborted) return
+        entries.push({
+          name: `frame-${String(index + 1).padStart(2, "0")}.png`,
+          data,
+        })
       }
-    } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").code)
-    } finally {
-      setExporting(false)
-    }
-  }
-
-  const exportZip = async () => {
-    if (!exportsEnabled) return
-    setExporting(true)
-    setError(null)
-    try {
-      const entries = await Promise.all(
-        availableIndexes.map(async (index) => {
-          const slot = slots.get(index)!
-          const blob = await qrPngBlob(slot.payload, { ecLevel: "Q", size })
-          return {
-            name: `frame-${String(index + 1).padStart(2, "0")}.png`,
-            data: new Uint8Array(await blob.arrayBuffer()),
-          }
-        }),
-      )
+      if (animationSignal?.aborted) return
       triggerDownload(storeOnlyZip(entries), `${safeName}-frames.zip`)
-    } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").code)
-    } finally {
-      setExporting(false)
-    }
-  }
-
-  const exportSvg = async () => {
-    if (!exportsEnabled || !current || currentIndex === undefined) return
-    setExporting(true)
-    setError(null)
-    try {
-      const blob = await qrSvgBlob(current.payload, { ecLevel: "Q" })
-      triggerDownload(
-        blob,
-        `${safeName}-frame-${String(currentIndex + 1).padStart(2, "0")}.svg`,
-      )
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
@@ -309,7 +255,7 @@ export function AnimatedQrFrames({
       data-transport-controls={fullscreenControls ? "fullscreen" : "inline"}
       className={
         fullscreenControls
-          ? "grid w-full grid-cols-4 items-center gap-2"
+          ? "grid w-full grid-cols-3 items-center gap-2"
           : "flex flex-wrap items-center justify-center gap-2"
       }
     >
@@ -343,17 +289,6 @@ export function AnimatedQrFrames({
           {t(paused ? "animatedQr.play" : "animatedQr.pause")}
         </span>
       </Button>
-      {fullscreenControls && (
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 min-w-11 w-full cursor-pointer border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2"
-          aria-label={t("common.close")}
-          onClick={() => changeFullscreen(false)}
-        >
-          <X aria-hidden="true" />
-        </Button>
-      )}
       <Button
         type="button"
         variant="outline"
@@ -375,67 +310,15 @@ export function AnimatedQrFrames({
   const fullscreenControls = (
     <div
       data-fullscreen-controls
-      className="mx-auto flex w-full max-w-md flex-col gap-2 landscape:my-auto landscape:w-[min(42vw,18rem)] landscape:max-h-[300px] landscape:gap-1.5 landscape:overflow-y-auto"
+      className="mx-auto flex w-full max-w-md flex-col items-center justify-center gap-2 landscape:my-auto landscape:w-[min(42vw,18rem)]"
     >
-      <div className="flex flex-col items-center justify-center gap-1.5">
-        <p
-          aria-live="polite"
-          className="shrink-0 text-center font-mono text-base tabular-nums"
-        >
-          {currentIndex! + 1} / {frameCount}
-        </p>
-        {transportControls(true)}
-      </div>
-
-      <div
-        data-speed-density-controls
-        className="flex flex-wrap items-start gap-2 landscape:gap-1.5"
+      <p
+        aria-live="polite"
+        className="shrink-0 text-center font-mono text-base tabular-nums"
       >
-        <div className="min-w-[8rem] flex-1 space-y-1">
-          <div className="flex items-center justify-between gap-2 text-sm">
-            <Label htmlFor={fullscreenSpeedInputId}>
-              {t("animatedQr.speed.label")}
-            </Label>
-            <span className="font-mono text-xs tabular-nums">{speed} ms</span>
-          </div>
-          <Input
-            id={fullscreenSpeedInputId}
-            aria-label={t("animatedQr.speed.label")}
-            type="range"
-            min={FRAME_INTERVAL_MS_MIN}
-            max={FRAME_INTERVAL_MS_MAX}
-            step={FRAME_INTERVAL_MS_STEP}
-            value={speed}
-            onChange={(event) => changeSpeed(event.target.value)}
-          />
-        </div>
-
-        {densityEnabled && (
-          <div className="min-w-[8rem] flex-1 space-y-1">
-            <div className="flex items-center justify-between gap-2 text-sm">
-              <Label htmlFor={fullscreenDensityInputId}>
-                {t("animatedQr.density.label")}
-              </Label>
-              <span className="flex items-center gap-1 font-mono text-xs tabular-nums">
-                {splitting && (
-                  <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />
-                )}
-                {frameBytes} B
-              </span>
-            </div>
-            <Input
-              id={fullscreenDensityInputId}
-              aria-label={t("animatedQr.density.label")}
-              type="range"
-              min={densityMinimum}
-              max={FRAME_BYTES_MAX}
-              step={FRAME_BYTES_STEP}
-              value={frameBytes}
-              onChange={(event) => changeDensity(event.target.value)}
-            />
-          </div>
-        )}
-      </div>
+        {currentIndex! + 1} / {frameCount}
+      </p>
+      {transportControls(true)}
     </div>
   )
 
@@ -456,6 +339,13 @@ export function AnimatedQrFrames({
         </Alert>
       )}
 
+      {densityRaised && (
+        <p role="status" className="flex items-start gap-2 text-sm text-muted-foreground">
+          <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+          {t("animatedQr.densityRaised")}
+        </p>
+      )}
+
       <QrDisplay
         payload={current.payload}
         ecLevel="Q"
@@ -469,7 +359,6 @@ export function AnimatedQrFrames({
         fullscreenEnabled={fullscreenEnabled}
         showFullscreenTrigger={showFullscreenTrigger}
         fullscreenControls={fullscreenControls}
-        fullscreenControlsIncludeClose
         fullscreenOpen={fullscreen}
         onFullscreenOpenChange={changeFullscreen}
       />
@@ -482,112 +371,23 @@ export function AnimatedQrFrames({
             {currentIndex! + 1} / {frameCount}
           </p>
 
-          <div
-            data-speed-density-controls
-            className="flex flex-wrap items-start gap-2"
-          >
-            <div className="min-w-[8rem] flex-1 space-y-1">
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <Label htmlFor={inlineSpeedInputId}>
-                  {t("animatedQr.speed.label")}
-                </Label>
-                <span className="font-mono text-xs tabular-nums">{speed} ms</span>
-              </div>
-              <Input
-                id={inlineSpeedInputId}
-                aria-label={t("animatedQr.speed.label")}
-                type="range"
-                min={FRAME_INTERVAL_MS_MIN}
-                max={FRAME_INTERVAL_MS_MAX}
-                step={FRAME_INTERVAL_MS_STEP}
-                value={speed}
-                onChange={(event) => changeSpeed(event.target.value)}
-              />
-            </div>
-
-            {densityEnabled && (
-              <div className="min-w-[8rem] flex-1 space-y-1">
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <Label htmlFor={inlineDensityInputId}>
-                    {t("animatedQr.density.label")}
-                  </Label>
-                  <span className="flex items-center gap-1 font-mono text-xs tabular-nums">
-                    {splitting && (
-                      <LoaderCircle
-                        aria-hidden="true"
-                        className="size-3.5 animate-spin"
-                      />
-                    )}
-                    {frameBytes} B
-                  </span>
-                </div>
-                <Input
-                  id={inlineDensityInputId}
-                  aria-label={t("animatedQr.density.label")}
-                  type="range"
-                  min={densityMinimum}
-                  max={FRAME_BYTES_MAX}
-                  step={FRAME_BYTES_STEP}
-                  value={frameBytes}
-                  onChange={(event) => changeDensity(event.target.value)}
-                />
-              </div>
-            )}
-          </div>
-
-          {densityEnabled && (
-            <details className="text-xs text-muted-foreground">
-              <summary className="select-none touch-manipulation flex cursor-pointer list-none items-center gap-1.5 focus-visible:ring-2">
-                <TriangleAlert aria-hidden="true" className="size-4 shrink-0" />
-                <span>{t("animatedQr.density.restartWarning")}</span>
-              </summary>
-              <p className="pl-5 leading-snug">
-                {t("animatedQr.density.restartDetail")}
-              </p>
-            </details>
-          )}
-
           <p className="flex items-start gap-2 text-sm text-muted-foreground">
             <Sun aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
             {t("animatedQr.brightnessHint")}
           </p>
 
           {exportsEnabled && (
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 cursor-pointer px-2 text-xs focus-visible:ring-2"
-                disabled={exporting || missingIndexes.length > 0}
-                onClick={() => void exportAllPng()}
-                aria-label={t("animatedQr.export.allPng")}
-              >
-                <Download aria-hidden="true" />
-                PNG
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 cursor-pointer px-2 text-xs focus-visible:ring-2"
-                disabled={exporting || missingIndexes.length > 0}
-                onClick={() => void exportZip()}
-                aria-label={t("animatedQr.export.zip")}
-              >
-                <FileArchive aria-hidden="true" />
-                ZIP
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 cursor-pointer px-2 text-xs focus-visible:ring-2"
-                disabled={exporting}
-                onClick={() => void exportSvg()}
-                aria-label={t("animatedQr.export.currentSvg")}
-              >
-                <FileCode2 aria-hidden="true" />
-                SVG
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-full cursor-pointer focus-visible:ring-2"
+              disabled={exporting || missingIndexes.length > 0}
+              onClick={() => void exportFrames()}
+              aria-label={t("common.download")}
+            >
+              <Download aria-hidden="true" />
+              {t("common.download")}
+            </Button>
           )}
         </>
       )}

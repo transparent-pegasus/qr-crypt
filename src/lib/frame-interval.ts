@@ -2,7 +2,7 @@
 // so this dependency-free module owns the contract and lets both reference it
 // without creating a cycle.
 export const FRAME_INTERVAL_MS_VALUES = [
-  200, 300, 400, 500, 600, 700, 800, 900, 1_000,
+  200, 300, 400, 500, 600, 700, 800, 900, 1_000, 2_000,
 ] as const
 export type FrameIntervalMs = (typeof FRAME_INTERVAL_MS_VALUES)[number]
 
@@ -39,16 +39,20 @@ export function normalizeLegacyFrameIntervalMs(value: number): FrameIntervalMs {
   if (!isBootReadableFrameIntervalMs(value)) {
     throw new RangeError("frameIntervalMs is not boot-readable")
   }
-  const clamped = Math.min(FRAME_INTERVAL_MS_MAX, Math.max(FRAME_INTERVAL_MS_MIN, value))
-  const rounded =
-    FRAME_INTERVAL_MS_MIN +
-    Math.floor(
-      (clamped - FRAME_INTERVAL_MS_MIN + FRAME_INTERVAL_MS_STEP / 2) /
-        FRAME_INTERVAL_MS_STEP,
-    ) *
-      FRAME_INTERVAL_MS_STEP
-  if (!isFrameIntervalMs(rounded)) {
-    throw new RangeError("normalized frameIntervalMs is off-grid")
+
+  // The 2,000ms fallback is intentionally separated from the 200–1,000ms
+  // selectable grid. Normalize historical values to the nearest admitted value;
+  // preserve the previous half-up behavior by choosing the larger value on ties.
+  let nearest: FrameIntervalMs = FRAME_INTERVAL_MS_VALUES[0]
+  for (const candidate of FRAME_INTERVAL_MS_VALUES.slice(1)) {
+    const candidateDistance = Math.abs(candidate - value)
+    const nearestDistance = Math.abs(nearest - value)
+    if (
+      candidateDistance < nearestDistance ||
+      (candidateDistance === nearestDistance && candidate > nearest)
+    ) {
+      nearest = candidate
+    }
   }
-  return rounded
+  return nearest
 }
