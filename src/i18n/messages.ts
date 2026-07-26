@@ -74,6 +74,12 @@ const en = {
   "errors.CAMERA_PERMISSION_DENIED":
     "Camera access is not permitted. Allow it in the browser settings.",
   "errors.CAMERA_NOT_AVAILABLE": "The camera is unavailable.",
+  "errors.QR_READER_PREPARATION_TIMEOUT":
+    "The QR reader did not finish preparing on this device.",
+  "errors.QR_DECODE_PROGRESS_TIMEOUT":
+    "The QR decoding pipeline stopped making progress on this device.",
+  "errors.QR_READER_BLOCKED":
+    "This browser blocks the QR reader. On iPhone, use Safari 16 or newer.",
   "errors.DUPLICATE_KEY": "A key with the same contents is already stored.",
   "errors.DUPLICATE_QR": "A QR code with the same contents is already stored.",
   "errors.SIGNATURE_INVALID":
@@ -236,6 +242,7 @@ const en = {
   "keyDetail.toast.revoked": "The identity was revoked on this device",
   "keyDetail.toast.symmetricDeleted": "The symmetric key was deleted",
   "keyDetail.toast.identityDeleted": "The post-quantum identity was deleted",
+  "keyDetail.toast.supersededDestroyed": "Older key material was discarded",
   "keyDetail.toast.copied":
     "Copied. Be aware that the clipboard may be synchronized.",
   "keyDetail.symmetricQr.title": "Symmetric-key QR",
@@ -254,6 +261,10 @@ const en = {
   "keyDetail.delete.body.symmetric":
     "Ciphertext encrypted with this key will no longer be decryptable. This cannot be undone.",
   "keyDetail.delete.confirm": "Delete",
+  "keyDetail.destroy.title": "Discard {count} older generation(s)?",
+  "keyDetail.destroy.body":
+    "Created {dates}. This closes the decryption route this app keeps open for those generations: messages sent to them that have not been decrypted yet can no longer be opened here. It is a logical delete, so it does not assure the bytes leave the storage medium, and a copy already loaded in another open tab is outside this action.",
+  "keyDetail.destroy.confirm": "Discard",
   "keyDetail.badge.legacyProfile": "Unsupported (legacy profile)",
   "keyDetail.identity.legacyNote":
     "Unsupported (legacy profile): cryptographic operations and QR re-export are unavailable.",
@@ -267,9 +278,11 @@ const en = {
   "keyDetail.button.rotate": "Rotate",
   "keyDetail.button.revoke": "Revoke on this device",
   "keyDetail.revokeNote":
-    "Revocation disables use on this device and is not propagated to other parties.",
+    "Revocation stops this identity from signing and from being published as a current recipient on this device, and is not propagated to other parties. It does not stop decryption with this identity: use Delete to discard its key material.",
   "keyDetail.previous.toggle":
     "{count} previous generations, decryption only",
+  "keyDetail.previous.destroyAll":
+    "Discard the key material of {count} older generation(s)",
   "keyDetail.symmetric.fingerprintLabel": "Key fingerprint",
   "keyDetail.button.showSecretQr": "Show secret-key QR",
 
@@ -289,6 +302,8 @@ const en = {
   "keyList.filter.pqIdentity": "Post-quantum identity",
   "keyList.filter.symmetric": "Symmetric key",
   "keyList.item.identityMeta": "Post-quantum identity · {datetime}",
+  "keyList.item.supersededWarning":
+    "{count} older generation(s) can still decrypt",
   "keyList.item.symmetricMeta": "Symmetric key · {datetime}",
   "keyList.empty.ownAll": "You have no keys.",
   "keyList.empty.ownFiltered": "There are no keys of the selected type.",
@@ -303,6 +318,14 @@ const en = {
   "keyList.bundle.legacyNote":
     "This legacy profile is unsupported, so only deletion is available.",
   "keyList.bundle.revoke": "Disable on this device",
+  "keyList.bundle.confirmOpen": "Compare and confirm the fingerprint",
+  "keyList.bundle.confirmTitle": "Confirm this identity's fingerprint",
+  "keyList.bundle.confirmBody":
+    "Compare every group below with the value shown on the other party's own device, through another channel such as a call or in person. Confirming records that you did so and makes this identity selectable as an encryption recipient; the app cannot check the comparison for you.",
+  "keyList.bundle.confirmCheck":
+    "I compared the fingerprint through another channel and it matched",
+  "keyList.bundle.confirmSubmit": "Confirm",
+  "keyList.toast.bundleConfirmed": "The fingerprint was confirmed",
 
   "keys.validation.keyNameFallback": "Check the key name.",
   "keys.validation.idNameFallback": "Check the identity name.",
@@ -334,7 +357,7 @@ const en = {
     "To verify the association with a person and use this key persistently, import the OCI2 public-key bundle.",
   "keys.bundle.dialogTitle": "Compare the fingerprint through another channel",
   "keys.bundle.dialogDesc":
-    "Before completing the import, compare the full hex with the other party through another channel, such as a call or in person. A self-signature alone does not prove a person's identity.",
+    "Before completing the import, compare the full hex with the other party through another channel, such as a call or in person. A self-signature alone does not prove a person's identity. If you save without verification, this identity cannot be selected for encryption until you confirm it later under Saved keys.",
   "keys.bundle.fingerprintKem": "ML-KEM fingerprint",
   "keys.bundle.fingerprintSigning": "ML-DSA fingerprint",
   "keys.bundle.confirmLabel": "I confirmed a match through another channel",
@@ -374,6 +397,8 @@ const en = {
   "encrypt.recipientLabel": "Recipient ML-KEM public key",
   "encrypt.recipient.confirmed": "Verified",
   "encrypt.recipient.unverified": "Unverified",
+  "encrypt.recipient.needsConfirmation":
+    "No confirmed recipient. A public identity becomes selectable here once its fingerprint has been compared with the other party through another channel and confirmed under Saved keys.",
   "encrypt.senderLabel": "My ML-DSA signing identity",
   "encrypt.plaintextLabel": "Plaintext",
   "encrypt.clearPlaintext": "Clear plaintext",
@@ -502,6 +527,10 @@ const en = {
   "scanner.error.title": "The scan could not be completed",
   "scanner.diagnostic.ariaLabel": "Camera diagnostic",
   "scanner.diagnostic": "Diagnostic: {name} @{phase} [{detail}]",
+  "scanner.pipelineDiagnostic.ariaLabel": "QR decode pipeline diagnostic",
+  "scanner.pipelineDiagnostic":
+    "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
+  "scanner.pipelineDiagnostic.noError": "none",
   "scanner.button.discard": "Discard scan state",
   "scanner.button.stopCamera": "Stop camera",
   "scanner.closed.multipartProgress":
@@ -695,6 +724,12 @@ const ja = {
   "errors.CAMERA_PERMISSION_DENIED":
     "カメラの使用が許可されていません。ブラウザーの設定で許可してください。",
   "errors.CAMERA_NOT_AVAILABLE": "カメラを利用できません。",
+  "errors.QR_READER_PREPARATION_TIMEOUT":
+    "この端末でQRリーダーの準備が完了しませんでした。",
+  "errors.QR_DECODE_PROGRESS_TIMEOUT":
+    "この端末でQR復号パイプラインの進行が停止しました。",
+  "errors.QR_READER_BLOCKED":
+    "このブラウザーではQRコードリーダーがブロックされています。iPhoneではSafari 16以降を使用してください。",
   "errors.DUPLICATE_KEY": "同じ内容の鍵がすでに保存されています。",
   "errors.DUPLICATE_QR": "同じ内容のQRコードがすでに保存されています。",
   "errors.SIGNATURE_INVALID":
@@ -859,6 +894,7 @@ const ja = {
   "keyDetail.toast.revoked": "この端末でIDを失効しました",
   "keyDetail.toast.symmetricDeleted": "共通鍵を削除しました",
   "keyDetail.toast.identityDeleted": "ポスト量子IDを削除しました",
+  "keyDetail.toast.supersededDestroyed": "旧世代の鍵素材を破棄しました",
   "keyDetail.toast.copied":
     "コピーしました。クリップボード同期に注意してください。",
   "keyDetail.symmetricQr.title": "共通鍵QR",
@@ -877,6 +913,10 @@ const ja = {
   "keyDetail.delete.body.symmetric":
     "この鍵で暗号化した暗号文は復号できなくなります。元に戻せません。",
   "keyDetail.delete.confirm": "削除する",
+  "keyDetail.destroy.title": "旧世代 {count} 件を破棄しますか?",
+  "keyDetail.destroy.body":
+    "作成日時: {dates}。このアプリがこれらの世代のために開いたままにしている復号経路を閉じます。これらの鍵宛に送られ、まだ復号していないメッセージは、ここでは開けなくなります。論理削除のため記録媒体からバイト列が消える保証はなく、既に別タブへ読み込まれた複製はこの操作の対象外です。",
+  "keyDetail.destroy.confirm": "破棄する",
   "keyDetail.badge.legacyProfile": "非対応（旧プロファイル）",
   "keyDetail.identity.legacyNote":
     "非対応（旧プロファイル）: 暗号処理とQR再出力はできません。",
@@ -890,8 +930,9 @@ const ja = {
   "keyDetail.button.rotate": "ローテーション",
   "keyDetail.button.revoke": "この端末で失効",
   "keyDetail.revokeNote":
-    "失効はこの端末での利用停止であり、外部の相手には伝播しません。",
+    "失効はこの識別子での署名と、現在の宛先としての公開をこの端末で止めるもので、外部の相手には伝播しません。この識別子での復号は止まりません。鍵素材を手放すには削除を使ってください。",
   "keyDetail.previous.toggle": "旧世代 {count} 件、復号専用",
+  "keyDetail.previous.destroyAll": "旧世代 {count} 件の鍵素材を破棄",
   "keyDetail.symmetric.fingerprintLabel": "鍵指紋",
   "keyDetail.button.showSecretQr": "秘密鍵QRを表示",
 
@@ -911,6 +952,7 @@ const ja = {
   "keyList.filter.pqIdentity": "ポスト量子ID",
   "keyList.filter.symmetric": "共通鍵",
   "keyList.item.identityMeta": "ポスト量子ID · {datetime}",
+  "keyList.item.supersededWarning": "旧世代 {count} 件が復号可能",
   "keyList.item.symmetricMeta": "共通鍵 · {datetime}",
   "keyList.empty.ownAll": "自分の鍵がありません。",
   "keyList.empty.ownFiltered": "選択した種別の鍵がありません。",
@@ -925,6 +967,14 @@ const ja = {
   "keyList.bundle.legacyNote":
     "非対応（旧プロファイル）のため、削除以外の操作はできません。",
   "keyList.bundle.revoke": "利用停止",
+  "keyList.bundle.confirmOpen": "指紋を比較して確認する",
+  "keyList.bundle.confirmTitle": "この識別子の指紋を確認しますか?",
+  "keyList.bundle.confirmBody":
+    "以下の各グループを、相手本人の端末に表示された値と、通話や対面など別の経路で突き合わせてください。確認するとその事実が記録され、この識別子が暗号化の宛先として選べるようになります。比較そのものをアプリが検証することはできません。",
+  "keyList.bundle.confirmCheck":
+    "別の経路で指紋を比較し、一致することを確認しました",
+  "keyList.bundle.confirmSubmit": "確認する",
+  "keyList.toast.bundleConfirmed": "指紋を確認しました",
 
   "keys.validation.keyNameFallback": "鍵名を確認してください。",
   "keys.validation.idNameFallback": "ID名を確認してください。",
@@ -956,7 +1006,7 @@ const ja = {
     "人物との対応を確認して永続利用するには、OCI2公開鍵セットを取り込んでください。",
   "keys.bundle.dialogTitle": "別経路で指紋を比較してください",
   "keys.bundle.dialogDesc":
-    "取込を完了する前に、相手と通話・対面など別経路で full hex を照合します。自己署名だけでは人物を証明しません。",
+    "取込を完了する前に、相手と通話・対面など別経路で full hex を照合します。自己署名だけでは人物を証明しません。未確認のまま保存した識別子は暗号化の宛先に選べませんが、保存済み鍵の画面から後で指紋を確認できます。",
   "keys.bundle.fingerprintKem": "ML-KEM鍵指紋",
   "keys.bundle.fingerprintSigning": "ML-DSA鍵指紋",
   "keys.bundle.confirmLabel": "別経路で一致を確認した",
@@ -996,6 +1046,8 @@ const ja = {
   "encrypt.recipientLabel": "受信者のML-KEM公開鍵",
   "encrypt.recipient.confirmed": "確認済み",
   "encrypt.recipient.unverified": "未確認",
+  "encrypt.recipient.needsConfirmation":
+    "確認済みの宛先がありません。公開識別子は、相手と別の経路で指紋を比較し、保存済み鍵の画面で確認したものだけがここで選べるようになります。",
   "encrypt.senderLabel": "自分のML-DSA署名ID",
   "encrypt.plaintextLabel": "平文",
   "encrypt.clearPlaintext": "平文を消去",
@@ -1127,6 +1179,10 @@ const ja = {
   "scanner.error.title": "読み取りを完了できません",
   "scanner.diagnostic.ariaLabel": "カメラ診断",
   "scanner.diagnostic": "診断: {name} @{phase} [{detail}]",
+  "scanner.pipelineDiagnostic.ariaLabel": "QR復号パイプライン診断",
+  "scanner.pipelineDiagnostic":
+    "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
+  "scanner.pipelineDiagnostic.noError": "なし",
   "scanner.button.discard": "読取状態を破棄",
   "scanner.button.stopCamera": "カメラを停止",
   "scanner.closed.multipartProgress":

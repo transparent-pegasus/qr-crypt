@@ -11,6 +11,10 @@ import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url"
 
 import type { AppError } from "@/crypto/errors"
 import { AppError as ConcreteAppError } from "@/crypto/errors"
+import {
+  hasWebAssemblyInstantiationApi,
+  probeWebAssemblyRuntime,
+} from "@/lib/feature-detect"
 import { FRAME_INTERVAL_MS_MIN } from "@/lib/limits"
 
 export interface QrScanHandle {
@@ -18,11 +22,27 @@ export interface QrScanHandle {
   stop(): void
 }
 
+export type ReaderModuleState =
+  | "idle"
+  | "preparing"
+  | "ready"
+  | "failed"
+  | "timed-out"
+
+export interface CameraPipelineDiagnostic {
+  readerModuleState: ReaderModuleState
+  videoFramesDrawn: number
+  decodeAttemptsCompleted: number
+  decodeResultsSeen: number
+  lastErrorName: string | null
+}
+
 export interface StartQrScanOptions {
   // Defaults to true: stop automatically after the first success and ignore later
   // detections to prevent duplicate reads.
   once?: boolean
   signal?: AbortSignal
+  onDiagnostic?: (diagnostic: CameraPipelineDiagnostic) => void
 }
 
 export type CameraDiagnosticPhase = "acquiring" | "acquired" | "playing" | "track-ended"
@@ -37,6 +57,13 @@ export type CameraScanState = "idle" | "acquiring" | "playing" | "failed" | "tra
 
 export const CAMERA_START_TIMEOUT_MS = 8_000
 export const CAMERA_FRAME_READY_TIMEOUT_MS = 6_000
+// A cached one-megabyte reader should fetch and compile within the same eight-second
+// budget as camera startup. Bounding it here prevents a successful first draw from
+// clearing the frame-readiness watchdog and then waiting on WebKit forever.
+export const CAMERA_READER_PREPARATION_TIMEOUT_MS = CAMERA_START_TIMEOUT_MS
+// Two frame-readiness windows leave the reader timeout above time to identify itself
+// first, while remaining far beyond the healthy 200 ms empty-decode cadence.
+export const CAMERA_DECODE_PROGRESS_TIMEOUT_MS = CAMERA_FRAME_READY_TIMEOUT_MS * 2
 
 const maxAcquireRetries = 3
 const acquireRetryDelayMs = 300
@@ -62,32 +89,7 @@ const zxingReaderOptions: ReaderOptions = {
 }
 
 let zxingModulePromise: Promise<void> | undefined
-
-const EMPTY_WASM_MODULE = Uint8Array.of(
-  0x00,
-  0x61,
-  0x73,
-  0x6d,
-  0x01,
-  0x00,
-  0x00,
-  0x00,
-)
-
-function detectWebAssemblySupport(): boolean {
-  try {
-    return (
-      typeof WebAssembly === "object" &&
-      typeof WebAssembly.instantiate === "function" &&
-      typeof WebAssembly.validate === "function" &&
-      WebAssembly.validate(EMPTY_WASM_MODULE)
-    )
-  } catch {
-    return false
-  }
-}
-
-const webAssemblySupported = detectWebAssemblySupport()
+let zxingModuleState: ReaderModuleState = "idle"
 
 interface ScannerControls {
   stop(): void
@@ -104,6 +106,9 @@ interface CameraAttempt {
   readonly id: number
   readonly video: HTMLVideoElement
   readonly onError: (error: AppError, diagnostic: CameraDiagnostic) => void
+  readonly onDiagnostic:
+    | ((diagnostic: CameraPipelineDiagnostic) => void)
+    | undefined
   readonly stoppedPromise: Promise<void>
   resolveStopped(): void
   phase: CameraDiagnosticPhase
@@ -124,14 +129,36 @@ interface CameraAttempt {
     listener: EventListener
   }>
   frameReadyTimeoutId: ReturnType<typeof setTimeout> | undefined
+  decodeProgressTimeoutId: ReturnType<typeof setTimeout> | undefined
   frameRecoveryActive: boolean
+  decodePumpStarted: boolean
+  readerModuleState: ReaderModuleState
+  videoFramesDrawn: number
+  decodeAttemptsCompleted: number
+  decodeResultsSeen: number
+  lastErrorName: string | null
   lastFrameErrorName: string | undefined
   retryDecoder: (() => void) | undefined
+  cancelModulePreparationWait: (() => void) | undefined
   abortSignal: AbortSignal | undefined
   abortListener: EventListener | undefined
 }
 
 class AttemptCancelled extends Error {}
+
+class QrReaderPreparationTimeout extends Error {
+  constructor() {
+    super("QR reader preparation timed out")
+    this.name = "QrReaderPreparationTimeout"
+  }
+}
+
+class QrDecodeProgressTimeout extends Error {
+  constructor() {
+    super("QR decoding made no progress")
+    this.name = "QrDecodeProgressTimeout"
+  }
+}
 
 let nextAttemptId = 0
 let activeAttempt: CameraAttempt | null = null
@@ -149,7 +176,8 @@ function prepareQrReaderModule(): Promise<void> {
   const existing = zxingModulePromise
   if (existing !== undefined) return existing
 
-  if (!webAssemblySupported) {
+  if (!hasWebAssemblyInstantiationApi()) {
+    zxingModuleState = "failed"
     const unsupported = Promise.reject(
       new Error("WebAssembly is unavailable for the QR reader"),
     )
@@ -158,12 +186,14 @@ function prepareQrReaderModule(): Promise<void> {
   }
 
   let started: Promise<unknown>
+  zxingModuleState = "preparing"
   try {
     started = prepareZXingModule({
       overrides: zxingModuleOverrides,
       fireImmediately: true,
     })
   } catch (error) {
+    zxingModuleState = "failed"
     purgeZXingModule()
     const rejected = Promise.reject(
       error instanceof Error ? error : new Error(String(error)),
@@ -172,13 +202,18 @@ function prepareQrReaderModule(): Promise<void> {
     return rejected
   }
 
-  const preparation = started.then(() => undefined)
+  const preparation = started.then(() => {
+    zxingModuleState = "ready"
+    if (activeAttempt !== null) publishPipelineDiagnostic(activeAttempt)
+  })
   zxingModulePromise = preparation
   // Reset on failure so the restart button can retry, and swallow the rejection here:
   // an attempt can stop before any decode awaits this promise.
   void preparation.catch(() => {
     if (zxingModulePromise === preparation) {
       zxingModulePromise = undefined
+      zxingModuleState = "failed"
+      if (activeAttempt !== null) publishPipelineDiagnostic(activeAttempt)
       purgeZXingModule()
     }
   })
@@ -240,6 +275,32 @@ function diagnosticDetail(attempt: CameraAttempt): string {
   )} rs=${videoDimension(attempt.video.readyState)} track=${trackDetail}`
 }
 
+function pipelineDiagnostic(attempt: CameraAttempt): CameraPipelineDiagnostic {
+  if (
+    (attempt.readerModuleState === "idle" ||
+      attempt.readerModuleState === "preparing") &&
+    zxingModuleState !== "idle"
+  ) {
+    attempt.readerModuleState = zxingModuleState
+  }
+  return {
+    readerModuleState: attempt.readerModuleState,
+    videoFramesDrawn: attempt.videoFramesDrawn,
+    decodeAttemptsCompleted: attempt.decodeAttemptsCompleted,
+    decodeResultsSeen: attempt.decodeResultsSeen,
+    lastErrorName: attempt.lastErrorName,
+  }
+}
+
+function publishPipelineDiagnostic(attempt: CameraAttempt): void {
+  if (!isActiveAttempt(attempt) || attempt.onDiagnostic === undefined) return
+  try {
+    attempt.onDiagnostic(pipelineDiagnostic(attempt))
+  } catch {
+    // Diagnostics must never become another scanner failure path.
+  }
+}
+
 function cameraDiagnostic(
   attempt: CameraAttempt,
   name: string | null,
@@ -253,8 +314,17 @@ function cameraDiagnostic(
 }
 
 function cameraError(error: unknown): ConcreteAppError {
+  if (error instanceof ConcreteAppError) return error
+
+  const name = diagnosticName(error)
+  if (name === "QrReaderPreparationTimeout") {
+    return new ConcreteAppError("QR_READER_PREPARATION_TIMEOUT")
+  }
+  if (name === "QrDecodeProgressTimeout") {
+    return new ConcreteAppError("QR_DECODE_PROGRESS_TIMEOUT")
+  }
   return new ConcreteAppError(
-    diagnosticName(error) === "NotAllowedError"
+    name === "NotAllowedError"
       ? "CAMERA_PERMISSION_DENIED"
       : "CAMERA_NOT_AVAILABLE",
   )
@@ -293,6 +363,9 @@ function stopControlsOnce(attempt: CameraAttempt, controls: ScannerControls): vo
 function stopAttempt(attempt: CameraAttempt): void {
   if (attempt.stopped) return
   attempt.stopped = true
+  const cancelModulePreparationWait = attempt.cancelModulePreparationWait
+  attempt.cancelModulePreparationWait = undefined
+  cancelModulePreparationWait?.()
   attempt.resolveStopped()
 
   if (attempt.abortSignal !== undefined && attempt.abortListener !== undefined) {
@@ -305,6 +378,11 @@ function stopAttempt(attempt: CameraAttempt): void {
     clearTimeout(attempt.frameReadyTimeoutId)
     attempt.frameReadyTimeoutId = undefined
   }
+  if (attempt.decodeProgressTimeoutId !== undefined) {
+    clearTimeout(attempt.decodeProgressTimeoutId)
+    attempt.decodeProgressTimeoutId = undefined
+  }
+  attempt.decodePumpStarted = false
   attempt.retryDecoder = undefined
 
   for (const { track, listener } of attempt.endedListeners) {
@@ -335,6 +413,8 @@ function reportAttemptError(
   if (!isActiveAttempt(attempt) || attempt.errorReported) return
   attempt.errorReported = true
   attempt.failure = error
+  if (diagnostic.name !== null) attempt.lastErrorName = diagnostic.name
+  publishPipelineDiagnostic(attempt)
   attempt.onError(error, diagnostic)
 }
 
@@ -442,6 +522,7 @@ async function startAttempt(
   onText: (text: string) => void,
   once: boolean,
   modulePreparation: Promise<void>,
+  webAssemblyRuntimeSupport: Promise<boolean>,
 ): Promise<ScannerControls> {
   const stream = await acquireWithRetries(attempt)
   if (!isActiveAttempt(attempt)) {
@@ -478,6 +559,12 @@ async function startAttempt(
     attempt.frameReadyTimeoutId = undefined
   }
 
+  function clearDecodeProgressTimeout(): void {
+    if (attempt.decodeProgressTimeoutId === undefined) return
+    clearTimeout(attempt.decodeProgressTimeoutId)
+    attempt.decodeProgressTimeoutId = undefined
+  }
+
   function clearFrameRecovery(): void {
     attempt.frameRecoveryActive = false
     attempt.lastFrameErrorName = undefined
@@ -490,9 +577,89 @@ async function startAttempt(
     reportAttemptError(
       attempt,
       mapped,
-      cameraDiagnostic(attempt, diagnosticName(error), "playing"),
+      cameraDiagnostic(attempt, diagnosticName(error)),
     )
     stopAttempt(attempt)
+  }
+
+  function armDecodeProgressWatchdog(): void {
+    clearDecodeProgressTimeout()
+    if (!isActiveAttempt(attempt) || !attempt.decodePumpStarted) return
+    attempt.decodeProgressTimeoutId = setTimeout(() => {
+      attempt.decodeProgressTimeoutId = undefined
+      if (!isActiveAttempt(attempt) || !attempt.decodePumpStarted) return
+      failDecode(new QrDecodeProgressTimeout())
+    }, CAMERA_DECODE_PROGRESS_TIMEOUT_MS)
+  }
+
+  async function waitForReaderModulePreparation(): Promise<void> {
+    if (
+      attempt.readerModuleState === "ready" ||
+      zxingModuleState === "ready"
+    ) {
+      attempt.readerModuleState = "ready"
+      publishPipelineDiagnostic(attempt)
+      return
+    }
+
+    let settled = false
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let resolveWait: () => void = () => undefined
+    let rejectWait: (error: unknown) => void = () => undefined
+    const wait = new Promise<void>((resolve, reject) => {
+      resolveWait = resolve
+      rejectWait = reject
+    })
+    const clearWaitTimeout = () => {
+      if (timeoutId === undefined) return
+      clearTimeout(timeoutId)
+      timeoutId = undefined
+    }
+    const settleReady = () => {
+      if (settled) return
+      settled = true
+      clearWaitTimeout()
+      resolveWait()
+    }
+    const settleFailed = (error: unknown) => {
+      if (settled) return
+      settled = true
+      clearWaitTimeout()
+      rejectWait(error)
+    }
+    timeoutId = setTimeout(
+      () => settleFailed(new QrReaderPreparationTimeout()),
+      CAMERA_READER_PREPARATION_TIMEOUT_MS,
+    )
+    const cancelWait = () => settleFailed(new AttemptCancelled())
+    attempt.cancelModulePreparationWait = cancelWait
+    void modulePreparation.then(settleReady, settleFailed)
+
+    try {
+      await wait
+      attempt.readerModuleState = "ready"
+      publishPipelineDiagnostic(attempt)
+    } catch (error) {
+      if (!(error instanceof AttemptCancelled) && isActiveAttempt(attempt)) {
+        attempt.readerModuleState =
+          error instanceof QrReaderPreparationTimeout ? "timed-out" : "failed"
+        attempt.lastErrorName = diagnosticName(error)
+        publishPipelineDiagnostic(attempt)
+      }
+      throw error
+    } finally {
+      clearWaitTimeout()
+      if (attempt.cancelModulePreparationWait === cancelWait) {
+        attempt.cancelModulePreparationWait = undefined
+      }
+    }
+  }
+
+  function completeDecodeAttempt(resultsSeen: number): void {
+    attempt.decodeAttemptsCompleted += 1
+    attempt.decodeResultsSeen += resultsSeen
+    armDecodeProgressWatchdog()
+    publishPipelineDiagnostic(attempt)
   }
 
   function ensureFrameReadyTimeout(): void {
@@ -537,6 +704,8 @@ async function startAttempt(
     if (!isActiveAttempt(attempt)) return
     attempt.frameRecoveryActive = true
     attempt.lastFrameErrorName = diagnosticName(error)
+    attempt.lastErrorName = attempt.lastFrameErrorName
+    publishPipelineDiagnostic(attempt)
     ensureFrameReadyTimeout()
     retryVideoPlayback(attempt)
   }
@@ -655,6 +824,8 @@ async function startAttempt(
 
   async function decodeFrame(): Promise<void> {
     let decodeStartedAt: number | undefined
+    let decodeCallStarted = false
+    let decodeCallCompleted = false
     try {
       if (!isActiveAttempt(attempt)) return
 
@@ -673,6 +844,11 @@ async function startAttempt(
 
       if (!isActiveAttempt(attempt)) return
       frameContext.drawImage(attempt.video, 0, 0, dimensions.width, dimensions.height)
+      attempt.videoFramesDrawn += 1
+      // A successful draw proves scheduling progress and starts a fresh decode window.
+      // The shorter reader-preparation bound will still identify a hung module first.
+      armDecodeProgressWatchdog()
+      publishPipelineDiagnostic(attempt)
       clearFrameRecovery()
 
       const imageData = frameContext.getImageData(
@@ -683,15 +859,22 @@ async function startAttempt(
       )
       if (!isActiveAttempt(attempt)) return
 
-      // The decoder module is awaited here, not before acquisition: the watchdog is
-      // already cleared by the successful draw above, so a cold instantiate cannot be
-      // mistaken for a stalled camera.
-      await modulePreparation
+      if (!(await webAssemblyRuntimeSupport)) {
+        throw new ConcreteAppError("QR_READER_BLOCKED")
+      }
+      if (!isActiveAttempt(attempt)) return
+
+      // Reader preparation remains after the first real draw so camera acquisition is
+      // never blocked on WASM, but unlike frame readiness it has its own bounded wait.
+      await waitForReaderModulePreparation()
       if (!isActiveAttempt(attempt)) return
 
       decodeStartedAt = Date.now()
+      decodeCallStarted = true
       const results = await readBarcodes(imageData, zxingReaderOptions)
       if (!isActiveAttempt(attempt)) return
+      decodeCallCompleted = true
+      completeDecodeAttempt(results.length)
 
       const result = results[0]
       if (result === undefined) return
@@ -704,6 +887,9 @@ async function startAttempt(
       onText(text)
     } catch (error) {
       if (!isActiveAttempt(attempt)) return
+      if (decodeCallStarted && !decodeCallCompleted) {
+        completeDecodeAttempt(0)
+      }
       if (isFrameNotReadyDecodeError(attempt, error)) {
         beginFrameRecovery(error)
         return
@@ -726,9 +912,8 @@ async function startAttempt(
   }
 
   attempt.controls = pump
-  await attempt.video.play()
-  if (!isActiveAttempt(attempt)) throw new AttemptCancelled()
-
+  attempt.decodePumpStarted = true
+  armDecodeProgressWatchdog()
   attempt.phase = "playing"
   attempt.frameRecoveryActive = true
   attempt.lastFrameErrorName = undefined
@@ -737,6 +922,7 @@ async function startAttempt(
   // Preserve the initial rVFC grace period; the readiness watchdog is already armed.
   // Steady-state scheduling above uses the cadence deadline with no added grace.
   scheduleNextFrame(Date.now(), false, frameRetryDelayMs)
+  retryVideoPlayback(attempt)
   return pump
 }
 
@@ -766,6 +952,7 @@ async function startQrScanImplementation(
     id: ++nextAttemptId,
     video,
     onError,
+    onDiagnostic: options?.onDiagnostic,
     stoppedPromise,
     resolveStopped,
     phase: "acquiring",
@@ -779,9 +966,17 @@ async function startQrScanImplementation(
     endedListeners: [],
     frameListeners: [],
     frameReadyTimeoutId: undefined,
+    decodeProgressTimeoutId: undefined,
     frameRecoveryActive: false,
+    decodePumpStarted: false,
+    readerModuleState: "idle",
+    videoFramesDrawn: 0,
+    decodeAttemptsCompleted: 0,
+    decodeResultsSeen: 0,
+    lastErrorName: null,
     lastFrameErrorName: undefined,
     retryDecoder: undefined,
+    cancelModulePreparationWait: undefined,
     abortSignal: undefined,
     abortListener: undefined,
   }
@@ -806,11 +1001,13 @@ async function startQrScanImplementation(
     throw attempt.failure ?? new ConcreteAppError("CAMERA_NOT_AVAILABLE")
   }
 
-  // Not awaited: getUserMedia has to run inside the tap's user-activation window or
-  // iOS Safari never shows the permission prompt. The decoder awaits this after its
-  // first drawn frame instead, and a preparation failure surfaces there as
-  // CAMERA_NOT_AVAILABLE.
+  // Neither promise is awaited: getUserMedia has to run inside the tap's
+  // user-activation window. The decoder awaits both only after its first drawn frame,
+  // with a bounded wait for reader preparation.
   const modulePreparation = prepareQrReaderModule()
+  attempt.readerModuleState = zxingModuleState
+  publishPipelineDiagnostic(attempt)
+  const webAssemblyRuntimeSupport = probeWebAssemblyRuntime()
 
   const operation: Promise<AttemptOutcome> = startAttempt(
     attempt,
@@ -818,6 +1015,7 @@ async function startQrScanImplementation(
     onText,
     options?.once ?? true,
     modulePreparation,
+    webAssemblyRuntimeSupport,
   ).then(
     (controls) => ({ kind: "ready", controls }),
     (error: unknown) => ({ kind: "error", error }),
@@ -827,7 +1025,13 @@ async function startQrScanImplementation(
   }))
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<AttemptOutcome>((resolve) => {
-    timeoutId = setTimeout(() => resolve({ kind: "timeout" }), CAMERA_START_TIMEOUT_MS)
+    timeoutId = setTimeout(() => {
+      // Once the pump owns a decode-progress watchdog, let its distinct diagnostic
+      // resolve a stalled playback/scheduler path instead of collapsing it into the
+      // generic startup timeout.
+      if (attempt.decodePumpStarted) return
+      resolve({ kind: "timeout" })
+    }, CAMERA_START_TIMEOUT_MS)
   })
 
   try {

@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react"
 import { defineConfig, type Plugin } from "vite"
 import { VitePWA } from "vite-plugin-pwa"
 import { buildAboutLocales, renderAboutLocales } from "./scripts/build-about-locales.mjs"
+import { metaCspFromHeaders } from "./scripts/csp-from-headers.mjs"
 
 const pkg = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
@@ -50,12 +51,48 @@ function aboutLocales(): Plugin {
   }
 }
 
+/**
+ * The deployed CSP lives in public/_headers, which only Cloudflare Pages reads.
+ * A production build therefore also carries the same policy as a meta tag, so a
+ * self-hosted copy of the release ZIP is not silently left with no CSP at all.
+ * Build only: the dev server needs the inline scripts React Refresh injects.
+ */
+function metaCsp(): Plugin {
+  return {
+    name: "meta-csp",
+    apply: "build",
+    transformIndexHtml: {
+      order: "pre",
+      handler(html) {
+        const headers = readFileSync(
+          fileURLToPath(new URL("./public/_headers", import.meta.url)),
+          "utf8",
+        )
+        // Throws when _headers declares no CSP for /*, failing the build rather
+        // than shipping a page with no fallback policy.
+        const content = metaCspFromHeaders(headers)
+        return {
+          html,
+          tags: [
+            {
+              tag: "meta",
+              attrs: { "http-equiv": "Content-Security-Policy", content },
+              injectTo: "head-prepend",
+            },
+          ],
+        }
+      },
+    },
+  }
+}
+
 export default defineConfig(() => {
   return {
     plugins: [
       react(),
       tailwindcss(),
       aboutLocales(),
+      metaCsp(),
       VitePWA({
         registerType: "prompt",
         includeAssets: ["favicon.svg", "icons/apple-touch-icon-180.png"],

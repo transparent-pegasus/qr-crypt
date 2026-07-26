@@ -5,11 +5,17 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppProviders, useSensitiveSession } from "@/app/providers"
 import type { KeySelection } from "@/components/key-detail-dialog"
+import { AppError } from "@/crypto/errors"
+import { formatDateTime } from "@/features/presentation"
 import { LanguageProvider } from "@/i18n"
+import { translate } from "@/i18n/messages"
+import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
 import {
+  confirmBundleFingerprint,
   deleteBundle,
   deleteIdentity,
   deleteKeyRecord,
+  deleteSupersededIdentities,
   fakeBundles,
   fakeFeatures,
   fakeIdentities,
@@ -57,6 +63,37 @@ function deferred<T>() {
 async function renderKeyList(): Promise<void> {
   await renderApp("/saved")
   await screen.findByRole("heading", { name: "Key list" })
+}
+
+async function seedRotation(now: number): Promise<{
+  next: PostQuantumIdentity
+  previous: PostQuantumIdentity
+}> {
+  const current = fakeIdentities[0]!
+  const suffix = String(fakeIdentities.length).padStart(21, "0")
+  const previous: PostQuantumIdentity = {
+    ...current,
+    status: "rotated",
+    rotatedAt: now,
+  }
+  const next: PostQuantumIdentity = {
+    ...current,
+    id: `N${suffix}`,
+    kem: {
+      ...current.kem,
+      keyId: `K${suffix}`,
+    },
+    signing: {
+      ...current.signing,
+      keyId: `S${suffix}`,
+    },
+    identityFingerprint: String(fakeIdentities.length + 3).repeat(64),
+    status: "active",
+    createdAt: now,
+    rotatedFromId: current.id,
+  }
+  await saveRotation({ next, previous })
+  return { next, previous }
 }
 
 function SensitiveStateProbe() {
@@ -180,6 +217,64 @@ describe("key list page", () => {
     expect(
       await screen.findByText("There are no imported public-key bundles."),
     ).toBeInTheDocument()
+  })
+
+  it("confirms a stored bundle's fingerprint from the saved keys screen", async () => {
+    const user = userEvent.setup()
+    const unverifiedBundle: PqPublicBundleRecord = {
+      ...fakeBundles[0]!,
+      name: "Unverified display name",
+      trust: "unverified",
+      kem: {
+        ...fakeBundles[0]!.kem,
+        fingerprint: "7".repeat(64),
+      },
+      signing: {
+        ...fakeBundles[0]!.signing,
+        fingerprint: "8".repeat(64),
+      },
+      identityFingerprint: "9".repeat(64),
+    }
+    delete unverifiedBundle.trustConfirmedAt
+    fakeBundles.splice(0, fakeBundles.length, unverifiedBundle)
+    await renderKeyList()
+    await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: translate("en", "keyList.bundle.confirmOpen"),
+      }),
+    )
+    const dialog = await screen.findByRole("dialog", {
+      name: translate("en", "keyList.bundle.confirmTitle"),
+    })
+    expect(
+      within(dialog).getByText(unverifiedBundle.identityFingerprint),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(unverifiedBundle.kem.fingerprint),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(unverifiedBundle.signing.fingerprint),
+    ).toBeInTheDocument()
+
+    const checkbox = within(dialog).getByRole("checkbox", {
+      name: translate("en", "keyList.bundle.confirmCheck"),
+    })
+    const submit = within(dialog).getByRole("button", {
+      name: translate("en", "keyList.bundle.confirmSubmit"),
+    })
+    expect(submit).toBeDisabled()
+    await user.click(checkbox)
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+
+    await waitFor(() =>
+      expect(confirmBundleFingerprint).toHaveBeenCalledWith(
+        unverifiedBundle.recordId,
+        expect.any(Number),
+      ),
+    )
   })
 
   it("shows QR views in the same dialog and never offers QR persistence", async () => {
@@ -306,8 +401,14 @@ describe("key list page", () => {
     expect(within(dialog).queryByText(/Saved/)).toBeNull()
   })
 
-  it("lets the identity parent persist compatibility mode and re-split its frames", async () => {
+  it("keeps identity fullscreen open while compatibility mode re-splits and restarts at frame one", async () => {
     const timeout = vi.spyOn(window, "setTimeout")
+    const defaultSplitIntoFrames = splitIntoFrames.getMockImplementation()!
+    const compatibleSplit =
+      deferred<Awaited<ReturnType<typeof defaultSplitIntoFrames>>>()
+    let compatibleArgs:
+      | Parameters<typeof defaultSplitIntoFrames>[0]
+      | undefined
     const user = userEvent.setup()
     await renderKeyList()
 
@@ -324,11 +425,28 @@ describe("key list page", () => {
         }),
       ),
     )
-
-    const compatibility = within(dialog).getByRole("switch", {
+    await waitFor(() => expect(within(dialog).getByRole("img")).toBeInTheDocument())
+    await user.click(within(dialog).getByRole("button", { name: "Pause" }))
+    const fullscreenTrigger = within(dialog).getByRole("button", {
+      name: "View full screen",
+    })
+    await waitFor(() => expect(fullscreenTrigger).toBeEnabled())
+    await user.click(fullscreenTrigger)
+    const fullscreen = await screen.findByRole("dialog", {
+      name: /View .*public-key bundle.* full screen/,
+    })
+    if (within(fullscreen).queryByText("1 / 4")) {
+      await user.click(within(fullscreen).getByRole("button", { name: "Next" }))
+    }
+    const stalePosition = within(fullscreen).getByText(/^[2-4] \/ 4$/).textContent
+    const compatibility = within(fullscreen).getByRole("switch", {
       name: "Compatibility mode",
     })
     expect(compatibility).not.toBeChecked()
+    splitIntoFrames.mockImplementationOnce((args) => {
+      compatibleArgs = args
+      return compatibleSplit.promise
+    })
     await user.click(compatibility)
 
     await waitFor(() =>
@@ -345,12 +463,48 @@ describe("key list page", () => {
         }),
       ),
     )
+    expect(
+      screen.getByRole("dialog", {
+        name: new RegExp(`View .*${stalePosition} full screen`),
+      }),
+    ).toBe(fullscreen)
+    expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
+
+    const compatibleFrames = await defaultSplitIntoFrames(compatibleArgs!)
+    const renderCallsBeforeResolve = renderQrDataUrl.mock.calls.length
+    compatibleSplit.resolve(compatibleFrames)
+    await compatibleSplit.promise
+
+    await waitFor(() =>
+      expect(
+        within(fullscreen).getByText(`1 / ${compatibleFrames.length}`),
+      ).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByRole("dialog", {
+        name: new RegExp(
+          `View .*public-key bundle.*1 / ${compatibleFrames.length} full screen`,
+        ),
+      }),
+    ).toBe(fullscreen)
+    await waitFor(() =>
+      expect(renderQrDataUrl.mock.calls.length).toBeGreaterThan(
+        renderCallsBeforeResolve,
+      ),
+    )
+    expect(renderQrDataUrl.mock.calls[renderCallsBeforeResolve]?.[0]).toContain(
+      `:0:${compatibleFrames.length}:pq-public-identity`,
+    )
+    expect(
+      within(fullscreen).getAllByRole("button", { name: "Close" }),
+    ).toHaveLength(1)
+    await user.click(within(fullscreen).getByRole("button", { name: "Play" }))
     await waitFor(() =>
       expect(timeout.mock.calls.some(([, delay]) => delay === 2_000)).toBe(true),
     )
     await waitFor(() =>
       expect(
-        within(dialog).getByRole("switch", { name: "Compatibility mode" }),
+        within(fullscreen).getByRole("switch", { name: "Compatibility mode" }),
       ).toBeChecked(),
     )
   })
@@ -462,6 +616,221 @@ describe("key list page", () => {
     expect(
       within(dialog).queryByRole("button", { name: "Rotate" }),
     ).not.toBeInTheDocument()
+  })
+
+  it("hides retained-generation warnings and discard controls when none exist", async () => {
+    const user = userEvent.setup()
+    await renderKeyList()
+
+    expect(
+      screen.queryByText(/older generation.*can still decrypt/i),
+    ).not.toBeInTheDocument()
+    await user.click(rowFor("自分のPQ ID"))
+    const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+    expect(
+      within(dialog).queryByRole("button", {
+        name: /Discard the key material of .* older generation/i,
+      }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("warns that retained older generations can still decrypt and offers discard", async () => {
+    const user = userEvent.setup()
+    await seedRotation(1_724_000_000_000)
+    await renderKeyList()
+
+    expect(
+      await screen.findByText("1 older generation(s) can still decrypt"),
+    ).toBeInTheDocument()
+    await user.click(rowFor("自分のPQ ID"))
+    const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+    expect(
+      within(dialog).getByRole("button", {
+        name: "Discard the key material of 1 older generation(s)",
+      }),
+    ).toBeInTheDocument()
+  })
+
+  it("confirms the exact previous chain, supports cancellation, and refreshes on success", async () => {
+    const user = userEvent.setup()
+    const firstRotation = await seedRotation(1_724_000_000_000)
+    const secondRotation = await seedRotation(1_725_000_000_000)
+    const expectedTargets = [secondRotation.previous.id, firstRotation.previous.id]
+    await renderKeyList()
+    await user.click(rowFor("自分のPQ ID"))
+    const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+    const openConfirmation = () =>
+      user.click(
+        within(dialog).getByRole("button", {
+          name: "Discard the key material of 2 older generation(s)",
+        }),
+      )
+
+    await openConfirmation()
+    let confirmation = await screen.findByRole("alertdialog", {
+      name: "Discard 2 older generation(s)?",
+    })
+    expect(confirmation).toHaveTextContent(
+      formatDateTime(secondRotation.previous.createdAt, "en"),
+    )
+    expect(confirmation).toHaveTextContent(
+      formatDateTime(firstRotation.previous.createdAt, "en"),
+    )
+    await user.click(within(confirmation).getByRole("button", { name: "Cancel" }))
+    await waitFor(() => expect(confirmation).not.toBeInTheDocument())
+    expect(deleteSupersededIdentities).not.toHaveBeenCalled()
+
+    await openConfirmation()
+    confirmation = await screen.findByRole("alertdialog", {
+      name: "Discard 2 older generation(s)?",
+    })
+    const loadsBeforeConfirmation = listIdentities.mock.calls.length
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Discard" }),
+    )
+
+    await waitFor(() => expect(deleteSupersededIdentities).toHaveBeenCalledOnce())
+    expect(deleteSupersededIdentities).toHaveBeenCalledWith(expectedTargets)
+    expect(deleteSupersededIdentities.mock.calls[0]![0]).not.toContain(
+      secondRotation.next.id,
+    )
+    await waitFor(() =>
+      expect(listIdentities.mock.calls.length).toBeGreaterThan(
+        loadsBeforeConfirmation,
+      ),
+    )
+    expect(
+      await screen.findByText("Older key material was discarded"),
+    ).toBeInTheDocument()
+  })
+
+  it("surfaces repository failure through the exact STORAGE_FAILED code", async () => {
+    const user = userEvent.setup()
+    await seedRotation(1_724_000_000_000)
+    deleteSupersededIdentities.mockImplementationOnce(async () => {
+      throw new AppError("STORAGE_FAILED")
+    })
+    await renderKeyList()
+    await user.click(rowFor("自分のPQ ID"))
+    const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "Discard the key material of 1 older generation(s)",
+      }),
+    )
+    const confirmation = await screen.findByRole("alertdialog", {
+      name: "Discard 1 older generation(s)?",
+    })
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Discard" }),
+    )
+
+    await waitFor(() => expect(deleteSupersededIdentities).toHaveBeenCalledOnce())
+    const repositoryResult = deleteSupersededIdentities.mock.results[0]?.value
+    await expect(repositoryResult).rejects.toMatchObject({
+      code: "STORAGE_FAILED",
+    })
+    expect(
+      await within(dialog).findByText("The storage operation failed."),
+    ).toBeInTheDocument()
+  })
+
+  it("clears a pending retained-generation discard when the selection changes", async () => {
+    const user = userEvent.setup()
+    const rotation = await seedRotation(1_724_000_000_000)
+    const onChanged = vi.fn(async () => undefined)
+    const renderDialog = (
+      identity: PostQuantumIdentity,
+      previous: PostQuantumIdentity[],
+    ) => (
+      <LanguageProvider initialLanguage="en">
+        <AppProviders features={fakeFeatures} pwaHook={undefined}>
+          <KeyDetailDialog
+            selection={{ kind: "identity", id: identity.id }}
+            identity={identity}
+            previous={previous}
+            symmetric={undefined}
+            onOpenChange={() => undefined}
+            onChanged={onChanged}
+          />
+        </AppProviders>
+      </LanguageProvider>
+    )
+    const rendered = render(renderDialog(rotation.next, [rotation.previous]))
+    const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "Discard the key material of 1 older generation(s)",
+      }),
+    )
+    expect(
+      await screen.findByRole("alertdialog", {
+        name: "Discard 1 older generation(s)?",
+      }),
+    ).toBeInTheDocument()
+
+    const otherIdentity: PostQuantumIdentity = {
+      ...rotation.next,
+      id: "O".repeat(22),
+      name: "Other identity",
+    }
+    rendered.rerender(renderDialog(otherIdentity, []))
+
+    await waitFor(() =>
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+    )
+  })
+
+  it("localizes previous-generation statuses in Japanese", async () => {
+    const user = userEvent.setup()
+    const rotation = await seedRotation(1_724_000_000_000)
+    render(
+      <LanguageProvider initialLanguage="ja">
+        <AppProviders features={fakeFeatures} pwaHook={undefined}>
+          <KeyDetailDialog
+            selection={{ kind: "identity", id: rotation.next.id }}
+            identity={rotation.next}
+            previous={[rotation.previous]}
+            symmetric={undefined}
+            onOpenChange={() => undefined}
+            onChanged={async () => undefined}
+          />
+        </AppProviders>
+      </LanguageProvider>,
+    )
+    const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "旧世代 1 件、復号専用",
+      }),
+    )
+
+    expect(within(dialog).getByText("更新済み")).toBeInTheDocument()
+    expect(within(dialog).queryByText("rotated")).not.toBeInTheDocument()
+  })
+
+  it("keeps the discard fake all-or-nothing and ignores duplicate or missing ids", async () => {
+    const rotation = await seedRotation(1_724_000_000_000)
+    const snapshot = [...fakeIdentities]
+
+    await expect(
+      deleteSupersededIdentities([
+        rotation.previous.id,
+        rotation.next.id,
+        rotation.previous.id,
+        "M".repeat(22),
+      ]),
+    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+    expect(fakeIdentities).toEqual(snapshot)
+
+    await expect(
+      deleteSupersededIdentities([
+        rotation.previous.id,
+        rotation.previous.id,
+        "M".repeat(22),
+      ]),
+    ).resolves.toBeUndefined()
+    expect(fakeIdentities.map(({ id }) => id)).toEqual([rotation.next.id])
   })
 
   it("closes automatically when the selected symmetric key is deleted", async () => {

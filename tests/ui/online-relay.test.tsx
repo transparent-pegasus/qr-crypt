@@ -53,7 +53,6 @@ import { decodeFramePayload, encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 
 const TRANSFER_ID = new Uint8Array(16).fill(0x11)
-const PAYLOAD_HASH = new Uint8Array(32).fill(0x22)
 
 function frame(frameIndex: number, overrides: Partial<QrFrameV2> = {}): QrFrameV2 {
   return {
@@ -64,7 +63,6 @@ function frame(frameIndex: number, overrides: Partial<QrFrameV2> = {}): QrFrameV
     frameIndex,
     frameCount: 2,
     totalByteLength: 2,
-    payloadSha256: Uint8Array.from(PAYLOAD_HASH),
     chunk: new Uint8Array([frameIndex + 1]),
     ...overrides,
   }
@@ -93,7 +91,6 @@ function deferred<T>(): Deferred<T> {
 function playbackPayloads(marker: number): readonly [string, string] {
   const overrides = {
     transferId: new Uint8Array(16).fill(marker),
-    payloadSha256: new Uint8Array(32).fill(marker),
   } satisfies Partial<QrFrameV2>
   return [payload(0, overrides), payload(1, overrides)]
 }
@@ -252,13 +249,6 @@ describe("relay frame-set parser", () => {
       } satisfies Partial<QrFrameV2>,
       "mismatch",
     ],
-    [
-      "payloadSha256",
-      {
-        payloadSha256: new Uint8Array(32).fill(0x44),
-      } satisfies Partial<QrFrameV2>,
-      "mismatch",
-    ],
   ] as const)("rejects a %s metadata mismatch atomically", (_label, overrides, code) => {
     const initial = parseRelayFrameSet([payload(0)])
     expect(initial.ok).toBe(true)
@@ -383,7 +373,7 @@ describe("online relay UI", () => {
       const dialog = await screen.findByRole("dialog", { name: dialogName })
       expect(dialog).toHaveClass(
         "grid",
-        "grid-rows-[minmax(0,1fr)_auto]",
+        "grid-rows-[minmax(0,1fr)]",
         "overflow-hidden",
       )
       expect(dialog.firstElementChild).toHaveClass(
@@ -459,6 +449,9 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "QR → text" }))
     expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    expect(
+      screen.getByLabelText("OCF2 message-header relay camera preview"),
+    ).toHaveAttribute("autoplay")
     expect(scanStart).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     expect(scanStart).toHaveBeenCalledOnce()

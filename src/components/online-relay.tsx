@@ -59,7 +59,6 @@ interface RelayMetadata {
   readonly artifactType: "pq-message"
   readonly frameCount: number
   readonly totalByteLength: number
-  readonly payloadSha256: Uint8Array
 }
 
 export interface RelayFrameEntry {
@@ -111,8 +110,7 @@ function metadataMatches(metadata: RelayMetadata, frame: QrFrameV2): boolean {
     bytesEqual(metadata.transferId, frame.transferId) &&
     metadata.artifactType === frame.artifactType &&
     metadata.frameCount === frame.frameCount &&
-    metadata.totalByteLength === frame.totalByteLength &&
-    bytesEqual(metadata.payloadSha256, frame.payloadSha256)
+    metadata.totalByteLength === frame.totalByteLength
   )
 }
 
@@ -167,7 +165,6 @@ export function parseRelayFrameSet(
         artifactType: "pq-message",
         frameCount: frame.frameCount,
         totalByteLength: frame.totalByteLength,
-        payloadSha256: Uint8Array.from(frame.payloadSha256),
       }
     } else if (!metadataMatches(metadata, frame)) {
       return { ok: false, code: "mismatch" }
@@ -707,8 +704,8 @@ export function OnlineRelay({
           if (!open) endSession("close")
         }}
       >
-        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)_auto] overflow-hidden pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-          <div className="grid min-h-0 gap-4 overflow-y-auto">
+        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
             <DialogHeader>
               <DialogTitle>{t("relay.capture.title")}</DialogTitle>
               <DialogDescription>{t("relay.capture.description")}</DialogDescription>
@@ -718,6 +715,7 @@ export function OnlineRelay({
               ref={videoRef}
               aria-label={t("relay.capture.video.ariaLabel")}
               className="aspect-square w-full rounded-lg border bg-black object-cover"
+              autoPlay
               muted
               playsInline
             />
@@ -789,8 +787,8 @@ export function OnlineRelay({
           if (!open) endSession("close")
         }}
       >
-        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)_auto] overflow-hidden pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-          <div className="grid min-h-0 gap-4 overflow-y-auto">
+        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
             <DialogHeader>
               <DialogTitle>{t("relay.playback.title")}</DialogTitle>
               <DialogDescription>{t("relay.playback.description")}</DialogDescription>

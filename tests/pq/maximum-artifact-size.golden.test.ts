@@ -10,7 +10,7 @@ import {
 } from "@/crypto/pq/canonical-cbor"
 import { DSA_SIZES } from "@/crypto/pq/profiles"
 import { toBase64Url } from "@/lib/base64url"
-import { concatBytes, sha256 } from "@/lib/bytes"
+import { concatBytes } from "@/lib/bytes"
 import {
   FRAME_BYTES_MAX,
   FRAME_BYTES_MIN,
@@ -313,7 +313,6 @@ function worstMetadataFrame(
     frameIndex: PROTOCOL_MAX_FRAMES - 1,
     frameCount: PROTOCOL_MAX_FRAMES,
     totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE,
-    payloadSha256: new Uint8Array(32).fill(0xff),
     chunk: new Uint8Array(chunkBytes).fill(0xa5),
   }
 }
@@ -323,7 +322,6 @@ async function reservedBackupFrames(
   frameBytes: number,
 ): Promise<QrFrameV2[]> {
   const frameCount = Math.ceil(artifactBytes.byteLength / frameBytes)
-  const digest = await sha256(artifactBytes)
   return Array.from({ length: frameCount }, (_, frameIndex) => ({
     version: 2,
     type: "qr-frame",
@@ -332,7 +330,6 @@ async function reservedBackupFrames(
     frameIndex,
     frameCount,
     totalByteLength: artifactBytes.byteLength,
-    payloadSha256: Uint8Array.from(digest),
     chunk: artifactBytes.slice(frameIndex * frameBytes, (frameIndex + 1) * frameBytes),
   }))
 }
@@ -407,11 +404,11 @@ describe("maximum canonical CBOR artifact sizing", () => {
     )
     expect(longest).toEqual({
       artifactType: "encrypted-seed-backup",
-      payloadLength: 1_593,
+      payloadLength: 1_529,
     })
   }, 60_000)
 
-  it("proves the theoretical 1100B stop exceeds EC-Q through raw canonical CBOR", () => {
+  it("pins the forbidden 1100B density exactly at the EC-Q capacity", () => {
     const rawFrame = worstMetadataFrame(
       "encrypted-seed-backup",
       FRAME_BYTES_MAX + FRAME_BYTES_STEP,
@@ -420,8 +417,8 @@ describe("maximum canonical CBOR artifact sizing", () => {
     const rawFrameBytes = encodeCanonicalCbor({ ...rawFrame })
     const payload = `${QR_PREFIX_V2.frame}${toBase64Url(rawFrameBytes)}`
 
-    expect(payload).toHaveLength(1_727)
-    expect(payloadFits(payload, "Q")).toBe(false)
+    expect(payload).toHaveLength(1_663)
+    expect(payloadFits(payload, "Q")).toBe(true)
   })
 
   it("signed sizing formula stays exact across canonical byte-string header boundaries", () => {

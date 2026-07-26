@@ -32,7 +32,6 @@ const qrFrameV2Schema = z
     frameIndex: safeIntegerInRange(0, PROTOCOL_MAX_FRAMES - 1),
     frameCount: safeIntegerInRange(1, PROTOCOL_MAX_FRAMES),
     totalByteLength: safeIntegerInRange(1, MAX_ARTIFACT_BYTES_ABSOLUTE),
-    payloadSha256: byteArray(32),
     chunk: byteArray().refine(
       (value) => value.byteLength >= 1 && value.byteLength <= FRAME_CHUNK_MAX_BYTES,
     ),

@@ -148,7 +148,6 @@ describe("payload-v2 frame codec", () => {
       frameIndex: 1,
       frameCount: 2,
       totalByteLength: FRAME_CHUNK_MAX_BYTES * 2,
-      payloadSha256: new Uint8Array(32).fill(0x02),
       chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES).fill(0x03),
     }
     const payload = encodeFrameToPayload(frame)

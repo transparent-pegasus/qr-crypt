@@ -145,6 +145,38 @@ export async function deleteIdentity(id: string): Promise<void> {
   }
 }
 
+// Forward-secrecy action: drop the key material of generations that were
+// superseded or revoked. Rotation deliberately keeps them decryptable so that
+// messages already in flight to the old KEM key can still be opened, which means
+// the old seeds outlive their usefulness unless something removes them.
+//
+// Whole-request check inside one transaction: a stale UI id must never take an
+// active identity with it, and a partial delete would leave the caller unable to
+// say what survived. This is a best-effort logical delete — LevelDB is
+// append-oriented and SSDs wear-level — so it closes a retained decryption route
+// rather than erasing bytes.
+export async function deleteSupersededIdentities(
+  ids: readonly string[],
+): Promise<void> {
+  if (ids.length === 0) return
+  try {
+    const database = await getDb()
+    const tx = database.transaction(STORE_PQ_IDENTITIES, "readwrite")
+    const present: string[] = []
+    for (const id of new Set(ids)) {
+      const existing = await tx.store.get(id)
+      if (existing === undefined) continue
+      const identity = checkedIdentity(existing)
+      if (identity.status === "active") throw new AppError("STORAGE_FAILED")
+      present.push(identity.id)
+    }
+    for (const id of present) await tx.store.delete(id)
+    await tx.done
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
+}
+
 export async function clearAllIdentities(): Promise<void> {
   try {
     await (await getDb()).clear(STORE_PQ_IDENTITIES)

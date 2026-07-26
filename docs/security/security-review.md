@@ -25,11 +25,12 @@ the active policy and is rejected at the operational boundary as
     byte counts in the table below, the OCF2 frame counts across the internal
     100–1,000B chunk set, both exact display preference pairs and the
     per-artifact effective density clamps, real EC-Q generation for every
-    displayable frame, the 1,593-character
+    displayable frame, the 1,529-character
     worst-metadata payload at the 1,000B ceiling, and boundary agreement with
     the env capacity guard.
-  - The ML-KEM-1024 / ML-DSA-87 KATs and `aube test` / `aube typecheck` pass,
-    and the `aube bench:pq` maximum reference figures plus the README and
+  - The ML-KEM-1024 / ML-DSA-87 KATs and `aube run test` /
+    `aube run typecheck` pass, and the `aube run bench:pq` maximum reference
+    figures plus the README and
     protocol documents are updated.
 - **release-approved**: Not reached until an independent third-party review of
   the selected versions and the whole application is recorded
@@ -75,7 +76,7 @@ The receiver allocation ceiling now equals the complete wire budget:
 `MAX_ARTIFACT_BYTES_ABSOLUTE =
 PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES = 128,000B`. With worst-case
 metadata across every artifact type, a 1,000B chunk produces a
-1,593-character OCF2 payload against the 1,663-character EC-Q version 40
+1,529-character OCF2 payload against the 1,663-character EC-Q version 40
 capacity.
 
 The frame cursor advances only after the exact rendered code has committed,
@@ -125,14 +126,14 @@ no close control, blocks Escape and outside dismissal, and requires one of its
 explicit save decisions because the security confirmation must not be
 dismissible.
 
-## 1. Facts About the Adopted Libraries (as of 2026-07-26)
+## 1. Facts About the Adopted Libraries (as of 2026-07-27)
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-26: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-27: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
 - Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-07-26): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
+- FIPS errata (§3 step 1, checked 2026-07-27): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
 - **Not independently audited.** The audit status as of 0.6.1 is self-audit only (scope: everything)
 - **Side channels: as a JS implementation, constant-time execution is not guaranteed.** In particular, for the ML-KEM decaps implicit-rejection path, constant-time behavior under JS/JIT is explicitly documented and not guaranteed
 - APIs used by the active policy (verified against the actual 0.6.1 source):
@@ -158,7 +159,7 @@ dismissible.
 - **The published binary has not been independently reproduced from source in this
   repository.** Trust rests on the lockfile pin, the npm provenance attestation, and
   the recorded SHA-256 — not on a from-source rebuild
-- **Not independently audited**; no advisories at the pinned version as of 2026-07-26
+- **Not independently audited**; no advisories at the pinned version as of 2026-07-27
 - Consequence for CSP: `WebAssembly.instantiate` is refused under a bare
   `script-src 'self'`, so `public/_headers` now ships
   `script-src 'self' 'wasm-unsafe-eval'`. That grants origin-wide permission to
@@ -177,7 +178,7 @@ dismissible.
 - ZIP output is an in-house store-only implementation with no added dependency (`fflate` was rejected for lacking provenance)
 - **RESOLVED (dev chain, re-verified 2026-07-25)**: `sharp` — `GHSA-f88m-g3jw-g9cj`
   (CVE-2026-33327 / CVE-2026-33328 / CVE-2026-35590 / CVE-2026-35591,
-  published 2026-07-17; affected versions below 0.35.0). Former path:
+  GHSA published 2026-07-21; affected versions below 0.35.0). Former path:
   `wrangler@4.113.0` → `miniflare@4.20260721.0` → `sharp@0.34.5` exact-pin.
   Fixed by bumping wrangler to 4.114.0 (`miniflare@4.20260722.0` →
   `sharp@0.35.2`).
@@ -194,7 +195,7 @@ dismissible.
   `brace-expansion@5.0.7` and `workbox-build` → … → `minimatch@5` →
   `brace-expansion@2.1.2` (build tooling only; inputs are repo-controlled glob
   patterns). No fixed 2.x release exists, so both major lines are forced to
-  `5.0.8` via `aube.overrides`; `aube build:prod` and the full test suite were
+  `5.0.8` via `aube.overrides`; `aube run build:prod` and the full test suite were
   re-verified after the override. `aube audit` currently exits 0.
 - Supply-chain pins re-verified clean: `react-hook-form@7.82.0`, `eslint-config-prettier@10.1.8`
 
@@ -215,7 +216,7 @@ guaranteed; JS memory erasure has limits
 
 1. Check the latest FIPS 203 / FIPS 204 errata (on the relevant NIST CSRC pages)
 2. Check the `@noble/post-quantum` changelog, known vulnerabilities, and advisories
-3. Confirm the KATs (`aube test:pq-vectors`) are all green
+3. Confirm the KATs (`aube run test:pq-vectors`) are all green
 4. Confirm the bundle makes no external network references **and** that
    same-origin traffic stays on the no-payload allowlist. Same-origin alone
    is not sufficient: a regression that POSTed relay text to this origin

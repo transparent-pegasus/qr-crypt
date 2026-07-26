@@ -81,6 +81,20 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     expect(startQrScan.mock.calls[0]?.[3]).toMatchObject({ once: false })
     expect(startQrScan.mock.calls[0]?.[3]?.signal?.aborted).toBe(false)
+    act(() => {
+      startQrScan.mock.calls[0]?.[3]?.onDiagnostic?.({
+        readerModuleState: "preparing",
+        videoFramesDrawn: 0,
+        decodeAttemptsCompleted: 0,
+        decodeResultsSeen: 0,
+        lastErrorName: null,
+      })
+    })
+    expect(
+      screen.getByText(
+        "Pipeline: module=preparing frames=0 attempts=0 results=0 last=none",
+      ),
+    ).toBeInTheDocument()
 
     await act(async () => emitScannedPayload("OCM1:message"))
     await act(async () => emitScannedPayload("OCM1:message"))
@@ -198,7 +212,14 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
 
   it("shows the camera user message and diagnostic before an explicit restart", async () => {
     const cameraError = new AppError("CAMERA_NOT_AVAILABLE")
-    startQrScan.mockImplementationOnce(async (_video, _onText, onError) => {
+    startQrScan.mockImplementationOnce(async (_video, _onText, onError, options) => {
+      options?.onDiagnostic?.({
+        readerModuleState: "ready",
+        videoFramesDrawn: 12,
+        decodeAttemptsCompleted: 11,
+        decodeResultsSeen: 0,
+        lastErrorName: "NotReadableError",
+      })
       onError(cameraError, {
         phase: "track-ended",
         name: "NotReadableError",
@@ -218,6 +239,11 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     expect(
       screen.getByText(
         "Diagnostic: NotReadableError @track-ended [0x0 rs=2 track=ended/unmuted]",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        "Pipeline: module=ready frames=12 attempts=11 results=0 last=NotReadableError",
       ),
     ).toBeInTheDocument()
     expect(startQrScan).toHaveBeenCalledOnce()
@@ -330,7 +356,7 @@ describe("QrScannerModal", () => {
       dialog.querySelector("[data-qr-scanner-scroll-region]"),
     ).toHaveClass(
       "min-h-0",
-      "max-h-[calc(95dvh-4rem-44px-1rem)]",
+      "max-h-[calc(95dvh-4rem)]",
       "overflow-y-auto",
     )
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())

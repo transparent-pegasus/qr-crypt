@@ -9,6 +9,7 @@
     "build": "vite build",
     "build:prod": "vite build --mode prod",
     "preview": "vite preview",
+    "serve:dist": "node scripts/serve-dist.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",

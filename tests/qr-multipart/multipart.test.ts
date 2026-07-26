@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { encodeCanonicalCbor } from "@/crypto/pq/canonical-cbor"
 import { toBase64Url } from "@/lib/base64url"
-import { sha256 } from "@/lib/bytes"
 import {
   FRAME_BYTES_MAX,
   FRAME_BYTES_MIN,
@@ -81,7 +80,6 @@ describe("splitIntoFrames", () => {
       artifactType: "pq-message",
     })
     expect(frames[0]!.transferId).toHaveLength(16)
-    expect(frames[0]!.payloadSha256).toEqual(await sha256(artifactBytes))
     expect(frames[0]!.chunk).toEqual(artifactBytes)
   })
 
@@ -386,7 +384,6 @@ describe("TransferAssembler", () => {
       frameIndex: 0,
       frameCount: PROTOCOL_MAX_FRAMES,
       totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE + 1,
-      payloadSha256: new Uint8Array(32),
       chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES),
     } as const
     const payload = `${QR_PREFIX_V2.frame}${toBase64Url(
@@ -501,7 +498,7 @@ describe("TransferAssembler", () => {
     expectCompleteBytes(await addFrames(assembler, second), secondArtifact)
   })
 
-  it("detects a changed unique chunk through the final SHA-256", async () => {
+  it("accepts a changed unique chunk when the artifact remains canonical", async () => {
     const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1)
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
@@ -511,33 +508,17 @@ describe("TransferAssembler", () => {
     const changedChunk = Uint8Array.from(frames[1]!.chunk)
     changedChunk[0] = changedChunk[0]! ^ 1
     const changedFrames = [frames[0]!, { ...frames[1]!, chunk: changedChunk }]
+    const changedArtifactBytes = Uint8Array.from(artifactBytes)
+    changedArtifactBytes[frames[0]!.chunk.byteLength] =
+      changedArtifactBytes[frames[0]!.chunk.byteLength]! ^ 1
     const assembler = new TransferAssembler({
       transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
     })
-    expect(await addFrames(assembler, changedFrames)).toEqual({
-      kind: "error",
-      code: "INVALID_QR_PAYLOAD",
-    })
-  })
-
-  it("detects a consistently wrong whole-payload hash", async () => {
-    const frames = await splitIntoFrames({
-      artifactType: "pq-message",
-      artifactBytes: pseudoArtifactOfTotalBytes(FRAME_BYTES_MAX + 1),
-      frameBytes: FRAME_BYTES_MAX,
-    })
-    const wrongHash = new Uint8Array(32).fill(0xff)
-    const changedFrames = frames.map((frame) => ({
-      ...frame,
-      payloadSha256: Uint8Array.from(wrongHash),
-    }))
-    const assembler = new TransferAssembler({
-      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
-    })
-    expect(await addFrames(assembler, changedFrames)).toEqual({
-      kind: "error",
-      code: "INVALID_QR_PAYLOAD",
-    })
+    expect(changedArtifactBytes).not.toEqual(artifactBytes)
+    expectCompleteBytes(
+      await addFrames(assembler, changedFrames),
+      changedArtifactBytes,
+    )
   })
 
   it("keeps collection state across a camera-restart-sized pause", async () => {

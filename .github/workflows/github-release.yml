@@ -62,25 +62,25 @@ jobs:
         run: aube ci
 
       - name: Type check
-        run: aube typecheck
+        run: aube run typecheck
 
       - name: Lint
-        run: aube lint
+        run: aube run lint
 
       - name: Unit tests
-        run: aube test
+        run: aube run test
 
       - name: Post-quantum known-answer tests
-        run: aube test:pq-vectors
+        run: aube run test:pq-vectors
 
       - name: Post-quantum integration tests
-        run: aube test:pq
+        run: aube run test:pq
 
       - name: Multipart QR tests
-        run: aube test:qr-multipart
+        run: aube run test:qr-multipart
 
       - name: Build production PWA
-        run: aube build:prod
+        run: aube run build:prod
 
       - name: Validate and package the static PWA
         id: package
@@ -503,106 +503,10 @@ jobs:
           archive_root="${ARCHIVE_NAME%.zip}"
           document_root="$RUNNER_TEMP/qr-crypt-release-extracted/$archive_root"
           [[ -d "$document_root" ]]
-          export QR_CRYPT_RELEASE_DOCUMENT_ROOT="$document_root"
           server_log="$RUNNER_TEMP/qr-crypt-release-server.log"
 
-          node <<'NODE' > "$server_log" 2>&1 &
-          const fs = require("node:fs");
-          const fsp = require("node:fs/promises");
-          const http = require("node:http");
-          const path = require("node:path");
-
-          const root = fs.realpathSync(process.env.QR_CRYPT_RELEASE_DOCUMENT_ROOT);
-          const rules = [];
-          let activeRule;
-          for (const rawLine of fs
-            .readFileSync(path.join(root, "_headers"), "utf8")
-            .split(/\r?\n/)) {
-            if (!rawLine.trim()) continue;
-            if (!/^\s/.test(rawLine)) {
-              activeRule = { pattern: rawLine.trim(), headers: {} };
-              rules.push(activeRule);
-              continue;
-            }
-            if (!activeRule) throw new Error("header without a path rule");
-            const separator = rawLine.indexOf(":");
-            if (separator < 1) throw new Error(`invalid header: ${rawLine}`);
-            activeRule.headers[rawLine.slice(0, separator).trim()] = rawLine
-              .slice(separator + 1)
-              .trim();
-          }
-
-          const matches = (pattern, pathname) =>
-            pattern === "/*"
-              ? true
-              : pattern.endsWith("*")
-                ? pathname.startsWith(pattern.slice(0, -1))
-                : pathname === pattern;
-
-          const mimeTypes = new Map([
-            [".css", "text/css; charset=utf-8"],
-            [".html", "text/html; charset=utf-8"],
-            [".js", "text/javascript; charset=utf-8"],
-            [".json", "application/json; charset=utf-8"],
-            [".png", "image/png"],
-            [".svg", "image/svg+xml"],
-            [".txt", "text/plain; charset=utf-8"],
-            [".wasm", "application/wasm"],
-            [".webmanifest", "application/manifest+json; charset=utf-8"],
-          ]);
-
-          const server = http.createServer(async (request, response) => {
-            try {
-              if (request.method !== "GET" && request.method !== "HEAD") {
-                response.writeHead(405, { Allow: "GET, HEAD" });
-                response.end();
-                return;
-              }
-
-              let pathname;
-              try {
-                pathname = decodeURIComponent(
-                  new URL(request.url, "http://localhost").pathname,
-                );
-              } catch {
-                response.writeHead(400);
-                response.end();
-                return;
-              }
-
-              const relative = pathname === "/" ? "index.html" : pathname.slice(1);
-              let filePath = path.resolve(root, relative);
-              if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
-                response.writeHead(400);
-                response.end();
-                return;
-              }
-
-              const file = await fsp.stat(filePath).catch(() => undefined);
-              if (!file?.isFile()) filePath = path.join(root, "index.html");
-              const body = await fsp.readFile(filePath);
-              const headers = {};
-              for (const rule of rules) {
-                if (matches(rule.pattern, pathname)) {
-                  Object.assign(headers, rule.headers);
-                }
-              }
-              headers["Content-Type"] =
-                mimeTypes.get(path.extname(filePath)) ??
-                "application/octet-stream";
-              headers["Content-Length"] = String(body.length);
-              response.writeHead(200, headers);
-              response.end(request.method === "HEAD" ? undefined : body);
-            } catch (error) {
-              console.error(error);
-              response.writeHead(500);
-              response.end();
-            }
-          });
-
-          server.listen(4173, "127.0.0.1");
-          process.on("SIGTERM", () => server.close(() => process.exit(0)));
-          NODE
+          SERVE_DIST_ROOT="$document_root" SERVE_DIST_PORT=4173 \
+            aube run serve:dist > "$server_log" 2>&1 &
           server_pid=$!
           cleanup() {
             kill "$server_pid" 2>/dev/null || true
@@ -637,7 +541,12 @@ jobs:
             --dump-header "$root_headers" \
             --output /dev/null \
             http://127.0.0.1:4173/
-          grep -Eqi '^content-security-policy:' "$root_headers"
+          grep -Eqi "^content-security-policy:.*connect-src 'self'" "$root_headers"
+          grep -Eqi "^content-security-policy:.*object-src 'none'" "$root_headers"
+          grep -Eqi "^content-security-policy:.*'wasm-unsafe-eval'" "$root_headers"
+          if grep -Eqi "^content-security-policy:.*[^-]'unsafe-eval'" "$root_headers"; then
+            exit 1
+          fi
 
           manifest_headers="$RUNNER_TEMP/manifest-headers"
           curl --fail --silent --show-error \
@@ -654,7 +563,7 @@ jobs:
 
           # Reuse the header-aware reference server instead of Playwright's
           # build-and-preview command, so tests exercise the archived bytes.
-          env -u CI aube test:e2e
+          env -u CI aube run test:e2e
 
       - name: Upload unsigned release payload
         id: upload-package

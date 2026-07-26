@@ -7,7 +7,11 @@ import {
   FRAME_BYTES_MAX,
   maximumSymmetricPlaintextBytesForPayloadCapacity,
 } from "@/lib/limits"
-import type { MlKemMessageEnvelopeV2 } from "@/schemas/domain"
+import { translate } from "@/i18n/messages"
+import type {
+  MlKemMessageEnvelopeV2,
+  PqPublicBundleRecord,
+} from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
   emitScannedPayload,
@@ -18,6 +22,8 @@ import {
   fakeIdentities,
   fakePqDecrypt,
   fakePreferences,
+  findIdentityByKemKeyId,
+  markIdentityUsed,
   renderQrDataUrl,
   splitIntoFrames,
   startQrScan,
@@ -34,6 +40,14 @@ async function chooseSelectOption(
 ) {
   await user.click(await screen.findByLabelText(label))
   await user.click(await screen.findByRole("option", { name: option }))
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
 }
 
 describe("encrypt page v2", () => {
@@ -61,6 +75,75 @@ describe("encrypt page v2", () => {
       screen.getByRole("option", { name: /Signed post-quantum/ }),
     ).toBeInTheDocument()
     expect(screen.queryByText(/RSA/)).not.toBeInTheDocument()
+  })
+
+  it("offers only fingerprint-confirmed bundles as encryption recipients", async () => {
+    const user = userEvent.setup()
+    const confirmedBundle: PqPublicBundleRecord = {
+      ...fakeBundles[0]!,
+    }
+    delete confirmedBundle.name
+    const unverifiedBundle: PqPublicBundleRecord = {
+      ...fakeBundles[0]!,
+      recordId: "U".repeat(22),
+      identityId: "V".repeat(22),
+      name: "Unverified display name",
+      kem: {
+        ...fakeBundles[0]!.kem,
+        keyId: "W".repeat(22),
+        fingerprint: "7".repeat(64),
+      },
+      signing: {
+        ...fakeBundles[0]!.signing,
+        keyId: "X".repeat(22),
+        fingerprint: "8".repeat(64),
+      },
+      identityFingerprint: "9".repeat(64),
+      trust: "unverified",
+    }
+    delete unverifiedBundle.trustConfirmedAt
+    fakeBundles.splice(0, fakeBundles.length, confirmedBundle, unverifiedBundle)
+
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await user.click(await screen.findByLabelText("Recipient ML-KEM public key"))
+    const labels = (await screen.findAllByRole("option")).map(
+      (option) => option.textContent ?? "",
+    )
+
+    expect(
+      labels.some((label) => label.includes(confirmedBundle.kem.keyId)),
+    ).toBe(true)
+    expect(
+      labels.some((label) => label.includes(unverifiedBundle.kem.keyId)),
+    ).toBe(false)
+  })
+
+  it("explains why no recipient is selectable when every bundle is unverified", async () => {
+    const user = userEvent.setup()
+    const unverifiedBundle: PqPublicBundleRecord = {
+      ...fakeBundles[0]!,
+      trust: "unverified",
+    }
+    delete unverifiedBundle.trustConfirmedAt
+    fakeBundles.splice(0, fakeBundles.length, unverifiedBundle)
+
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+
+    expect(
+      await screen.findByText(
+        translate("en", "encrypt.recipient.needsConfirmation"),
+      ),
+    ).toBeInTheDocument()
   })
 
   it("shows pending state, produces controllable OCF2 frames, and has no persistence UI", async () => {
@@ -218,6 +301,12 @@ describe("encrypt page v2", () => {
 
   it("distinguishes signature validity from person trust and hides unknown-signer plaintext", async () => {
     const user = userEvent.setup()
+    const unverifiedSender: PqPublicBundleRecord = {
+      ...fakeBundles[0]!,
+      trust: "unverified",
+    }
+    delete unverifiedSender.trustConfirmedAt
+    fakeBundles.splice(0, fakeBundles.length, unverifiedSender)
     await renderApp("/encrypt")
     await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
     fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
@@ -230,7 +319,16 @@ describe("encrypt page v2", () => {
     expect(
       await screen.findByText("The signature is valid for this key"),
     ).toBeInTheDocument()
-    expect(screen.getByText(/Identity verified/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_content, element) =>
+          element?.textContent ===
+          `${translate("en", "encrypt.result.identityCheck.label")} ${translate(
+            "en",
+            "encrypt.result.identityCheck.unverified",
+          )}`,
+      ),
+    ).toBeInTheDocument()
 
     fakePqDecrypt.kind = "signed-key-unknown"
     await user.click(screen.getByRole("button", { name: "Decrypt" }))
@@ -258,6 +356,84 @@ describe("encrypt page v2", () => {
       await screen.findByText(messageFor("SIGNATURE_INVALID", "en")),
     ).toBeInTheDocument()
     expect(screen.queryByText("PQ復号済み平文")).not.toBeInTheDocument()
+  })
+
+  it("re-resolves the recipient from storage and refuses a discarded generation", async () => {
+    const user = userEvent.setup()
+    const cachedIdentity = fakeIdentities[0]!
+    findIdentityByKemKeyId.mockResolvedValueOnce(undefined)
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:fake" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+
+    await user.click(decryptButton)
+
+    expect(
+      await screen.findByText(messageFor("KEY_NOT_FOUND", "en")),
+    ).toBeInTheDocument()
+    expect(findIdentityByKemKeyId).toHaveBeenCalledWith(cachedIdentity.kem.keyId)
+    expect(decryptPqMessage).not.toHaveBeenCalled()
+  })
+
+  it("refuses a storage-resolved recipient from a non-active suite", async () => {
+    const user = userEvent.setup()
+    const cachedIdentity = fakeIdentities[0]!
+    findIdentityByKemKeyId.mockResolvedValueOnce({
+      ...cachedIdentity,
+      profile: "balanced",
+      kem: { ...cachedIdentity.kem, algorithm: "ML-KEM-768" },
+      signing: { ...cachedIdentity.signing, algorithm: "ML-DSA-65" },
+    })
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:fake" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+
+    await user.click(decryptButton)
+
+    expect(
+      await screen.findByText(messageFor("KEY_NOT_FOUND", "en")),
+    ).toBeInTheDocument()
+    expect(findIdentityByKemKeyId).toHaveBeenCalledWith(cachedIdentity.kem.keyId)
+    expect(decryptPqMessage).not.toHaveBeenCalled()
+  })
+
+  it("decrypts with and marks the freshly resolved recipient", async () => {
+    const user = userEvent.setup()
+    const cachedIdentity = fakeIdentities[0]!
+    const freshIdentity = {
+      ...cachedIdentity,
+      id: "F".repeat(22),
+      name: "resolved-from-storage",
+    }
+    findIdentityByKemKeyId.mockResolvedValueOnce(freshIdentity)
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:fake" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+
+    await user.click(decryptButton)
+
+    await waitFor(() =>
+      expect(decryptPqMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ recipient: freshIdentity }),
+      ),
+    )
+    expect(findIdentityByKemKeyId).toHaveBeenCalledWith(cachedIdentity.kem.keyId)
+    expect(markIdentityUsed).toHaveBeenCalledWith(
+      freshIdentity.id,
+      expect.any(Number),
+    )
   })
 
   it("fails closed with the worker-unavailable user message", async () => {
@@ -396,6 +572,122 @@ describe("encrypt page v2", () => {
       frameIntervalMs: 200,
     })
     expect(updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it("keeps fullscreen open while compatibility mode re-splits and restarts at frame one", async () => {
+    encryptPq.mockResolvedValueOnce({
+      version: 2,
+      type: "pq-message",
+      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      recipientKemKeyId: fakeBundles[0]!.kem.keyId,
+      kemCiphertext: new Uint8Array(1_568),
+      hkdfSalt: new Uint8Array(32),
+      iv: new Uint8Array(12),
+      ciphertext: new Uint8Array(32),
+    })
+    const defaultSplitIntoFrames = splitIntoFrames.getMockImplementation()!
+    const compatibleSplit =
+      deferred<Awaited<ReturnType<typeof defaultSplitIntoFrames>>>()
+    let compatibleArgs:
+      | Parameters<typeof defaultSplitIntoFrames>[0]
+      | undefined
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "fullscreen compatibility")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const result = await screen.findByRole("region", { name: "Encryption result" })
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-message",
+          frameBytes: 1_000,
+        }),
+      ),
+    )
+    await waitFor(() => expect(within(result).getByRole("img")).toBeInTheDocument())
+    await user.click(within(result).getByRole("button", { name: "Pause" }))
+    const fullscreenTrigger = within(result).getByRole("button", {
+      name: "View full screen",
+    })
+    await waitFor(() => expect(fullscreenTrigger).toBeEnabled())
+    await user.click(fullscreenTrigger)
+    const fullscreen = screen.getByRole("dialog", {
+      name: /View Ciphertext .* full screen/,
+    })
+    if (within(fullscreen).queryByText("1 / 2")) {
+      await user.click(within(fullscreen).getByRole("button", { name: "Next" }))
+    }
+    expect(within(fullscreen).getByText("2 / 2")).toBeInTheDocument()
+
+    splitIntoFrames.mockImplementationOnce((args) => {
+      compatibleArgs = args
+      return compatibleSplit.promise
+    })
+    await user.click(
+      within(fullscreen).getByRole("switch", { name: "Compatibility mode" }),
+    )
+
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({
+        frameBytes: 100,
+        frameIntervalMs: 2_000,
+      }),
+    )
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-message",
+          frameBytes: 100,
+        }),
+      ),
+    )
+    expect(
+      screen.getByRole("dialog", {
+        name: /View Ciphertext 2 \/ 2 full screen/,
+      }),
+    ).toBe(fullscreen)
+    expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
+
+    const compatibleFrames = await defaultSplitIntoFrames(compatibleArgs!)
+    const renderCallsBeforeResolve = renderQrDataUrl.mock.calls.length
+    await act(async () => {
+      compatibleSplit.resolve(compatibleFrames)
+      await compatibleSplit.promise
+    })
+
+    await waitFor(() =>
+      expect(
+        within(fullscreen).getByText(`1 / ${compatibleFrames.length}`),
+      ).toBeInTheDocument(),
+    )
+    expect(
+      screen.getByRole("dialog", {
+        name: new RegExp(
+          `View Ciphertext 1 / ${compatibleFrames.length} full screen`,
+        ),
+      }),
+    ).toBe(fullscreen)
+    await waitFor(() =>
+      expect(renderQrDataUrl.mock.calls.length).toBeGreaterThan(
+        renderCallsBeforeResolve,
+      ),
+    )
+    expect(renderQrDataUrl.mock.calls[renderCallsBeforeResolve]?.[0]).toContain(
+      `:0:${compatibleFrames.length}:pq-message`,
+    )
+    expect(
+      within(fullscreen).getAllByRole("button", { name: "Close" }),
+    ).toHaveLength(1)
+    expect(
+      within(fullscreen).getByRole("switch", { name: "Compatibility mode" }),
+    ).toBeChecked()
   })
 
   it("persists the compatible pair, re-splits at the raised density, and survives remount", async () => {

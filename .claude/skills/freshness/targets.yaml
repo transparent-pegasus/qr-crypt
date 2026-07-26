@@ -52,13 +52,13 @@ units:
       aube.overrides (rollup OMT) stays until upstream trust is restored.
       After bumping vite-plugin-pwa / workbox, re-review the VitePWA options in
       vite.config.ts (globPatterns, cleanupOutdatedCaches, sentinel NetworkOnly).
-    verify: aube ci && aube typecheck && aube lint && aube test && aube build:prod
+    verify: aube ci && aube run typecheck && aube run lint && aube run test && aube run build:prod
     sync: [threat-model, security-review]
 
   - id: crypto-noble
     category: crypto
     cadence_days: 90 # also triggered by any @noble/post-quantum advisory/release
-    last_checked: 2026-07-25
+    last_checked: 2026-07-27
     files:
       - package.json # "@noble/post-quantum" exact pin
       - aube-lock.yaml # frozen graph must move with the pin
@@ -76,7 +76,7 @@ units:
       provenance), refresh provider-noble.ts header comments, diff
       KEM_SIZES/DSA_SIZES/PQ_PROFILES in profiles.ts against the new source,
       update docs/security/security-review.md §1 (version, as-of date, audit status).
-    verify: aube audit && aube test:pq && aube test:pq-vectors && aube bench:pq
+    verify: aube audit && aube run test:pq && aube run test:pq-vectors && aube run bench:pq
     constraint: >
       Never bump the pin without KAT (test:pq-vectors) and golden passes.
       Size tables are append-only: retired profiles keep their rows.
@@ -105,12 +105,14 @@ units:
   - id: ci-actions
     category: dependencies
     cadence_days: 60
-    last_checked: 2026-07-26
+    last_checked: 2026-07-27
     files:
       - .github/workflows/cloudflare-pages.yml
       - .github/workflows/dev-to-main-pr.yml
       - .github/workflows/github-release.yml
       - docs/develop/deployment.md # prose mirror of the deploy/CI/release flow
+      - scripts/serve-dist.mjs # header-aware server called directly by the release workflow
+      - tests/unit/serve-dist.test.ts # executable containment and server startup contract
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
       image, and GitHub runner/CLI behavior all drift with upstream releases.
@@ -122,14 +124,15 @@ units:
       verify each SHA still matches the documented tag. Review the pinned
       Cosign release, verifier image digest, and verification contract. Keep
       mise-action reading mise.toml and VITE_BUILD_SHA sourced from
-      ${{ github.sha }}. For dev-to-main-pr.yml, review the checkout-free gh
-      usage, the REST --input payload and already-exists handling, its
-      contents: read and pull-requests: write scopes, the workflow_dispatch ref
-      guard, and the ahead_by plus commit-tree-SHA promotion guards. Reconfirm
-      that a GITHUB_TOKEN-created PR triggers pull_request workflows but may
-      leave them held at "Approve workflows to run", and that gh pr create reads
-      local branch configuration (so this workflow must use gh api --input
-      without checkout). Reconfirm that the repository-wide setting allowing
+      ${{ github.sha }}. For dev-to-main-pr.yml, review the full-history checkout
+      used to compute the main/dev merge base and the merged-PR manifest, the
+      title/author lookups, content-versus-meta grouping, its contents: read and
+      pull-requests: write scopes, the workflow_dispatch ref guard, and the
+      ahead_by plus commit-tree-SHA promotion guards. Review the existing-PR
+      PATCH, the JSON-file POST through gh api --input, and the already-exists
+      race and permission-error handling. Reconfirm that a GITHUB_TOKEN-created
+      PR triggers pull_request workflows but may leave them held at "Approve
+      workflows to run". Reconfirm that the repository-wide setting allowing
       Actions to create and approve pull requests is enabled. Reconcile
       docs/develop/deployment.md with the workflows, and the cosign verify-blob
       policy values quoted in README.md / README.ja.md (certificate identity,
@@ -137,12 +140,13 @@ units:
     sync: [readme]
     verify: |
       Local only — a freshness sweep must not push:
+      aube run test -- tests/unit/serve-dist.test.ts
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \
         actionlint .github/workflows/*.yml
-      Extract the run block from .github/workflows/dev-to-main-pr.yml without
-      YAML indentation and pipe it to:
+      Extract each run block from .github/workflows/dev-to-main-pr.yml without
+      YAML indentation and pipe each one to:
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \
@@ -156,7 +160,7 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-07-26
+    last_checked: 2026-07-27
     files:
       - docs/security/threat-model.md
       - src/crypto/pq/canonical-cbor.ts # structural allocation caps and retained-key behavior cited by T20
@@ -187,17 +191,22 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-07-26
+    last_checked: 2026-07-27
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
+      - scripts/serve-dist.mjs # header-aware server behind the executable CSP claims
+      - scripts/csp-from-headers.mjs # derives the meta CSP injected into index.html
+      - scripts/csp-from-headers.d.mts # declaration companion for the above
       - tests/e2e/security.spec.ts # executable half of the CSP claims
+      - tests/unit/csp-meta.test.ts # executable header-to-meta derivation contract
+      - tests/unit/serve-dist.test.ts # executable header-aware server contract
       - src/lib/limits.ts # artifact ceiling, algorithm-specific bounds, and cycle budget
       - src/schemas/env-schema.ts # PQ plaintext ceiling and maximum signed-artifact formula
       - tests/pq/maximum-artifact-size.golden.test.ts # executable artifact size/frame table
       - tests/e2e/downloads.spec.ts # long-text export measurement attachment
     why: >
-      Point-in-time snapshot: noble 0.6.1 facts as of 2026-07-26, the
+      Point-in-time snapshot: noble 0.6.1 facts as of 2026-07-27, the
       zxing-wasm reader pin/hash/provenance, independent
       audit 未了, release-approved blocker, FIPS errata checklist, artifact
       size/cycle table, and long-text export measurements. All of it is dated
@@ -209,7 +218,12 @@ units:
       encryption/split/render/ZIP time and archive size come only from a
       recorded measurement attachment; retain an explicit not-yet-measured
       placeholder rather than estimating them.
-    verify: aube audit && aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
+    verify: |
+      aube audit
+      aube run test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
+      aube run test -- tests/unit/csp-meta.test.ts tests/unit/serve-dist.test.ts
+      aube run build:prod
+      aube run test:e2e -- tests/e2e/security.spec.ts
     sync: [threat-model, ui-security-copy]
 
   - id: browser-support
@@ -254,7 +268,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-07-26
+    last_checked: 2026-07-27
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
@@ -289,12 +303,12 @@ units:
       animated-qr-frames.tsx, and online-relay.tsx. Diff
       boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
       and wipe coordinator behavior. Update dated statements to current state.
-    verify: aube test:pq && aube test -- tests/ui/boot-controller.test.tsx
+    verify: aube run test:pq && aube run test -- tests/ui/boot-controller.test.tsx
 
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-07-26
+    last_checked: 2026-07-27
     files:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
       - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
@@ -319,7 +333,7 @@ units:
       per-artifact effective density clamp, including that it is never
       persisted and that compatible dwell remains 2000ms at the 1000B density
       floor; the frames × chunk 128,000B absolute artifact ceiling; the 1,000B
-      per-chunk ceiling; and the 1,593-character worst-metadata payload against
+      per-chunk ceiling; and the 1,529-character worst-metadata payload against
       EC-Q v40 capacity 1,663.
       Confirm the append-only boot-readable range still accepts every
       historical density integer 100–900 and every historical interval integer
@@ -330,7 +344,7 @@ units:
       200–1,000ms in 100ms steps plus 2,000ms. Keep limits.ts,
       env-schema.ts, both env files, docs/spec/qr-protocol-v2.md,
       docs/security/security-review.md, and the golden test in agreement.
-    verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
+    verify: aube run test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
     sync: [protocol-docs, threat-model, security-review]
 
   - id: acvp-vectors
@@ -357,7 +371,7 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-07-26
+    last_checked: 2026-07-27
     files:
       - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
@@ -381,12 +395,12 @@ units:
       docs, and keep public/about/index.html and messages.js in step — the
       English text lives only in the HTML, the other locales only in
       messages.js.
-    verify: aube test -- tests/ui/keys-settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
+    verify: aube run test -- tests/ui/keys-settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
 
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-07-26
+    last_checked: 2026-07-27
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together
@@ -483,7 +497,7 @@ invariants:
       unreadable → preferencesReadFailed → wipeOnOnline forced true → a later
       network-confirmed contact can wipe user data.
     verify: >
-      aube test -- tests/unit/qr-density-safety.test.ts
+      aube run test -- tests/unit/qr-density-safety.test.ts
       tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx
   - id: vocabulary-append-only
     files:
@@ -492,7 +506,7 @@ invariants:
       PQ_PROFILE_IDS, algorithm ids, and WIRE_SUITES hold the full historical
       vocabulary. Append new ids; never remove old ones while stored rows or
       wire payloads can still carry them.
-    verify: aube typecheck && aube test:pq
+    verify: aube run typecheck && aube run test:pq
   - id: wire-suite-mappings-retained
     files:
       - src/crypto/pq/suites.ts
@@ -500,7 +514,7 @@ invariants:
       resolveSuite/suiteComponents stay exhaustive over all WIRE_SUITES
       (768/65 and 1024/87). Policy changes touch ACTIVE_PROFILE /
       assertActiveSuite only.
-    verify: aube test:pq -- tests/pq/maximum-policy-boundaries.test.ts
+    verify: aube run test:pq -- tests/pq/maximum-policy-boundaries.test.ts
   - id: legacy-read-normalization
     files:
       - src/storage/preferences-repository.ts
@@ -517,7 +531,7 @@ invariants:
       paths. The active profile and atomic preference-pair write allowlists
       stay stricter than the boot read allowlists.
     verify: >
-      aube test -- tests/unit/qr-density-safety.test.ts
+      aube run test -- tests/unit/qr-density-safety.test.ts
       tests/integration/storage.test.ts
   - id: retired-profile-negative-tests
     files:
@@ -525,7 +539,7 @@ invariants:
     rule: >
       Negative coverage for balanced/768 rejection stays as long as the ids
       exist in domain.ts; extend when new profiles retire, never delete.
-    verify: aube test:pq -- tests/pq/maximum-policy-boundaries.test.ts
+    verify: aube run test:pq -- tests/pq/maximum-policy-boundaries.test.ts
   - id: reachability-sentinel-lockstep
     files:
       - public/reachability-sentinel.txt
@@ -545,7 +559,7 @@ invariants:
       && rg -q 'NetworkOnly' vite.config.ts
       && ! rg -q 'reachability-sentinel' <(rg -o 'globPatterns:[^]]*]' vite.config.ts)
       && rg -A2 'reachability-sentinel' public/_headers | rg -q 'no-store'
-      && aube test -- tests/ui/boot-controller.test.tsx
+      && aube run test -- tests/ui/boot-controller.test.tsx
   - id: build-sha-placeholder
     files:
       - .env.example

@@ -41,8 +41,9 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
 
 * **1 人あたり 2 台。** QR Crypt を動かす恒久オフライン端末と、暗号文を運ぶだけの普段使いの
   オンライン端末。
-* **ブラウザー。** 主対象は Android Chrome と iOS Safari です。Windows Chrome / macOS Safari /
-  Edge は参考環境として記録します（[docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)）。
+* **ブラウザー。** 主対象は Android Chrome と iOS Safari です。カメラでの QR 読み取りには
+  Safari / iOS 16 以降が必要です。Windows Chrome / macOS Safari / Edge は参考環境として
+  記録します（[docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)）。
   Web Crypto または IndexedDB が利用できない環境では起動時の画面で停止し、どの機能も使えません。
 * **配信元。** `https://`、またはローカルの `http://localhost` / `http://127.0.0.1` から配信
   する必要があります。`index.html` を `file://` で直接開く方法と、LAN アドレス上の平文 HTTP は
@@ -50,7 +51,8 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
 * **WebAssembly。** カメラでの QR 読み取りは WebAssembly のデコーダーを使い、JavaScript の
   代替経路はありません。
   * WebAssembly が無効・遮断された環境では、カメラ自体は開くものの最初のデコードで失敗し、
-    カメラが利用できない旨を表示します。読み取りは一切できません。
+    QRコードリーダーがブロックされている旨を表示します。iPhoneではSafari 16以降を使うよう
+    案内します。読み取りは一切できません。
   * WebAssembly が JIT なしで動く環境（一部の堅牢化・ロックダウン構成）では、デコードは大幅に
     遅くなると見込まれます。どの程度遅くなるかは実機で未計測です
     （[docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)）。
@@ -104,7 +106,9 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
 5. あらかじめ信頼できる経路でオフライン端末に導入しておいた静的サーバーで、`127.0.0.1` /
    `localhost` のみにバインドして配信します。同梱の `_headers` / `_redirects` の意味を満たすこと
    が必要です。セキュリティヘッダー、正しい MIME タイプ、`/index.html` への SPA フォールバック、
-   到達性 sentinel の `no-store`。
+   到達性 sentinel の `no-store`。本番ビルドは同じ CSP のうち meta タグで表現できる部分も
+   フォールバックとして持ちますが、`frame-ancestors` は meta CSP では適用できないため、
+   `_headers` のレスポンスヘッダーでのみ提供されます。
 6. `http://localhost` を開き、オフライン利用の準備完了が表示されるまで待ちます。
 7. サーバーを停止し、運搬媒体を外し、物理的にネットワークを切断します。秘密の入力・復元は、
    QR Crypt がオフラインと表示していることを確認してから行ってください。導入用サーバーの
@@ -141,8 +145,11 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
 | **ML-KEM-1024**（+ HKDF-SHA256 + AES-256-GCM） | 数十年単位で秘密を保つ必要があるメッセージ。将来の量子計算機に耐える設計です。重いため、メッセージは複数の QR コードになります。 |
 | **ML-KEM-1024 + ML-DSA-87** | 上と同じ構成に署名を付け、受信側が送信者を検証できるようにしたものです。 |
 
+ポスト量子識別子では、世代交代の周期が前方秘匿性の粒度になります。世代交代後も旧世代は復号用に
+保持されるため、その世代宛のすべての封筒は、旧世代を明示的に破棄するまで復号できます。
+
 ポスト量子スイートは **experimental** かつ **独立監査を受けていません**。FIPS 203 / FIPS 204 の
-アルゴリズムの実装を採用しているだけであり、「FIPS 認証済み」「完全に安全」とは主張しません。
+アルゴリズムの実装を採用していますが、FIPS 140 検証や独立した安全性評価を受けたことを意味しません。
 現在の状態とブロッカー: [docs/security/security-review.md](docs/security/security-review.md)。
 
 ## ドキュメント
