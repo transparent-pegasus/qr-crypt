@@ -92,6 +92,9 @@ vi.mock("@/qr/export-image", () => ({
   triggerDownload: fakes.triggerDownload,
   copyTextToClipboard: fakes.copyTextToClipboard,
 }))
+vi.mock("@/qr/export-frames", () => ({
+  exportQrFramePayloads: fakes.exportQrFramePayloads,
+}))
 vi.mock("@/qr/decode", () => ({
   startQrScan: fakes.startQrScan,
   warmQrReader: fakes.warmQrReader,

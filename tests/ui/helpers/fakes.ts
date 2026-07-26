@@ -7,7 +7,9 @@ import type {
   PublicKeyEnvelopeV1,
   SymmetricKeyEnvelopeV1,
 } from "@/crypto/envelope"
+import { storeOnlyZip } from "@/lib/best-effort-zip"
 import type { FeatureSupport } from "@/lib/feature-detect"
+import type { QrExportOptions } from "@/qr/export-image"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import type {
   DsaPublicKeyEnvelopeV2,
@@ -408,7 +410,9 @@ export const ecLevelFor = vi.fn(
   (kind: "message" | "stored-key" | "multipart-frame", prefs: Preferences) =>
     kind === "message" ? prefs.qrErrorCorrection : kind === "multipart-frame" ? "Q" : "H",
 )
-export const qrPngBlob = vi.fn(async () => new Blob(["png"]))
+export const qrPngBlob = vi.fn<
+  (payload: string, options: QrExportOptions) => Promise<Blob>
+>(async () => new Blob(["png"]))
 export const qrSvgBlob = vi.fn(async () => new Blob(["svg"]))
 export const sanitizeQrFileName = vi.fn((name: string) => name.trim() || "qr")
 export const buildExportFileName = vi.fn(
@@ -416,6 +420,44 @@ export const buildExportFileName = vi.fn(
     `${name}-${id.slice(0, 8)}.${ext}`,
 )
 export const triggerDownload = vi.fn()
+export const exportQrFramePayloads = vi.fn(
+  async (
+    frames: ReadonlyArray<{ frameIndex: number; payload: string }>,
+    options: { outputName: string; size: number; signal?: AbortSignal },
+  ) => {
+    if (frames.length === 0) return
+    if (options.signal?.aborted) return
+    const safeName = sanitizeQrFileName(options.outputName)
+
+    if (frames.length === 1) {
+      const blob = await qrPngBlob(frames[0]!.payload, {
+        ecLevel: "Q",
+        size: options.size,
+      })
+      if (options.signal?.aborted) return
+      triggerDownload(blob, `${safeName}.png`)
+      return
+    }
+
+    const entries: Array<{ name: string; data: Uint8Array }> = []
+    for (const frame of frames) {
+      if (options.signal?.aborted) return
+      const blob = await qrPngBlob(frame.payload, {
+        ecLevel: "Q",
+        size: options.size,
+      })
+      if (options.signal?.aborted) return
+      const data = new Uint8Array(await blob.arrayBuffer())
+      if (options.signal?.aborted) return
+      entries.push({
+        name: `frame-${String(frame.frameIndex + 1).padStart(2, "0")}.png`,
+        data,
+      })
+    }
+    if (options.signal?.aborted) return
+    triggerDownload(storeOnlyZip(entries), `${safeName}-frames.zip`)
+  },
+)
 export const copyTextToClipboard = vi.fn(async () => undefined)
 
 interface FakeCameraDiagnostic {

@@ -17,8 +17,7 @@ import {
 } from "lucide-react"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
-import { qrPngBlob, sanitizeQrFileName, triggerDownload } from "@/qr/export-image"
-import { storeOnlyZip } from "@/lib/best-effort-zip"
+import { exportQrFramePayloads } from "@/qr/export-frames"
 import { toAppError } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"
 import { env } from "@/schemas/env-schema"
@@ -225,8 +224,6 @@ export function AnimatedQrFrames({
     position,
   ])
 
-  const safeName = exportsEnabled ? sanitizeQrFileName(outputName) : ""
-
   const movePrevious = () =>
     setCursor((current) => ({
       generation: frameGeneration,
@@ -250,32 +247,15 @@ export function AnimatedQrFrames({
     setExporting(true)
     setError(null)
     try {
-      if (animationSignal?.aborted) return
-      if (availableIndexes.length === 1) {
-        const slot = slots.get(availableIndexes[0]!)
-        if (slot === undefined) return
-        const blob = await qrPngBlob(slot.payload, { ecLevel: "Q", size })
-        if (animationSignal?.aborted) return
-        triggerDownload(blob, `${safeName}.png`)
-        return
-      }
-
-      const entries: Array<{ name: string; data: Uint8Array }> = []
-      for (const index of availableIndexes) {
-        if (animationSignal?.aborted) return
-        const slot = slots.get(index)
-        if (!slot) continue
-        const blob = await qrPngBlob(slot.payload, { ecLevel: "Q", size })
-        if (animationSignal?.aborted) return
-        const data = new Uint8Array(await blob.arrayBuffer())
-        if (animationSignal?.aborted) return
-        entries.push({
-          name: `frame-${String(index + 1).padStart(2, "0")}.png`,
-          data,
-        })
-      }
-      if (animationSignal?.aborted) return
-      triggerDownload(storeOnlyZip(entries), `${safeName}-frames.zip`)
+      const frames = availableIndexes.flatMap((frameIndex) => {
+        const slot = slots.get(frameIndex)
+        return slot === undefined ? [] : [{ frameIndex, payload: slot.payload }]
+      })
+      await exportQrFramePayloads(frames, {
+        outputName,
+        size,
+        ...(animationSignal === undefined ? {} : { signal: animationSignal }),
+      })
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
