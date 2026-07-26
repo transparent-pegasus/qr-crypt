@@ -15,6 +15,7 @@ import type {
 import { env } from "@/schemas/env-schema"
 import {
   emitScannedPayload,
+  decryptWithAesKey,
   encryptWithAesKey,
   encryptPq,
   decryptPqMessage,
@@ -25,6 +26,7 @@ import {
   fakePreferences,
   findIdentityByKemKeyId,
   markIdentityUsed,
+  multipartPayload,
   renderQrDataUrl,
   splitIntoFrames,
   startQrScan,
@@ -302,10 +304,16 @@ describe("encrypt page v2", () => {
         screen.queryByRole("dialog", { name: "Scan a ciphertext QR code" }),
       ).not.toBeInTheDocument(),
     )
-    await user.click(await screen.findByRole("button", { name: "Decrypt" }))
-    expect(await screen.findByText("復号済み平文")).toBeInTheDocument()
-    expect(screen.getByText(/held only in memory and is not stored/)).toBeInTheDocument()
-    expect(screen.queryByText(/Saved key QR|Save key QR/)).not.toBeInTheDocument()
+    const dialog = await screen.findByRole("dialog", {
+      name: "Decryption complete",
+    })
+    expect(within(dialog).getByText("復号済み平文")).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/held only in memory and is not stored/),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).queryByText(/Saved key QR|Save key QR/),
+    ).not.toBeInTheDocument()
   })
 
   it("distinguishes signature validity from person trust and hides unknown-signer plaintext", async () => {
@@ -339,6 +347,13 @@ describe("encrypt page v2", () => {
       ),
     ).toBeInTheDocument()
 
+    const dialog = screen.getByRole("dialog", { name: "Decryption complete" })
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Decryption complete" }),
+      ).not.toBeInTheDocument()
+    })
     fakePqDecrypt.kind = "signed-key-unknown"
     await user.click(screen.getByRole("button", { name: "Decrypt" }))
     expect(await screen.findByText("SIGNING_KEY_NOT_FOUND")).toBeInTheDocument()
@@ -359,6 +374,13 @@ describe("encrypt page v2", () => {
     expect(await screen.findByText("Unsigned")).toBeInTheDocument()
     expect(screen.getByText("PQ復号済み平文")).toBeInTheDocument()
 
+    const dialog = screen.getByRole("dialog", { name: "Decryption complete" })
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Decryption complete" }),
+      ).not.toBeInTheDocument()
+    })
     decryptPqMessage.mockRejectedValueOnce(new AppError("SIGNATURE_INVALID"))
     await user.click(decryptButton)
     expect(
@@ -1006,5 +1028,152 @@ describe("encrypt page v2", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       messageFor("QR_TOO_LARGE", "en"),
     )
+  })
+
+  it("opens the result modal when the decrypt button succeeds", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM1:sym-key-00000001" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Decryption complete",
+    })
+    expect(within(dialog).getByText("復号済み平文")).toBeInTheDocument()
+  })
+
+  it("opens the result modal immediately after a single QR read", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    await user.click(
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
+    )
+    await waitFor(() => expect(startQrScan).toHaveBeenCalled())
+
+    await act(async () => emitScannedPayload("OCM1:sym-key-00000001"))
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Decryption complete",
+    })
+    expect(within(dialog).getByText("復号済み平文")).toBeInTheDocument()
+  })
+
+  it("opens the result modal when a multipart transfer completes", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    await user.click(
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
+    )
+    await waitFor(() => expect(startQrScan).toHaveBeenCalled())
+
+    await act(async () =>
+      emitScannedPayload(
+        multipartPayload("decrypt-transfer", 0, 1, "pq-message"),
+      ),
+    )
+
+    expect(
+      await screen.findByRole("dialog", { name: "Decryption complete" }),
+    ).toBeInTheDocument()
+  })
+
+  it("shows the invalid-payload alert and no modal for unparseable input", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    await user.type(screen.getByLabelText("Ciphertext payload"), "not-a-payload")
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      translate("en", "encrypt.decrypt.invalidTitle"),
+    )
+    expect(
+      screen.queryByRole("dialog", { name: "Decryption complete" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("shows key-not-found and no modal when a scanned payload has no stored key", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    await user.click(
+      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
+    )
+    await waitFor(() => expect(startQrScan).toHaveBeenCalled())
+
+    await act(async () => emitScannedPayload("OCM1:sym-key-99999999"))
+
+    expect(await screen.findByText("KEY_NOT_FOUND")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "Decryption complete" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("shows an alert and no modal when decryption throws", async () => {
+    const user = userEvent.setup()
+    decryptWithAesKey.mockRejectedValueOnce(new AppError("DECRYPTION_FAILED"))
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM1:sym-key-00000001" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    expect(
+      await screen.findByText(messageFor("DECRYPTION_FAILED", "en")),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "Decryption complete" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("keeps signed-key-unknown on its own alert with no modal", async () => {
+    const user = userEvent.setup()
+    fakePqDecrypt.kind = "signed-key-unknown"
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:fake" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    expect(await screen.findByText("SIGNING_KEY_NOT_FOUND")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "Decryption complete" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("discards the decrypted plaintext when the modal closes", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM1:sym-key-00000001" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Decryption complete",
+    })
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Decryption complete" }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText("復号済み平文")).not.toBeInTheDocument()
   })
 })

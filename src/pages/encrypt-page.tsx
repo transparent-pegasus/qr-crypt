@@ -406,6 +406,12 @@ export function EncryptPage() {
             isActiveIdentity(identity),
         )
       : undefined
+  const decryptKeyMissing =
+    parsedDecrypt !== null &&
+    !parsedPqUnsupported &&
+    (parsedDecrypt.kind === "message"
+      ? decryptAesKey === undefined
+      : decryptIdentity === undefined)
   const canDecrypt =
     !busy &&
     parsedDecrypt !== null &&
@@ -522,33 +528,57 @@ export function EncryptPage() {
     }
   }
 
-  const handleDecrypt = async () => {
-    if (!canDecrypt || parsedDecrypt === null) return
+  const runDecrypt = async (payload: string) => {
+    let parsed: ReturnType<typeof decodePayload> | null = null
+    try {
+      const decoded = decodePayload(payload.trim())
+      parsed =
+        decoded.kind === "message" || decoded.kind === "pq-message" ? decoded : null
+    } catch {
+      parsed = null
+    }
+    if (parsed === null) return
+    if (parsed.kind === "pq-message" && !isActiveWireSuite(parsed.envelope.suite)) return
+
+    const aesKey =
+      parsed.kind === "message"
+        ? symmetricKeys.find((key) => key.id === parsed.envelope.keyId)
+        : undefined
+    const identity =
+      parsed.kind === "pq-message"
+        ? identities.find(
+            (candidate) =>
+              candidate.kem.keyId === parsed.envelope.recipientKemKeyId &&
+              isActiveIdentity(candidate),
+          )
+        : undefined
+    if (parsed.kind === "message" ? aesKey === undefined : identity === undefined) return
+
     setBusy(true)
     setError(null)
     setDecrypted(null)
     try {
-      if (parsedDecrypt.kind === "message" && decryptAesKey?.symmetricKey) {
+      if (parsed.kind === "message" && aesKey?.symmetricKey) {
         const plaintextResult = await decryptWithAesKey({
-          key: decryptAesKey.symmetricKey,
-          envelope: parsedDecrypt.envelope,
+          key: aesKey.symmetricKey,
+          envelope: parsed.envelope,
         })
         setDecrypted({ kind: "aes", text: bytesToUtf8(plaintextResult) })
-        await markKeyUsed(decryptAesKey.id, Date.now()).catch(() => undefined)
-      } else if (parsedDecrypt.kind === "pq-message" && decryptIdentity) {
+        await markKeyUsed(aesKey.id, Date.now()).catch(() => undefined)
+      } else if (parsed.kind === "pq-message" && identity) {
         // The cached list only gates the button. Re-resolve from storage at action
         // time so a generation discarded elsewhere cannot be decrypted from a stale
         // in-memory object. A delete landing between this lookup and the worker call
         // is a residual race, recorded in docs/security/threat-model.md T14.
         const recipient = await findIdentityByKemKeyId(
-          parsedDecrypt.envelope.recipientKemKeyId,
+          parsed.envelope.recipientKemKeyId,
         )
         if (recipient === undefined || !isActiveIdentity(recipient)) {
           throw new AppError("KEY_NOT_FOUND")
         }
         const pqResult = await decryptPqMessage({
           client: getPqClient(),
-          envelope: parsedDecrypt.envelope,
+          envelope: parsed.envelope,
           recipient,
           vaultKey: await getOrCreateVaultKey(),
           resolveSigningKey: async (keyId) => {
@@ -831,6 +861,7 @@ export function EncryptPage() {
                   setDecryptInput(payload)
                   setDecrypted(null)
                   setError(null)
+                  return runDecrypt(payload)
                 }}
                 multipart={{
                   session: multipartSession,
@@ -838,11 +869,14 @@ export function EncryptPage() {
                     if (artifactType !== "pq-message")
                       throw new AppError("INVALID_QR_PAYLOAD")
                     const envelope = decodeMlKemEnvelopeV2(artifactBytes)
-                    setDecryptInput(
-                      buildV2Payload("pq-message", encodeMlKemEnvelopeV2(envelope)),
+                    const payload = buildV2Payload(
+                      "pq-message",
+                      encodeMlKemEnvelopeV2(envelope),
                     )
+                    setDecryptInput(payload)
                     setDecrypted(null)
                     setError(null)
+                    return runDecrypt(payload)
                   },
                 }}
               />
@@ -911,7 +945,7 @@ export function EncryptPage() {
                   <AlertDescription>{t("encrypt.pqUnsupported.body")}</AlertDescription>
                 </Alert>
               )}
-              {parsedDecrypt && !parsedPqUnsupported && !canDecrypt && (
+              {decryptKeyMissing && (
                 <Alert variant="destructive" role="alert">
                   <AlertTitle>KEY_NOT_FOUND</AlertTitle>
                   <AlertDescription>{t("errors.KEY_NOT_FOUND")}</AlertDescription>
@@ -921,7 +955,7 @@ export function EncryptPage() {
                 type="button"
                 className="h-11 w-full cursor-pointer focus-visible:ring-2"
                 disabled={!canDecrypt}
-                onClick={() => void handleDecrypt()}
+                onClick={() => void runDecrypt(decryptInput)}
               >
                 {busy && <LoaderCircle aria-hidden="true" className="animate-spin" />}
                 {t(busy ? "encrypt.decryptButton.busy" : "encrypt.decryptButton.idle")}
@@ -943,57 +977,6 @@ export function EncryptPage() {
                 </Link>
               </AlertDescription>
             </Alert>
-          )}
-          {decrypted && decrypted.kind !== "signed-key-unknown" && (
-            <Card>
-              <CardHeader className="p-4 pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
-                  {t("encrypt.result.decryptedTitle")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 p-4 pt-0">
-                {decrypted.kind === "unsigned" && (
-                  <p className="text-sm font-medium">{t("encrypt.result.unsigned")}</p>
-                )}
-                {decrypted.kind === "aes" && (
-                  <p className="text-sm font-medium">{t("encrypt.result.aesUnsigned")}</p>
-                )}
-                {decrypted.kind === "signed-valid" && (
-                  <div className="space-y-1 text-sm">
-                    <p className="font-medium text-success">
-                      {t("encrypt.result.signatureValid")}
-                    </p>
-                    <p className="font-mono text-xs break-all">
-                      {t("encrypt.result.senderSigningKeyId", {
-                        id: decrypted.senderSigningKeyId,
-                      })}
-                    </p>
-                    <p>
-                      {t("encrypt.result.identityCheck.label")}{" "}
-                      {decrypted.sender?.trust === "fingerprint-confirmed"
-                        ? t("encrypt.result.identityCheck.confirmed")
-                        : t("encrypt.result.identityCheck.unverified")}
-                    </p>
-                  </div>
-                )}
-                <p className="select-text whitespace-pre-wrap break-words rounded-md border p-3 text-sm">
-                  {decrypted.text}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {t("encrypt.result.memoryOnly")}
-                </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="h-11 w-full cursor-pointer"
-                  onClick={() => setDecrypted(null)}
-                >
-                  <Eraser aria-hidden="true" />
-                  {t("encrypt.clearPlaintext")}
-                </Button>
-              </CardContent>
-            </Card>
           )}
         </>
       )}
@@ -1193,6 +1176,58 @@ export function EncryptPage() {
                     />
                   </CardContent>
                 </Card>
+              </>
+            )}
+          </div>
+        </NoAutofocusDialogContent>
+      </Dialog>
+
+      <Dialog
+        open={decrypted !== null && decrypted.kind !== "signed-key-unknown"}
+        onOpenChange={(open) => {
+          if (!open) setDecrypted(null)
+        }}
+      >
+        <NoAutofocusDialogContent className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden">
+          <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
+                {t("encrypt.result.decryptedModalTitle")}
+              </DialogTitle>
+            </DialogHeader>
+            {decrypted !== null && decrypted.kind !== "signed-key-unknown" && (
+              <>
+                {decrypted.kind === "unsigned" && (
+                  <p className="text-sm font-medium">{t("encrypt.result.unsigned")}</p>
+                )}
+                {decrypted.kind === "aes" && (
+                  <p className="text-sm font-medium">{t("encrypt.result.aesUnsigned")}</p>
+                )}
+                {decrypted.kind === "signed-valid" && (
+                  <div className="space-y-1 text-sm">
+                    <p className="font-medium text-success">
+                      {t("encrypt.result.signatureValid")}
+                    </p>
+                    <p className="font-mono text-xs break-all">
+                      {t("encrypt.result.senderSigningKeyId", {
+                        id: decrypted.senderSigningKeyId,
+                      })}
+                    </p>
+                    <p>
+                      {t("encrypt.result.identityCheck.label")}{" "}
+                      {decrypted.sender?.trust === "fingerprint-confirmed"
+                        ? t("encrypt.result.identityCheck.confirmed")
+                        : t("encrypt.result.identityCheck.unverified")}
+                    </p>
+                  </div>
+                )}
+                <p className="select-text whitespace-pre-wrap break-words rounded-md border p-3 text-sm">
+                  {decrypted.text}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t("encrypt.result.memoryOnly")}
+                </p>
               </>
             )}
           </div>
