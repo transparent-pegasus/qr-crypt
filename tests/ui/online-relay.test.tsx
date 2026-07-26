@@ -383,7 +383,7 @@ describe("online relay UI", () => {
       const dialog = await screen.findByRole("dialog", { name: dialogName })
       expect(dialog).toHaveClass(
         "grid",
-        "grid-rows-[minmax(0,1fr)_auto]",
+        "grid-rows-[minmax(0,1fr)]",
         "overflow-hidden",
       )
       expect(dialog.firstElementChild).toHaveClass(
@@ -459,6 +459,9 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "QR → text" }))
     expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    expect(
+      screen.getByLabelText("OCF2 message-header relay camera preview"),
+    ).toHaveAttribute("autoplay")
     expect(scanStart).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     expect(scanStart).toHaveBeenCalledOnce()

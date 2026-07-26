@@ -41,8 +41,9 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
 
 * **1 人あたり 2 台。** QR Crypt を動かす恒久オフライン端末と、暗号文を運ぶだけの普段使いの
   オンライン端末。
-* **ブラウザー。** 主対象は Android Chrome と iOS Safari です。Windows Chrome / macOS Safari /
-  Edge は参考環境として記録します（[docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)）。
+* **ブラウザー。** 主対象は Android Chrome と iOS Safari です。カメラでの QR 読み取りには
+  Safari / iOS 16 以降が必要です。Windows Chrome / macOS Safari / Edge は参考環境として
+  記録します（[docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)）。
   Web Crypto または IndexedDB が利用できない環境では起動時の画面で停止し、どの機能も使えません。
 * **配信元。** `https://`、またはローカルの `http://localhost` / `http://127.0.0.1` から配信
   する必要があります。`index.html` を `file://` で直接開く方法と、LAN アドレス上の平文 HTTP は
@@ -50,7 +51,8 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
 * **WebAssembly。** カメラでの QR 読み取りは WebAssembly のデコーダーを使い、JavaScript の
   代替経路はありません。
   * WebAssembly が無効・遮断された環境では、カメラ自体は開くものの最初のデコードで失敗し、
-    カメラが利用できない旨を表示します。読み取りは一切できません。
+    QRコードリーダーがブロックされている旨を表示します。iPhoneではSafari 16以降を使うよう
+    案内します。読み取りは一切できません。
   * WebAssembly が JIT なしで動く環境（一部の堅牢化・ロックダウン構成）では、デコードは大幅に
     遅くなると見込まれます。どの程度遅くなるかは実機で未計測です
     （[docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)）。

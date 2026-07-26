@@ -50,12 +50,12 @@ const DialogContent = React.forwardRef<
     >
       {children}
       {!hideCloseButton && (
-        <div className="flex justify-end">
-          <DialogPrimitive.Close className="rounded-sm p-2.5 opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
-            <X className="size-5" />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
-        </div>
+        // Absolute in modals: in flow it reserved a full-width band under the button.
+        // Bottom right, so the rule "modals close from the bottom right" still holds.
+        <DialogPrimitive.Close className="absolute bottom-3 right-3 rounded-md border border-border bg-background p-2.5 opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+          <X className="size-5" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
       )}
     </DialogPrimitive.Content>
   </DialogPortal>

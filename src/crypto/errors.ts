@@ -16,6 +16,7 @@ export const ERROR_CODES = [
   "STORAGE_FAILED",
   "CAMERA_PERMISSION_DENIED",
   "CAMERA_NOT_AVAILABLE",
+  "QR_READER_BLOCKED",
   "DUPLICATE_KEY",
   "DUPLICATE_QR",
   // v2 post-quantum additions.

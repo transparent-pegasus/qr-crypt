@@ -23,7 +23,7 @@ import encryptPageSource from "@/pages/encrypt-page.tsx?raw"
 
 describe("contract smoke", () => {
   it("keeps only error codes and resolves user messages explicitly by language", () => {
-    expect(ERROR_CODES).toHaveLength(20)
+    expect(ERROR_CODES).toHaveLength(21)
     const error = new AppError("DECRYPTION_FAILED")
     expect(error.code).toBe("DECRYPTION_FAILED")
     expect(error).not.toHaveProperty("userMessage")

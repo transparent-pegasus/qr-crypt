@@ -318,7 +318,8 @@ export function QrDisplay({
                 <div
                   data-fullscreen-close-row
                   className={cn(
-                    "flex min-w-0 justify-end",
+                    // w-fit, not a full-width row: the close is its own rounded box.
+                    "w-fit min-w-0 justify-self-end",
                     hasArbitraryFullscreenControls ? "row-start-3" : "row-start-2",
                   )}
                 >

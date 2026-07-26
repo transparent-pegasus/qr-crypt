@@ -24,7 +24,11 @@ This table maps the target browser environments to the primary verification item
 
 ## Notes
 
-* **iOS Safari**: IndexedDB persistence of non-extractable `CryptoKey`s (generate → close tab → restore → decrypt) is a mandatory manual on-device item. Success on `fake-indexeddb` is not treated as a sufficient condition.
+* **iOS Safari**: Camera QR scanning requires Safari/iOS 16 or newer because older WebKit
+  cannot authorize WebAssembly under the narrow `wasm-unsafe-eval` CSP source. IndexedDB
+  persistence of non-extractable `CryptoKey`s (generate → close tab → restore → decrypt)
+  is a mandatory manual on-device item. Success on `fake-indexeddb` is not treated as a
+  sufficient condition.
 * **Offline launch / camera scanning**: partial automation via chromium e2e is planned. Real devices on Android / Windows, as well as Safari / Edge, are manual.
 * **Online relay (camera / display / clipboard / BFCache)**: chromium e2e may cover synthetic paths; real-device rows above stay `manual-pending` until measured. Clipboard sync targets and OS QR capture are outside app control.
 * **Edge**: manual on-device row. Screen-reader verification is also manual.
@@ -101,7 +105,7 @@ Every value cell in the QR range-extension tables is **not yet measured**.
 | Sender-side version 40 render completion time | not yet measured | not yet measured |
 | Post-downscale decoder `ImageData` dimensions | not yet measured | not yet measured |
 
-### iOS Safari (release gate)
+### iOS Safari 16+ (release gate)
 
 | Item | Value |
 | --- | --- |
