@@ -4,6 +4,8 @@ import { MultipartScanSession } from "@/features/multipart-scan-session"
 import { TransferAssembler } from "@/qr/multipart/assemble"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 
+const nativeWebAssembly = WebAssembly
+
 const zxing = vi.hoisted(() => ({
   prepareZXingModule: vi.fn(),
   purgeZXingModule: vi.fn(),
@@ -210,6 +212,14 @@ beforeEach(() => {
   getUserMedia.mockReset()
   canvases.splice(0)
   createElement.mockClear()
+  const supportedWebAssembly = Object.create(
+    nativeWebAssembly,
+  ) as typeof WebAssembly
+  Object.defineProperty(supportedWebAssembly, "instantiate", {
+    configurable: true,
+    value: vi.fn(async () => ({})),
+  })
+  vi.stubGlobal("WebAssembly", supportedWebAssembly)
   vi.stubGlobal("navigator", {
     mediaDevices: { getUserMedia },
   })
@@ -261,7 +271,7 @@ describe("camera scanner lifecycle", () => {
     expect(secondTrack.stop).toHaveBeenCalledOnce()
   })
 
-  it("rejects scanning without invoking ZXing when WebAssembly is absent", async () => {
+  it("reports a blocked reader without invoking ZXing when WebAssembly is absent", async () => {
     vi.stubGlobal("WebAssembly", undefined)
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
@@ -277,16 +287,60 @@ describe("camera scanner lifecycle", () => {
     await advance(250)
 
     expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
+      expect.objectContaining({ code: "QR_READER_BLOCKED" }),
       {
         phase: "playing",
-        name: "Error",
+        name: "AppError",
         detail: "640x480 rs=2 track=live/unmuted",
       },
     )
     expect(zxing.prepareZXingModule).not.toHaveBeenCalled()
     expect(zxing.readBarcodes).not.toHaveBeenCalled()
     expect(track.stop).toHaveBeenCalledOnce()
+  })
+
+  it("acquires and draws before reporting a policy-blocked WebAssembly runtime", async () => {
+    const runtimeProbe = deferred<WebAssembly.WebAssemblyInstantiatedSource>()
+    const instantiate = vi.fn(() => runtimeProbe.promise)
+    const validate = vi.fn(() => true)
+    vi.stubGlobal("WebAssembly", { instantiate, validate })
+    const track = new FakeTrack()
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(
+      videoElement(),
+      vi.fn(),
+      onError,
+      { once: false },
+    )
+
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    expect(getUserMedia).toHaveBeenCalledOnce()
+    expect(instantiate).toHaveBeenCalledOnce()
+    expect(validate).not.toHaveBeenCalled()
+    await advance(0)
+    expect(canvases[0]!.drawImage).toHaveBeenCalledOnce()
+    expect(canvases[0]!.getImageData).toHaveBeenCalledOnce()
+    expect(onError).not.toHaveBeenCalled()
+
+    const blocked = new Error("WebAssembly blocked by policy")
+    blocked.name = "CompileError"
+    runtimeProbe.reject(blocked)
+    await flushMicrotasks()
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "QR_READER_BLOCKED" }),
+      {
+        phase: "playing",
+        name: "AppError",
+        detail: "640x480 rs=2 track=live/unmuted",
+      },
+    )
+    expect(zxing.readBarcodes).not.toHaveBeenCalled()
+    expect(track.stop).toHaveBeenCalledOnce()
+    handle.stop()
   })
 
   it("prepares one reader module with the stable same-origin WASM override", async () => {
@@ -340,6 +394,48 @@ describe("camera scanner lifecycle", () => {
     expect(secondTrack.stop).toHaveBeenCalledOnce()
   })
 
+  it("starts the frame pump without awaiting a never-settling video.play", async () => {
+    const playback = deferred<void>()
+    const track = new FakeTrack()
+    const fakeVideo = new FakeVideo(640, 480, {
+      play: () => playback.promise,
+      videoFrameCallbacks: true,
+    })
+    getUserMedia.mockResolvedValue(mediaStream(track))
+    zxing.readBarcodes.mockResolvedValueOnce(barcode("OCK1:autoplay"))
+    const onText = vi.fn()
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+    const scanPromise = decoder.startQrScan(
+      asVideoElement(fakeVideo),
+      onText,
+      onError,
+      { once: false },
+    )
+    const settled = vi.fn()
+    void scanPromise.then(settled)
+    await flushMicrotasks()
+
+    expect(fakeVideo.play).toHaveBeenCalledOnce()
+    expect(fakeVideo.requestVideoFrameCallback).toHaveBeenCalledOnce()
+    expect(
+      fakeVideo.requestVideoFrameCallback!.mock.invocationCallOrder[0],
+    ).toBeLessThan(fakeVideo.play.mock.invocationCallOrder[0]!)
+    expect(settled).toHaveBeenCalledOnce()
+    const handle = await scanPromise
+    fakeVideo.fireNextVideoFrame()
+    await flushMicrotasks()
+
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+    expect(onText).toHaveBeenCalledWith("OCK1:autoplay")
+    expect(onError).not.toHaveBeenCalled()
+    expect(track.stop).not.toHaveBeenCalled()
+    handle.stop()
+    playback.resolve(undefined)
+    await flushMicrotasks()
+    expect(track.stop).toHaveBeenCalledOnce()
+  })
+
   it("fails closed through the decode-progress watchdog when the pump never schedules", async () => {
     const playback = deferred<void>()
     const track = new FakeTrack()
@@ -350,12 +446,34 @@ describe("camera scanner lifecycle", () => {
     const onError = vi.fn()
     const onDiagnostic = vi.fn()
     const decoder = await loadDecoder()
+    const nativeSetTimeout = globalThis.setTimeout
+    let suppressedTimerHandle = 1_000_000
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, "setTimeout")
+      .mockImplementation(
+        ((
+          handler: TimerHandler,
+          timeout?: number,
+          ...args: unknown[]
+        ) => {
+          if (
+            timeout === 0 ||
+            timeout === decoder.CAMERA_FRAME_READY_TIMEOUT_MS
+          ) {
+            suppressedTimerHandle += 1
+            return suppressedTimerHandle
+          }
+          return nativeSetTimeout(handler, timeout, ...args)
+        }) as typeof globalThis.setTimeout,
+      )
+
     expect(decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS).toBe(12_000)
-    const rejection = expect(
-      decoder.startQrScan(asVideoElement(fakeVideo), vi.fn(), onError, {
-        onDiagnostic,
-      }),
-    ).rejects.toMatchObject({ code: "QR_DECODE_PROGRESS_TIMEOUT" })
+    const handle = await decoder.startQrScan(
+      asVideoElement(fakeVideo),
+      vi.fn(),
+      onError,
+      { once: false, onDiagnostic },
+    )
     await flushMicrotasks()
 
     expect(fakeVideo.play).toHaveBeenCalledOnce()
@@ -365,12 +483,11 @@ describe("camera scanner lifecycle", () => {
       decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS -
         decoder.CAMERA_START_TIMEOUT_MS,
     )
-    await rejection
 
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "QR_DECODE_PROGRESS_TIMEOUT" }),
       {
-        phase: "acquired",
+        phase: "playing",
         name: "QrDecodeProgressTimeout",
         detail: "640x480 rs=2 track=live/unmuted",
       },
@@ -386,35 +503,64 @@ describe("camera scanner lifecycle", () => {
     expect(track.stop).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
 
+    setTimeoutSpy.mockRestore()
+    handle.stop()
     playback.resolve(undefined)
     await flushMicrotasks()
-    expect(zxing.readBarcodes).not.toHaveBeenCalled()
   })
 
-  it("maps a rejected video.play with acquired-phase diagnostics", async () => {
-    const track = new FakeTrack()
-    const fakeVideo = new FakeVideo(640, 480, {
-      play: () => Promise.reject(new DOMException("play failed", "NotSupportedError")),
-    })
-    getUserMedia.mockResolvedValue(mediaStream(track))
-    const onError = vi.fn()
-    const decoder = await loadDecoder()
-
-    await expect(
-      decoder.startQrScan(asVideoElement(fakeVideo), vi.fn(), onError),
-    ).rejects.toMatchObject({ code: "CAMERA_NOT_AVAILABLE" })
-
-    expect(onError).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      {
-        phase: "acquired",
-        name: "NotSupportedError",
-        detail: "640x480 rs=2 track=live/unmuted",
+  it.each([
+    {
+      playError: "AbortError",
+      makeTrack: () => new FakeTrack(),
+      makeVideo: (play: () => Promise<void>) => new FakeVideo(0, 0, { play }),
+      recover(track: FakeTrack, video: FakeVideo) {
+        video.setDimensions(640, 480)
+        video.dispatchEvent(new Event("loadedmetadata"))
+        expect(track.muted).toBe(false)
       },
-    )
-    expect(zxing.readBarcodes).not.toHaveBeenCalled()
-    expect(track.stop).toHaveBeenCalledOnce()
-  })
+    },
+    {
+      playError: "NotAllowedError",
+      makeTrack: () => new FakeTrack({ muted: true }),
+      makeVideo: (play: () => Promise<void>) => new FakeVideo(640, 480, { play }),
+      recover(track: FakeTrack) {
+        track.unmute()
+      },
+    },
+  ])(
+    "recovers through readiness events after video.play rejects with $playError",
+    async ({ playError, makeTrack, makeVideo, recover }) => {
+      const track = makeTrack()
+      const play = () =>
+        Promise.reject(new DOMException("WebKit autoplay race", playError))
+      const fakeVideo = makeVideo(play)
+      getUserMedia.mockResolvedValue(mediaStream(track))
+      const onError = vi.fn()
+      const decoder = await loadDecoder()
+      const handle = await decoder.startQrScan(
+        asVideoElement(fakeVideo),
+        vi.fn(),
+        onError,
+        { once: false },
+      )
+
+      await advance(0)
+      expect(zxing.readBarcodes).not.toHaveBeenCalled()
+      expect(onError).not.toHaveBeenCalled()
+      expect(track.stop).not.toHaveBeenCalled()
+
+      recover(track, fakeVideo)
+      await advance(0)
+
+      expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+      expect(onError).not.toHaveBeenCalled()
+      expect(fakeVideo.play.mock.calls.length).toBeGreaterThan(1)
+      expect(track.stop).not.toHaveBeenCalled()
+      handle.stop()
+      expect(track.stop).toHaveBeenCalledOnce()
+    },
+  )
 
   it("keeps a present-but-silent requestVideoFrameCallback on the 200 ms cadence", async () => {
     const track = new FakeTrack()
@@ -544,9 +690,11 @@ describe("camera scanner lifecycle", () => {
     },
   )
 
-  it("reports a silent frame callback and persistent zero-size frame with playing diagnostics", async () => {
+  it("fails closed after a rejected play and persistent zero-size frame", async () => {
     const track = new FakeTrack()
     const fakeVideo = new FakeVideo(0, 0, {
+      play: () =>
+        Promise.reject(new DOMException("WebKit autoplay race", "AbortError")),
       videoFrameCallbacks: true,
     })
     getUserMedia.mockResolvedValue(mediaStream(track))
@@ -572,6 +720,7 @@ describe("camera scanner lifecycle", () => {
       },
     )
     expect(zxing.readBarcodes).not.toHaveBeenCalled()
+    expect(fakeVideo.play).toHaveBeenCalled()
     expect(fakeVideo.cancelVideoFrameCallback).toHaveBeenCalled()
     expect(track.stop).toHaveBeenCalledOnce()
     handle.stop()
@@ -754,15 +903,65 @@ describe("camera scanner lifecycle", () => {
 
   it("ignores an old pending decode after replacement decode progress times out", async () => {
     const oldDecode = deferred<Array<{ text: string }>>()
-    const stalledPlay = deferred<void>()
+    const replacementDecode = deferred<Array<{ text: string }>>()
     const oldTrack = new FakeTrack()
     const replacementTrack = new FakeTrack()
-    const replacementVideo = new FakeVideo(640, 480, {
-      play: () => stalledPlay.promise,
-    })
+    const replacementVideo = new FakeVideo()
     getUserMedia
       .mockResolvedValueOnce(mediaStream(oldTrack))
       .mockResolvedValueOnce(mediaStream(replacementTrack))
+    zxing.readBarcodes
+      .mockReturnValueOnce(oldDecode.promise)
+      .mockReturnValueOnce(replacementDecode.promise)
+    const oldText = vi.fn()
+    const replacementError = vi.fn()
+    const decoder = await loadDecoder()
+    const oldHandle = await decoder.startQrScan(
+      videoElement(),
+      oldText,
+      vi.fn(),
+      { once: false },
+    )
+    await advance(0)
+
+    const replacementHandle = await decoder.startQrScan(
+      asVideoElement(replacementVideo),
+      vi.fn(),
+      replacementError,
+      { once: false },
+    )
+    await advance(0)
+    await advance(decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS)
+
+    oldDecode.resolve(barcode("OCK1:old-after-timeout"))
+    replacementDecode.resolve([])
+    await flushMicrotasks()
+
+    expect(oldText).not.toHaveBeenCalled()
+    expect(replacementError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "QR_DECODE_PROGRESS_TIMEOUT" }),
+      {
+        phase: "playing",
+        name: "QrDecodeProgressTimeout",
+        detail: "640x480 rs=2 track=live/unmuted",
+      },
+    )
+    expect(oldTrack.stop).toHaveBeenCalledOnce()
+    expect(replacementTrack.stop).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+    oldHandle.stop()
+    replacementHandle.stop()
+  })
+
+  it("ignores an old pending decode that resolves after replacement acquisition times out", async () => {
+    const oldDecode = deferred<Array<{ text: string }>>()
+    const replacementAcquire = deferred<MediaStream>()
+    const oldTrack = new FakeTrack()
+    const replacementTrack = new FakeTrack()
+    const replacementVideo = new FakeVideo()
+    getUserMedia
+      .mockResolvedValueOnce(mediaStream(oldTrack))
+      .mockReturnValueOnce(replacementAcquire.promise)
     zxing.readBarcodes.mockReturnValueOnce(oldDecode.promise)
     const oldText = vi.fn()
     const replacementError = vi.fn()
@@ -782,9 +981,9 @@ describe("camera scanner lifecycle", () => {
         replacementError,
         { once: false },
       ),
-    ).rejects.toMatchObject({ code: "QR_DECODE_PROGRESS_TIMEOUT" })
+    ).rejects.toMatchObject({ code: "CAMERA_NOT_AVAILABLE" })
     await flushMicrotasks()
-    await advance(decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS)
+    await advance(decoder.CAMERA_START_TIMEOUT_MS)
     await replacementRejection
 
     oldDecode.resolve(barcode("OCK1:old-after-timeout"))
@@ -792,17 +991,20 @@ describe("camera scanner lifecycle", () => {
 
     expect(oldText).not.toHaveBeenCalled()
     expect(replacementError).toHaveBeenCalledWith(
-      expect.objectContaining({ code: "QR_DECODE_PROGRESS_TIMEOUT" }),
+      expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
       {
-        phase: "acquired",
-        name: "QrDecodeProgressTimeout",
-        detail: "640x480 rs=2 track=live/unmuted",
+        phase: "acquiring",
+        name: "unknown",
+        detail: "640x480 rs=2 track=none",
       },
     )
     expect(oldTrack.stop).toHaveBeenCalledOnce()
+    expect(replacementTrack.stop).not.toHaveBeenCalled()
+
+    replacementAcquire.resolve(mediaStream(replacementTrack))
+    await flushMicrotasks()
     expect(replacementTrack.stop).toHaveBeenCalledOnce()
     oldHandle.stop()
-    stalledPlay.resolve(undefined)
   })
 
   it.each([
@@ -1258,7 +1460,7 @@ describe("camera scanner lifecycle", () => {
     expect(zxing.readBarcodes).not.toHaveBeenCalled()
   })
 
-  it("stopping before the frame pump schedules removes every timer and listener", async () => {
+  it("stopping before the scheduled frame pump runs removes every timer and listener", async () => {
     const playback = deferred<void>()
     const track = new FakeTrack()
     const fakeVideo = new FakeVideo(640, 480, {
@@ -1273,19 +1475,17 @@ describe("camera scanner lifecycle", () => {
     const signalRemove = vi.spyOn(controller.signal, "removeEventListener")
     getUserMedia.mockResolvedValue(mediaStream(track))
     const decoder = await loadDecoder()
-    const rejection = expect(
-      decoder.startQrScan(
-        asVideoElement(fakeVideo),
-        vi.fn(),
-        vi.fn(),
-        { once: false, signal: controller.signal },
-      ),
-    ).rejects.toMatchObject({ code: "CAMERA_NOT_AVAILABLE" })
-    await flushMicrotasks()
+    const handle = await decoder.startQrScan(
+      asVideoElement(fakeVideo),
+      vi.fn(),
+      vi.fn(),
+      { once: false, signal: controller.signal },
+    )
+    expect(zxing.readBarcodes).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBeGreaterThan(0)
 
     controller.abort()
-    await rejection
+    await flushMicrotasks()
 
     for (const [type, listener] of trackAdd.mock.calls) {
       expect(trackRemove).toHaveBeenCalledWith(type, listener)
@@ -1297,6 +1497,7 @@ describe("camera scanner lifecycle", () => {
       expect(signalRemove).toHaveBeenCalledWith(type, listener)
     }
     expect(vi.getTimerCount()).toBe(0)
+    handle.stop()
     playback.resolve(undefined)
     await flushMicrotasks()
     expect(zxing.readBarcodes).not.toHaveBeenCalled()

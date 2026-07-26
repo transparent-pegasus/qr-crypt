@@ -356,7 +356,7 @@ describe("QrScannerModal", () => {
       dialog.querySelector("[data-qr-scanner-scroll-region]"),
     ).toHaveClass(
       "min-h-0",
-      "max-h-[calc(95dvh-4rem-44px-1rem)]",
+      "max-h-[calc(95dvh-4rem)]",
       "overflow-y-auto",
     )
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())

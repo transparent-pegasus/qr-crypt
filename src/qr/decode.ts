@@ -11,6 +11,10 @@ import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url"
 
 import type { AppError } from "@/crypto/errors"
 import { AppError as ConcreteAppError } from "@/crypto/errors"
+import {
+  hasWebAssemblyInstantiationApi,
+  probeWebAssemblyRuntime,
+} from "@/lib/feature-detect"
 import { FRAME_INTERVAL_MS_MIN } from "@/lib/limits"
 
 export interface QrScanHandle {
@@ -86,32 +90,6 @@ const zxingReaderOptions: ReaderOptions = {
 
 let zxingModulePromise: Promise<void> | undefined
 let zxingModuleState: ReaderModuleState = "idle"
-
-const EMPTY_WASM_MODULE = Uint8Array.of(
-  0x00,
-  0x61,
-  0x73,
-  0x6d,
-  0x01,
-  0x00,
-  0x00,
-  0x00,
-)
-
-function detectWebAssemblySupport(): boolean {
-  try {
-    return (
-      typeof WebAssembly === "object" &&
-      typeof WebAssembly.instantiate === "function" &&
-      typeof WebAssembly.validate === "function" &&
-      WebAssembly.validate(EMPTY_WASM_MODULE)
-    )
-  } catch {
-    return false
-  }
-}
-
-const webAssemblySupported = detectWebAssemblySupport()
 
 interface ScannerControls {
   stop(): void
@@ -198,7 +176,7 @@ function prepareQrReaderModule(): Promise<void> {
   const existing = zxingModulePromise
   if (existing !== undefined) return existing
 
-  if (!webAssemblySupported) {
+  if (!hasWebAssemblyInstantiationApi()) {
     zxingModuleState = "failed"
     const unsupported = Promise.reject(
       new Error("WebAssembly is unavailable for the QR reader"),
@@ -336,6 +314,8 @@ function cameraDiagnostic(
 }
 
 function cameraError(error: unknown): ConcreteAppError {
+  if (error instanceof ConcreteAppError) return error
+
   const name = diagnosticName(error)
   if (name === "QrReaderPreparationTimeout") {
     return new ConcreteAppError("QR_READER_PREPARATION_TIMEOUT")
@@ -542,6 +522,7 @@ async function startAttempt(
   onText: (text: string) => void,
   once: boolean,
   modulePreparation: Promise<void>,
+  webAssemblyRuntimeSupport: Promise<boolean>,
 ): Promise<ScannerControls> {
   const stream = await acquireWithRetries(attempt)
   if (!isActiveAttempt(attempt)) {
@@ -878,6 +859,11 @@ async function startAttempt(
       )
       if (!isActiveAttempt(attempt)) return
 
+      if (!(await webAssemblyRuntimeSupport)) {
+        throw new ConcreteAppError("QR_READER_BLOCKED")
+      }
+      if (!isActiveAttempt(attempt)) return
+
       // Reader preparation remains after the first real draw so camera acquisition is
       // never blocked on WASM, but unlike frame readiness it has its own bounded wait.
       await waitForReaderModulePreparation()
@@ -928,9 +914,6 @@ async function startAttempt(
   attempt.controls = pump
   attempt.decodePumpStarted = true
   armDecodeProgressWatchdog()
-  await attempt.video.play()
-  if (!isActiveAttempt(attempt)) throw new AttemptCancelled()
-
   attempt.phase = "playing"
   attempt.frameRecoveryActive = true
   attempt.lastFrameErrorName = undefined
@@ -939,6 +922,7 @@ async function startAttempt(
   // Preserve the initial rVFC grace period; the readiness watchdog is already armed.
   // Steady-state scheduling above uses the cadence deadline with no added grace.
   scheduleNextFrame(Date.now(), false, frameRetryDelayMs)
+  retryVideoPlayback(attempt)
   return pump
 }
 
@@ -1017,12 +1001,13 @@ async function startQrScanImplementation(
     throw attempt.failure ?? new ConcreteAppError("CAMERA_NOT_AVAILABLE")
   }
 
-  // Not awaited: getUserMedia has to run inside the tap's user-activation window or
-  // iOS Safari never shows the permission prompt. The decoder awaits this after its
-  // first drawn frame instead, where failures and the bounded timeout are observable.
+  // Neither promise is awaited: getUserMedia has to run inside the tap's
+  // user-activation window. The decoder awaits both only after its first drawn frame,
+  // with a bounded wait for reader preparation.
   const modulePreparation = prepareQrReaderModule()
   attempt.readerModuleState = zxingModuleState
   publishPipelineDiagnostic(attempt)
+  const webAssemblyRuntimeSupport = probeWebAssemblyRuntime()
 
   const operation: Promise<AttemptOutcome> = startAttempt(
     attempt,
@@ -1030,6 +1015,7 @@ async function startQrScanImplementation(
     onText,
     options?.once ?? true,
     modulePreparation,
+    webAssemblyRuntimeSupport,
   ).then(
     (controls) => ({ kind: "ready", controls }),
     (error: unknown) => ({ kind: "error", error }),

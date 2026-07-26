@@ -7,8 +7,54 @@ export interface FeatureSupport {
   serviceWorker: boolean
 }
 
+const EMPTY_WEBASSEMBLY_MODULE = Uint8Array.of(
+  0x00,
+  0x61,
+  0x73,
+  0x6d,
+  0x01,
+  0x00,
+  0x00,
+  0x00,
+)
+
+let webAssemblyRuntimeProbe: Promise<boolean> | undefined
+
+export function hasWebAssemblyInstantiationApi(): boolean {
+  try {
+    return (
+      typeof WebAssembly === "object" &&
+      WebAssembly !== null &&
+      typeof WebAssembly.instantiate === "function"
+    )
+  } catch {
+    return false
+  }
+}
+
+// API presence and validate() do not prove that the effective CSP permits Wasm.
+// Instantiating a valid empty module exercises the browser's actual policy boundary.
+export function probeWebAssemblyRuntime(): Promise<boolean> {
+  const existing = webAssemblyRuntimeProbe
+  if (existing !== undefined) return existing
+
+  const probe = (async () => {
+    if (!hasWebAssemblyInstantiationApi()) return false
+    try {
+      await WebAssembly.instantiate(EMPTY_WEBASSEMBLY_MODULE)
+      return true
+    } catch {
+      return false
+    }
+  })()
+  webAssemblyRuntimeProbe = probe
+  return probe
+}
+
 export function detectFeatures(): FeatureSupport {
   const hasNavigator = typeof navigator !== "undefined"
+  // Start the policy-sensitive probe at boot without delaying the synchronous gate.
+  void probeWebAssemblyRuntime()
   return {
     webCrypto:
       typeof crypto !== "undefined" &&
