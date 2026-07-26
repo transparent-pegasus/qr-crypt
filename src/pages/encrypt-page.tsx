@@ -283,6 +283,9 @@ export function EncryptPage() {
   const localizedFrameError = useLocalizedMessage(frameSplit.error)
   const changeCompatibilityMode = useCallback(
     async (enabled: boolean) => {
+      const controller = resultAbortRef.current ?? new AbortController()
+      resultAbortRef.current = controller
+      const signal = resultAbortRef.current?.signal
       setCompatibilityUpdating(true)
       setResultError(null)
       const pair = enabled
@@ -294,6 +297,7 @@ export function EncryptPage() {
           frameIntervalMs: pair.frameIntervalMs,
         })
       } catch (caught) {
+        if (signal?.aborted) return
         setResultError(toAppError(caught, "STORAGE_FAILED").code)
       } finally {
         setCompatibilityUpdating(false)
@@ -465,6 +469,7 @@ export function EncryptPage() {
     resultAbortRef.current?.abort()
     resultAbortRef.current = null
     setResultExporting(false)
+    setResultError(null)
     setBusy(true)
     setError(null)
     setResult(null)

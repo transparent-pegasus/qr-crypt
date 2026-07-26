@@ -689,6 +689,12 @@ export function multipartPayload(
   return `OCF2:${transfer}:${index}:${count}:${artifactType}`
 }
 
+let nextMultipartAddGate: Promise<void> | null = null
+
+export function deferNextMultipartAdd(gate: Promise<void>): void {
+  nextMultipartAddGate = gate
+}
+
 export class FakeTransferAssembler {
   readonly #timeoutMs: number
   #transfer: string | null = null
@@ -703,6 +709,9 @@ export class FakeTransferAssembler {
   }
 
   async add(payload: string): Promise<TransferState> {
+    const gate = nextMultipartAddGate
+    nextMultipartAddGate = null
+    if (gate !== null) await gate
     if (this.#terminal) return this.#terminal
     const match = /^OCF2:([^:]+):(\d+):(\d+):(.+)$/u.exec(payload)
     if (!match) return this.#fail("INVALID_QR_PAYLOAD")
@@ -1000,5 +1009,6 @@ export function resetFakes(): void {
   fakePqDecrypt.kind = "signed-valid"
   scanTextCallback = null
   scanErrorCallback = null
+  nextMultipartAddGate = null
   vi.clearAllMocks()
 }

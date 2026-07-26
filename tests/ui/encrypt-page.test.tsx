@@ -14,6 +14,7 @@ import type {
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
+  deferNextMultipartAdd,
   emitScannedPayload,
   decryptWithAesKey,
   encryptWithAesKey,
@@ -1087,6 +1088,104 @@ describe("encrypt page v2", () => {
     ).toBeInTheDocument()
   })
 
+  it("R1 consumes a multipart completion delivered after the scanner closes", async () => {
+    const user = userEvent.setup()
+    const finalAdd = deferred<void>()
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    const scannerTrigger = screen.getByRole("button", {
+      name: "Scan a ciphertext QR code",
+    })
+    await user.click(scannerTrigger)
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    await act(async () => {
+      emitScannedPayload(multipartPayload("post-close-decrypt", 0, 2, "pq-message"))
+    })
+    deferNextMultipartAdd(finalAdd.promise)
+    act(() => {
+      emitScannedPayload(multipartPayload("post-close-decrypt", 1, 2, "pq-message"))
+    })
+    await user.click(
+      within(
+        screen.getByRole("dialog", {
+          name: "Scan a ciphertext QR code",
+        }),
+      ).getByRole("button", { name: "Close" }),
+    )
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", {
+          name: "Scan a ciphertext QR code",
+        }),
+      ).not.toBeInTheDocument(),
+    )
+
+    await act(async () => {
+      finalAdd.resolve()
+      await finalAdd.promise
+    })
+
+    expect(
+      await screen.findByText(
+        "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
+        {},
+        { timeout: 2_500 },
+      ),
+    ).toBeInTheDocument()
+    const postCloseResult = await screen
+      .findByRole(
+        "dialog",
+        { name: "Decryption complete" },
+        { timeout: 2_500 },
+      )
+      .catch(() => null)
+    if (postCloseResult !== null) {
+      await user.click(
+        within(postCloseResult).getByRole("button", { name: "Close" }),
+      )
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Decryption complete" }),
+        ).not.toBeInTheDocument(),
+      )
+    }
+
+    const postCloseResultOpened = postCloseResult !== null
+    decryptPqMessage.mockClear()
+    await user.click(scannerTrigger)
+    const reopenedScanner = await screen.findByRole("dialog", {
+      name: "Scan a ciphertext QR code",
+    })
+    await user.click(
+      within(reopenedScanner).getByRole("button", { name: "Close" }),
+    )
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", {
+          name: "Scan a ciphertext QR code",
+        }),
+      ).not.toBeInTheDocument(),
+    )
+
+    const unrelatedCloseResult = await screen
+      .findByRole(
+        "dialog",
+        { name: "Decryption complete" },
+        { timeout: 1_000 },
+      )
+      .catch(() => null)
+    expect({
+      postCloseResultOpened,
+      decryptCallsAfterUnrelatedClose: decryptPqMessage.mock.calls.length,
+      resultOpenedAfterUnrelatedClose: unrelatedCloseResult !== null,
+    }).toEqual({
+      postCloseResultOpened: true,
+      decryptCallsAfterUnrelatedClose: 0,
+      resultOpenedAfterUnrelatedClose: false,
+    })
+  }, 10_000)
+
   it("shows the invalid-payload alert and no modal for unparseable input", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
@@ -1459,5 +1558,55 @@ describe("encrypt page v2", () => {
       "compatibility failure alert must be contained by the result dialog",
     ).toContainElement(alert)
     expect(alert).toHaveTextContent(messageFor("STORAGE_FAILED", "en"))
+  })
+
+  it("R2 isolates a replacement result from a stale compatibility update", async () => {
+    const user = userEvent.setup()
+    const staleUpdate = deferred<Awaited<ReturnType<typeof updatePreferences>>>()
+    updatePreferences.mockReturnValueOnce(staleUpdate.promise)
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "stale compatibility")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const firstResult = await screen.findByRole("dialog", {
+      name: "Encryption complete",
+    })
+    const firstCompatibility = within(firstResult).getByRole("switch", {
+      name: "Compatibility mode",
+    })
+    await waitFor(() => expect(firstCompatibility).toBeEnabled())
+    await user.click(firstCompatibility)
+    await waitFor(() => expect(updatePreferences).toHaveBeenCalledOnce())
+    await waitFor(() => expect(firstCompatibility).toBeDisabled())
+    await user.click(within(firstResult).getByRole("button", { name: "Close" }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Encryption complete" }),
+      ).not.toBeInTheDocument(),
+    )
+
+    await user.type(screen.getByLabelText("Plaintext"), "replacement result")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    const replacement = await screen.findByRole("dialog", {
+      name: "Encryption complete",
+    })
+    const replacementCompatibility = within(replacement).getByRole("switch", {
+      name: "Compatibility mode",
+    })
+    expect(within(replacement).queryByRole("alert")).not.toBeInTheDocument()
+
+    await act(async () => {
+      staleUpdate.reject(new AppError("STORAGE_FAILED"))
+      await staleUpdate.promise.catch(() => undefined)
+    })
+
+    await waitFor(() => expect(replacementCompatibility).toBeEnabled())
+    expect(within(replacement).queryByRole("alert")).not.toBeInTheDocument()
   })
 })

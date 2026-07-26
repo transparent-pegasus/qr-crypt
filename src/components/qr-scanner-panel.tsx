@@ -1005,7 +1005,9 @@ export function QrScannerModal(props: QrScannerModalProps) {
       if (!beginDelivery()) return
       try {
         if (!multipartSession.claimCompletion()) return
-        await multipartRef.current?.onComplete({
+        const onComplete = multipartRef.current?.onComplete
+        if (onComplete === undefined) return
+        await onComplete({
           artifactType: next.artifactType,
           artifactBytes: next.artifactBytes,
         })
@@ -1013,6 +1015,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
           setClosedNotice(
             localized("scanner.closed.integrityImported"),
           )
+          onClosed?.()
         }
       } catch (caught) {
         if (canPublish()) {
@@ -1031,7 +1034,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
       polling = false
       window.clearInterval(timer)
     }
-  }, [beginDelivery, endDelivery, multipartSession, open])
+  }, [beginDelivery, endDelivery, multipartSession, onClosed, open])
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && deliveryBusyRef.current) return
