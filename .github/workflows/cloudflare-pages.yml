@@ -36,25 +36,25 @@ jobs:
         run: aube ci
 
       - name: Type check
-        run: aube typecheck
+        run: aube run typecheck
 
       - name: Lint
-        run: aube lint
+        run: aube run lint
 
       - name: Unit tests
-        run: aube test
+        run: aube run test
 
       - name: Post-quantum known-answer tests
-        run: aube test:pq-vectors
+        run: aube run test:pq-vectors
 
       - name: Post-quantum integration tests
-        run: aube test:pq
+        run: aube run test:pq
 
       - name: Multipart QR tests
-        run: aube test:qr-multipart
+        run: aube run test:qr-multipart
 
       - name: Build production PWA
-        run: aube build:prod
+        run: aube run build:prod
         env:
           VITE_BUILD_SHA: ${{ github.sha }}
 
@@ -90,7 +90,7 @@ jobs:
         run: aube exec playwright install --with-deps chromium
 
       - name: E2E tests
-        run: aube test:e2e
+        run: aube run test:e2e
 
   deploy:
     needs:

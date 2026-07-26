@@ -106,6 +106,7 @@ units:
       - .github/workflows/dev-to-main-pr.yml
       - .github/workflows/github-release.yml
       - docs/develop/deployment.md # prose mirror of the deploy/CI/release flow
+      - scripts/serve-dist.mjs # header-aware server called directly by the release workflow
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
       image, and GitHub runner/CLI behavior all drift with upstream releases.
@@ -186,6 +187,9 @@ units:
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
+      - scripts/serve-dist.mjs # header-aware server behind the executable CSP claims
+      - scripts/csp-from-headers.mjs # derives the meta CSP injected into index.html
+      - scripts/csp-from-headers.d.mts # declaration companion for the above
       - tests/e2e/security.spec.ts # executable half of the CSP claims
       - src/lib/limits.ts # artifact ceiling, algorithm-specific bounds, and cycle budget
       - src/schemas/env-schema.ts # PQ plaintext ceiling and maximum signed-artifact formula
