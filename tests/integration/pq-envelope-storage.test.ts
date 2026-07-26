@@ -273,6 +273,67 @@ describe("PQ envelope and storage integration", () => {
 })
 
 describe("deleteSupersededIdentities", () => {
+  it("closes the storage-resolved decrypt route but not an identity already held in memory", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const first = await createIdentity({
+      client,
+      vaultKey,
+      name: "first generation",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(first)
+    const recipient: PqPublicBundleRecord = {
+      ...publicRecord(first, NOW + 1),
+      trust: "fingerprint-confirmed",
+      trustConfirmedAt: NOW + 1,
+    }
+    const plaintext = utf8ToBytes("discard boundary")
+    const envelope = await encryptPq({
+      client,
+      recipient,
+      plaintext,
+      now: NOW + 2,
+    })
+    const rotation = await rotateIdentity({
+      client,
+      vaultKey,
+      current: first,
+      now: NOW + 3,
+    })
+    await saveRotation(rotation)
+
+    const oldRecipient = await findIdentityByKemKeyId(first.kem.keyId)
+    expect(oldRecipient).toMatchObject({ id: first.id, status: "rotated" })
+    const before = await decryptPqMessage({
+      client,
+      envelope,
+      recipient: oldRecipient!,
+      vaultKey,
+      resolveSigningKey: async () => undefined,
+    })
+    expect(before).toMatchObject({ kind: "unsigned", plaintext })
+
+    await deleteSupersededIdentities([first.id])
+    expect(await findIdentityByKemKeyId(first.kem.keyId)).toBeUndefined()
+
+    // Documents the boundary: discarding closes the storage-resolved route, not a
+    // PostQuantumIdentity object another context already holds in memory.
+    const afterWithCachedObject = await decryptPqMessage({
+      client,
+      envelope,
+      recipient: oldRecipient!,
+      vaultKey,
+      resolveSigningKey: async () => undefined,
+    })
+    expect(afterWithCachedObject).toMatchObject({
+      kind: "unsigned",
+      plaintext,
+    })
+  }, 30_000)
+
   it("deletes rotated and revoked generations after deduplicating the request", async () => {
     const client = createPqCryptoClient()
     clients.push(client)
