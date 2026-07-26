@@ -26,6 +26,7 @@ import {
   fakePreferences,
   findIdentityByKemKeyId,
   markIdentityUsed,
+  markKeyUsed,
   multipartPayload,
   renderQrDataUrl,
   splitIntoFrames,
@@ -47,10 +48,12 @@ async function chooseSelectOption(
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise
+    reject = rejectPromise
   })
-  return { promise, resolve }
+  return { promise, reject, resolve }
 }
 
 describe("encrypt page v2", () => {
@@ -1175,5 +1178,286 @@ describe("encrypt page v2", () => {
       ).not.toBeInTheDocument()
     })
     expect(screen.queryByText("復号済み平文")).not.toBeInTheDocument()
+  })
+
+  it("F1 disables every operation entry point while crypto is in flight", async () => {
+    const user = userEvent.setup()
+    const defaultEncryptWithAesKey = encryptWithAesKey.getMockImplementation()!
+    const defaultDecryptWithAesKey = decryptWithAesKey.getMockImplementation()!
+    const pendingEncryption =
+      deferred<Awaited<ReturnType<typeof defaultEncryptWithAesKey>>>()
+    encryptWithAesKey.mockReturnValueOnce(pendingEncryption.promise)
+    await renderApp("/encrypt")
+    await chooseSelectOption(user, "Key", "共通鍵A")
+    await user.type(screen.getByLabelText("Plaintext"), "single-flight encryption")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    await waitFor(() => expect(encryptWithAesKey).toHaveBeenCalledOnce())
+
+    const encryptTab = screen.getByRole("tab", { name: "Encrypt" })
+    const decryptTab = screen.getByRole("tab", { name: "Decrypt" })
+    const tabsDisabledDuringEncryption = [encryptTab, decryptTab].every((tab) =>
+      tab.hasAttribute("disabled"),
+    )
+    let scannerDisabledDuringEncryption: boolean | null = null
+    let decryptCallsStartedDuringEncryption = 0
+
+    // The unfixed page permits this branch. Once the tab gate is fixed, it is
+    // unreachable and the scanner gate is exercised below while decrypting.
+    if (!decryptTab.hasAttribute("disabled")) {
+      await user.click(decryptTab)
+      const scannerTrigger = screen.getByRole("button", {
+        name: "Scan a ciphertext QR code",
+      })
+      scannerDisabledDuringEncryption = scannerTrigger.hasAttribute("disabled")
+      if (!scannerTrigger.hasAttribute("disabled")) {
+        await user.click(scannerTrigger)
+        await waitFor(() => expect(startQrScan).toHaveBeenCalled())
+        await act(async () => {
+          emitScannedPayload("OCM1:sym-key-00000001")
+        })
+        await waitFor(() => expect(decryptWithAesKey).toHaveBeenCalledOnce())
+        decryptCallsStartedDuringEncryption = decryptWithAesKey.mock.calls.length
+        await screen.findByRole("dialog", { name: "Decryption complete" })
+      }
+    }
+
+    const encryptionArgs = encryptWithAesKey.mock.calls[0]![0]
+    const encrypted = await defaultEncryptWithAesKey(encryptionArgs)
+    await act(async () => {
+      pendingEncryption.resolve(encrypted)
+      await pendingEncryption.promise
+    })
+
+    const priorDecryptionResult = screen.queryByRole("dialog", {
+      name: "Decryption complete",
+    })
+    if (priorDecryptionResult) {
+      await user.click(
+        within(priorDecryptionResult).getByRole("button", { name: "Close" }),
+      )
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Decryption complete" }),
+        ).not.toBeInTheDocument(),
+      )
+    }
+    const encryptionResult = screen.queryByRole("dialog", {
+      name: "Encryption complete",
+    })
+    if (encryptionResult) {
+      await user.click(within(encryptionResult).getByRole("button", { name: "Close" }))
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("dialog", { name: "Encryption complete" }),
+        ).not.toBeInTheDocument(),
+      )
+    }
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Decrypt" })).toBeEnabled(),
+    )
+    const currentDecryptTab = screen.getByRole("tab", { name: "Decrypt" })
+    if (currentDecryptTab.getAttribute("data-state") !== "active") {
+      await user.click(currentDecryptTab)
+    }
+    decryptWithAesKey.mockClear()
+    const pendingDecryption =
+      deferred<Awaited<ReturnType<typeof defaultDecryptWithAesKey>>>()
+    decryptWithAesKey.mockReturnValueOnce(pendingDecryption.promise)
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM1:sym-key-00000001" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+    await waitFor(() => expect(decryptWithAesKey).toHaveBeenCalledOnce())
+    const scannerDisabledWhileDecrypting = screen
+      .getByRole("button", { name: "Scan a ciphertext QR code" })
+      .hasAttribute("disabled")
+
+    const decryptedBytes = await defaultDecryptWithAesKey()
+    await act(async () => {
+      pendingDecryption.resolve(decryptedBytes)
+      await pendingDecryption.promise
+    })
+    await screen.findByRole("dialog", { name: "Decryption complete" })
+
+    expect({
+      tabsDisabledDuringEncryption,
+      scannerDisabledDuringBusy:
+        scannerDisabledDuringEncryption ?? scannerDisabledWhileDecrypting,
+      decryptCallsStartedDuringEncryption,
+    }).toEqual({
+      tabsDisabledDuringEncryption: true,
+      scannerDisabledDuringBusy: true,
+      decryptCallsStartedDuringEncryption: 0,
+    })
+  })
+
+  it("F2 never stacks scanner and decryption result dialogs while marking key use", async () => {
+    const user = userEvent.setup()
+    const pendingMark = deferred<void>()
+    markKeyUsed.mockReturnValueOnce(pendingMark.promise)
+    await renderApp("/encrypt")
+    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
+    await user.click(screen.getByRole("button", { name: "Scan a ciphertext QR code" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalled())
+
+    let maximumDialogCount = document.querySelectorAll('[role="dialog"]').length
+    const dialogObserver = new MutationObserver(() => {
+      maximumDialogCount = Math.max(
+        maximumDialogCount,
+        document.querySelectorAll('[role="dialog"]').length,
+      )
+    })
+    dialogObserver.observe(document.body, { childList: true, subtree: true })
+
+    await act(async () => {
+      emitScannedPayload("OCM1:sym-key-00000001")
+    })
+    await waitFor(() => expect(markKeyUsed).toHaveBeenCalledOnce())
+    await act(async () => {
+      await Promise.resolve()
+    })
+    maximumDialogCount = Math.max(
+      maximumDialogCount,
+      document.querySelectorAll('[role="dialog"]').length,
+    )
+    const resultAppearedBeforeMarkSettled =
+      screen.queryByRole("dialog", { name: "Decryption complete" }) !== null
+
+    await act(async () => {
+      pendingMark.resolve()
+      await pendingMark.promise
+    })
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Scan a ciphertext QR code" }),
+      ).not.toBeInTheDocument(),
+    )
+    const result = await screen.findByRole("dialog", {
+      name: "Decryption complete",
+    })
+    dialogObserver.disconnect()
+
+    expect(within(result).getByText("復号済み平文")).toBeInTheDocument()
+    expect({
+      maximumDialogCount,
+      resultAppearedBeforeMarkSettled,
+    }).toEqual({
+      maximumDialogCount: 1,
+      resultAppearedBeforeMarkSettled: false,
+    })
+  })
+
+  it("F3 isolates a replacement result from a dismissed export", async () => {
+    const user = userEvent.setup()
+    const staleExport = deferred<void>()
+    exportQrFramePayloads.mockReturnValueOnce(staleExport.promise)
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "dismissed export")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const firstResult = await screen.findByRole("dialog", {
+      name: "Encryption complete",
+    })
+    const firstDownload = within(firstResult).getByRole("button", {
+      name: "Download",
+    })
+    await waitFor(() => expect(firstDownload).toBeEnabled())
+    await user.click(firstDownload)
+    await waitFor(() => expect(exportQrFramePayloads).toHaveBeenCalledOnce())
+    await waitFor(() => expect(firstDownload).toBeDisabled())
+    await user.click(within(firstResult).getByRole("button", { name: "Close" }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Encryption complete" }),
+      ).not.toBeInTheDocument(),
+    )
+
+    const renderCallsBeforeReplacement = renderQrDataUrl.mock.calls.length
+    await user.type(screen.getByLabelText("Plaintext"), "replacement result")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    const replacement = await screen.findByRole("dialog", {
+      name: "Encryption complete",
+    })
+    const replacementDownload = within(replacement).getByRole("button", {
+      name: "Download",
+    })
+    await waitFor(() =>
+      expect(
+        within(replacement).getByRole("switch", { name: "Compatibility mode" }),
+      ).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(renderQrDataUrl.mock.calls.length).toBeGreaterThan(
+        renderCallsBeforeReplacement,
+      ),
+    )
+    const replacementDownloadDisabledBeforeStaleRejection =
+      replacementDownload.hasAttribute("disabled")
+    const inheritedAlertBeforeStaleRejection =
+      within(replacement).queryByRole("alert")?.textContent ?? null
+
+    await act(async () => {
+      staleExport.reject(new AppError("QR_TOO_LARGE"))
+      await staleExport.promise.catch(() => undefined)
+    })
+    await waitFor(() => expect(replacementDownload).toBeEnabled())
+    const inheritedAlertAfterStaleRejection =
+      within(replacement).queryByRole("alert")?.textContent ?? null
+
+    expect({
+      replacementDownloadDisabledBeforeStaleRejection,
+      inheritedAlertBeforeStaleRejection,
+      inheritedAlertAfterStaleRejection,
+    }).toEqual({
+      replacementDownloadDisabledBeforeStaleRejection: false,
+      inheritedAlertBeforeStaleRejection: null,
+      inheritedAlertAfterStaleRejection: null,
+    })
+  })
+
+  it("F4 renders a compatibility persistence failure inside the result dialog", async () => {
+    const user = userEvent.setup()
+    updatePreferences.mockRejectedValueOnce(new AppError("STORAGE_FAILED"))
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "compatibility failure")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const result = await screen.findByRole("dialog", {
+      name: "Encryption complete",
+    })
+    const compatibility = within(result).getByRole("switch", {
+      name: "Compatibility mode",
+    })
+    await waitFor(() => expect(compatibility).toBeEnabled())
+    await user.click(compatibility)
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({
+        frameBytes: 100,
+        frameIntervalMs: 2_000,
+      }),
+    )
+    await waitFor(() => expect(document.querySelector('[role="alert"]')).not.toBeNull())
+    const alert = document.querySelector<HTMLElement>('[role="alert"]')!
+
+    expect(
+      result,
+      "compatibility failure alert must be contained by the result dialog",
+    ).toContainElement(alert)
+    expect(alert).toHaveTextContent(messageFor("STORAGE_FAILED", "en"))
   })
 })
