@@ -241,7 +241,9 @@ units:
     method: |
       Re-measure on at least Android Chrome + iOS Safari with current browser
       versions and VITE_BUILD_SHA; fill matrix rows. The zxing-wasm scanner
-      rows include offline first-use instantiation and both user-selected
+      rows include offline instantiation warmed on scanner mount and the single
+      in-attempt preparation retry after a non-timeout failure (a timed-out
+      preparation is not retried), and both user-selected
       generated-display preferences: switch off is the shipped 1000B/200ms
       default, and switch on is the 100B/2000ms compatible preference. Exercise
       per-artifact effective density clamps and verify the raised value is not
