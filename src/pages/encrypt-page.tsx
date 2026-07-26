@@ -36,11 +36,13 @@ import {
   useTransientClear,
 } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
+import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrDisplay } from "@/components/qr-display"
 import { QrScannerModal } from "@/components/qr-scanner-panel"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -83,7 +85,8 @@ import {
   qrPngBlob,
   triggerDownload,
 } from "@/qr/export-image"
-import { buildV2Payload } from "@/qr/payload-v2"
+import { exportQrFramePayloads } from "@/qr/export-frames"
+import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
 import { decodePayload, encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
@@ -231,6 +234,9 @@ export function EncryptPage() {
     error ?? compatibilityError ?? keysError ?? pqError ?? preferencesError,
   )
   const [result, setResult] = useState<EncryptionResult | null>(null)
+  const [resultExporting, setResultExporting] = useState(false)
+  const [resultError, setResultError] = useState<LocalizedMessage | null>(null)
+  const localizedResultError = useLocalizedMessage(resultError)
   const [outputName, setOutputName] = useState("")
   const [decryptInput, setDecryptInput] = useState("")
   const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
@@ -261,6 +267,19 @@ export function EncryptPage() {
     enabled: pqResult !== null,
     generation: `${pqResult?.generation ?? 0}:${frameProfile.frameBytes}`,
   })
+  const pqFrames = useMemo(
+    () =>
+      [...frameSplit.frames]
+        .sort((left, right) => left.frameIndex - right.frameIndex)
+        .map((frame) => ({
+          frameIndex: frame.frameIndex,
+          payload: encodeFrameToPayload(frame),
+        })),
+    [frameSplit.frames],
+  )
+  const canExportResult =
+    result?.kind === "aes" ||
+    (pqFrames.length > 0 && !frameSplit.splitting && frameSplit.error === null)
   const localizedFrameError = useLocalizedMessage(frameSplit.error)
   const changeCompatibilityMode = useCallback(
     async (enabled: boolean) => {
@@ -412,6 +431,7 @@ export function EncryptPage() {
     setResult(null)
     setOutputName("")
     setError(null)
+    setResultError(null)
     multipartSession.discard()
     setClearStatus("encrypt.toast.autoCleared")
     toast.info(t("encrypt.toast.autoCleared"))
@@ -576,7 +596,7 @@ export function EncryptPage() {
       await copyTextToClipboard(result.payload)
       toast.success(t("encrypt.toast.payloadCopied"))
     } catch {
-      setError("common.copyFailed")
+      setResultError("common.copyFailed")
     }
   }
 
@@ -584,7 +604,7 @@ export function EncryptPage() {
     if (result?.kind !== "aes") return
     const parsedName = qrNameSchema.safeParse(outputName)
     if (!parsedName.success) {
-      setError(
+      setResultError(
         messageKeyOrFallback(
           parsedName.error.issues[0]?.message,
           "encrypt.validation.outputNameFallback",
@@ -601,7 +621,33 @@ export function EncryptPage() {
       })
       triggerDownload(blob, buildExportFileName(parsedName.data, id, "png"))
     } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").code)
+      setResultError(toAppError(caught, "QR_TOO_LARGE").code)
+    }
+  }
+
+  const exportFrames = async () => {
+    if (result?.kind !== "pq" || resultExporting || !canExportResult) return
+    const parsedName = qrNameSchema.safeParse(outputName)
+    if (!parsedName.success) {
+      setResultError(
+        messageKeyOrFallback(
+          parsedName.error.issues[0]?.message,
+          "encrypt.validation.outputNameFallback",
+        ),
+      )
+      return
+    }
+    setResultExporting(true)
+    setResultError(null)
+    try {
+      await exportQrFramePayloads(pqFrames, {
+        outputName: parsedName.data,
+        size: env.qrRenderSize,
+      })
+    } catch (caught) {
+      setResultError(toAppError(caught, "QR_TOO_LARGE").code)
+    } finally {
+      setResultExporting(false)
     }
   }
 
@@ -963,164 +1009,195 @@ export function EncryptPage() {
         {clearStatus === null ? "" : t(clearStatus)}
       </p>
 
-      {result && mode === "encrypt" && (
-        <section aria-label={t("encrypt.result.sectionAria")} className="space-y-5">
-          <Card>
-            <CardHeader className="p-4 pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
+      <Dialog
+        open={result !== null && mode === "encrypt"}
+        onOpenChange={(open) => {
+          if (open) return
+          setResult(null)
+          setOutputName("")
+          setResultError(null)
+        }}
+      >
+        <NoAutofocusDialogContent className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden">
+          <div className="grid min-h-0 gap-5 overflow-y-auto pb-14">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
-                {t("encrypt.result.encryptDone")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 p-4 pt-0">
-              <p className="max-h-24 overflow-y-auto break-all rounded-md border p-3 font-mono text-xs">
-                {result.payload}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 cursor-pointer"
-                onClick={() => void copyPayload()}
-              >
-                <Clipboard aria-hidden="true" />
-                {t("encrypt.result.copyPayload")}
-              </Button>
-            </CardContent>
-          </Card>
+                {t("encrypt.result.modalTitle")}
+              </DialogTitle>
+            </DialogHeader>
+            {resultError && (
+              <Alert variant="destructive" role="alert">
+                <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+                <AlertDescription>{localizedResultError}</AlertDescription>
+              </Alert>
+            )}
+            {result !== null && (
+              <>
+                <div data-testid="encrypt-result-qr">
+                  {result.kind === "aes" ? (
+                    <QrDisplay
+                      payload={result.payload}
+                      ecLevel={ecLevelFor("message", preferences)}
+                      size={env.qrRenderSize}
+                      title={t("encrypt.result.qrTitle")}
+                    />
+                  ) : (
+                    <>
+                      {frameSplit.error && (
+                        <Alert variant="destructive" role="alert">
+                          <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>
+                          <AlertDescription>{localizedFrameError}</AlertDescription>
+                        </Alert>
+                      )}
+                      {frameSplit.frames.length === 0 && frameSplit.splitting && (
+                        <p
+                          aria-live="polite"
+                          className="text-sm text-muted-foreground"
+                        >
+                          {t("qrDisplay.generating")}
+                        </p>
+                      )}
+                      {(frameSplit.frames.length > 0 || frameSplit.splitting) && (
+                        <AnimatedQrFrames
+                          key={result.generation}
+                          frames={frameSplit.frames}
+                          frameIntervalMs={frameProfile.frameIntervalMs}
+                          densityRaised={frameProfile.densityRaised}
+                          compatibilityControl={{
+                            enabled: compatibilityEnabled,
+                            disabled:
+                              preferencesLoading ||
+                              preferencesError !== null ||
+                              compatibilityUpdating,
+                            onEnabledChange: changeCompatibilityMode,
+                          }}
+                          outputName={outputName || "pq-message"}
+                          title={t("encrypt.result.pqTitle")}
+                          exportsEnabled={false}
+                          splitting={frameSplit.splitting}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
 
-          {result.kind === "aes" ? (
-            <QrDisplay
-              payload={result.payload}
-              ecLevel={ecLevelFor("message", preferences)}
-              size={env.qrRenderSize}
-              title={t("encrypt.result.qrTitle")}
-            />
-          ) : (
-            <>
-              {frameSplit.error && (
-                <Alert variant="destructive" role="alert">
-                  <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>
-                  <AlertDescription>{localizedFrameError}</AlertDescription>
-                </Alert>
-              )}
-              {frameSplit.frames.length === 0 && frameSplit.splitting && (
-                <p aria-live="polite" className="text-sm text-muted-foreground">
-                  {t("qrDisplay.generating")}
-                </p>
-              )}
-              {(frameSplit.frames.length > 0 || frameSplit.splitting) && (
-                <AnimatedQrFrames
-                  key={result.generation}
-                  frames={frameSplit.frames}
-                  frameIntervalMs={frameProfile.frameIntervalMs}
-                  densityRaised={frameProfile.densityRaised}
-                  compatibilityControl={{
-                    enabled: compatibilityEnabled,
-                    disabled:
-                      preferencesLoading ||
-                      preferencesError !== null ||
-                      compatibilityUpdating,
-                    onEnabledChange: changeCompatibilityMode,
-                  }}
-                  outputName={outputName || "pq-message"}
-                  title={t("encrypt.result.pqTitle")}
-                  splitting={frameSplit.splitting}
-                />
-              )}
-            </>
-          )}
+                <div data-testid="encrypt-result-payload" className="space-y-3">
+                  <p className="max-h-24 overflow-y-auto break-all rounded-md border p-3 font-mono text-xs">
+                    {result.payload}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 cursor-pointer"
+                    onClick={() => void copyPayload()}
+                  >
+                    <Clipboard aria-hidden="true" />
+                    {t("encrypt.result.copyPayload")}
+                  </Button>
+                </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="output-name">{t("encrypt.result.outputNameLabel")}</Label>
-            <Input
-              id="output-name"
-              value={outputName}
-              onChange={(event) => setOutputName(event.target.value)}
-              maxLength={80}
-              className="h-11"
-            />
+                <div data-testid="encrypt-result-output" className="space-y-2">
+                  <Label htmlFor="output-name">
+                    {t("encrypt.result.outputNameLabel")}
+                  </Label>
+                  <Input
+                    id="output-name"
+                    value={outputName}
+                    onChange={(event) => setOutputName(event.target.value)}
+                    maxLength={80}
+                    className="h-11"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full cursor-pointer"
+                    disabled={resultExporting || !canExportResult}
+                    onClick={() =>
+                      void (result.kind === "aes" ? exportSingle() : exportFrames())
+                    }
+                  >
+                    <Download aria-hidden="true" />
+                    {t("common.download")}
+                  </Button>
+                </div>
+
+                <Card
+                  data-testid="encrypt-result-detail"
+                  aria-label={t("encrypt.result.detailAria")}
+                >
+                  <CardHeader className="p-4 pb-3">
+                    <CardTitle className="text-base">
+                      {t("encrypt.result.detailTitle")}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 p-4 pt-0 text-sm">
+                    <DetailRow
+                      label={t("encrypt.detail.suite")}
+                      value={resultSuite ?? t("common.na")}
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.recipientKeyId")}
+                      value={
+                        result.kind === "aes"
+                          ? result.envelope.keyId
+                          : result.envelope.recipientKemKeyId
+                      }
+                      mono
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.senderSigningKeyId")}
+                      value={
+                        result.kind === "pq"
+                          ? (result.sender?.signing.keyId ?? t("common.na"))
+                          : t("common.na")
+                      }
+                      mono
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.totalBytes")}
+                      value={`${result.totalBytes} bytes`}
+                      mono
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.frameCount")}
+                      value={t("encrypt.detail.frameCountValue", {
+                        count: result.kind === "pq" ? frameSplit.frames.length : 1,
+                      })}
+                      mono
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.encryptedAt")}
+                      value={formatDateTime(result.createdAt, language)}
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.signature")}
+                      value={
+                        result.kind === "pq" && result.sender
+                          ? t("common.yes")
+                          : t("common.na")
+                      }
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.pqProfile")}
+                      value={
+                        result.kind === "pq"
+                          ? ACTIVE_PROFILE
+                          : t("encrypt.detail.notApplicable")
+                      }
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.wholeSha256")}
+                      value={result.sha256}
+                      mono
+                    />
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </div>
-
-          {result.kind === "aes" && (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-full cursor-pointer"
-              onClick={() => void exportSingle()}
-            >
-              <Download aria-hidden="true" />
-              {t("common.download")}
-            </Button>
-          )}
-
-          <Card aria-label={t("encrypt.result.detailAria")}>
-            <CardHeader className="p-4 pb-3">
-              <CardTitle className="text-base">
-                {t("encrypt.result.detailTitle")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 p-4 pt-0 text-sm">
-              <DetailRow
-                label={t("encrypt.detail.suite")}
-                value={resultSuite ?? t("common.na")}
-              />
-              <DetailRow
-                label={t("encrypt.detail.recipientKeyId")}
-                value={
-                  result.kind === "aes"
-                    ? result.envelope.keyId
-                    : result.envelope.recipientKemKeyId
-                }
-                mono
-              />
-              <DetailRow
-                label={t("encrypt.detail.senderSigningKeyId")}
-                value={
-                  result.kind === "pq"
-                    ? (result.sender?.signing.keyId ?? t("common.na"))
-                    : t("common.na")
-                }
-                mono
-              />
-              <DetailRow
-                label={t("encrypt.detail.totalBytes")}
-                value={`${result.totalBytes} bytes`}
-                mono
-              />
-              <DetailRow
-                label={t("encrypt.detail.frameCount")}
-                value={t("encrypt.detail.frameCountValue", {
-                  count: result.kind === "pq" ? frameSplit.frames.length : 1,
-                })}
-                mono
-              />
-              <DetailRow
-                label={t("encrypt.detail.encryptedAt")}
-                value={formatDateTime(result.createdAt, language)}
-              />
-              <DetailRow
-                label={t("encrypt.detail.signature")}
-                value={
-                  result.kind === "pq" && result.sender ? t("common.yes") : t("common.na")
-                }
-              />
-              <DetailRow
-                label={t("encrypt.detail.pqProfile")}
-                value={
-                  result.kind === "pq"
-                    ? ACTIVE_PROFILE
-                    : t("encrypt.detail.notApplicable")
-                }
-              />
-              <DetailRow
-                label={t("encrypt.detail.wholeSha256")}
-                value={result.sha256}
-                mono
-              />
-            </CardContent>
-          </Card>
-        </section>
-      )}
+        </NoAutofocusDialogContent>
+      </Dialog>
     </section>
   )
 }

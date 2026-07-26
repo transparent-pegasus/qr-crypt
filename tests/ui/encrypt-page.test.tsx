@@ -18,6 +18,7 @@ import {
   encryptWithAesKey,
   encryptPq,
   decryptPqMessage,
+  exportQrFramePayloads,
   fakeBundles,
   fakeIdentities,
   fakePqDecrypt,
@@ -180,8 +181,8 @@ describe("encrypt page v2", () => {
       })
     })
 
-    const result = await screen.findByRole("region", { name: "Encryption result" })
-    expect(within(result).getByText("Encryption is complete")).toBeInTheDocument()
+    const result = await screen.findByRole("dialog", { name: "Encryption complete" })
+    expect(within(result).getByText("Encryption complete")).toBeInTheDocument()
     expect(within(result).getByLabelText("Output name")).toBeInTheDocument()
     for (const label of [
       "Cryptographic suite",
@@ -229,7 +230,7 @@ describe("encrypt page v2", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("keeps the PQ transfer ID stable across Encrypt and Decrypt tabs", async () => {
+  it("discards the PQ result when the modal closes and re-encrypts with a fresh transfer ID", async () => {
     const user = userEvent.setup()
     const defaultSplitIntoFrames = splitIntoFrames.getMockImplementation()!
     splitIntoFrames.mockImplementationOnce(async (args) => {
@@ -250,7 +251,7 @@ describe("encrypt page v2", () => {
     await user.type(screen.getByLabelText("Plaintext"), "stable transfer")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
-    const result = await screen.findByRole("region", { name: "Encryption result" })
+    const result = await screen.findByRole("dialog", { name: "Encryption complete" })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(renderQrDataUrl).toHaveBeenCalled())
     await user.click(within(result).getByRole("button", { name: "Pause" }))
@@ -259,22 +260,30 @@ describe("encrypt page v2", () => {
     const initialTransferId = initialPayload!.split(":")[1]
     const renderCallsBeforeTabSwitch = renderQrDataUrl.mock.calls.length
 
+    await user.click(within(result).getByRole("button", { name: "Close" }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Encryption complete" }),
+      ).not.toBeInTheDocument()
+    })
     await user.click(screen.getByRole("tab", { name: "Decrypt" }))
-    expect(
-      screen.queryByRole("region", { name: "Encryption result" }),
-    ).not.toBeInTheDocument()
     await user.click(screen.getByRole("tab", { name: "Encrypt" }))
-    await screen.findByRole("region", { name: "Encryption result" })
+    await user.type(screen.getByLabelText("Plaintext"), "fresh transfer")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    const freshResult = await screen.findByRole("dialog", {
+      name: "Encryption complete",
+    })
     await waitFor(() =>
       expect(renderQrDataUrl.mock.calls.length).toBeGreaterThan(
         renderCallsBeforeTabSwitch,
       ),
     )
 
-    expect(splitIntoFrames).toHaveBeenCalledTimes(1)
-    const resumedPayload = renderQrDataUrl.mock.calls.at(-1)?.[0]
-    expect(resumedPayload).toMatch(/^OCF2:/)
-    expect(resumedPayload!.split(":")[1]).toBe(initialTransferId)
+    expect(splitIntoFrames).toHaveBeenCalledTimes(2)
+    await user.click(within(freshResult).getByRole("button", { name: "Pause" }))
+    const freshPayload = renderQrDataUrl.mock.calls.at(-1)?.[0]
+    expect(freshPayload).toMatch(/^OCF2:/)
+    expect(freshPayload!.split(":")[1]).not.toBe(initialTransferId)
   })
 
   it("does not persist during scan decryption success", async () => {
@@ -494,7 +503,7 @@ describe("encrypt page v2", () => {
     const encryptButton = screen.getByRole("button", { name: "Encrypt" })
     expect(encryptButton).toBeEnabled()
     await user.click(encryptButton)
-    await screen.findByRole("region", { name: "Encryption result" })
+    await screen.findByRole("dialog", { name: "Encryption complete" })
     expect(encryptPq).toHaveBeenCalledOnce()
     expect(encryptPq.mock.calls[0]![0].plaintext).toHaveLength(
       symmetricOversizePlaintext.length,
@@ -509,8 +518,8 @@ describe("encrypt page v2", () => {
     const plaintext = screen.getByLabelText("Plaintext")
     fireEvent.change(plaintext, { target: { value: "既定で消去される平文" } })
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
-    const result = await screen.findByRole("region", { name: "Encryption result" })
-    expect(within(result).getByText("Encryption is complete")).toBeInTheDocument()
+    const result = await screen.findByRole("dialog", { name: "Encryption complete" })
+    expect(within(result).getByText("Encryption complete")).toBeInTheDocument()
     expect(plaintext).toHaveValue("")
     expect(fakeIdentities).toHaveLength(1)
     expect(within(result).getAllByRole("button", { name: "Download" })).toHaveLength(1)
@@ -550,7 +559,7 @@ describe("encrypt page v2", () => {
     await user.type(screen.getByLabelText("Plaintext"), "no wasm default")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
-    const result = await screen.findByRole("region", { name: "Encryption result" })
+    const result = await screen.findByRole("dialog", { name: "Encryption complete" })
     await waitFor(() =>
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -602,7 +611,7 @@ describe("encrypt page v2", () => {
     await user.type(screen.getByLabelText("Plaintext"), "fullscreen compatibility")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
-    const result = await screen.findByRole("region", { name: "Encryption result" })
+    const result = await screen.findByRole("dialog", { name: "Encryption complete" })
     await waitFor(() =>
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -713,7 +722,7 @@ describe("encrypt page v2", () => {
     await user.type(screen.getByLabelText("Plaintext"), "compatible clamp")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
-    let result = await screen.findByRole("region", { name: "Encryption result" })
+    let result = await screen.findByRole("dialog", { name: "Encryption complete" })
     await waitFor(() =>
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -773,7 +782,7 @@ describe("encrypt page v2", () => {
     await user.type(screen.getByLabelText("Plaintext"), "compatible remount")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
-    result = await screen.findByRole("region", { name: "Encryption result" })
+    result = await screen.findByRole("dialog", { name: "Encryption complete" })
     await waitFor(() =>
       expect(
         within(result).getByRole("switch", { name: "Compatibility mode" }),
@@ -823,7 +832,7 @@ describe("encrypt page v2", () => {
     await user.type(screen.getByLabelText("Plaintext"), "density floor")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
-    const result = await screen.findByRole("region", { name: "Encryption result" })
+    const result = await screen.findByRole("dialog", { name: "Encryption complete" })
     await waitFor(() =>
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -887,5 +896,115 @@ describe("encrypt page v2", () => {
     expect(await screen.findByText(messageFor("QR_TOO_LARGE", "en"))).toBeInTheDocument()
     expect(screen.queryByText("Encryption is complete")).toBeNull()
     expect(splitIntoFrames).not.toHaveBeenCalled()
+  })
+
+  it("shows the AES result in a modal in the requested order", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(user, "Key", "共通鍵A")
+    await user.type(screen.getByLabelText("Plaintext"), "AES modal slot order")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const dialog = await screen.findByRole("dialog", { name: "Encryption complete" })
+    const order = within(dialog)
+      .getAllByTestId(/^encrypt-result-/)
+      .map((node) => node.dataset.testid)
+
+    expect(order).toEqual([
+      "encrypt-result-qr",
+      "encrypt-result-payload",
+      "encrypt-result-output",
+      "encrypt-result-detail",
+    ])
+    expect(within(dialog).getAllByRole("button", { name: "Download" })).toHaveLength(1)
+    expect(
+      within(dialog).getByTestId("encrypt-result-output").querySelector("button"),
+    ).toBeTruthy()
+  })
+
+  it("keeps the PQ transport controls with the QR, above the payload", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "PQ modal transport controls")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const dialog = await screen.findByRole("dialog", { name: "Encryption complete" })
+    const qrSlot = within(dialog).getByTestId("encrypt-result-qr")
+
+    expect(
+      await within(qrSlot).findByRole("button", { name: "Pause" }),
+    ).toBeInTheDocument()
+    expect(within(qrSlot).getByRole("button", { name: "Next" })).toBeInTheDocument()
+    expect(
+      within(qrSlot).getByRole("switch", { name: "Compatibility mode" }),
+    ).toBeInTheDocument()
+    expect(within(qrSlot).getByText(/^1 \/ \d+$/)).toBeInTheDocument()
+    expect(within(dialog).getAllByRole("button", { name: "Download" })).toHaveLength(1)
+    expect(within(qrSlot).queryByRole("button", { name: "Download" })).toBeNull()
+  })
+
+  it("discards the result when the modal closes", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(user, "Key", "共通鍵A")
+    await user.type(screen.getByLabelText("Plaintext"), "discard this AES result")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const dialog = await screen.findByRole("dialog", { name: "Encryption complete" })
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Encryption complete" }),
+      ).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText(/^OCM1:/)).not.toBeInTheDocument()
+  })
+
+  it("disables the PQ download until the frame split has frames", async () => {
+    const user = userEvent.setup()
+    const pendingSplit = deferred<Awaited<ReturnType<typeof splitIntoFrames>>>()
+    splitIntoFrames.mockReturnValueOnce(pendingSplit.promise)
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "pending PQ frame split")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const dialog = await screen.findByRole("dialog", { name: "Encryption complete" })
+    expect(within(dialog).getByRole("button", { name: "Download" })).toBeDisabled()
+  })
+
+  it("shows an export failure inside the modal", async () => {
+    const user = userEvent.setup()
+    exportQrFramePayloads.mockRejectedValueOnce(new AppError("QR_TOO_LARGE"))
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Post-quantum ML-KEM-1024 \+ AES/,
+    )
+    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await user.type(screen.getByLabelText("Plaintext"), "PQ export failure")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const dialog = await screen.findByRole("dialog", { name: "Encryption complete" })
+    const download = within(dialog).getByRole("button", { name: "Download" })
+    await waitFor(() => expect(download).toBeEnabled())
+    await user.click(download)
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      messageFor("QR_TOO_LARGE", "en"),
+    )
   })
 })
