@@ -1,6 +1,6 @@
 ---
-name: design-review
-description: Judge whether this repository's design simplicity holds up — implementation logic, test scope, and the wording of docs and comments. Read-only: findings go to .tmp/, nothing is edited. Use for 設計レビュー, シンプルさ監査, 過剰なテスト, 冗長なコメント, over-engineering audit, /design-review.
+name: artful-simplicity
+description: Judge whether this repository's design simplicity holds up — implementation logic, test scope, and the wording of docs and comments. Read-only: findings go to .tmp/, nothing is edited. Use for 設計レビュー, シンプルさ監査, 過剰なテスト, 冗長なコメント, over-engineering audit, /artful-simplicity.
 ---
 
 # Design review
@@ -9,9 +9,9 @@ One question, three axes: is this the shortest thing that still works?
 
 ## Scope
 
-`/design-review` covers the tracked files (`git ls-files`) except
+`/artful-simplicity` covers the tracked files (`git ls-files`) except
 `design-system/pages/` — archival exports of the retired RSA-era UI.
-`/design-review <path>…` narrows to those paths together with their tests and
+`/artful-simplicity <path>…` narrows to those paths together with their tests and
 the docs that mirror them.
 
 ## Axes
@@ -52,7 +52,7 @@ authorize deleting a read path that stored user data still needs.
 
 ## Output
 
-Write `.tmp/design-review-<today, YYYY-MM-DD>.md`; change nothing else.
+Write `.tmp/artful-simplicity-<today, YYYY-MM-DD>.md`; change nothing else.
 
 One section per axis, headed `## Logic`, `## Tests`, `## Words`. Each opens with
 

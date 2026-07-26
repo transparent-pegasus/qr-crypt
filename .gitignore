@@ -17,7 +17,7 @@ coverage/
 # Private agent tooling (local only; repository skills below stay tracked)
 .claude/skills/*
 !.claude/skills/freshness/
-!.claude/skills/design-review/
+!.claude/skills/artful-simplicity/
 
 # Local task workflow (untracked)
 /WORKFLOW.md
