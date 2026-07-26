@@ -100,7 +100,7 @@ units:
   - id: ci-actions
     category: dependencies
     cadence_days: 60
-    last_checked: 2026-07-25
+    last_checked: 2026-07-26
     files:
       - .github/workflows/cloudflare-pages.yml
       - .github/workflows/dev-to-main-pr.yml
