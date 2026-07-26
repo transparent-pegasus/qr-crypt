@@ -1,5 +1,5 @@
 // v2 QR payloads. The prefix table and frame codec are frozen wire contracts; see
-// docs/qr-protocol-v2.md §1 and §6. Typed-envelope decoding, assembly, and UI wiring
+// docs/spec/qr-protocol-v2.md §1 and §6. Typed-envelope decoding, assembly, and UI wiring
 // build on this module.
 //
 // Policy:

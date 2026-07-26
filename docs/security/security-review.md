@@ -92,7 +92,7 @@ PQ fixture:
 | artifact / frames | 126,619 B / 127 frames at 1,000B |
 
 These are desktop numbers. **On-device figures for Android Chrome and iOS Safari
-are not yet measured** — see `docs/browser-matrix.md`. The ZIP path renders
+are not yet measured** — see `docs/develop/browser-matrix.md`. The ZIP path renders
 frames serially, so its peak memory is bounded by roughly one 1024px raster
 rather than by 127 of them, but its ~7s wall clock on desktop implies a
 materially longer wait on a phone.
@@ -146,14 +146,14 @@ validation remains in place for the retained schema.
   materially narrower than `'unsafe-eval'`, which is **not** enabled and which would
   additionally permit JavaScript string evaluation
 - Attacker-controlled camera pixels now reach a C++/Emscripten parser. See
-  `docs/threat-model.md` T5 for the resulting denial-of-service residual
+  `docs/security/threat-model.md` T5 for the resulting denial-of-service residual
 - Phone-side cost (decode latency, peak memory, long tasks, teardown responsiveness)
-  is **not yet measured**; see `docs/browser-matrix.md`
+  is **not yet measured**; see `docs/develop/browser-matrix.md`
 
 ### Supply Chain
 
 - Locked in `aube-lock.yaml` (must be committed). For the v1-era supply-chain
-  decisions and the 2026-07-24 re-verification, see `docs/threat-model.md` §5.1
+  decisions and the 2026-07-24 re-verification, see `docs/security/threat-model.md` §5.1
 - ZIP output is an in-house store-only implementation with no added dependency (`fflate` was rejected for lacking provenance)
 - **RESOLVED (dev chain, re-verified 2026-07-25)**: `sharp` — `GHSA-f88m-g3jw-g9cj`
   (CVE-2026-33327 / CVE-2026-33328 / CVE-2026-35590 / CVE-2026-35591,
@@ -184,14 +184,14 @@ None of the following may be used in UI, README, or CI displays.
 
 - "FIPS certified" (implementing FIPS 203/204 algorithms is distinct from FIPS 140 certification)
 - "completely secure" (a safety declaration without independent audit)
-- "secure erase" / "complete deletion" (see docs/boot-and-reset-v2.md)
+- "secure erase" / "complete deletion" (see docs/spec/boot-and-reset-v2.md)
 
 The security screen must state explicitly:
 noble is not independently audited; JS side-channel resistance is not
 guaranteed; JS memory erasure has limits
 (zeroize is incomplete due to GC, internal copies, and optimizations).
 
-## 3. Per-Release Verification Checklist (also listed in the README)
+## 3. Per-Release Verification Checklist
 
 1. Check the latest FIPS 203 / FIPS 204 errata (on the relevant NIST CSRC pages)
 2. Check the `@noble/post-quantum` changelog, known vulnerabilities, and advisories
@@ -221,7 +221,7 @@ guaranteed; JS memory erasure has limits
 - Reviewing party (basis of independence) / review period
 - Target commit hash, build hash, `@noble/post-quantum` version, and transitive lock
 - Scope (the maximum-mainline libraries, the protocol design in
-  docs/qr-protocol-v2.md, the application implementation, and the retained
+  docs/spec/qr-protocol-v2.md, the application implementation, and the retained
   4-suite wire/codec contract)
 - List of findings, fix commits, and re-verification results
 - FIPS errata check result

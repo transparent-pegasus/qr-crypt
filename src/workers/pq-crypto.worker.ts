@@ -60,7 +60,7 @@ type IdentityKeyStage = "seed" | "keygen" | "public-key-digest" | "seed-encrypti
 // this frame sees them. Emit the stage under the test build only, and only
 // allowlisted values: the stage label plus the error's class name or AppError
 // code. Never the message, stack, cause, request payload or any byte array —
-// docs/security-review.md forbids those on every surface, console included, and
+// docs/security/security-review.md forbids those on every surface, console included, and
 // MODE is "test" only under vitest, so neither a production build nor a
 // `vite dev` session with real key material can reach this.
 function reportStage(stage: IdentityKeyStage, error: unknown): void {

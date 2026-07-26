@@ -1,6 +1,6 @@
-// v2 byte conventions; see docs/qr-protocol-v2.md §4, §7, and §8.
+// v2 byte conventions; see docs/spec/qr-protocol-v2.md §4, §7, and §8.
 // The byte strings for HKDF info, the ML-DSA context, Vault AAD, and PQ fingerprints
-// must match the hexadecimal golden fixtures in docs/qr-protocol-v2.md.
+// must match the hexadecimal golden fixtures in docs/spec/qr-protocol-v2.md.
 import type {
   MlDsaAlgorithm,
   MlKemAlgorithm,

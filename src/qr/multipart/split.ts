@@ -1,4 +1,4 @@
-// Raw artifact bytes → OCF2 frame sequence; see docs/qr-protocol-v2.md §6.
+// Raw artifact bytes → OCF2 frame sequence; see docs/spec/qr-protocol-v2.md §6.
 // Split raw artifact-CBOR bytes directly into chunks; re-encoding an inner string as
 // base64url is prohibited. transferId is 16B from the CSPRNG. After generation, verify
 // with payloadFits(…, "Q") that every frame string fits EC-Q; otherwise fail with

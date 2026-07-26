@@ -1,4 +1,4 @@
-// AES-256-GCM; see docs/qr-protocol.md §5.
+// AES-256-GCM; see docs/spec/qr-protocol.md §5.
 // Use randomBytes(12) for every encryption IV and explicitly set tagLength to 128.
 import type { AesMessageEnvelopeV1 } from "@/crypto/envelope"
 import { buildAad } from "@/crypto/envelope"

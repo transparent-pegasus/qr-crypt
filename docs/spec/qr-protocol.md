@@ -2,7 +2,7 @@
 
 This document is the authoritative specification of the v1 payloads exchanged via QR codes. The implementation (`src/qr/payload.ts`, `src/crypto/*`) and the unit tests follow this document.
 
-> **Status (v2):** the AES-256-GCM message payload (`OCM1` with `alg: "A256GCM"`) remains produced and accepted. The RSA hybrid portions of this document are **historical**: the RSA path was removed in the v2 update, and schema validation rejects non-`A256GCM` `OCM1` messages. See [qr-protocol-v2.md](qr-protocol-v2.md) and the README's "Breaking changes" section.
+> **Status (v2):** the AES-256-GCM message payload (`OCM1` with `alg: "A256GCM"`) remains produced and accepted. The RSA hybrid portions of this document are **historical**: the RSA path was removed in the v2 update, and schema validation rejects non-`A256GCM` `OCM1` messages. See [qr-protocol-v2.md](qr-protocol-v2.md).
 
 ## 1. Payload String
 

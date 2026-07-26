@@ -1,4 +1,4 @@
-// Envelope type definitions (docs/qr-protocol.md §3) and AAD construction (§4).
+// Envelope type definitions (docs/spec/qr-protocol.md §3) and AAD construction (§4).
 // Adding or removing fields implies protocol v2 and is not permitted in v1.
 import { utf8ToBytes } from "@/lib/bytes"
 

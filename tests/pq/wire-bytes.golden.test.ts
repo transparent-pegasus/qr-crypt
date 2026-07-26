@@ -1,5 +1,5 @@
 // Golden fixtures for v2 byte conventions.
-// Hex values must match docs/qr-protocol-v2.md §8.
+// Hex values must match docs/spec/qr-protocol-v2.md §8.
 import { describe, expect, it } from "vitest"
 import type { PublicIdentityBundleV2 } from "@/schemas/domain"
 import { AppError, type ErrorCode } from "@/crypto/errors"

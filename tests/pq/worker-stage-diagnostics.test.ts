@@ -1,7 +1,7 @@
 // The worker collapses every failure into one public code per operation, so a
 // failing CI run cannot say which stage of generateIdentityKeys broke. These
 // tests pin the stage diagnostic that fills that gap, and pin that it stays
-// inside the allowlist docs/security-review.md sets for every surface, console
+// inside the allowlist docs/security/security-review.md sets for every surface, console
 // included: no message, no stack, no cause, no payload, no byte array.
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
 import { createPqCryptoClient, type PqCryptoClient } from "@/crypto/pq/worker-client"

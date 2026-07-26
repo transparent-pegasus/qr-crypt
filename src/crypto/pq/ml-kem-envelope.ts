@@ -1,4 +1,4 @@
-// High-level API for PQ message encryption; see docs/qr-protocol-v2.md §3–§5.
+// High-level API for PQ message encryption; see docs/spec/qr-protocol-v2.md §3–§5.
 // Derive the suite from the selected keys' actual algorithms via resolveSuite
 // rather than from a preference. Delegate to the encryptPqMessage Worker RPC so the main thread
 // does not handle secret material.

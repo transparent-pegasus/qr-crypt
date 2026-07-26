@@ -1,4 +1,4 @@
-// Best-effort local-data reset; see docs/boot-and-reset-v2.md §4 and §5.
+// Best-effort local-data reset; see docs/spec/boot-and-reset-v2.md §4 and §5.
 // Do not use "secure" or "wipe" in its name. Physical erasure cannot be assured because
 // LevelDB is append-oriented and SSDs use wear leveling; complete device formatting is
 // the only reliable erasure path.
