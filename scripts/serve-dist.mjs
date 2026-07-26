@@ -3,8 +3,8 @@
 // release workflow's packaged-PWA e2e run, so both exercise the same header
 // behaviour the deployed origin provides.
 //
-// realpathSync mirrors the release job: the containment check below must compare
-// resolved paths, or a symlink under the document root escapes it.
+// realpathSync normalises the document root before containment comparisons.
+// The contained() helper below resolves and checks each candidate path.
 import fs from "node:fs"
 import fsp from "node:fs/promises"
 import http from "node:http"
