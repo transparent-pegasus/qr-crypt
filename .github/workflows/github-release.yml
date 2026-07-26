@@ -129,6 +129,13 @@ jobs:
           mkdir -p -- "$output_dir" "$stage_dir" "$extract_parent"
 
           [[ -d dist ]] || fail "dist directory is missing"
+
+          # The /about landing page is an online-only surface (vite.config.ts keeps it out
+          # of precache and out of the SPA fallback). It has no place on an air-gapped
+          # device: external links, ~260 KB of card images. Remove it here; the allowlist
+          # below then proves nothing else slipped into dist.
+          rm -rf -- dist/about
+
           required_files=(
             dist/index.html
             dist/manifest.webmanifest
@@ -172,7 +179,7 @@ jobs:
             [[ -f "$asset" && ! -L "$asset" ]] ||
               fail "dist/assets must contain only flat regular files: $asset"
             asset_name="${asset#dist/assets/}"
-            [[ "$asset_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*-[A-Za-z0-9_-]{8}\.(js|css)$ ]] ||
+            [[ "$asset_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*-[A-Za-z0-9_-]{8}\.(js|css|wasm)$ ]] ||
               fail "unexpected generated asset name: $asset_name"
             references="$(
               grep -RFl --binary-files=text "$asset_name" \
@@ -251,7 +258,7 @@ jobs:
           [[ -z "$unexpected" ]] ||
             fail "development or environment file is forbidden: $unexpected"
           unexpected="$(
-            grep -RIl --binary-files=without-match 'sourceMappingURL=' dist |
+            grep -Rl --binary-files=text 'sourceMappingURL=' dist |
               head -n 1 || true
           )"
           [[ -z "$unexpected" ]] ||
