@@ -132,11 +132,11 @@ Crypt keys.
 
 Public keys and identities are still exchanged face to face. The relay forwards canonical
 QR frame strings whose **untrusted** outer header declares a message; it does not assemble
-them, does not verify the inner type, and never decrypts or touches key material. That
-outer header is not an enforcement guarantee — a relabelled artifact passes the filter and
-is rejected only after the offline device assembles it. The offline endpoint is the only
-place where the artifact is authenticated
-([docs/security/threat-model.md](docs/security/threat-model.md) T19).
+them, does not verify the inner type, and decrypts nothing. It never interprets the bytes
+it carries — but it also cannot tell what they are: an artifact relabelled as a message,
+including one carrying key material, passes the filter and is rejected only after the
+offline device assembles it. The offline endpoint is the only place where an artifact is
+authenticated ([docs/security/threat-model.md](docs/security/threat-model.md) T19).
 
 ## Encryption
 
