@@ -437,7 +437,6 @@ const en = {
     "Unverified. Key validity and identity verification are separate.",
   "encrypt.result.memoryOnly":
     "The decrypted result is held only in memory and is not stored.",
-  "encrypt.result.sectionAria": "Encryption result",
   "encrypt.result.modalTitle": "Encryption complete",
   "encrypt.result.encryptDone": "Encryption is complete",
   "encrypt.result.copyPayload": "Copy payload",
@@ -1094,7 +1093,6 @@ const ja = {
     "未確認。鍵の有効性と人物確認は別です。",
   "encrypt.result.memoryOnly":
     "復号結果はメモリー内だけに保持し、保存しません。",
-  "encrypt.result.sectionAria": "暗号結果",
   "encrypt.result.modalTitle": "暗号化が完了しました",
   "encrypt.result.encryptDone": "暗号化が完了しました",
   "encrypt.result.copyPayload": "ペイロードをコピー",
