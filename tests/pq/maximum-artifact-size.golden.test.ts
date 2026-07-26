@@ -507,7 +507,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
     ).toThrow("Invalid environment variables")
   })
 
-  it("uses the reachable 100B fallback density for identity and single-key artifacts", async () => {
+  it("uses the compatible 100B preference for identity and single-key artifacts", async () => {
     for (const fixture of artifactFixtures()) {
       if (
         fixture.artifactType !== "pq-public-identity" &&
@@ -542,7 +542,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
       expectedFrames: 127,
     },
   ])(
-    "clamps the 100B fallback to $expectedMinimum bytes for $caseName",
+    "clamps the compatible 100B preference to $expectedMinimum bytes for $caseName",
     async ({ plaintextBytes, qrMaxFrames, expectedMinimum, expectedFrames }) => {
       const originalMaximum = env.qrMaxFrames
       try {
@@ -582,7 +582,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
     }
   })
 
-  it("raises the 100B fallback for a 16KiB signed artifact and keeps 1000B valid", async () => {
+  it("raises the compatible 100B preference for a 16KiB signed artifact and keeps 1000B valid", async () => {
     const artifactBytes = messageArtifact(true, 16_384)
     expect(artifactBytes).toHaveLength(22_999)
     const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)

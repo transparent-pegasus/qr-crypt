@@ -55,7 +55,8 @@ describe("contract smoke", () => {
     expect(FRAME_BYTES_VALUES).toEqual([
       100, 200, 300, 400, 500, 600, 700, 800, 900, 1_000,
     ])
-    expect(normalized.qrFrameIntervalMs).toBe(1_000)
+    expect(normalized.qrFrameBytes).toBe(1_000)
+    expect(normalized.qrFrameIntervalMs).toBe(200)
     expect(FRAME_INTERVAL_MS_VALUES).toEqual([
       200, 300, 400, 500, 600, 700, 800, 900, 1_000, 2_000,
     ])

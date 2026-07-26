@@ -19,21 +19,14 @@ import {
   renderQrDataUrl,
   revokeIdentity,
   saveRotation,
-  setQrReaderModuleUsable,
   splitIntoFrames,
+  updatePreferences,
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 let KeyDetailDialog: typeof import("@/components/key-detail-dialog").KeyDetailDialog
 
 beforeAll(async () => {
-  const fakes = await import("./helpers/fakes")
-  vi.doMock("@/qr/decode", () => ({
-    isQrReaderModuleUsable: fakes.isQrReaderModuleUsable,
-    prepareQrReaderModule: fakes.prepareQrReaderModule,
-    startQrScan: fakes.startQrScan,
-    subscribeQrReaderModuleState: fakes.subscribeQrReaderModuleState,
-  }))
   ;({ KeyDetailDialog } = await import("@/components/key-detail-dialog"))
 })
 
@@ -41,6 +34,16 @@ function rowFor(text: string): HTMLButtonElement {
   const row = screen.getByText(text).closest("button")
   if (!(row instanceof HTMLButtonElement)) throw new Error(`row not found: ${text}`)
   return row
+}
+
+function expectSingleAlertCancelWithoutClose(dialog: HTMLElement): void {
+  expect(
+    within(dialog).getAllByRole("button", { name: "Cancel" }),
+  ).toHaveLength(1)
+  expect(
+    within(dialog).queryByRole("button", { name: "Close" }),
+  ).toBeNull()
+  expect(dialog.querySelector("svg.lucide-x")).toBeNull()
 }
 
 function deferred<T>() {
@@ -145,6 +148,14 @@ describe("key list page", () => {
     dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     expect(within(dialog).getByText("sym-key-00000001")).toBeInTheDocument()
     expect(within(dialog).getByText("AES-256-GCM")).toBeInTheDocument()
+    expect(
+      within(dialog).getAllByRole("button", { name: "Close" }),
+    ).toHaveLength(1)
+    expect(Array.from(dialog.querySelectorAll("button")).at(-1)).toBe(
+      within(dialog).getByRole("button", { name: "Close" }),
+    )
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(dialog).not.toBeInTheDocument())
   })
 
   it("shows imported bundles only on the peer-key tab and keeps their actions", async () => {
@@ -295,53 +306,54 @@ describe("key list page", () => {
     expect(within(dialog).queryByText(/Saved/)).toBeNull()
   })
 
-  it.each([
-    {
-      label: "wasm reader usable",
-      wasmReaderUsable: true,
-      frameBytes: 1_000,
-      dwellMs: 200,
-    },
-    {
-      label: "wasm reader unusable",
-      wasmReaderUsable: false,
-      frameBytes: 100,
-      dwellMs: 2_000,
-    },
-  ])(
-    "selects the automatic display profile when the $label",
-    async ({ wasmReaderUsable, frameBytes, dwellMs }) => {
-      const user = userEvent.setup()
-      const firstQrRender = deferred<string>()
-      setQrReaderModuleUsable(wasmReaderUsable)
-      renderQrDataUrl.mockImplementationOnce(() => firstQrRender.promise)
-      await renderKeyList()
+  it("lets the identity parent persist compatibility mode and re-split its frames", async () => {
+    const timeout = vi.spyOn(window, "setTimeout")
+    const user = userEvent.setup()
+    await renderKeyList()
 
-      await user.click(rowFor("自分のPQ ID"))
-      const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-      await user.click(
-        within(dialog).getByRole("button", { name: "Public-key bundle QR" }),
-      )
-      await waitFor(() =>
-        expect(splitIntoFrames).toHaveBeenLastCalledWith(
-          expect.objectContaining({
-            artifactType: "pq-public-identity",
-            frameBytes,
-          }),
-        ),
-      )
+    await user.click(rowFor("自分のPQ ID"))
+    const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
+    await user.click(
+      within(dialog).getByRole("button", { name: "Public-key bundle QR" }),
+    )
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-public-identity",
+          frameBytes: 1_000,
+        }),
+      ),
+    )
 
-      const timeout = vi.spyOn(window, "setTimeout")
-      firstQrRender.resolve("data:image/png;base64,cHJvZmlsZQ==")
-      await waitFor(() =>
-        expect(
-          within(dialog).getByRole("button", { name: "View full screen" }),
-        ).toBeEnabled(),
-      )
-      expect(timeout.mock.calls.some(([, delay]) => delay === dwellMs)).toBe(true)
-      timeout.mockRestore()
-    },
-  )
+    const compatibility = within(dialog).getByRole("switch", {
+      name: "Compatibility mode",
+    })
+    expect(compatibility).not.toBeChecked()
+    await user.click(compatibility)
+
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({
+        frameBytes: 100,
+        frameIntervalMs: 2_000,
+      }),
+    )
+    await waitFor(() =>
+      expect(splitIntoFrames).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          artifactType: "pq-public-identity",
+          frameBytes: 100,
+        }),
+      ),
+    )
+    await waitFor(() =>
+      expect(timeout.mock.calls.some(([, delay]) => delay === 2_000)).toBe(true),
+    )
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole("switch", { name: "Compatibility mode" }),
+      ).toBeChecked(),
+    )
+  })
 
   it("keeps the fullscreen trigger disabled while identity frame splitting is pending", async () => {
     const user = userEvent.setup()
@@ -461,6 +473,7 @@ describe("key list page", () => {
     const confirmation = await screen.findByRole("alertdialog", {
       name: 'Delete "共通鍵A"?',
     })
+    expectSingleAlertCancelWithoutClose(confirmation)
     await user.click(within(confirmation).getByRole("button", { name: "Delete" }))
 
     await waitFor(() => expect(deleteKeyRecord).toHaveBeenCalledWith("sym-key-00000001"))
@@ -480,6 +493,7 @@ describe("key list page", () => {
     const confirmation = await screen.findByRole("alertdialog", {
       name: 'Delete "自分のPQ ID"?',
     })
+    expectSingleAlertCancelWithoutClose(confirmation)
     await user.click(within(confirmation).getByRole("button", { name: "Delete" }))
 
     await waitFor(() => expect(deleteIdentity).toHaveBeenCalledWith(identityId))

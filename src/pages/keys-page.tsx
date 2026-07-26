@@ -563,8 +563,10 @@ export function KeysPage() {
       </Tabs>
 
       <Dialog open={pendingBundle !== null} onOpenChange={() => undefined}>
+        {/* Security confirmation: deliberately not dismissible. */}
         <NoAutofocusDialogContent
-          className="max-h-[95dvh] max-w-lg overflow-y-auto [&>button.absolute]:hidden"
+          hideCloseButton
+          className="max-h-[95dvh] max-w-lg overflow-y-auto"
           onEscapeKeyDown={(event) => event.preventDefault()}
           onPointerDownOutside={(event) => event.preventDefault()}
         >

@@ -1084,7 +1084,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
         <DialogContent
           ref={contentRef}
           tabIndex={-1}
-          className="max-h-[95dvh] max-w-lg p-4"
+          className="grid max-h-[95dvh] max-w-lg grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-4"
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             contentRef.current?.focus()
@@ -1096,9 +1096,10 @@ export function QrScannerModal(props: QrScannerModalProps) {
           }}
         >
           <DialogTitle className="sr-only">{title}</DialogTitle>
+          {/* 4rem prior chrome + ~44px close row + 1rem grid gap */}
           <div
             data-qr-scanner-scroll-region
-            className="max-h-[calc(95dvh-4rem)] overflow-y-auto"
+            className="min-h-0 max-h-[calc(95dvh-4rem-44px-1rem)] overflow-y-auto"
           >
             {open && panel}
           </div>
