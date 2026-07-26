@@ -199,7 +199,7 @@ test("controls signed multipart frames and preserves every PNG in its single ZIP
     .poll(() => animatedFrameCount(frames), { timeout: 30_000 })
     .toBeLessThanOrEqual(20)
   const frameCount = Number.parseInt(await detailValue(result, "QR frame count"), 10)
-  // The 1,000-byte automatic profile still gives this signed artifact enough
+  // The default 1,000-byte preference still gives this signed artifact enough
   // frames to exercise zero-padded names and the ZIP path.
   expect(frameCount).toBeGreaterThan(9)
   expect(frameCount).toBeLessThanOrEqual(20)

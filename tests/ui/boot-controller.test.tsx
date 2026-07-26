@@ -290,17 +290,29 @@ describe("boot decisions", () => {
   })
 
   it.each([
-    [100, 2_000],
-    [250, 3_000],
-    [900, 1_500],
+    {
+      label: "200 bytes with 1000 milliseconds",
+      value: { frameBytes: 200, frameIntervalMs: 1_000 },
+    },
+    {
+      label: "250 bytes with 3000 milliseconds",
+      value: { frameBytes: 250, frameIntervalMs: 3_000 },
+    },
+    {
+      label: "a missing interval member",
+      value: { frameBytes: 200 },
+    },
+    {
+      label: "a missing density member",
+      value: { frameIntervalMs: 1_000 },
+    },
   ] as const)(
-    "keeps stored frameBytes=%i and interval %i boot-readable without wiping sensitive data",
-    async (frameBytes, frameIntervalMs) => {
+    "keeps $label boot-readable without wiping sensitive data",
+    async ({ value }) => {
       const { database } = fakeBootDatabase({
         keyCount: 1,
         preferencesValue: {
-          frameBytes,
-          frameIntervalMs,
+          ...value,
           wipeOnOnline: false,
         },
       })

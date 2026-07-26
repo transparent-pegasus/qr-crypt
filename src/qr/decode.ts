@@ -63,14 +63,6 @@ const zxingReaderOptions: ReaderOptions = {
 
 let zxingModulePromise: Promise<void> | undefined
 
-export type QrReaderModuleState =
-  | "unknown"
-  | "preparing"
-  | "usable"
-  | "failed"
-
-type QrReaderModuleStateListener = () => void
-
 const EMPTY_WASM_MODULE = Uint8Array.of(
   0x00,
   0x61,
@@ -81,7 +73,6 @@ const EMPTY_WASM_MODULE = Uint8Array.of(
   0x00,
   0x00,
 )
-const qrReaderModuleStateListeners = new Set<QrReaderModuleStateListener>()
 
 function detectWebAssemblySupport(): boolean {
   try {
@@ -97,42 +88,6 @@ function detectWebAssemblySupport(): boolean {
 }
 
 const webAssemblySupported = detectWebAssemblySupport()
-let qrReaderModuleState: QrReaderModuleState = webAssemblySupported
-  ? "unknown"
-  : "failed"
-
-function setQrReaderModuleState(state: QrReaderModuleState): void {
-  if (qrReaderModuleState === state) return
-  qrReaderModuleState = state
-  for (const listener of qrReaderModuleStateListeners) {
-    try {
-      listener()
-    } catch {
-      // A consumer notification must not change module preparation state.
-    }
-  }
-}
-
-export function getQrReaderModuleState(): QrReaderModuleState {
-  return qrReaderModuleState
-}
-
-export function isQrReaderModuleUsable(): boolean {
-  return (
-    webAssemblySupported &&
-    qrReaderModuleState === "usable" &&
-    zxingModulePromise !== undefined
-  )
-}
-
-export function subscribeQrReaderModuleState(
-  listener: QrReaderModuleStateListener,
-): () => void {
-  qrReaderModuleStateListeners.add(listener)
-  return () => {
-    qrReaderModuleStateListeners.delete(listener)
-  }
-}
 
 interface ScannerControls {
   stop(): void
@@ -190,12 +145,11 @@ let cameraAcquisitionQueue: Promise<void> = Promise.resolve()
 // fetching plus compiling a one-megabyte binary outlives that window. Acquisition must
 // therefore reach getUserMedia first; the decoder awaits this promise later, after the
 // first frame has been drawn.
-export function prepareQrReaderModule(): Promise<void> {
+function prepareQrReaderModule(): Promise<void> {
   const existing = zxingModulePromise
   if (existing !== undefined) return existing
 
   if (!webAssemblySupported) {
-    setQrReaderModuleState("failed")
     const unsupported = Promise.reject(
       new Error("WebAssembly is unavailable for the QR reader"),
     )
@@ -203,7 +157,6 @@ export function prepareQrReaderModule(): Promise<void> {
     return unsupported
   }
 
-  setQrReaderModuleState("preparing")
   let started: Promise<unknown>
   try {
     started = prepareZXingModule({
@@ -212,7 +165,6 @@ export function prepareQrReaderModule(): Promise<void> {
     })
   } catch (error) {
     purgeZXingModule()
-    setQrReaderModuleState("failed")
     const rejected = Promise.reject(
       error instanceof Error ? error : new Error(String(error)),
     )
@@ -220,9 +172,7 @@ export function prepareQrReaderModule(): Promise<void> {
     return rejected
   }
 
-  const preparation = started.then(() => {
-    setQrReaderModuleState("usable")
-  })
+  const preparation = started.then(() => undefined)
   zxingModulePromise = preparation
   // Reset on failure so the restart button can retry, and swallow the rejection here:
   // an attempt can stop before any decode awaits this promise.
@@ -230,7 +180,6 @@ export function prepareQrReaderModule(): Promise<void> {
     if (zxingModulePromise === preparation) {
       zxingModulePromise = undefined
       purgeZXingModule()
-      setQrReaderModuleState("failed")
     }
   })
   return preparation

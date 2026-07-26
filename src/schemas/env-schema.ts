@@ -5,14 +5,15 @@
 import { z } from "zod"
 import {
   FRAME_BYTES_MAX,
-  FRAME_BYTES_MIN,
   isFrameBytes,
 } from "@/lib/frame-bytes"
+import { isFrameIntervalMs } from "@/lib/frame-interval"
 import {
-  FRAME_INTERVAL_MS_DEFAULT,
-  isFrameIntervalMs,
-} from "@/lib/frame-interval"
-import type { PqProfileId, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
+  DEFAULT_GENERATED_DISPLAY_PAIR,
+  type PqProfileId,
+  type QrEcLevel,
+  type UiAlgorithm,
+} from "@/schemas/domain"
 
 export interface AppEnv {
   appName: string
@@ -55,7 +56,7 @@ const intFromString = (defaultValue: number, min: number, max: number) =>
 
 const frameBytesFromString = z
   .string()
-  .default(String(FRAME_BYTES_MIN))
+  .default(String(DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes))
   .transform((value) => Number(value))
   .pipe(
     z.number().refine(isFrameBytes, {
@@ -65,7 +66,7 @@ const frameBytesFromString = z
 
 const frameIntervalMsFromString = z
   .string()
-  .default(String(FRAME_INTERVAL_MS_DEFAULT))
+  .default(String(DEFAULT_GENERATED_DISPLAY_PAIR.frameIntervalMs))
   .transform((value) => Number(value))
   .pipe(
     z.number().refine(isFrameIntervalMs, {

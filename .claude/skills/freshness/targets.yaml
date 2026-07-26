@@ -158,6 +158,7 @@ units:
       - src/lib/limits.ts # frames × chunk receiver-allocation bound cited by T20
       - src/qr/payload-v2.ts # bare-paste character and decoded-byte bounds cited by T20
       - src/qr/multipart/assemble.ts # receiver assembly enforcement cited by T20
+      - src/qr/decode.ts # scanner downscale, in-flight bound, and scheduled interval cited by T5
     why: >
       Living threat model. §5.1 supply-chain advisories are dated (2026-07-21);
       §7 v2 addendum cites algorithm defaults that can diverge from the active
@@ -167,9 +168,10 @@ units:
       Re-run aube audit; refresh §5.1 advisory status for the pinned deps.
       Reconcile threat/mitigation entries (T14/T15 algorithm names) with the
       active policy in src/crypto/pq/suites.ts and boot behavior in
-      src/app/boot/. Reconcile T20's frame/paste allocation and CBOR caps with
-      limits.ts, payload-v2.ts, assemble.ts, and canonical-cbor.ts. Convert any
-      new relative dates to absolute.
+      src/app/boot/. Reconcile T5's scanner bounds with decode.ts and T20's
+      frame/paste allocation and CBOR caps with limits.ts, payload-v2.ts,
+      assemble.ts, and canonical-cbor.ts. Convert any new relative dates to
+      absolute.
     verify: >
       Diff claims against README security section and the settings page
       "About security" copy (settings.security.* keys in
@@ -190,7 +192,7 @@ units:
       - tests/pq/maximum-artifact-size.golden.test.ts # executable artifact size/frame table
       - tests/e2e/downloads.spec.ts # long-text export measurement attachment
     why: >
-      Point-in-time snapshot: noble 0.6.1 facts as of 2026-07-22, the
+      Point-in-time snapshot: noble 0.6.1 facts as of 2026-07-26, the
       zxing-wasm reader pin/hash/provenance, independent
       audit 未了, release-approved blocker, FIPS errata checklist, artifact
       size/cycle table, and long-text export measurements. All of it is dated
@@ -213,23 +215,27 @@ units:
       - docs/develop/browser-matrix.md # release-gate device measurements
       - src/app/App.tsx # UNSUPPORTED_BROWSER gate copy
       - src/lib/feature-detect.ts # WebCrypto/IDB/camera/SW probes
-      - docs/spec/qr-protocol.md # WebCrypto AES-GCM / QR capacity claims
+      - docs/spec/qr-protocol-v2.md # generated-display preferences, effective clamps, and QR capacity claims
     why: >
       Browser/OS releases invalidate measured rows (未計測 cells), support
       claims, and feature-detection assumptions.
     method: |
       Re-measure on at least Android Chrome + iOS Safari with current browser
       versions and VITE_BUILD_SHA; fill matrix rows. The zxing-wasm scanner
-      rows include offline first-use instantiation and both automatic profiles:
-      1000B with a 200ms minimum dwell when the WebAssembly reader is usable,
-      and the 100B/2000ms reader-unusable fallback with automatic density
-      raising when required. Include poor light and refocus recovery. For each
-      profile, record the actual full-cycle time separately from the configured
-      dwell, actual start-to-start decode cadence, p95 decode duration and long
-      tasks, sustained CPU/thermal behaviour, teardown latency, sender-side
-      version 40 render completion time, and post-downscale decoder dimensions
-      (camera resolution is not a substitute). If p95 decode is a long task,
-      move it to a dedicated Worker. Re-check
+      rows include offline first-use instantiation and both user-selected
+      generated-display preferences: switch off is the shipped 1000B/200ms
+      default, and switch on is the 100B/2000ms compatible preference. Exercise
+      per-artifact effective density clamps and verify the raised value is not
+      persisted; at the 1000B density floor, verify the switch still changes
+      only the dwell. Include poor light and refocus recovery. For each
+      preference, record the actual full-cycle time separately from the
+      configured dwell, actual start-to-start decode cadence, p95 decode
+      duration and long tasks, sustained CPU/thermal behaviour, teardown
+      latency, sender-side version 40 render completion time, and
+      post-downscale decoder dimensions (camera resolution is not a
+      substitute). Measure local reader usability independently; it does not
+      select the display preference. If p95 decode is a long task, move it to
+      a dedicated Worker. Re-check
       detectFeatures() assumptions against MDN/caniuse for target browsers;
       update gate copy if reality moved. Align profile names in the matrix
       with the active profile. Re-run aube bench:pq and replace the "Node
@@ -250,11 +256,15 @@ units:
       - src/crypto/pq/wire-bytes.ts # mirrors documented wire layout
       - src/crypto/pq/canonical-cbor.ts # mirrors documented canonical encoding
       - src/lib/limits.ts # artifact ceiling, algorithm-specific sizes, and timeout floor
-      - src/lib/frame-bytes.ts # automatic density set
-      - src/lib/frame-interval.ts # automatic dwell set and legacy normalization
+      - src/lib/frame-bytes.ts # generated-density grid and per-artifact effective clamps
+      - src/lib/frame-interval.ts # preference dwells, relay playback cadence, and legacy normalization
       - src/qr/payload-v2.ts # bare-paste and decoded-artifact ceilings
-      - src/qr/decode.ts # WebAssembly reader usability state used for profile selection
-      - src/components/animated-qr-frames.tsx # commit-gated dwell and one-button export
+      - src/schemas/domain.ts # exact default and compatible generated-display pairs
+      - src/storage/preferences-repository.ts # atomic pair writes and boot-readable pair canonicalization
+      - src/pages/encrypt-page.tsx # message-display preference and per-artifact effective clamp
+      - src/components/key-detail-dialog.tsx # identity-display preference and per-artifact effective clamp
+      - src/components/animated-qr-frames.tsx # labelled compatibility switch, commit-gated dwell, and one-button export
+      - src/components/online-relay.tsx # independent replay cadence and deliberately absent switch
       - tests/pq/wire-bytes.golden.test.ts # frozen hex must match the docs
       - tests/pq/canonical-cbor.golden.test.ts
       - tests/pq/composition-golden.test.ts
@@ -267,9 +277,11 @@ units:
       Diff qr-protocol-v2.md against src/crypto/pq/{profiles,suites,wire-bytes}.ts
       and the golden tests (goldens change only for deliberate, documented
       protocol revisions — never "refreshed" to make tests pass). Reconcile
-      the documented allocation/profile/cycle/export contracts with limits.ts,
-      frame-bytes.ts, frame-interval.ts, payload-v2.ts, decode.ts, and
-      animated-qr-frames.tsx. Diff
+      the documented allocation, exact display preferences, per-artifact
+      effective clamps, cycle, relay-cadence, and export contracts with
+      limits.ts, frame-bytes.ts, frame-interval.ts, payload-v2.ts, domain.ts,
+      preferences-repository.ts, encrypt-page.tsx, key-detail-dialog.tsx,
+      animated-qr-frames.tsx, and online-relay.tsx. Diff
       boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
       and wipe coordinator behavior. Update dated statements to current state.
     verify: aube test:pq && aube test -- tests/ui/boot-controller.test.tsx
@@ -280,9 +292,9 @@ units:
     last_checked: 2026-07-26
     files:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
-      - src/lib/frame-bytes.ts # internal 100–1,000B density set and append-only boot range
-      - src/lib/frame-interval.ts # internal dwell set and append-only boot range
-      - tests/pq/maximum-artifact-size.golden.test.ts # automatic density / clamp / boundary fixtures
+      - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
+      - src/lib/frame-interval.ts # preference/relay dwell set and append-only boot range
+      - tests/pq/maximum-artifact-size.golden.test.ts # preference-pair / effective-clamp / boundary fixtures
       - src/schemas/env-schema.ts # PQ ceiling and golden maximum-artifact guard
       - .env.prod # runtime crypto/framing contract
       - .env.example # same contract, kept in step with .env.prod
@@ -290,23 +302,27 @@ units:
       Measured byte/frame tables are cited by security-review and protocol
       docs; env-schema.ts carries the golden-derived fixed-bytes formula and
       the env files carry the production policy. All stale when wire encoding,
-      schema, plaintext limits, internal profiles, or cycle budgets change.
+      schema, plaintext limits, display preference pairs, effective clamps, or
+      cycle budgets change.
     method: |
       Re-run the golden test; if intentional drift, update fixtures, the
       size formula in env-schema.ts, and the .env.prod/.env.example PQ ceiling
       together, then sync the table in docs/security/security-review.md.
       Verify the internal density grid 100–1,000B in 100B steps for messages,
-      OCI2, OCP2, and OCS2; the application-selected 1000B/200ms usable-reader
-      profile and 100B/2000ms fallback; the grid-rounded automatic density
-      lift; the frames × chunk 128,000B absolute artifact ceiling; the 1,000B
+      OCI2, OCP2, and OCS2; the shipped 1000B/200ms default preference and
+      user-selected 100B/2000ms compatible preference; the grid-rounded
+      per-artifact effective density clamp, including that it is never
+      persisted and that compatible dwell remains 2000ms at the 1000B density
+      floor; the frames × chunk 128,000B absolute artifact ceiling; the 1,000B
       per-chunk ceiling; and the 1,593-character worst-metadata payload against
       EC-Q v40 capacity 1,663.
       Confirm the append-only boot-readable range still accepts every
-      historical density integer 100–900 and repository loading normalizes
-      readable off-grid values onto the admitted grid. Confirm the internal
-      dwell set is 200–1,000ms in 100ms steps plus 2,000ms, while boot
-      readability and repository normalization retain every historical
-      interval integer 150–2,000 plus 2,500/3,000. Keep limits.ts,
+      historical density integer 100–900 and every historical interval integer
+      150–2,000 plus 2,500/3,000. Confirm repository loading preserves the two
+      exact preference pairs and canonicalizes every other boot-readable
+      historical combination, including a missing member, to the 1000B/200ms
+      default before strict validation. Confirm the internal dwell set is
+      200–1,000ms in 100ms steps plus 2,000ms. Keep limits.ts,
       env-schema.ts, both env files, docs/spec/qr-protocol-v2.md,
       docs/security/security-review.md, and the golden test in agreement.
     verify: aube test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
@@ -374,17 +390,20 @@ units:
       - docs/develop/deviations.md # dated maintainer decisions and active-policy wording
     why: >
       Experimental / not-independently-audited claims, active-suite wording,
-      the install route B cosign policy values, automatic display-profile and
-      PNG/ZIP export behaviour, the documentation list, and the dated
+      the install route B cosign policy values, the user-selected display
+      compatibility preference, per-artifact effective clamps, PNG/ZIP export
+      behaviour, the documentation list, and the dated
       maintainer decisions in deviations.md all drift. The two READMEs are a
       translation pair and stale independently.
     method: |
       Reconcile the experimental / audit-status wording with
       docs/security/security-review.md §1 and SECURITY.md. Reconcile
-      suite/profile wording, per-algorithm plaintext ceilings, automatic
-      display profiles, and PNG/ZIP export behaviour with the active
-      implementation. Confirm the install route B cosign policy values still
-      match .github/workflows/github-release.yml (unit ci-actions). Confirm the
+      suite/profile wording, per-algorithm plaintext ceilings, the atomic
+      default/compatible display preference pairs, per-artifact effective
+      clamps, the independent relay playback cadence, and PNG/ZIP export
+      behaviour with the active implementation. Confirm the install route B
+      cosign policy values still match
+      .github/workflows/github-release.yml (unit ci-actions). Confirm the
       documentation list matches the docs/ tree. In deviations.md, drop rows
       that no longer constrain the current implementation — history-only
       entries do not belong there (CLAUDE.md: no backward compatibility).
@@ -448,12 +467,16 @@ invariants:
       and interval value (200–1,000ms in 100ms steps plus 2,000ms) must be
       boot-readable, as must every historical density integer 100–900 and
       interval integer 150–2,000 together with 2,500/3,000. The repository
-      must normalize a boot-readable numeric value that is no longer admitted
-      onto the current set before strict preference validation; patch/env
-      writes remain strict. Dropping an old id/value or its normalization
-      makes stored preferences unreadable → preferencesReadFailed →
-      wipeOnOnline forced true → a later network-confirmed contact can wipe
-      user data.
+      must preserve the exact 1000B/200ms default and 100B/2000ms compatible
+      pairs, and canonicalize every other boot-readable historical
+      combination (including a missing member) to the default pair before
+      strict preference validation. Per-field historical normalizers remain
+      present, current preference patches supply both members of one exact
+      pair, environment writes remain strict, and per-artifact effective
+      clamps are never persisted. Dropping an old id/value, narrowing a read
+      range, or losing this pair canonicalization makes stored preferences
+      unreadable → preferencesReadFailed → wipeOnOnline forced true → a later
+      network-confirmed contact can wipe user data.
     verify: >
       aube test -- tests/unit/qr-density-safety.test.ts
       tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx
@@ -482,9 +505,12 @@ invariants:
       normalizeLegacyStoredPreferences keeps recognizing historical stored
       values (balanced, legacy algorithm strings, every historical density
       integer 100–900, and interval integer 150–2,000 plus 2,500/3,000).
-      Boot-readable numeric values that are no longer active normalize onto
-      the current grid before validation; the active profile and numeric write
-      allowlists stay stricter than the boot read allowlists.
+      It preserves the two exact generated-display preference pairs and
+      canonicalizes every other boot-readable historical combination,
+      including either missing member, to the 1000B/200ms default before
+      validation, while retaining the per-field historical normalization
+      paths. The active profile and atomic preference-pair write allowlists
+      stay stricter than the boot read allowlists.
     verify: >
       aube test -- tests/unit/qr-density-safety.test.ts
       tests/integration/storage.test.ts

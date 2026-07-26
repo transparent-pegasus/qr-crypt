@@ -302,6 +302,20 @@ export interface DsaPublicKeyEnvelopeV2 {
 // outside the database.
 // ---------------------------------------------------------------------------
 
+export const DEFAULT_GENERATED_DISPLAY_PAIR = {
+  frameBytes: 1_000,
+  frameIntervalMs: 200,
+} as const
+
+export const COMPATIBLE_GENERATED_DISPLAY_PAIR = {
+  frameBytes: 100,
+  frameIntervalMs: 2_000,
+} as const
+
+export type GeneratedDisplayPair =
+  | typeof DEFAULT_GENERATED_DISPLAY_PAIR
+  | typeof COMPATIBLE_GENERATED_DISPLAY_PAIR
+
 export interface Preferences {
   defaultAlgorithm: UiAlgorithm
   defaultPqProfile: PqProfileId
@@ -310,8 +324,8 @@ export interface Preferences {
   qrErrorCorrection: QrEcLevel
   autoClearPlaintextAfterEncrypt: boolean
   backgroundClearEnabled: boolean
-  frameBytes: number // Active 200–1000 in 100B steps; boot reads legacy integers 100–1000.
-  frameIntervalMs: number // Active 200–1000ms in 100ms steps; boot reads legacy 150–3000ms.
+  frameBytes: number // Generated 100–1000 in 100B steps; stored as one exact display pair.
+  frameIntervalMs: number // Generated 200–1000ms plus 2000ms; stored as one exact display pair.
   transferTimeoutMinutes: number // Default 10.
   wipeOnOnline: boolean // Default true.
   resetChurnMb: number // 0–512, default 0 (experimental option).
@@ -322,9 +336,8 @@ export interface Preferences {
 export const PQ_PREFERENCE_DEFAULTS = {
   defaultPqProfile: "maximum",
   requireSignature: false,
-  // Keep the owner's known-good slow/low endpoint as the shipped default.
-  frameBytes: 200,
-  frameIntervalMs: 1000,
+  frameBytes: DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes,
+  frameIntervalMs: DEFAULT_GENERATED_DISPLAY_PAIR.frameIntervalMs,
   transferTimeoutMinutes: 10,
   wipeOnOnline: true,
   resetChurnMb: 0,

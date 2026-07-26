@@ -25,10 +25,20 @@ export interface QrDisplayProps {
   onRendered?: (payload: string) => void
   fullscreenEnabled?: boolean
   showFullscreenTrigger?: boolean
-  fullscreenControls?: ReactNode
+  fullscreenControls?: QrDisplayFullscreenControls
   fullscreenOpen?: boolean
   onFullscreenOpenChange?: (open: boolean) => void
 }
+
+export type QrDisplayFullscreenControls =
+  | {
+      kind: "transport"
+      render: (closeSlot: ReactNode) => ReactNode
+    }
+  | {
+      kind: "arbitrary"
+      content: ReactNode
+    }
 
 interface QrRenderRequest {
   id: number
@@ -62,7 +72,6 @@ export function QrDisplay({
   }>({ identity: "", payload: "", dataUrl: null, error: null })
   const [uncontrolledFullscreen, setUncontrolledFullscreen] = useState(false)
   const fullscreen = fullscreenOpen ?? uncontrolledFullscreen
-  const hasFullscreenControls = fullscreenControls != null
   const changeFullscreen = (open: boolean) => {
     if (fullscreenOpen === undefined) setUncontrolledFullscreen(open)
     onFullscreenOpenChange?.(open)
@@ -213,6 +222,21 @@ export function QrDisplay({
     )
   }
 
+  const fullscreenClose = (
+    <DialogClose asChild>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="size-11 shrink-0 cursor-pointer border border-slate-300 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2"
+        aria-label={t("common.close")}
+      >
+        <X aria-hidden="true" />
+      </Button>
+    </DialogClose>
+  )
+  const hasArbitraryFullscreenControls = fullscreenControls?.kind === "arbitrary"
+
   return (
     <div className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -260,35 +284,16 @@ export function QrDisplay({
             hideCloseButton
             className={cn(
               "grid h-dvh min-w-0 max-w-none grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden border-0 bg-white text-slate-950 [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))] sm:rounded-none",
-              hasFullscreenControls
-                ? "grid-rows-[auto_minmax(0,1fr)_auto] landscape:grid-cols-[minmax(0,1fr)_auto] landscape:grid-rows-[auto_minmax(0,1fr)]"
-                : "grid-rows-[auto_minmax(0,1fr)]",
+              hasArbitraryFullscreenControls
+                ? "grid-rows-[minmax(0,1fr)_auto_auto]"
+                : "grid-rows-[minmax(0,1fr)_auto]",
             )}
           >
-            <div
-              data-fullscreen-header
-              className={cn(
-                "row-start-1 flex min-w-0 items-center justify-end",
-                hasFullscreenControls && "landscape:col-span-2",
-              )}
-            >
-              <DialogHeader className="sr-only">
-                <DialogTitle>{t("qrDisplay.fullscreen.title", { title })}</DialogTitle>
-                <DialogDescription>{t("qrDisplay.fullscreen.desc")}</DialogDescription>
-              </DialogHeader>
-              <DialogClose asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-11 shrink-0 cursor-pointer border border-slate-300 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950 focus-visible:ring-2"
-                  aria-label={t("common.close")}
-                >
-                  <X aria-hidden="true" />
-                </Button>
-              </DialogClose>
-            </div>
-            <div className="row-start-2 grid min-h-0 min-w-0 place-items-center overflow-hidden landscape:col-start-1">
+            <DialogHeader className="sr-only">
+              <DialogTitle>{t("qrDisplay.fullscreen.title", { title })}</DialogTitle>
+              <DialogDescription>{t("qrDisplay.fullscreen.desc")}</DialogDescription>
+            </DialogHeader>
+            <div className="row-start-1 grid min-h-0 min-w-0 place-items-center overflow-hidden">
               {dataUrl && (
                 <img
                   src={dataUrl}
@@ -299,10 +304,27 @@ export function QrDisplay({
                 />
               )}
             </div>
-            {hasFullscreenControls && (
-              <div className="row-start-3 min-w-0 landscape:col-start-2 landscape:row-start-2 landscape:grid landscape:place-items-center landscape:overflow-hidden">
-                {fullscreenControls}
+            {fullscreenControls?.kind === "transport" ? (
+              <div className="row-start-2 min-w-0">
+                {fullscreenControls.render(fullscreenClose)}
               </div>
+            ) : (
+              <>
+                {hasArbitraryFullscreenControls && (
+                  <div className="row-start-2 min-w-0">
+                    {fullscreenControls.content}
+                  </div>
+                )}
+                <div
+                  data-fullscreen-close-row
+                  className={cn(
+                    "flex min-w-0 justify-end",
+                    hasArbitraryFullscreenControls ? "row-start-3" : "row-start-2",
+                  )}
+                >
+                  {fullscreenClose}
+                </div>
+              </>
             )}
           </DialogContent>
         </Dialog>

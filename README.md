@@ -59,10 +59,12 @@ The algorithms themselves are the standard ones. The claim is about where they a
   * Where WebAssembly runs without JIT compilation (some hardened or lockdown
     configurations), decoding is expected to be much slower. How much slower has not been
     measured on real devices ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)).
-  * The QR display follows the same signal, and you do not configure it: with a usable
-    decoder the app shows dense frames at a short dwell (1,000 B every 200 ms); without
-    one it falls back to small frames held far longer (100 B every 2,000 ms), raising the
-    density only when an artifact cannot fit otherwise.
+  * QR display does not follow the local decoder signal: the displaying device cannot know
+    what the peer camera can read. One labelled compatibility switch lets you choose.
+    Off is the shipped default (1,000 B every 200 ms); on is the compatible preference
+    (100 B every 2,000 ms). If an artifact cannot fit at 100 B, its effective density is
+    clamped upward for that artifact only and is not saved. At the 1,000 B clamp, the
+    switch still keeps the longer 2,000 ms dwell.
   * The only remaining input path is then typing or pasting the payload text by hand, and
     that field accepts a complete payload string — not the individual QR frames. A
     post-quantum message is split across many frames, and post-quantum public keys and
@@ -158,7 +160,7 @@ certified" or "perfectly secure". Current status and blockers:
 ## Documentation
 
 * [docs/spec/qr-protocol.md](docs/spec/qr-protocol.md) — QR protocol specification (v1)
-* [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QR protocol specification (v2, post-quantum), including QR density and display interval
+* [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QR protocol specification (v2, post-quantum), including the user-selected display preference and per-artifact density clamps
 * [docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md) — Boot / wipe-on-online contract
 * [docs/security/threat-model.md](docs/security/threat-model.md) — Threat model
 * [docs/security/security-review.md](docs/security/security-review.md) — Security review record (v2, audit classification)
