@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { META_UNSUPPORTED_DIRECTIVES } from "../../scripts/csp-from-headers.mjs"
 import {
   createSymmetricKey,
   encryptWithStoredKey,
@@ -17,22 +18,50 @@ test("the cryptographic flow sends nothing externally, leaves no secrets or mess
   page.on("console", (message) => consoleMessages.push(message.text()))
 
   await loadOnlineGate(page, "/keys")
-  const deployedHeaders = await page.evaluate(async () => {
-    const response = await fetch("/_headers", { cache: "no-store" })
-    if (!response.ok) throw new Error(`_headers: ${response.status}`)
-    return response.text()
-  })
-  expect(deployedHeaders).toContain("default-src 'self'")
-  expect(deployedHeaders).toContain("script-src 'self'")
-  expect(deployedHeaders).toContain("connect-src 'self'")
-  expect(deployedHeaders).toContain("worker-src 'self' blob:")
-  expect(deployedHeaders).toContain("object-src 'none'")
-  const scriptSrcTokens = deployedHeaders
+  const navigation = await page.goto("/keys", { waitUntil: "domcontentloaded" })
+  const servedCsp = navigation?.headers()["content-security-policy"]
+  expect(servedCsp, "the origin must serve a Content-Security-Policy header").toBeTruthy()
+
+  const directives = new Map(
+    (servedCsp ?? "")
+      .split(";")
+      .map((directive) => directive.trim())
+      .filter((directive) => directive !== "")
+      .map((directive) => {
+        const tokens = directive.split(/\s+/)
+        return [tokens[0]!, tokens.slice(1)] as const
+      }),
+  )
+  expect(directives.get("default-src")).toEqual(["'self'"])
+  expect(directives.get("connect-src")).toEqual(["'self'"])
+  expect(directives.get("object-src")).toEqual(["'none'"])
+  expect(directives.get("base-uri")).toEqual(["'none'"])
+  expect(directives.get("form-action")).toEqual(["'none'"])
+  expect(directives.get("frame-ancestors")).toEqual(["'none'"])
+  expect(directives.get("worker-src")).toEqual(["'self'", "blob:"])
+  expect(directives.get("script-src")).toContain("'wasm-unsafe-eval'")
+  expect(directives.get("script-src")).not.toContain("'unsafe-eval'")
+
+  // The self-hosted release ZIP is served by hosts that ignore _headers, so the
+  // built page must carry the same policy as a meta tag, minus the directives a
+  // meta CSP cannot express.
+  const metaCsp = await page.getAttribute(
+    'meta[http-equiv="Content-Security-Policy"]',
+    "content",
+  )
+  expect(metaCsp, "the built index.html must carry a meta CSP fallback").toBeTruthy()
+  const expectedMeta = (servedCsp ?? "")
     .split(";")
-    .map((directive) => directive.trim().split(/\s+/))
-    .find(([name]) => name === "script-src")
-  expect(scriptSrcTokens).toContain("'wasm-unsafe-eval'")
-  expect(scriptSrcTokens).not.toContain("'unsafe-eval'")
+    .map((directive) => directive.trim())
+    .filter((directive) => directive !== "")
+    .filter(
+      (directive) =>
+        !META_UNSUPPORTED_DIRECTIVES.includes(
+          directive.split(/\s+/)[0]?.toLowerCase() ?? "",
+        ),
+    )
+    .join("; ")
+  expect(metaCsp).toBe(expectedMeta)
   await switchToOfflineApp(page, context)
 
   const keyName = "セキュリティ確認鍵"
