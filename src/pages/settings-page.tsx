@@ -356,7 +356,10 @@ export function SettingsPage() {
               id="background-clear-description"
               className="text-xs leading-relaxed text-muted-foreground"
             >
-              {t("settings.backgroundClear.desc")}
+              {t("settings.backgroundClear.desc", {
+                normalSeconds: env.autoClearSeconds,
+                fallbackSeconds: env.autoClearFallbackSeconds,
+              })}
             </p>
           </div>
           <Switch

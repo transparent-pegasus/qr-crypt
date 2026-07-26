@@ -1,9 +1,10 @@
 // Preferences persistence.
 // The environment supplies defaults for defaultAlgorithm, qrErrorCorrection,
 // defaultPqProfile, and requireSignature. VITE_REQUIRE_SIGNATURE=true is a floor
-// the user cannot lower. Do not persist delay as a preference; use the fixed
-// env.autoClearSeconds value. As in v1, theme belongs to localStorage("oc-theme")
-// and is outside this store.
+// the user cannot lower. Do not persist delays as preferences; use the
+// WebAssembly-runtime-selected env.autoClearSeconds or
+// env.autoClearFallbackSeconds value. As in v1, theme belongs to
+// localStorage("oc-theme") and is outside this store.
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
   DEFAULT_GENERATED_DISPLAY_PAIR,

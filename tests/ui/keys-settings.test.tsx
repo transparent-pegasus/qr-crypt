@@ -410,6 +410,24 @@ describe("settings v2", () => {
     resetUi()
   })
 
+  it("shows both environment-selected background auto-clear delays", async () => {
+    const originalNormalSeconds = env.autoClearSeconds
+    const originalFallbackSeconds = env.autoClearFallbackSeconds
+    env.autoClearSeconds = 17
+    env.autoClearFallbackSeconds = 211
+    try {
+      await renderApp("/settings")
+      expect(
+        await screen.findByText(
+          "When enabled, plaintext is cleared 17 seconds after the app moves to the background. If the WebAssembly runtime required by the QR reader is unavailable, it is cleared after 211 seconds instead.",
+        ),
+      ).toBeInTheDocument()
+    } finally {
+      env.autoClearSeconds = originalNormalSeconds
+      env.autoClearFallbackSeconds = originalFallbackSeconds
+    }
+  })
+
   it("persists remaining numeric boundaries and shows wipe/reset warnings", async () => {
     const user = userEvent.setup()
     await renderApp("/settings")
