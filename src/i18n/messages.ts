@@ -571,7 +571,7 @@ const en = {
   "settings.autoClearAfterEncrypt.label": "Clear plaintext after encryption",
   "settings.backgroundClear.label": "Clear after moving to the background",
   "settings.backgroundClear.desc":
-    "When enabled, plaintext is cleared about five minutes after the app moves to the background.",
+    "When enabled, plaintext is cleared {normalSeconds} seconds after the app moves to the background. If the WebAssembly runtime required by the QR reader is unavailable, it is cleared after {fallbackSeconds} seconds instead.",
   "settings.clearAllPlaintext": "Clear all plaintext",
   "settings.card.onlineProtection": "Protection when online connectivity is detected",
   "settings.wipeOnOnline.label": "Reset local data after confirmed online connectivity",
@@ -1224,7 +1224,7 @@ const ja = {
   "settings.autoClearAfterEncrypt.label": "暗号化後に平文を自動消去",
   "settings.backgroundClear.label": "バックグラウンド移行後に自動消去",
   "settings.backgroundClear.desc":
-    "有効時はバックグラウンド移行から約5分後に平文を消去します。",
+    "有効時はバックグラウンド移行から{normalSeconds}秒後に平文を消去します。QRリーダーが必要とするWebAssemblyランタイムが使えない場合は、代わりに{fallbackSeconds}秒後に消去します。",
   "settings.clearAllPlaintext": "すべての平文を消去",
   "settings.card.onlineProtection": "オンライン検出時の保護",
   "settings.wipeOnOnline.label":

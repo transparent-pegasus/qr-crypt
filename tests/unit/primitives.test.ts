@@ -90,4 +90,20 @@ describe("random ids, feature detection, and env parsing", () => {
       expect(() => parseAppEnv(raw)).toThrow("Invalid environment variables")
     }
   })
+
+  it("defaults and validates both background auto-clear delays", () => {
+    expect(parseAppEnv({})).toMatchObject({
+      autoClearSeconds: 60,
+      autoClearFallbackSeconds: 300,
+    })
+    expect(
+      parseAppEnv({ VITE_AUTO_CLEAR_FALLBACK_SECONDS: "420" })
+        .autoClearFallbackSeconds,
+    ).toBe(420)
+    for (const value of ["1.5", "-1", "86401"]) {
+      expect(() =>
+        parseAppEnv({ VITE_AUTO_CLEAR_FALLBACK_SECONDS: value }),
+      ).toThrow("Invalid environment variables")
+    }
+  })
 })

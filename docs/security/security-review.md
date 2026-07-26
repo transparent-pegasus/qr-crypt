@@ -156,9 +156,19 @@ dismissible.
   (recomputed from `node_modules` on 2026-07-26). Vite emits it as a hashed
   same-origin asset and Workbox precaches it; the library's default CDN fetch is
   overridden by a module-scope `locateFile`. **No CDN, no runtime network request**
-- **The published binary has not been independently reproduced from source in this
-  repository.** Trust rests on the lockfile pin, the npm provenance attestation, and
-  the recorded SHA-256 — not on a from-source rebuild
+- Release evidence now includes an archive-internal `SHA256SUMS.files` covering
+  every other ZIP member, fixed clean-checkout rebuild-and-compare instructions,
+  and a CI gate that compares two production builds' sorted file sets and
+  per-file hashes in one runner
+- **The published binary still has not been independently reproduced from
+  source.** The CI gate establishes same-environment determinism only;
+  environment-independent reproducibility remains unverified. Cosign attests
+  provenance (which workflow built from which commit), not source-to-binary
+  correspondence. An attacker controlling the CI environment can still publish
+  a correctly signed backdoor, which only an independent rebuild comparison can
+  detect. Trust also continues to include the lockfile pin, npm provenance
+  attestation, and recorded zxing-wasm SHA-256 rather than a zxing-wasm
+  from-source rebuild
 - **Not independently audited**; no advisories at the pinned version as of 2026-07-27
 - Consequence for CSP: `WebAssembly.instantiate` is refused under a bare
   `script-src 'self'`, so `public/_headers` now ships

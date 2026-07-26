@@ -38,6 +38,7 @@ export interface AppEnv {
   pqProvider: "noble"
   pqWorkerEnabled: boolean
   autoClearSeconds: number
+  autoClearFallbackSeconds: number
   buildSha: string
 }
 
@@ -136,7 +137,8 @@ const rawSchema = z.object({
   // Unknown provider names are startup errors.
   VITE_PQ_PROVIDER: z.enum(["noble"]).default("noble"),
   VITE_PQ_WORKER_ENABLED: boolFromString("true"),
-  VITE_AUTO_CLEAR_SECONDS: intFromString(300, 0, 86_400),
+  VITE_AUTO_CLEAR_SECONDS: intFromString(60, 0, 86_400),
+  VITE_AUTO_CLEAR_FALLBACK_SECONDS: intFromString(300, 0, 86_400),
   VITE_BUILD_SHA: z.string().min(1).default("development"),
 })
 
@@ -206,6 +208,7 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     pqProvider: v.VITE_PQ_PROVIDER,
     pqWorkerEnabled: v.VITE_PQ_WORKER_ENABLED,
     autoClearSeconds: v.VITE_AUTO_CLEAR_SECONDS,
+    autoClearFallbackSeconds: v.VITE_AUTO_CLEAR_FALLBACK_SECONDS,
     buildSha: v.VITE_BUILD_SHA,
   }
 }
