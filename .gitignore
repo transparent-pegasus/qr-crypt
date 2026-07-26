@@ -14,9 +14,10 @@ coverage/
 # Local git worktrees
 .worktrees/
 
-# Private agent tooling (local only; freshness skill stays tracked)
+# Private agent tooling (local only; repository skills below stay tracked)
 .claude/skills/*
 !.claude/skills/freshness/
+!.claude/skills/design-review/
 
 # Local task workflow (untracked)
 /WORKFLOW.md
