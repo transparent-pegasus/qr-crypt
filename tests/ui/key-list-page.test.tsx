@@ -63,8 +63,8 @@ function deferred<T>() {
 }
 
 async function renderKeyList(): Promise<void> {
-  await renderApp("/saved")
-  await screen.findByRole("heading", { name: "Key list" })
+  await renderApp("/keys")
+  await screen.findByRole("tab", { name: "My keys" })
 }
 
 async function seedRotation(now: number): Promise<{
@@ -133,7 +133,17 @@ describe("key list page", () => {
     const user = userEvent.setup()
     await renderKeyList()
 
-    expect(screen.getByRole("heading", { name: "Key list" })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Key list" })).toBeNull()
+    // One action per tab: own keys are created here, a peer's can only be imported.
+    expect(screen.getByRole("button", { name: "Create a key" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Scan a key QR" })).toBeNull()
+    // The action stays outside the tablist so it lists tabs and nothing else.
+    expect(within(screen.getByRole("tablist")).getAllByRole("tab")).toHaveLength(2)
+    expect(
+      within(screen.getByRole("tablist")).queryByRole("button", {
+        name: "Create a key",
+      }),
+    ).toBeNull()
     const ownTab = screen.getByRole("tab", { name: "My keys" })
     const peerTab = screen.getByRole("tab", { name: "Other parties' keys" })
     expect(ownTab).toHaveAttribute("aria-selected", "true")
@@ -204,6 +214,9 @@ describe("key list page", () => {
 
     expect(screen.queryByText("確認済みの相手")).not.toBeInTheDocument()
     await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
+    // The single action follows the tab.
+    expect(screen.getByRole("button", { name: "Scan a key QR" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Create a key" })).toBeNull()
     expect(screen.getByText("確認済みの相手")).toBeInTheDocument()
     expect(screen.getByText("Identity verified")).toBeInTheDocument()
     expect(screen.getByText("4".repeat(64))).toBeInTheDocument()
@@ -854,6 +867,29 @@ describe("key list page", () => {
     expect(screen.queryByText("共通鍵A")).not.toBeInTheDocument()
   })
 
+  it("closes the add modal when the key it just created is deleted there", async () => {
+    const user = userEvent.setup()
+    await renderKeyList()
+    await user.click(screen.getByRole("button", { name: "Create a key" }))
+    await user.type(await screen.findByLabelText("Symmetric-key name"), "作って消す鍵")
+    await user.click(screen.getByRole("button", { name: "Create a symmetric key" }))
+
+    // Creation swaps the same modal over to the new key's detail.
+    const dialog = await screen.findByRole("dialog", { name: "作って消す鍵" })
+    expect(screen.getAllByRole("dialog")).toHaveLength(1)
+    await user.click(
+      within(dialog).getByRole("button", { name: "Delete 作って消す鍵" }),
+    )
+    const confirmation = await screen.findByRole("alertdialog", {
+      name: 'Delete "作って消す鍵"?',
+    })
+    await user.click(within(confirmation).getByRole("button", { name: "Delete" }))
+
+    await waitFor(() => expect(screen.queryAllByRole("dialog")).toHaveLength(0))
+    expect(screen.queryByLabelText("Symmetric-key name")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Create a key" })).toBeInTheDocument()
+  })
+
   it("closes automatically when the selected identity is deleted", async () => {
     const user = userEvent.setup()
     const identityId = fakeIdentities[0]!.id
@@ -889,23 +925,14 @@ describe("key list page", () => {
         }),
     )
     await renderKeyList()
-    expect(
-      screen.queryByText("There are no keys. Create one on the keys page."),
-    ).toBeNull()
+    expect(screen.queryByText("You have no keys.")).toBeNull()
 
     resolveIdentities?.([])
-    expect(
-      await screen.findByText("There are no keys. Create one on the keys page."),
-    ).toBeInTheDocument()
-    expect(screen.getByText("You have no keys.")).toBeInTheDocument()
+    expect(await screen.findByText("You have no keys.")).toBeInTheDocument()
     await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
     expect(
       screen.getByText("There are no imported public-key bundles."),
     ).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Open the keys page" })).toHaveAttribute(
-      "href",
-      "/keys",
-    )
   })
 
   it("shows one source error while continuing to render the other source", async () => {
@@ -951,7 +978,7 @@ describe("key list page", () => {
 
   it("renames a symmetric key from the detail dialog", async () => {
     const user = userEvent.setup()
-    await renderApp("/saved")
+    await renderApp("/keys")
 
     await user.click(await screen.findByText("共通鍵A"))
     const field = await screen.findByLabelText("Key name")
@@ -966,7 +993,7 @@ describe("key list page", () => {
 
   it("renames a PQ identity from the detail dialog", async () => {
     const user = userEvent.setup()
-    await renderApp("/saved")
+    await renderApp("/keys")
 
     await user.click(await screen.findByText("自分のPQ ID"))
     const field = await screen.findByLabelText("Key name")
@@ -981,7 +1008,7 @@ describe("key list page", () => {
 
   it("keeps the rename submit disabled for a blank name", async () => {
     const user = userEvent.setup()
-    await renderApp("/saved")
+    await renderApp("/keys")
 
     await user.click(await screen.findByText("共通鍵A"))
     const field = await screen.findByLabelText("Key name")
@@ -993,7 +1020,7 @@ describe("key list page", () => {
   it("surfaces a repository failure without changing the displayed name", async () => {
     const user = userEvent.setup()
     renameKeyRecord.mockRejectedValueOnce(new AppError("STORAGE_FAILED"))
-    await renderApp("/saved")
+    await renderApp("/keys")
 
     await user.click(await screen.findByText("共通鍵A"))
     const field = await screen.findByLabelText("Key name")

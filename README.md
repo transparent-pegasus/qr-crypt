@@ -229,7 +229,7 @@ security" screen as well:
 state.
 
 **Going online is for installation and for the relay page — nothing else.** While online,
-encryption, decryption, key management, storage, and settings stay blocked. If the app
+encryption, decryption, key management, and settings stay blocked. If the app
 goes online while in use, plaintext and decryption results are cleared immediately.
 
 **wipe-on-online** (default ON) fires only when a network is confirmed, and then attempts

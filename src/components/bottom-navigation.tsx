@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { KeyRound, List, LockKeyhole, Settings } from "lucide-react"
+import { KeyRound, LockKeyhole, LockKeyholeOpen, Settings } from "lucide-react"
 import { NavLink, useNavigate } from "react-router"
 import { useI18n, type MessageKey } from "@/i18n"
 import { cn } from "@/lib/utils"
@@ -34,8 +34,8 @@ const ITEMS: ReadonlyArray<{
   icon: typeof LockKeyhole
 }> = [
   { to: "/encrypt", labelKey: "nav.encrypt", icon: LockKeyhole },
+  { to: "/decrypt", labelKey: "nav.decrypt", icon: LockKeyholeOpen },
   { to: "/keys", labelKey: "nav.keys", icon: KeyRound },
-  { to: "/saved", labelKey: "nav.keyList", icon: List },
   { to: "/settings", labelKey: "nav.settings", icon: Settings },
 ] as const
 

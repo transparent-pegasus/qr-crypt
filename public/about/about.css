@@ -703,8 +703,9 @@ a {
   color: var(--navy);
 }
 
-/* The same lucide glyphs the app's own bottom navigation shows, so the step
-   points at the icon a reader will actually look for. */
+/* The same lucide glyphs the app's own bottom navigation shows
+   (LockKeyhole, LockKeyholeOpen, KeyRound, Settings), so the step points at
+   the icon a reader will actually look for. */
 .step__icon {
   width: 1.125rem;
   height: 1.125rem;

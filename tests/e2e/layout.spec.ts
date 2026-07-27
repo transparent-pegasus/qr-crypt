@@ -179,7 +179,7 @@ test("keeps shared closes bottom-right, last in tab order, and outside every scr
   await page.setViewportSize({ width: 360, height: 320 })
   await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, "レイアウト検証鍵")
-  await goToOfflinePage(page, "/saved")
+  await goToOfflinePage(page, "/keys")
   await page.getByRole("button", { name: /レイアウト検証鍵/ }).click()
   const savedDialog = page.getByRole("dialog", { name: "レイアウト検証鍵" })
   const savedClose = savedDialog.getByRole("button", {
@@ -208,7 +208,8 @@ test("keeps shared closes bottom-right, last in tab order, and outside every scr
   await page.keyboard.press("Escape")
   await expect(savedDialog).toBeHidden()
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "Import", exact: true }).click()
+  await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
+  await page.getByRole("button", { name: "Scan a key QR", exact: true }).click()
   await page.getByRole("button", { name: "Scan a key QR code", exact: true }).click()
   const scannerDialog = page.getByRole("dialog", {
     name: "Scan a key QR code",
@@ -286,7 +287,7 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
   await page.setViewportSize({ width: 360, height: 640 })
   await openOfflineApp(page, context, "/keys")
   await createPqIdentity(page, identityName)
-  await goToOfflinePage(page, "/saved")
+  await goToOfflinePage(page, "/keys")
   await page.getByRole("button", { name: new RegExp(identityName) }).click()
   const detail = page.getByRole("dialog", { name: identityName })
   await detail.getByRole("button", { name: "Public-key bundle QR", exact: true }).click()
