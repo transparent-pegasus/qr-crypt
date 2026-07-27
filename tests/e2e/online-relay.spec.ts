@@ -121,9 +121,13 @@ async function assertNoRelayPersistence(
   )
   expect(
     snapshot.localStorageEntries.every(([key]) =>
-      ["oc-lang", "oc-offline-ack-pending", "oc-theme"].includes(key),
+      ["oc-lang", "oc-offline-ack-pending", "oc-online-tab", "oc-theme"].includes(key),
     ),
   ).toBe(true)
+  // Tapping the relay tab persists the choice; only the two tab literals are storable.
+  expect(Object.fromEntries(snapshot.localStorageEntries)["oc-online-tab"]).toMatch(
+    /^(?:top|relay)$/,
+  )
   const inspected = [
     ...snapshot.cacheValues,
     ...snapshot.databaseValues,

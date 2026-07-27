@@ -1,6 +1,6 @@
 # OnlineGate — オンライン導入・OCF2 フレーム中継タブ
 
-機能検出ゲートの次、通常ルーターの前に配置する全画面ゲート。オンライン中は `/encrypt`・`/keys`・`/saved`・`/settings` を一切表示せず、PWA の導入情報と、鍵・PQ 身元・Vault 鍵の各ストアが読めた上で 1 行も無いと確認できた場合（読み取り失敗は不許可側に倒す fail-closed）だけ OCF2 フレーム中継を表示する。オンラインシェル自体の固定 localStorage 書き込み（`oc-theme` / `oc-lang` / ack マーカー）は従来どおり行われるため「保存領域が空」ではない。鍵を保持する端末をオンラインにしない運用は変わらない。
+機能検出ゲートの次、通常ルーターの前に配置する全画面ゲート。オンライン中は `/encrypt`・`/keys`・`/saved`・`/settings` を一切表示せず、PWA の導入情報と、鍵・PQ 身元・Vault 鍵の各ストアが読めた上で 1 行も無いと確認できた場合（読み取り失敗は不許可側に倒す fail-closed）だけ OCF2 フレーム中継を表示する。オンラインシェル自体の固定 localStorage 書き込み（`oc-theme` / `oc-lang` / ack マーカー / 最後に開いたタブ `oc-online-tab`）は従来どおり行われるため「保存領域が空」ではない。鍵を保持する端末をオンラインにしない運用は変わらない。
 
 ## 表示内容
 
@@ -19,6 +19,7 @@
   - 44 px 操作、`focus-visible:ring-2`、lucide のアイコン＋テキストを使う
 - relay eligible の時だけ、共通下部シェルにアイコンのみの「トップ」「リレー」2 項目を表示する。選択したリレータブの eligibility が一時的に pending になった間もナビを消さないため、表示条件 `navVisible` は `relayEligible || tab === "relay"` とする。固定ナビ表示中は本文に `pb-content-safe` を付ける。
 - 下部操作は offline ナビと同じ `<nav>` + 各 `<button aria-current="page">` のページナビとして扱い、`role="tablist"` は使わない。
+- ナビを押した時だけ選択タブを localStorage `oc-online-tab`（`top` / `relay` の 2 値のみ）へ保存し、次回起動はその値で開く。未設定・未知の値は `top`。オンライン専用端末が毎回リレーを選び直さずに済むことが目的で、一度も押していない端末は書き込まない。`oc-*` 全削除で消えるため wipe / 全初期化後はトップに戻る。
 
 ## 状態遷移と保護
 

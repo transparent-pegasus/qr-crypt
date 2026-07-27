@@ -91,7 +91,7 @@ describe("OnlineGate", () => {
 
     expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
     expect(
-      screen.getByText("Online installation and OCF2 message-header relay"),
+      screen.getByText("Install the PWA or relay OCF2 message-header QR frames"),
     ).not.toBeVisible()
   })
 
@@ -111,7 +111,7 @@ describe("OnlineGate", () => {
       )
 
       expect(
-        await screen.findByText("Online installation and OCF2 message-header relay"),
+        await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
       ).toBeVisible()
       expect(screen.getByText("OCF2 message-header QR relay")).not.toBeVisible()
       view.unmount()
@@ -130,11 +130,9 @@ describe("OnlineGate", () => {
       )
 
       expect(
-        await screen.findByText("Online installation and OCF2 message-header relay"),
+        await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
       ).toBeVisible()
-      expect(
-        setItem.mock.calls.some(([key]) => key === "oc-online-tab"),
-      ).toBe(false)
+      expect(setItem.mock.calls.some(([key]) => key === "oc-online-tab")).toBe(false)
       expect(window.localStorage.getItem("oc-online-tab")).toBeNull()
     } finally {
       setItem.mockRestore()
