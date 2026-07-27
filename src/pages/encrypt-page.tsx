@@ -14,6 +14,7 @@ import {
   Eraser,
   LoaderCircle,
   Lock,
+  LockOpen,
 } from "lucide-react"
 import { toast } from "sonner"
 import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
@@ -877,7 +878,11 @@ export function EncryptPage() {
                 disabled={!canDecrypt}
                 onClick={() => void handleDecrypt()}
               >
-                {busy && <LoaderCircle aria-hidden="true" className="animate-spin" />}
+                {busy ? (
+                  <LoaderCircle aria-hidden="true" className="animate-spin" />
+                ) : (
+                  <LockOpen aria-hidden="true" />
+                )}
                 {t(busy ? "encrypt.decryptButton.busy" : "encrypt.decryptButton.idle")}
               </Button>
             </CardContent>

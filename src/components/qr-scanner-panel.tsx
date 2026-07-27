@@ -1117,7 +1117,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
             className="h-11 w-full"
             disabled={!cameraAvailable || deliveryBusy}
           >
-            <Camera aria-hidden="true" />
+            <ScanLine aria-hidden="true" />
             {triggerLabel}
           </Button>
         </DialogTrigger>
