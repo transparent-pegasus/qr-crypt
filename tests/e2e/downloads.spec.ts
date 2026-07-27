@@ -101,7 +101,7 @@ test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no
   await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, symmetricName)
 
-  await goToOfflinePage(page, "/saved")
+  await goToOfflinePage(page, "/keys")
   await page.getByRole("button", { name: new RegExp(symmetricName) }).click()
   let dialog = page.getByRole("dialog", { name: symmetricName })
   await dialog
@@ -134,7 +134,7 @@ test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no
   await goToOfflinePage(page, "/keys")
   await createPqIdentity(page, identityName)
 
-  await goToOfflinePage(page, "/saved")
+  await goToOfflinePage(page, "/keys")
   await page.getByRole("button", { name: new RegExp(identityName) }).click()
   dialog = page.getByRole("dialog", { name: identityName })
   await dialog

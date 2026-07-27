@@ -90,10 +90,10 @@ QR コード表示面だけは例外: **常に白背景 `#FFFFFF`・黒セル `#
 
 ## 5. レイアウト / ナビゲーション
 
-- 1 カラム、`max-width: 28rem`(保存済み一覧のみ md 以上 `42rem`)、中央寄せ。
+- 1 カラム、`max-width: 28rem`、中央寄せ。
 - ヘッダー: sticky top、アプリ名(左)+ ネットワーク状態バッジ(右)。`padding-top: env(safe-area-inset-top)`。
 - 本文下端余白: `calc(64px + env(safe-area-inset-bottom) + 16px)`(固定ナビと重なり禁止)。
-- 下部ナビ共通シェル: `position: fixed; left:0; right:0; bottom:0; padding-bottom: env(safe-area-inset-bottom);` 高さ 64px、子要素数にかかわらず等幅。オフラインは 4 項目(暗号化=Lock, 鍵=KeyRound, 保存済み=Archive, 設定=Settings)、対象時のオンライン画面は 2 項目(トップ=Home, リレー=MessageSquareText)のアイコンナビ。現在項目: `aria-current="page"` + `--primary` 色 + 上端 2px インジケーター。各項目タップ領域 ≥44×44px。
+- 下部ナビ共通シェル: `position: fixed; left:0; right:0; bottom:0; padding-bottom: env(safe-area-inset-bottom);` 高さ 64px、子要素数にかかわらず等幅。オフラインは 4 項目(暗号化=`LockKeyhole` `/encrypt`、復号=`LockKeyholeOpen` `/decrypt`、鍵=`KeyRound` `/keys`、設定=`Settings` `/settings`)、対象時のオンライン画面は 2 項目(トップ=Home, リレー=MessageSquareText)のアイコンナビ。現在項目: `aria-current="page"` + `--primary` 色 + 上端 2px インジケーター。各項目タップ領域 ≥44×44px。
 - 横スクロール禁止。長いペイロード文字列は `break-all` + `max-h` + スクロール領域。
 
 ## 6. コンポーネント規約(shadcn/ui ベース)

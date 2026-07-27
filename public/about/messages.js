@@ -11,7 +11,7 @@
 //
 // Japanese follows the repo's house style in src/i18n/messages.ts: no manual
 // space between Japanese characters and adjacent Latin letters or digits, and
-// the same page and tab names the app itself shows.
+// the same page names the app itself shows.
 
 export const DEFAULT_LOCALE = { code: "en", label: "English" }
 
@@ -83,16 +83,17 @@ export const LOCALES = {
       "flow.offline": "オフライン",
       "flow.offlineSub": "見られるのは自分だけ",
       "flow.page.keys": "鍵ページ",
-      "flow.page.encrypt": "暗号・復号ページ",
+      "flow.page.encrypt": "暗号化ページ",
+      "flow.page.decrypt": "復号ページ",
       "flow.page.relay": "リレーページ",
       "flow.s1.title": "それぞれが自分の鍵を作る",
-      "flow.s1.where": "作成タブ",
+      "flow.s1.where": "作成ダイアログ",
       "flow.s2.title": "相手の鍵を読み込む",
-      "flow.s2.where": "読込タブ",
+      "flow.s2.where": "読込ダイアログ",
       "flow.s2.note":
         "この交換は対面で行い、画面に出る指紋を突き合わせてください。その鍵が本人のものかどうかを、アプリは確認できません。",
       "flow.s3.title": "送信者が文章を暗号化する",
-      "flow.s3.where": "暗号化タブ",
+      "flow.s3.where": "暗号化ページ",
       "flow.s3.note":
         "暗号化には相手の鍵を使います。署名付きの方式を選んだ場合は、自分の鍵で自分が送ったことを示します。",
       "flow.s4.title": "QRコードを読み取って文字で送る",
@@ -102,7 +103,7 @@ export const LOCALES = {
       "flow.s5.title": "受け取った人が文字をQRコードに戻す",
       "flow.s5.where": "オンラインモード",
       "flow.s6.title": "受け取った人が復号して読む",
-      "flow.s6.where": "復号タブ",
+      "flow.s6.where": "復号ページ",
       "flow.s6.cross":
         "オフライン端末で、オンライン端末の画面に出たQRコードを読み取ります。",
       "flow.s6.note": "読める状態の文章が、この端末から出ることはありません。",

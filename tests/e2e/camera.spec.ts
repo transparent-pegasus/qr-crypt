@@ -45,12 +45,8 @@ test("discards and restarts the fake camera, then stops every track when closed"
       { capture: true },
     )
   })
-  const bundleTab = page.getByRole("tab", {
-    name: "Import",
-    exact: true,
-  })
-  await bundleTab.click()
-  await expect(bundleTab).toHaveAttribute("data-state", "active")
+  await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
+  await page.getByRole("button", { name: "Scan a key QR", exact: true }).click()
   await expect(
     page.getByRole("heading", { name: "Scan with the camera", exact: true }),
   ).toBeVisible()

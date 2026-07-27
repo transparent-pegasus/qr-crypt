@@ -190,13 +190,13 @@ export async function openOfflineApp(
 
 export async function goToOfflinePage(
   page: Page,
-  path: "/encrypt" | "/keys" | "/saved" | "/settings",
+  path: "/encrypt" | "/decrypt" | "/keys" | "/settings",
 ): Promise<void> {
   if (new URL(page.url()).pathname === path) return
   const labels = {
-    "/encrypt": "Encrypt / decrypt",
-    "/keys": "Add keys",
-    "/saved": "Key list",
+    "/encrypt": "Encrypt",
+    "/decrypt": "Decrypt",
+    "/keys": "Keys",
     "/settings": "Settings",
   } as const
   await mainNavigation(page)
@@ -211,8 +211,8 @@ export async function goToOfflinePage(
 
 export async function createSymmetricKey(page: Page, name: string): Promise<void> {
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "Create", exact: true }).click()
-  await chooseOption(page, "Type", AES_ALGORITHM_LABEL)
+  await page.getByRole("button", { name: "Create a key", exact: true }).click()
+  await chooseOption(page, "Key type", AES_ALGORITHM_LABEL)
   await page.getByLabel("Symmetric-key name", { exact: true }).fill(name)
   await page.getByRole("button", { name: "Create a symmetric key", exact: true }).click()
   const dialog = page.getByRole("dialog", { name, exact: true })
@@ -224,8 +224,8 @@ export async function createSymmetricKey(page: Page, name: string): Promise<void
 
 export async function createPqIdentity(page: Page, name: string): Promise<void> {
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "Create", exact: true }).click()
-  await chooseOption(page, "Type", "Post-quantum identity")
+  await page.getByRole("button", { name: "Create a key", exact: true }).click()
+  await chooseOption(page, "Key type", "Post-quantum identity")
   await page.getByLabel("Post-quantum identity name", { exact: true }).fill(name)
   await page
     .getByRole("button", { name: "Create a post-quantum identity", exact: true })

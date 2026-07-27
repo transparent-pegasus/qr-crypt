@@ -31,7 +31,7 @@ test("shows online installation, serves PWA assets, then boots and navigates off
   await expect(page).toHaveURL(/\/encrypt$/)
   const navigation = mainNavigation(page)
   await expect(navigation.getByRole("link")).toHaveCount(4)
-  for (const label of ["Encrypt / decrypt", "Add keys", "Key list", "Settings"]) {
+  for (const label of ["Encrypt", "Decrypt", "Keys", "Settings"]) {
     await expect(
       navigation.getByRole("link", {
         name: new RegExp(`^${label}(?: current page)?$`),

@@ -21,7 +21,7 @@ describe("app shell and feature gate", () => {
     const links = within(navigation).getAllByRole("link")
     expect(links).toHaveLength(4)
     await waitFor(() => expect(links[0]).toHaveAttribute("aria-current", "page"))
-    for (const name of ["Encrypt / decrypt", "Add keys", "Key list", "Settings"]) {
+    for (const name of ["Encrypt", "Decrypt", "Keys", "Settings"]) {
       expect(within(navigation).getByRole("link", { name })).toHaveAttribute(
         "aria-label",
         name,
@@ -51,7 +51,7 @@ describe("app shell and feature gate", () => {
     links[1]?.focus()
     expect(links[1]).toHaveFocus()
     await user.keyboard(" ")
-    await waitFor(() => expect(window.location.pathname).toBe("/keys"))
+    await waitFor(() => expect(window.location.pathname).toBe("/decrypt"))
     expect(links[1]).toHaveAttribute("aria-current", "page")
 
     links[3]?.focus()
@@ -102,13 +102,11 @@ describe("app shell and feature gate", () => {
 
   it("keeps the app available but disables camera reading when camera is absent", async () => {
     Object.assign(fakeFeatures, { camera: false })
-    const user = userEvent.setup()
-    await renderApp("/encrypt", {
+    await renderApp("/decrypt", {
       detectFeatures: () => ({ ...fakeFeatures }),
     })
-    await user.click(await screen.findByRole("tab", { name: "Decrypt" }))
     expect(
-      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
+      await screen.findByRole("button", { name: "Scan a ciphertext QR code" }),
     ).toBeDisabled()
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(

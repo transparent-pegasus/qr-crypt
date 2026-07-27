@@ -5,6 +5,7 @@ import {
   detailValue,
   encryptSignedPq,
   expectOfflineAcknowledgement,
+  goToOfflinePage,
   installWorkerProbe,
   loadOnlineGate,
   mainNavigation,
@@ -76,9 +77,8 @@ test("initializes the precached same-origin reader WASM on its first offline cam
     )
   })
 
-  const importTab = page.getByRole("tab", { name: "Import", exact: true })
-  await importTab.click()
-  await expect(importTab).toHaveAttribute("data-state", "active")
+  await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
+  await page.getByRole("button", { name: "Scan a key QR", exact: true }).click()
   await page
     .getByRole("button", {
       name: "Scan a key QR code",
@@ -92,18 +92,22 @@ test("initializes the precached same-origin reader WASM on its first offline cam
     dialog.getByText("QR codes can be read in any order", { exact: true }),
   ).toBeVisible({ timeout: 30_000 })
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const video = document.querySelector(
-          'video[aria-label="Camera video for QR scanning"]',
-        )
-        if (!(video instanceof HTMLVideoElement)) return false
-        const stream = video.srcObject
-        return (
-          stream instanceof MediaStream &&
-          stream.getTracks().some((track) => track.readyState === "live")
-        )
-      }),
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const video = document.querySelector(
+            'video[aria-label="Camera video for QR scanning"]',
+          )
+          if (!(video instanceof HTMLVideoElement)) return false
+          const stream = video.srcObject
+          return (
+            stream instanceof MediaStream &&
+            stream.getTracks().some((track) => track.readyState === "live")
+          )
+        }),
+      // Same budget as the reader-ready wait above: bringing the camera up behind
+      // the precached WASM outruns the 5s default whenever the workers contend.
+      { timeout: 30_000 },
     )
     .toBe(true)
 
@@ -160,7 +164,7 @@ test("completes offline PQ keygen, Encaps, Decaps, and signature verification us
   )
 
   await result.getByRole("button", { name: "Close" }).click()
-  await page.getByRole("tab", { name: "Decrypt", exact: true }).click()
+  await goToOfflinePage(page, "/decrypt")
   await page.getByLabel("Ciphertext payload").fill(payload)
   const decrypt = page.getByRole("button", { name: "Decrypt", exact: true })
   await expect(decrypt).toBeEnabled()

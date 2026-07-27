@@ -284,6 +284,7 @@ units:
       - src/schemas/domain.ts # exact default and compatible generated-display pairs
       - src/storage/preferences-repository.ts # atomic pair writes and boot-readable pair canonicalization
       - src/pages/encrypt-page.tsx # message-display preference and per-artifact effective clamp
+      - src/pages/decrypt-page.tsx # decoded-artifact ceilings on the paste and scan paths
       - src/components/key-detail-dialog.tsx # identity-display preference and per-artifact effective clamp
       - src/components/animated-qr-frames.tsx # labelled compatibility switch, commit-gated dwell, and one-button export
       - src/components/online-relay.tsx # independent replay cadence and deliberately absent switch
@@ -302,7 +303,8 @@ units:
       the documented allocation, exact display preferences, per-artifact
       effective clamps, cycle, relay-cadence, and export contracts with
       limits.ts, frame-bytes.ts, frame-interval.ts, payload-v2.ts, domain.ts,
-      preferences-repository.ts, encrypt-page.tsx, key-detail-dialog.tsx,
+      preferences-repository.ts, encrypt-page.tsx, decrypt-page.tsx,
+      key-detail-dialog.tsx,
       animated-qr-frames.tsx, and online-relay.tsx. Diff
       boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
       and wipe coordinator behavior. Update dated statements to current state.
@@ -378,7 +380,7 @@ units:
     files:
       - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
-      - src/pages/keys-page.tsx # experimental / not-independently-audited banners
+      - src/components/key-add-dialog.tsx # experimental / not-independently-audited banners
       - src/components/online-gate.tsx # offline-switch compromise-assumption copy
       - src/components/offline-ack-shell.tsx # "a connected device can always be compromised" copy
       - public/about/index.html # landing page, en source of record: AES-256 "as of 2026", PQ rationale, wipe honesty

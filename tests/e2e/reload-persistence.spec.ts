@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test"
 import {
   createPqIdentity,
   encryptSignedPq,
+  goToOfflinePage,
   installWorkerProbe,
   openOfflineApp,
   rawStoreCount,
@@ -25,7 +26,7 @@ test("expands encrypted PQ seeds in the Worker after reload and decrypts a signe
   await page.reload({ waitUntil: "domcontentloaded" })
   expect(await rawStoreCount(page, "pqIdentities")).toBe(1)
   expect(await rawStoreCount(page, "pqPublicBundles")).toBe(1)
-  await page.getByRole("tab", { name: "Decrypt", exact: true }).click()
+  await goToOfflinePage(page, "/decrypt")
   await page.getByLabel("Ciphertext payload").fill(payload)
   const decrypt = page.getByRole("button", { name: "Decrypt", exact: true })
   await expect(decrypt).toBeEnabled()
