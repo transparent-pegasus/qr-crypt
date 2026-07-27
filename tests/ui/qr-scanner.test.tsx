@@ -105,6 +105,48 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
   })
 
+  it("tells the user the reader is still loading, and stops once it is ready", async () => {
+    const user = userEvent.setup()
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    const onDiagnostic = startQrScan.mock.calls[0]?.[3]?.onDiagnostic
+
+    act(() => {
+      onDiagnostic?.({
+        readerModuleState: "preparing",
+        videoFramesDrawn: 1,
+        decodeAttemptsCompleted: 0,
+        decodeResultsSeen: 0,
+        lastErrorName: "QrReaderPreparationTimeout",
+      })
+    })
+    expect(
+      await screen.findByText("Still loading the QR reader…"),
+    ).toBeInTheDocument()
+
+    act(() => {
+      onDiagnostic?.({
+        readerModuleState: "ready",
+        videoFramesDrawn: 2,
+        decodeAttemptsCompleted: 1,
+        decodeResultsSeen: 0,
+        lastErrorName: null,
+      })
+    })
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Still loading the QR reader…"),
+      ).not.toBeInTheDocument()
+    })
+  })
+
   it("starts automatically only when autoStart is enabled", async () => {
     const view = render(
       <QrScannerPanel

@@ -483,6 +483,7 @@ const en = {
     "The camera view could not be prepared. Reopen the page.",
   "scanner.status.videoNotReady": "The camera view could not be prepared",
   "scanner.status.preparing": "Preparing the camera…",
+  "scanner.status.readerLoading": "Still loading the QR reader…",
   "scanner.status.qrRead": "The QR code was read",
   "scanner.error.multipartNotAccepted":
     "This screen does not accept multi-frame QR codes.",
@@ -1139,6 +1140,7 @@ const ja = {
     "カメラ画面を準備できませんでした。ページを開き直してください。",
   "scanner.status.videoNotReady": "カメラ画面を準備できませんでした",
   "scanner.status.preparing": "カメラを準備しています…",
+  "scanner.status.readerLoading": "QRリーダーを読み込んでいます…",
   "scanner.status.qrRead": "QRコードを読み取りました",
   "scanner.error.multipartNotAccepted":
     "この画面では複数QRを受理しません。",

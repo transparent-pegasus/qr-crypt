@@ -189,6 +189,13 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const [diagnostic, setDiagnostic] = useState<CameraDiagnostic | null>(null)
   const [pipelineDiagnostic, setPipelineDiagnostic] =
     useState<CameraPipelineDiagnostic | null>(null)
+  const readerStillLoading =
+    cameraMode === "running" &&
+    pipelineDiagnostic !== null &&
+    pipelineDiagnostic.videoFramesDrawn > 0 &&
+    pipelineDiagnostic.decodeAttemptsCompleted === 0 &&
+    (pipelineDiagnostic.readerModuleState === "preparing" ||
+      pipelineDiagnostic.readerModuleState === "idle")
   const [integrityConfirmed, setIntegrityConfirmed] = useState(
     transferState.kind === "complete",
   )
@@ -774,7 +781,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           aria-live="polite"
           className="text-center text-sm text-muted-foreground"
         >
-          {t(cameraStatus.key, cameraStatus.values)}
+          {readerStillLoading
+            ? t("scanner.status.readerLoading")
+            : t(cameraStatus.key, cameraStatus.values)}
         </p>
 
         {collecting && (
