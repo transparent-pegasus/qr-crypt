@@ -15,7 +15,6 @@ import {
   confirmBundleFingerprint,
   createIdentity,
   createSymmetricKeyRecord,
-  deleteKeyRecord,
   emitScannedPayload,
   encodeDsaPublicKeyEnvelopeV2,
   encodeKemPublicKeyEnvelopeV2,
@@ -56,30 +55,22 @@ describe("key management v2", () => {
     resetUi()
   })
 
-  it("shows noun-form tabs and separated camera/paste import cards", async () => {
+  it("puts key import in one modal with separated camera and paste cards", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    for (const name of ["Create", "Import"]) {
-      expect(await screen.findByRole("tab", { name })).toBeInTheDocument()
-    }
-    expect(screen.getAllByRole("tab")).toHaveLength(2)
-    expect(screen.getByRole("tab", { name: "Create" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    )
-    expect(screen.getByRole("tablist")).toHaveClass(
-      "grid",
-      "h-11",
-      "w-full",
-      "grid-cols-2",
-    )
-    for (const tab of screen.getAllByRole("tab")) {
-      expect(tab).toHaveClass("h-9", "cursor-pointer", "px-1", "text-sm")
-      await user.click(tab)
-      expect(screen.getByRole("tabpanel")).toHaveClass("mt-6")
-    }
-    const cameraHeading = screen.getByRole("heading", { name: "Scan with the camera" })
-    const pasteHeading = screen.getByRole("heading", {
+    // Creation and import are actions on the key list now, not page-level tabs.
+    expect(
+      await screen.findByRole("button", { name: "Create a key" }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "Create" })).toBeNull()
+    expect(screen.queryByRole("tab", { name: "Import" })).toBeNull()
+
+    await user.click(screen.getByRole("button", { name: "Import a key" }))
+    const modal = await screen.findByRole("dialog", { name: "Import" })
+    const cameraHeading = within(modal).getByRole("heading", {
+      name: "Scan with the camera",
+    })
+    const pasteHeading = within(modal).getByRole("heading", {
       name: "Paste a payload",
     })
     const cameraCard = cameraHeading.parentElement?.parentElement
@@ -95,7 +86,7 @@ describe("key management v2", () => {
     expect(
       within(pasteCard as HTMLDivElement).getByLabelText("Key payload"),
     ).toBeInTheDocument()
-    const exampleCaption = screen.getByText(
+    const exampleCaption = within(modal).getByText(
       "Ask the other party to increase their screen brightness, hold the camera about 15–20 cm away, and keep it still until the image is in focus.",
     )
     const scanIcon = within(cameraCard as HTMLDivElement)
@@ -109,19 +100,13 @@ describe("key management v2", () => {
         "Import a public-key bundle by scanning a QR code or pasting a payload above.",
       ),
     ).not.toBeInTheDocument()
+    // The legacy-RSA alert is gone with the keys page: no code path stores those kinds.
     expect(
-      screen.queryByText("There are no imported public-key bundles."),
-    ).not.toBeInTheDocument()
-    expect(screen.queryByText("確認済みの相手")).not.toBeInTheDocument()
-    expect(
-      screen.getByText(
-        /2 legacy RSA keys cannot be used with v2 and cannot be recovered/,
+      screen.queryByText(
+        /legacy RSA keys cannot be used with v2 and cannot be recovered/,
       ),
-    ).toBeInTheDocument()
-    expect(screen.queryByText("受信鍵B")).not.toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Delete legacy keys" }))
-    await waitFor(() => expect(deleteKeyRecord).toHaveBeenCalledTimes(2))
-    expect(fakeKeys.every((key) => key.kind === "symmetric")).toBe(true)
+    ).toBeNull()
+    expect(screen.queryByRole("button", { name: "Delete legacy keys" })).toBeNull()
   })
 
   it("creates the selected key kind through the embedded type select", async () => {
@@ -129,6 +114,7 @@ describe("key management v2", () => {
     const identityCount = fakeIdentities.length
     const symmetricCount = fakeKeys.filter((key) => key.kind === "symmetric").length
     await renderApp("/keys")
+    await user.click(await screen.findByRole("button", { name: "Create a key" }))
 
     // defaultAlgorithm=A256GCM in the fakes, so the default kind is symmetric key.
     expect(await screen.findByLabelText("Symmetric-key name")).toBeInTheDocument()
@@ -146,7 +132,9 @@ describe("key management v2", () => {
     expect(within(dialog).getByText("AES-256-GCM")).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
-    await user.click(screen.getByRole("combobox", { name: "Type" }))
+    // Closing the detail closes the whole modal, so creation restarts from the list.
+    await user.click(await screen.findByRole("button", { name: "Create a key" }))
+    await user.click(await screen.findByRole("combobox", { name: "Key type" }))
     await user.click(
       screen.getByRole("option", {
         name: "Post-quantum identity ML-KEM-1024 + ML-DSA-87",
@@ -182,6 +170,7 @@ describe("key management v2", () => {
     const firstQrRender = deferred<string>()
     renderQrDataUrl.mockImplementationOnce(() => firstQrRender.promise)
     await renderApp("/keys")
+    await user.click(await screen.findByRole("button", { name: "Create a key" }))
 
     await user.type(await screen.findByLabelText("Symmetric-key name"), "全画面共通鍵")
     await user.click(screen.getByRole("button", { name: "Create a symmetric key" }))
@@ -206,7 +195,9 @@ describe("key management v2", () => {
     await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
-    await user.click(screen.getByRole("combobox", { name: "Type" }))
+    // Closing the detail closes the whole modal, so creation restarts from the list.
+    await user.click(await screen.findByRole("button", { name: "Create a key" }))
+    await user.click(await screen.findByRole("combobox", { name: "Key type" }))
     await user.click(
       screen.getByRole("option", {
         name: "Post-quantum identity ML-KEM-1024 + ML-DSA-87",
@@ -256,7 +247,7 @@ describe("key management v2", () => {
     const user = userEvent.setup()
     const originalCount = fakeBundles.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "Import" }))
+    await user.click(await screen.findByRole("button", { name: "Import a key" }))
     await user.type(screen.getByLabelText("Key payload"), "OCI2:fake")
     await user.click(screen.getByRole("button", { name: "Read the key" }))
 
@@ -290,7 +281,7 @@ describe("key management v2", () => {
   it("confers fingerprint-confirmed trust only after the explicit checkbox", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "Import" }))
+    await user.click(await screen.findByRole("button", { name: "Import a key" }))
     await user.type(screen.getByLabelText("Key payload"), "OCI2:fake")
     await user.click(screen.getByRole("button", { name: "Read the key" }))
     const dialog = await screen.findByRole("dialog", {
@@ -326,7 +317,7 @@ describe("key management v2", () => {
     encodePublicIdentityBundleV2(legacyBundle)
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "Import" }))
+    await user.click(await screen.findByRole("button", { name: "Import a key" }))
     await user.type(screen.getByLabelText("Key payload"), "OCI2:legacy-balanced")
     await user.click(screen.getByRole("button", { name: "Read the key" }))
 
@@ -362,7 +353,7 @@ describe("key management v2", () => {
     }
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "Import" }))
+    await user.click(await screen.findByRole("button", { name: "Import a key" }))
     const input = screen.getByLabelText("Key payload")
 
     encodeKemPublicKeyEnvelopeV2(legacyKem)
@@ -387,7 +378,7 @@ describe("key management v2", () => {
     const user = userEvent.setup()
     const originalCount = fakeKeys.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "Import" }))
+    await user.click(await screen.findByRole("button", { name: "Import a key" }))
     expect(startQrScan).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "Scan a key QR code" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())

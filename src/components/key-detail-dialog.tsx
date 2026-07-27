@@ -142,6 +142,27 @@ export interface KeyDetailDialogProps {
   onChanged: (selection: KeySelection) => Promise<void>
 }
 
+// The detail view renders inside a Dialog root owned by the caller so that a
+// modal already open for another purpose can switch to it without unmounting
+// its overlay. `fullscreenOpen` lives with that caller because the same flag
+// gates both this content's inert state and the root's dismiss handler.
+export interface KeyDetailContentProps
+  extends Omit<KeyDetailDialogProps, "onOpenChange"> {
+  open: boolean
+  fullscreenOpen: boolean
+  onFullscreenOpenChange: (open: boolean) => void
+}
+
+export function resolveKeyDetailRecord(
+  selection: KeySelection | null,
+  identity: PostQuantumIdentity | undefined,
+  symmetric: StoredKeyRecord | undefined,
+): PostQuantumIdentity | StoredKeyRecord | undefined {
+  if (selection?.kind === "identity") return identity
+  if (selection?.kind === "symmetric") return symmetric
+  return undefined
+}
+
 function assertUsableIdentity(identity: PostQuantumIdentity): void {
   assertActiveProfile(identity.profile)
   assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
@@ -157,13 +178,40 @@ export function isUsableIdentity(identity: PostQuantumIdentity): boolean {
 }
 
 export function KeyDetailDialog({
+  onOpenChange,
+  ...rest
+}: KeyDetailDialogProps) {
+  const [fullscreenOpen, setFullscreenOpen] = useState(false)
+  const open =
+    rest.selection !== null &&
+    resolveKeyDetailRecord(rest.selection, rest.identity, rest.symmetric) !== undefined
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !fullscreenOpen) onOpenChange(false)
+      }}
+    >
+      <KeyDetailContent
+        {...rest}
+        open={open}
+        fullscreenOpen={fullscreenOpen}
+        onFullscreenOpenChange={setFullscreenOpen}
+      />
+    </Dialog>
+  )
+}
+
+export function KeyDetailContent({
   selection,
   identity,
   previous,
   symmetric,
-  onOpenChange,
   onChanged,
-}: KeyDetailDialogProps) {
+  open,
+  fullscreenOpen,
+  onFullscreenOpenChange,
+}: KeyDetailContentProps) {
   const { language, t } = useI18n()
   const {
     preferences,
@@ -174,7 +222,11 @@ export function KeyDetailDialog({
   const getPqClient = usePqCryptoClient()
   const { setSensitiveSession } = useSensitiveSession()
   const [view, setView] = useState<DetailView>({ kind: "detail" })
-  const [renameDraft, setRenameDraft] = useState("")
+  // Seeded from the record because this can mount straight onto a selection (the
+  // add modal switching to a freshly created key), where no change effect fires.
+  const [renameDraft, setRenameDraft] = useState(
+    () => resolveKeyDetailRecord(selection, identity, symmetric)?.name ?? "",
+  )
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [pendingDestroy, setPendingDestroy] = useState<
     PostQuantumIdentity[] | null
@@ -184,19 +236,13 @@ export function KeyDetailDialog({
   const [compatibilityUpdating, setCompatibilityUpdating] = useState(false)
   const [compatibilityError, setCompatibilityError] =
     useState<LocalizedMessage | null>(null)
-  const [fullscreenOpen, setFullscreenOpen] = useState(false)
   const [qrReady, setQrReady] = useState(false)
   const [qrHost, setQrHost] = useState<HTMLDivElement | null>(null)
   const qrGenerationRef = useRef(0)
   const presentedError = error ?? compatibilityError ?? preferencesError
   const localizedError = useLocalizedMessage(presentedError)
-  const record =
-    selection?.kind === "identity"
-      ? identity
-      : selection?.kind === "symmetric"
-        ? symmetric
-        : undefined
-  const open = selection !== null && record !== undefined
+  const record = resolveKeyDetailRecord(selection, identity, symmetric)
+  const setFullscreenOpen = onFullscreenOpenChange
   const sourceRef = useRef({
     selection: selection === null ? "" : `${selection.kind}:${selection.id}`,
     record,
@@ -254,9 +300,13 @@ export function KeyDetailDialog({
   )
 
   useEffect(() => {
+    // A closed instance must stay silent: the keys page mounts this alongside the
+    // add modal, and a patch from the idle one would clear the flags the open one
+    // set. Closing is covered by the selection-change reset and the unmount cleanup.
+    if (!open) return
     setSensitiveSession({
       cryptoBusy: busy,
-      secretVisible: open && view.kind === "symmetric-qr",
+      secretVisible: view.kind === "symmetric-qr",
     })
   }, [busy, open, setSensitiveSession, view.kind])
   useEffect(
@@ -278,10 +328,13 @@ export function KeyDetailDialog({
     setView({ kind: "detail" })
     setPendingDelete(null)
     setPendingDestroy(null)
+    setBusy(false)
     setError(null)
     setRenameDraft(record?.name ?? "")
     setSensitiveSession({ cryptoBusy: false, secretVisible: false })
-  }, [record, selection, setSensitiveSession])
+    // Closing (selection -> null) and switching records both land here, so this
+    // is also the reset the dismissed dialog relies on.
+  }, [record, selection, setFullscreenOpen, setSensitiveSession])
 
   const leaveQrView = () => {
     qrGenerationRef.current += 1
@@ -290,19 +343,6 @@ export function KeyDetailDialog({
     setView({ kind: "detail" })
     setError(null)
     setSensitiveSession({ secretVisible: false })
-  }
-
-  const close = () => {
-    qrGenerationRef.current += 1
-    setFullscreenOpen(false)
-    setQrReady(false)
-    setView({ kind: "detail" })
-    setPendingDelete(null)
-    setPendingDestroy(null)
-    setBusy(false)
-    setError(null)
-    setSensitiveSession({ cryptoBusy: false, secretVisible: false })
-    onOpenChange(false)
   }
 
   const showIdentityQr = async (
@@ -510,18 +550,12 @@ export function KeyDetailDialog({
 
   return (
     <>
-      <Dialog
-        open={open}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen && !fullscreenOpen) close()
-        }}
+      <NoAutofocusDialogContent
+        className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden"
+        aria-busy={busy}
+        aria-hidden={fullscreenOpen || undefined}
+        inert={fullscreenOpen || undefined}
       >
-        <NoAutofocusDialogContent
-          className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden"
-          aria-busy={busy}
-          aria-hidden={fullscreenOpen || undefined}
-          inert={fullscreenOpen || undefined}
-        >
           <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
             <DialogHeader>
               <DialogTitle>
@@ -679,8 +713,7 @@ export function KeyDetailDialog({
               </div>
             )}
           </div>
-        </NoAutofocusDialogContent>
-      </Dialog>
+      </NoAutofocusDialogContent>
 
       {qrHost &&
         view.kind === "identity-qr" &&

@@ -25,7 +25,7 @@ test("routes an injected decoder stream through the UI handler and imports a shu
 
   const identityName = "継続スキャンPQ-ID"
   await createPqIdentity(page, identityName)
-  await goToOfflinePage(page, "/saved")
+  await goToOfflinePage(page, "/keys")
   await page.getByRole("button", { name: new RegExp(identityName) }).click()
   let identityDialog = page.getByRole("dialog", { name: identityName })
   await identityDialog
@@ -58,7 +58,7 @@ test("routes an injected decoder stream through the UI handler and imports a shu
   await frameDialog.getByRole("button", { name: "Close", exact: true }).click()
 
   await goToOfflinePage(page, "/keys")
-  await page.getByRole("tab", { name: "Import", exact: true }).click()
+  await page.getByRole("button", { name: "Import a key", exact: true }).click()
   const scanTrigger = page.getByRole("button", {
     name: "Scan a key QR code",
     exact: true,
@@ -126,11 +126,8 @@ test("routes an injected decoder stream through the UI handler and imports a shu
   }
 
   await expect(scanDialog).not.toBeVisible({ timeout: 30_000 })
-  await expect(
-    page.getByText(
-      "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
-    ),
-  ).toBeVisible()
+  // The add modal switches straight to the fingerprint step, so the scanner's own
+  // closed notice is replaced by the confirmation it was announcing.
   snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)?.active).toBe(false)
 

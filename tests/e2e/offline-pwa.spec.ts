@@ -5,6 +5,7 @@ import {
   detailValue,
   encryptSignedPq,
   expectOfflineAcknowledgement,
+  goToOfflinePage,
   installWorkerProbe,
   loadOnlineGate,
   mainNavigation,
@@ -76,9 +77,7 @@ test("initializes the precached same-origin reader WASM on its first offline cam
     )
   })
 
-  const importTab = page.getByRole("tab", { name: "Import", exact: true })
-  await importTab.click()
-  await expect(importTab).toHaveAttribute("data-state", "active")
+  await page.getByRole("button", { name: "Import a key", exact: true }).click()
   await page
     .getByRole("button", {
       name: "Scan a key QR code",
@@ -160,7 +159,7 @@ test("completes offline PQ keygen, Encaps, Decaps, and signature verification us
   )
 
   await result.getByRole("button", { name: "Close" }).click()
-  await page.getByRole("tab", { name: "Decrypt", exact: true }).click()
+  await goToOfflinePage(page, "/decrypt")
   await page.getByLabel("Ciphertext payload").fill(payload)
   const decrypt = page.getByRole("button", { name: "Decrypt", exact: true })
   await expect(decrypt).toBeEnabled()
