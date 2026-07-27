@@ -68,16 +68,19 @@ dev:
 # build_command `aube run build`). Detached checkout, so REF may be checked out
 # in another worktree at the same time.
 #
-#   make fresh-local                                  # origin/dev
+#   make fresh-local                                  # branch name, dev by default
 #   make fresh-local REF=feat/scanner-and-decrypt-icons
 
 REF ?= dev
+# `REF=origin/dev` names the same branch as `REF=dev`; make's trailing-comment
+# whitespace would end up inside the value, so keep this note off the line.
+BRANCH := $(patsubst origin/%,%,$(REF))
 LOCAL := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/.worktrees/local
 
 .PHONY: fresh-local
 fresh-local:
 	@test -z "$$(git -C '$(LOCAL)' status --porcelain --untracked-files=no)" \
 		|| { echo 'refusing: $(LOCAL) has uncommitted changes - commit or discard them first'; exit 1; }
-	git fetch origin $(REF)
-	git -C '$(LOCAL)' checkout --detach origin/$(REF)
+	git fetch origin $(BRANCH)
+	git -C '$(LOCAL)' checkout --detach origin/$(BRANCH)
 	cd '$(LOCAL)' && aube run build
