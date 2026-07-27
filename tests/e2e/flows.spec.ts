@@ -21,7 +21,7 @@ test("supports creation through key listing, QR display, and deletion without pe
     keyName,
     plaintext: "暗号文をアプリ管理領域へ保存しない日本語平文",
   })
-  const result = page.getByRole("region", { name: "Encryption result" })
+  const result = page.getByRole("dialog", { name: "Encryption complete" })
   await expect(result.getByLabel("Output name", { exact: true })).toBeVisible()
   await expect(result.getByLabel("QR name", { exact: true })).toHaveCount(0)
   await expect(result.getByRole("button", { name: "Save", exact: true })).toHaveCount(0)

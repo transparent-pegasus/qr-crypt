@@ -159,6 +159,7 @@ test("completes offline PQ keygen, Encaps, Decaps, and signature verification us
     1,
   )
 
+  await result.getByRole("button", { name: "Close" }).click()
   await page.getByRole("tab", { name: "Decrypt", exact: true }).click()
   await page.getByLabel("Ciphertext payload").fill(payload)
   const decrypt = page.getByRole("button", { name: "Decrypt", exact: true })

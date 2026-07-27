@@ -28,6 +28,7 @@ import {
   multipartPayload,
   scannerStop,
   startQrScan,
+  warmQrReader,
 } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
 
@@ -102,6 +103,48 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     expect(onSingleScan).toHaveBeenCalledOnce()
     expect(onSingleScan).toHaveBeenCalledWith("message", "OCM1:message")
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
+  })
+
+  it("tells the user the reader is still loading, and stops once it is ready", async () => {
+    const user = userEvent.setup()
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    const onDiagnostic = startQrScan.mock.calls[0]?.[3]?.onDiagnostic
+
+    act(() => {
+      onDiagnostic?.({
+        readerModuleState: "preparing",
+        videoFramesDrawn: 1,
+        decodeAttemptsCompleted: 0,
+        decodeResultsSeen: 0,
+        lastErrorName: "QrReaderPreparationTimeout",
+      })
+    })
+    expect(
+      await screen.findByText("Still loading the QR reader…"),
+    ).toBeInTheDocument()
+
+    act(() => {
+      onDiagnostic?.({
+        readerModuleState: "ready",
+        videoFramesDrawn: 2,
+        decodeAttemptsCompleted: 1,
+        decodeResultsSeen: 0,
+        lastErrorName: null,
+      })
+    })
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Still loading the QR reader…"),
+      ).not.toBeInTheDocument()
+    })
   })
 
   it("starts automatically only when autoStart is enabled", async () => {
@@ -224,6 +267,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         phase: "track-ended",
         name: "NotReadableError",
         detail: "0x0 rs=2 track=ended/unmuted",
+        message: null,
       })
       throw cameraError
     })
@@ -286,6 +330,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         phase: "acquiring",
         name: null,
         detail: "0x0 rs=0 track=none",
+        message: null,
       })
     })
     await user.click(
@@ -318,6 +363,14 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
 
     expect(signal?.aborted).toBe(true)
     expect(scannerStop).toHaveBeenCalledOnce()
+  })
+
+  it("warms the QR reader when the scanner panel mounts", async () => {
+    render(
+      <QrScannerPanel singleTargets={["message"]} onSingleScan={vi.fn()} />,
+    )
+
+    expect(warmQrReader).toHaveBeenCalled()
   })
 })
 
@@ -689,5 +742,17 @@ describe("QrScannerModal", () => {
         "The temporary scan state expired and was discarded.",
       ),
     ).toBeInTheDocument()
+  })
+
+  it("warms the QR reader when the scanner modal mounts, before any tap", async () => {
+    render(
+      <QrScannerModal
+        triggerLabel="Scan a ciphertext QR code"
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    expect(warmQrReader).toHaveBeenCalled()
   })
 })

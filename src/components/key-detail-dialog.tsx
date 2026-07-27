@@ -41,6 +41,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toAppError } from "@/crypto/errors"
 import { buildSymmetricKeyEnvelope } from "@/crypto/key-generation"
@@ -60,7 +61,12 @@ import {
 import { useFrameSplit } from "@/hooks/use-frame-split"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePreferences } from "@/hooks/use-preferences"
-import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
+import {
+  messageKeyOrFallback,
+  useI18n,
+  useLocalizedMessage,
+  type LocalizedMessage,
+} from "@/i18n"
 import { FRAME_BYTES_MAX, minimumFrameBytesForArtifact } from "@/lib/limits"
 import { ecLevelFor } from "@/qr/encode"
 import {
@@ -80,10 +86,12 @@ import {
   type StorablePqArtifactKind,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
-import { deleteKeyRecord } from "@/storage/key-repository"
+import { keyNameSchema } from "@/schemas/key-schema"
+import { deleteKeyRecord, renameKeyRecord } from "@/storage/key-repository"
 import {
   deleteIdentity,
   deleteSupersededIdentities,
+  renameIdentity,
   revokeIdentity,
   saveRotation,
 } from "@/storage/pq-identity-repository"
@@ -166,6 +174,7 @@ export function KeyDetailDialog({
   const getPqClient = usePqCryptoClient()
   const { setSensitiveSession } = useSensitiveSession()
   const [view, setView] = useState<DetailView>({ kind: "detail" })
+  const [renameDraft, setRenameDraft] = useState("")
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null)
   const [pendingDestroy, setPendingDestroy] = useState<
     PostQuantumIdentity[] | null
@@ -195,6 +204,34 @@ export function KeyDetailDialog({
   const setQrHostRef = useCallback((node: HTMLDivElement | null) => {
     setQrHost(node)
   }, [])
+  const submitRename = async () => {
+    if (selection === null) return
+    const parsed = keyNameSchema.safeParse(renameDraft)
+    if (!parsed.success) {
+      setError(
+        messageKeyOrFallback(
+          parsed.error.issues[0]?.message,
+          "validation.name.required",
+        ),
+      )
+      return
+    }
+    setBusy(true)
+    setError(null)
+    try {
+      if (selection.kind === "identity") {
+        await renameIdentity(selection.id, parsed.data)
+      } else {
+        await renameKeyRecord(selection.id, parsed.data)
+      }
+      await onChanged(selection)
+      toast.success(t("keyDetail.rename.saved"))
+    } catch (caught) {
+      setError(toAppError(caught, "STORAGE_FAILED").code)
+    } finally {
+      setBusy(false)
+    }
+  }
   const changeCompatibilityMode = useCallback(
     async (enabled: boolean) => {
       setCompatibilityUpdating(true)
@@ -242,6 +279,7 @@ export function KeyDetailDialog({
     setPendingDelete(null)
     setPendingDestroy(null)
     setError(null)
+    setRenameDraft(record?.name ?? "")
     setSensitiveSession({ cryptoBusy: false, secretVisible: false })
   }, [record, selection, setSensitiveSession])
 
@@ -531,6 +569,31 @@ export function KeyDetailDialog({
                 >
                   <Expand aria-hidden="true" />
                 </Button>
+              </div>
+            )}
+
+            {view.kind === "detail" && record && (
+              <div className="space-y-2">
+                <Label htmlFor="key-rename">{t("keyDetail.rename.label")}</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="key-rename"
+                    value={renameDraft}
+                    onChange={(event) => setRenameDraft(event.target.value)}
+                    maxLength={80}
+                    className="h-11"
+                    disabled={busy}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 shrink-0"
+                    disabled={busy || renameDraft.trim().length === 0}
+                    onClick={() => void submitRename()}
+                  >
+                    {t("keyDetail.rename.submit")}
+                  </Button>
+                </div>
               </div>
             )}
 

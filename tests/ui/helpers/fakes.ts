@@ -7,7 +7,9 @@ import type {
   PublicKeyEnvelopeV1,
   SymmetricKeyEnvelopeV1,
 } from "@/crypto/envelope"
+import { storeOnlyZip } from "@/lib/best-effort-zip"
 import type { FeatureSupport } from "@/lib/feature-detect"
+import type { QrExportOptions } from "@/qr/export-image"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import type {
   DsaPublicKeyEnvelopeV2,
@@ -408,7 +410,9 @@ export const ecLevelFor = vi.fn(
   (kind: "message" | "stored-key" | "multipart-frame", prefs: Preferences) =>
     kind === "message" ? prefs.qrErrorCorrection : kind === "multipart-frame" ? "Q" : "H",
 )
-export const qrPngBlob = vi.fn(async () => new Blob(["png"]))
+export const qrPngBlob = vi.fn<
+  (payload: string, options: QrExportOptions) => Promise<Blob>
+>(async () => new Blob(["png"]))
 export const qrSvgBlob = vi.fn(async () => new Blob(["svg"]))
 export const sanitizeQrFileName = vi.fn((name: string) => name.trim() || "qr")
 export const buildExportFileName = vi.fn(
@@ -416,12 +420,51 @@ export const buildExportFileName = vi.fn(
     `${name}-${id.slice(0, 8)}.${ext}`,
 )
 export const triggerDownload = vi.fn()
+export const exportQrFramePayloads = vi.fn(
+  async (
+    frames: ReadonlyArray<{ frameIndex: number; payload: string }>,
+    options: { outputName: string; size: number; signal?: AbortSignal },
+  ) => {
+    if (frames.length === 0) return
+    if (options.signal?.aborted) return
+    const safeName = sanitizeQrFileName(options.outputName)
+
+    if (frames.length === 1) {
+      const blob = await qrPngBlob(frames[0]!.payload, {
+        ecLevel: "Q",
+        size: options.size,
+      })
+      if (options.signal?.aborted) return
+      triggerDownload(blob, `${safeName}.png`)
+      return
+    }
+
+    const entries: Array<{ name: string; data: Uint8Array }> = []
+    for (const frame of frames) {
+      if (options.signal?.aborted) return
+      const blob = await qrPngBlob(frame.payload, {
+        ecLevel: "Q",
+        size: options.size,
+      })
+      if (options.signal?.aborted) return
+      const data = new Uint8Array(await blob.arrayBuffer())
+      if (options.signal?.aborted) return
+      entries.push({
+        name: `frame-${String(frame.frameIndex + 1).padStart(2, "0")}.png`,
+        data,
+      })
+    }
+    if (options.signal?.aborted) return
+    triggerDownload(storeOnlyZip(entries), `${safeName}-frames.zip`)
+  },
+)
 export const copyTextToClipboard = vi.fn(async () => undefined)
 
 interface FakeCameraDiagnostic {
   phase: "acquiring" | "acquired" | "playing" | "track-ended"
   name: string | null
   detail: string
+  message: string | null
 }
 
 interface FakeCameraPipelineDiagnostic {
@@ -433,6 +476,7 @@ interface FakeCameraPipelineDiagnostic {
 }
 
 export const scannerStop = vi.fn()
+export const warmQrReader = vi.fn(() => undefined)
 let scanTextCallback: ((payload: string) => void) | null = null
 let scanErrorCallback:
   | ((error: FakeAppError, diagnostic: FakeCameraDiagnostic) => void)
@@ -466,6 +510,7 @@ export function emitScanError(
     phase: "acquiring",
     name: null,
     detail: "0x0 rs=0 track=none",
+    message: null,
   },
 ): void {
   scanErrorCallback?.(new FakeAppError(code), diagnostic)
@@ -646,6 +691,12 @@ export function multipartPayload(
   return `OCF2:${transfer}:${index}:${count}:${artifactType}`
 }
 
+let nextMultipartAddGate: Promise<void> | null = null
+
+export function deferNextMultipartAdd(gate: Promise<void>): void {
+  nextMultipartAddGate = gate
+}
+
 export class FakeTransferAssembler {
   readonly #timeoutMs: number
   #transfer: string | null = null
@@ -660,6 +711,9 @@ export class FakeTransferAssembler {
   }
 
   async add(payload: string): Promise<TransferState> {
+    const gate = nextMultipartAddGate
+    nextMultipartAddGate = null
+    if (gate !== null) await gate
     if (this.#terminal) return this.#terminal
     const match = /^OCF2:([^:]+):(\d+):(\d+):(.+)$/u.exec(payload)
     if (!match) return this.#fail("INVALID_QR_PAYLOAD")
@@ -791,6 +845,13 @@ export const findKeyByFingerprint = vi.fn(async (fingerprint: string) =>
 export const renameKeyRecord = vi.fn(async (id: string, name: string) => {
   const record = fakeKeys.find((item) => item.id === id)
   if (record) record.name = name
+})
+export const renameIdentity = vi.fn(async (id: string, name: string) => {
+  const existing = fakeIdentities.find((identity) => identity.id === id)
+  if (existing === undefined || existing.status === "rotated") {
+    throw new AppError("KEY_NOT_FOUND")
+  }
+  existing.name = name.trim()
 })
 export const deleteKeyRecord = vi.fn(async (id: string) => {
   const index = fakeKeys.findIndex((item) => item.id === id)
@@ -950,5 +1011,6 @@ export function resetFakes(): void {
   fakePqDecrypt.kind = "signed-valid"
   scanTextCallback = null
   scanErrorCallback = null
+  nextMultipartAddGate = null
   vi.clearAllMocks()
 }

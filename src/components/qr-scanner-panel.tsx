@@ -11,6 +11,7 @@ import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import { formatFramePositions } from "@/features/presentation"
 import {
   startQrScan,
+  warmQrReader,
   type CameraDiagnostic,
   type CameraPipelineDiagnostic,
   type CameraScanState,
@@ -188,9 +189,22 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const [diagnostic, setDiagnostic] = useState<CameraDiagnostic | null>(null)
   const [pipelineDiagnostic, setPipelineDiagnostic] =
     useState<CameraPipelineDiagnostic | null>(null)
+  const readerStillLoading =
+    cameraMode === "running" &&
+    pipelineDiagnostic !== null &&
+    pipelineDiagnostic.videoFramesDrawn > 0 &&
+    pipelineDiagnostic.decodeAttemptsCompleted === 0 &&
+    (pipelineDiagnostic.readerModuleState === "preparing" ||
+      pipelineDiagnostic.readerModuleState === "idle")
   const [integrityConfirmed, setIntegrityConfirmed] = useState(
     transferState.kind === "complete",
   )
+
+  // Take the one-megabyte reader fetch off the acquisition path: warming here means the
+  // binary is normally compiled before the user ever taps start.
+  useEffect(() => {
+    warmQrReader()
+  }, [])
 
   useEffect(() => {
     cameraAvailableRef.current = cameraAvailable
@@ -767,7 +781,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           aria-live="polite"
           className="text-center text-sm text-muted-foreground"
         >
-          {t(cameraStatus.key, cameraStatus.values)}
+          {readerStillLoading
+            ? t("scanner.status.readerLoading")
+            : t(cameraStatus.key, cameraStatus.values)}
         </p>
 
         {collecting && (
@@ -826,11 +842,18 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             aria-label={t("scanner.diagnostic.ariaLabel")}
             className="font-mono text-xs text-muted-foreground"
           >
-            {t("scanner.diagnostic", {
-              name: diagnostic.name ?? "unknown",
-              phase: diagnostic.phase,
-              detail: diagnostic.detail,
-            })}
+            {diagnostic.message === null
+              ? t("scanner.diagnostic", {
+                  name: diagnostic.name ?? "unknown",
+                  phase: diagnostic.phase,
+                  detail: diagnostic.detail,
+                })
+              : t("scanner.diagnostic.withMessage", {
+                  name: diagnostic.name ?? "unknown",
+                  phase: diagnostic.phase,
+                  detail: diagnostic.detail,
+                  message: diagnostic.message,
+                })}
           </p>
         )}
         {pipelineDiagnostic && (
@@ -881,6 +904,8 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
 
 export type QrScannerModalProps = QrScannerPanelProps & {
   triggerLabel: string
+  triggerDisabled?: boolean
+  onClosed?: () => void
   className?: string
 }
 
@@ -888,6 +913,8 @@ export function QrScannerModal(props: QrScannerModalProps) {
   const { t } = useI18n()
   const {
     triggerLabel,
+    triggerDisabled = false,
+    onClosed,
     cameraAvailable = true,
     title: titleProp,
     stopHint: stopHintProp,
@@ -913,6 +940,12 @@ export function QrScannerModal(props: QrScannerModalProps) {
     closedNotice === null
       ? null
       : t(closedNotice.key, closedNotice.values)
+
+  // Take the one-megabyte reader fetch off the acquisition path: warming here means the
+  // binary is normally compiled before the user ever taps start.
+  useEffect(() => {
+    warmQrReader()
+  }, [])
 
   const beginDelivery = useCallback((): boolean => {
     if (deliveryBusyRef.current) return false
@@ -988,7 +1021,9 @@ export function QrScannerModal(props: QrScannerModalProps) {
       if (!beginDelivery()) return
       try {
         if (!multipartSession.claimCompletion()) return
-        await multipartRef.current?.onComplete({
+        const onComplete = multipartRef.current?.onComplete
+        if (onComplete === undefined) return
+        await onComplete({
           artifactType: next.artifactType,
           artifactBytes: next.artifactBytes,
         })
@@ -996,6 +1031,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
           setClosedNotice(
             localized("scanner.closed.integrityImported"),
           )
+          onClosed?.()
         }
       } catch (caught) {
         if (canPublish()) {
@@ -1014,7 +1050,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
       polling = false
       window.clearInterval(timer)
     }
-  }, [beginDelivery, endDelivery, multipartSession, open])
+  }, [beginDelivery, endDelivery, multipartSession, onClosed, open])
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (nextOpen && deliveryBusyRef.current) return
@@ -1115,7 +1151,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
           <Button
             type="button"
             className="h-11 w-full"
-            disabled={!cameraAvailable || deliveryBusy}
+            disabled={!cameraAvailable || triggerDisabled || deliveryBusy}
           >
             <ScanLine aria-hidden="true" />
             {triggerLabel}
@@ -1130,9 +1166,9 @@ export function QrScannerModal(props: QrScannerModalProps) {
             contentRef.current?.focus()
           }}
           onCloseAutoFocus={(event) => {
-            if (!automaticCloseRef.current) return
-            event.preventDefault()
+            if (automaticCloseRef.current) event.preventDefault()
             automaticCloseRef.current = false
+            if (!openRef.current) onClosed?.()
           }}
         >
           <DialogTitle className="sr-only">{title}</DialogTitle>

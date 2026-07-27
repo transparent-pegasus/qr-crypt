@@ -17,6 +17,7 @@ const renderQr = vi.hoisted(() => vi.fn())
 vi.mock("@/qr/decode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/decode")>()),
   startQrScan: scanStart,
+  warmQrReader: vi.fn(() => undefined),
 }))
 
 vi.mock("@/qr/export-image", async (importOriginal) => ({

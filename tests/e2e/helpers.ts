@@ -345,7 +345,7 @@ export async function encryptWithStoredKey(
   await page.getByLabel("Plaintext", { exact: true }).fill(args.plaintext)
   await page.getByRole("button", { name: "Encrypt", exact: true }).click()
 
-  const result = page.getByRole("region", { name: "Encryption result" })
+  const result = page.getByRole("dialog", { name: "Encryption complete" })
   await expect(result).toBeVisible()
   await expect(result.getByRole("img", { name: "Ciphertext QR image" })).toBeVisible()
   const payload = (await result.locator("p").first().innerText()).trim()
@@ -363,11 +363,11 @@ export async function encryptSignedPq(
   await chooseOption(page, "My ML-DSA signing identity", args.identityName)
   await page.getByLabel("Plaintext", { exact: true }).fill(args.plaintext)
   await page.getByRole("button", { name: "Encrypt", exact: true }).click()
-  const result = page.getByRole("region", { name: "Encryption result" })
-  await expect(result.getByText("Encryption is complete")).toBeVisible({
-    timeout: 45_000,
-  })
-  const payload = (await result.locator("p").first().innerText()).trim()
+  const result = page.getByRole("dialog", { name: "Encryption complete" })
+  await expect(result).toBeVisible({ timeout: 45_000 })
+  const payload = (
+    await result.getByTestId("encrypt-result-payload").locator("p").first().innerText()
+  ).trim()
   expect(payload).toMatch(/^OCM2:/)
   return { payload, result }
 }
