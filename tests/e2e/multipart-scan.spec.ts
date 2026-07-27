@@ -58,6 +58,7 @@ test("routes an injected decoder stream through the UI handler and imports a shu
   await frameDialog.getByRole("button", { name: "Close", exact: true }).click()
 
   await goToOfflinePage(page, "/keys")
+  await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
   await page.getByRole("button", { name: "Import a key", exact: true }).click()
   const scanTrigger = page.getByRole("button", {
     name: "Scan a key QR code",

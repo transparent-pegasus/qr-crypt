@@ -116,6 +116,7 @@ export function KeyListPage() {
   // Kept apart from `selection` so a key created in the add modal shows its detail
   // there, instead of also opening the list's own detail dialog behind it.
   const [created, setCreated] = useState<KeySelection | null>(null)
+  const [tab, setTab] = useState<"own" | "peer">("own")
   const [ownKeyFilter, setOwnKeyFilter] = useState<OwnKeyFilter>("all")
   const [bundleBusy, setBundleBusy] = useState(false)
   const [bundleError, setBundleError] = useState<LocalizedMessage | null>(null)
@@ -263,47 +264,35 @@ export function KeyListPage() {
         </Alert>
       )}
 
-      <Tabs defaultValue="own">
-        {/* One visual frame, two separate controls: the action buttons stay outside
-            TabsList so its role="tablist" keeps listing only tabs. */}
-        <div className="space-y-1 rounded-lg border bg-muted p-1">
-          <TabsList className="grid h-9 w-full grid-cols-2 bg-transparent p-0">
-            <TabsTrigger value="own" className="h-9 cursor-pointer">
-              {t("keyList.tab.own")}
-            </TabsTrigger>
-            <TabsTrigger value="peer" className="h-9 cursor-pointer">
-              {t("keyList.tab.peer")}
-            </TabsTrigger>
-          </TabsList>
-          <div className="grid grid-cols-2 gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t("keyList.action.create")}
-              className="h-9 w-full cursor-pointer"
-              onClick={() => {
-                setCreated(null)
-                setAddMode("create")
-              }}
-            >
-              <Plus aria-hidden="true" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t("keyList.action.import")}
-              className="h-9 w-full cursor-pointer"
-              onClick={() => {
-                setCreated(null)
-                setAddMode("import")
-              }}
-            >
-              <ScanLine aria-hidden="true" />
-            </Button>
-          </div>
-        </div>
+      <Tabs value={tab} onValueChange={(value) => setTab(value === "peer" ? "peer" : "own")}>
+        <TabsList className="grid h-11 w-full grid-cols-2">
+          <TabsTrigger value="own" className="h-9 cursor-pointer">
+            {t("keyList.tab.own")}
+          </TabsTrigger>
+          <TabsTrigger value="peer" className="h-9 cursor-pointer">
+            {t("keyList.tab.peer")}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* One action per tab, outside TabsList so its role="tablist" keeps listing
+            only tabs. Own keys are the ones this device creates; a peer's key can
+            only arrive from outside. */}
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-2 h-11 w-full cursor-pointer whitespace-normal"
+          onClick={() => {
+            setCreated(null)
+            setAddMode(tab === "own" ? "create" : "import")
+          }}
+        >
+          {tab === "own" ? (
+            <Plus aria-hidden="true" />
+          ) : (
+            <ScanLine aria-hidden="true" />
+          )}
+          {t(tab === "own" ? "keyList.action.create" : "keyList.action.import")}
+        </Button>
 
         <TabsContent value="own" className="mt-6 space-y-3">
           <div className="space-y-2">

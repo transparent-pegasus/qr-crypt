@@ -134,9 +134,10 @@ describe("key list page", () => {
     await renderKeyList()
 
     expect(screen.queryByRole("heading", { name: "Key list" })).toBeNull()
+    // One action per tab: own keys are created here, a peer's can only be imported.
     expect(screen.getByRole("button", { name: "Create a key" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Import a key" })).toBeInTheDocument()
-    // The action buttons stay outside the tablist so it lists tabs and nothing else.
+    expect(screen.queryByRole("button", { name: "Import a key" })).toBeNull()
+    // The action stays outside the tablist so it lists tabs and nothing else.
     expect(within(screen.getByRole("tablist")).getAllByRole("tab")).toHaveLength(2)
     expect(
       within(screen.getByRole("tablist")).queryByRole("button", {
@@ -149,7 +150,7 @@ describe("key list page", () => {
     expect(peerTab).toHaveAttribute("aria-selected", "false")
     expect(screen.getByRole("tablist")).toHaveClass(
       "grid",
-      "h-9",
+      "h-11",
       "w-full",
       "grid-cols-2",
     )
@@ -213,6 +214,9 @@ describe("key list page", () => {
 
     expect(screen.queryByText("確認済みの相手")).not.toBeInTheDocument()
     await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
+    // The single action follows the tab.
+    expect(screen.getByRole("button", { name: "Import a key" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Create a key" })).toBeNull()
     expect(screen.getByText("確認済みの相手")).toBeInTheDocument()
     expect(screen.getByText("Identity verified")).toBeInTheDocument()
     expect(screen.getByText("4".repeat(64))).toBeInTheDocument()

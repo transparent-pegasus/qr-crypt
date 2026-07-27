@@ -77,6 +77,7 @@ test("initializes the precached same-origin reader WASM on its first offline cam
     )
   })
 
+  await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
   await page.getByRole("button", { name: "Import a key", exact: true }).click()
   await page
     .getByRole("button", {
@@ -91,18 +92,22 @@ test("initializes the precached same-origin reader WASM on its first offline cam
     dialog.getByText("QR codes can be read in any order", { exact: true }),
   ).toBeVisible({ timeout: 30_000 })
   await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const video = document.querySelector(
-          'video[aria-label="Camera video for QR scanning"]',
-        )
-        if (!(video instanceof HTMLVideoElement)) return false
-        const stream = video.srcObject
-        return (
-          stream instanceof MediaStream &&
-          stream.getTracks().some((track) => track.readyState === "live")
-        )
-      }),
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const video = document.querySelector(
+            'video[aria-label="Camera video for QR scanning"]',
+          )
+          if (!(video instanceof HTMLVideoElement)) return false
+          const stream = video.srcObject
+          return (
+            stream instanceof MediaStream &&
+            stream.getTracks().some((track) => track.readyState === "live")
+          )
+        }),
+      // Same budget as the reader-ready wait above: bringing the camera up behind
+      // the precached WASM outruns the 5s default whenever the workers contend.
+      { timeout: 30_000 },
     )
     .toBe(true)
 

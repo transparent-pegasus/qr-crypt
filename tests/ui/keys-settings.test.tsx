@@ -65,6 +65,7 @@ describe("key management v2", () => {
     expect(screen.queryByRole("tab", { name: "Create" })).toBeNull()
     expect(screen.queryByRole("tab", { name: "Import" })).toBeNull()
 
+    await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
     await user.click(screen.getByRole("button", { name: "Import a key" }))
     const modal = await screen.findByRole("dialog", { name: "Import" })
     const cameraHeading = within(modal).getByRole("heading", {
@@ -247,7 +248,8 @@ describe("key management v2", () => {
     const user = userEvent.setup()
     const originalCount = fakeBundles.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("button", { name: "Import a key" }))
+    await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
+    await user.click(screen.getByRole("button", { name: "Import a key" }))
     await user.type(screen.getByLabelText("Key payload"), "OCI2:fake")
     await user.click(screen.getByRole("button", { name: "Read the key" }))
 
@@ -281,7 +283,8 @@ describe("key management v2", () => {
   it("confers fingerprint-confirmed trust only after the explicit checkbox", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("button", { name: "Import a key" }))
+    await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
+    await user.click(screen.getByRole("button", { name: "Import a key" }))
     await user.type(screen.getByLabelText("Key payload"), "OCI2:fake")
     await user.click(screen.getByRole("button", { name: "Read the key" }))
     const dialog = await screen.findByRole("dialog", {
@@ -317,7 +320,8 @@ describe("key management v2", () => {
     encodePublicIdentityBundleV2(legacyBundle)
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("button", { name: "Import a key" }))
+    await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
+    await user.click(screen.getByRole("button", { name: "Import a key" }))
     await user.type(screen.getByLabelText("Key payload"), "OCI2:legacy-balanced")
     await user.click(screen.getByRole("button", { name: "Read the key" }))
 
@@ -353,7 +357,8 @@ describe("key management v2", () => {
     }
     const user = userEvent.setup()
     await renderApp("/keys")
-    await user.click(await screen.findByRole("button", { name: "Import a key" }))
+    await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
+    await user.click(screen.getByRole("button", { name: "Import a key" }))
     const input = screen.getByLabelText("Key payload")
 
     encodeKemPublicKeyEnvelopeV2(legacyKem)
@@ -378,7 +383,8 @@ describe("key management v2", () => {
     const user = userEvent.setup()
     const originalCount = fakeKeys.length
     await renderApp("/keys")
-    await user.click(await screen.findByRole("button", { name: "Import a key" }))
+    await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
+    await user.click(screen.getByRole("button", { name: "Import a key" }))
     expect(startQrScan).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "Scan a key QR code" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
