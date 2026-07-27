@@ -1139,6 +1139,12 @@ jobs:
 
             # The pinned verifier container receives neither GH_TOKEN nor a
             # Docker socket; only the three public release files are mounted.
+            # mktemp -d creates mode 0700; the cosign image runs as non-root
+            # (distroless nonroot), so it cannot open files under a host-owned
+            # 0700 bind mount. World-traverse/read is required for verify-blob;
+            # the mount remains readonly and holds only public release assets.
+            chmod a+rX "$published_dir"
+            find "$published_dir" -type f -exec chmod a+r {} +
             docker run --rm \
               --cap-drop=ALL \
               --security-opt=no-new-privileges \
