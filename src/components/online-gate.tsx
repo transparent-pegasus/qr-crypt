@@ -54,6 +54,22 @@ export interface OnlineInstallScreenProps {
 
 type OnlineTab = "top" | "relay"
 
+const ONLINE_TAB_STORAGE_KEY = "oc-online-tab"
+
+// An online-only device relays and never installs twice, so the last explicit
+// tab choice is the better default. Only the two literals are accepted, and the
+// oc- prefix keeps the key inside the existing reset sweep. A stored value only
+// ever selects a tab the current session is already eligible to show.
+function readStoredOnlineTab(): OnlineTab {
+  try {
+    return window.localStorage.getItem(ONLINE_TAB_STORAGE_KEY) === "relay"
+      ? "relay"
+      : "top"
+  } catch {
+    return "top"
+  }
+}
+
 export function OnlineInstallScreen({
   relayEligible = false,
   onRelayEligibilityRefresh,
@@ -67,7 +83,12 @@ export function OnlineInstallScreen({
   )
   const [installing, setInstalling] = useState(false)
   const [installError, setInstallError] = useState<MessageKey | null>(null)
-  const [tab, setTab] = useState<OnlineTab>("top")
+  // A stored selection is a preference, not a session choice: it takes effect
+  // only once relay eligibility is confirmed, so an ineligible gate shows
+  // neither the navigation nor, through it, a write path.
+  const [storedTab] = useState<OnlineTab>(readStoredOnlineTab)
+  const [chosenTab, setChosenTab] = useState<OnlineTab | null>(null)
+  const tab: OnlineTab = chosenTab ?? (relayEligible ? storedTab : "top")
   const activeTab: OnlineTab = relayEligible ? tab : "top"
   const navVisible = relayEligible || tab === "relay"
 
@@ -87,6 +108,16 @@ export function OnlineInstallScreen({
       window.removeEventListener("appinstalled", markInstalled)
     }
   }, [])
+
+  // Persist only an explicit choice, so an untouched gate writes nothing.
+  const selectTab = (next: OnlineTab) => {
+    setChosenTab(next)
+    try {
+      window.localStorage.setItem(ONLINE_TAB_STORAGE_KEY, next)
+    } catch {
+      // Persistence is best-effort; the in-session selection still applies.
+    }
+  }
 
   const requestInstall = async () => {
     if (!installPrompt || installing) return
@@ -239,7 +270,7 @@ export function OnlineInstallScreen({
             aria-label={t("nav.top")}
             aria-current={activeTab === "top" ? "page" : undefined}
             className={cn(NAV_ITEM_CLASS, activeTab === "top" && NAV_ITEM_ACTIVE_CLASS)}
-            onClick={() => setTab("top")}
+            onClick={() => selectTab("top")}
           >
             <Home aria-hidden="true" className="size-6" />
           </button>
@@ -248,7 +279,7 @@ export function OnlineInstallScreen({
             aria-label={t("nav.relay")}
             aria-current={activeTab === "relay" ? "page" : undefined}
             className={cn(NAV_ITEM_CLASS, activeTab === "relay" && NAV_ITEM_ACTIVE_CLASS)}
-            onClick={() => setTab("relay")}
+            onClick={() => selectTab("relay")}
           >
             <MessageSquareText aria-hidden="true" className="size-6" />
           </button>

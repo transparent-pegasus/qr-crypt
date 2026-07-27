@@ -60,6 +60,128 @@ describe("OnlineGate", () => {
     expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
   })
 
+  it("persists relay and home selections from the online navigation", async () => {
+    const user = userEvent.setup()
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen relayEligible />
+      </AppProviders>,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Relay" }))
+    const storedAfterRelay = window.localStorage.getItem("oc-online-tab")
+    await user.click(screen.getByRole("button", { name: "Top" }))
+    const storedAfterHome = window.localStorage.getItem("oc-online-tab")
+
+    expect(storedAfterRelay).toBe("relay")
+    expect(storedAfterHome).toBe("top")
+  })
+
+  it("restores a stored relay selection on first render", async () => {
+    window.localStorage.setItem("oc-online-tab", "relay")
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen relayEligible />
+      </AppProviders>,
+    )
+
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
+    expect(
+      screen.getByText("Install the PWA or relay OCF2 message-header QR frames"),
+    ).not.toBeVisible()
+  })
+
+  it("keeps a stored relay selection closed while relay is not eligible", async () => {
+    window.localStorage.setItem("oc-online-tab", "relay")
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen relayEligible={false} />
+      </AppProviders>,
+    )
+
+    expect(
+      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+    ).toBeVisible()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
+  })
+
+  it("opens a stored relay selection once eligibility arrives after mount", async () => {
+    window.localStorage.setItem("oc-online-tab", "relay")
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    const { rerender } = render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen relayEligible={false} />
+      </AppProviders>,
+    )
+
+    expect(
+      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+    ).toBeVisible()
+
+    rerender(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen relayEligible />
+      </AppProviders>,
+    )
+
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
+    expect(
+      screen.getByText("Install the PWA or relay OCF2 message-header QR frames"),
+    ).not.toBeVisible()
+  })
+
+  it("shows the home tab when the stored selection is absent or unrecognized", async () => {
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+
+    for (const storedValue of [null, "unexpected"] as const) {
+      window.localStorage.clear()
+      if (storedValue !== null) {
+        window.localStorage.setItem("oc-online-tab", storedValue)
+      }
+      const view = render(
+        <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+          <OnlineInstallScreen relayEligible />
+        </AppProviders>,
+      )
+
+      expect(
+        await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+      ).toBeVisible()
+      expect(screen.getByText("OCF2 message-header QR relay")).not.toBeVisible()
+      view.unmount()
+    }
+  })
+
+  it("does not persist a tab when the user never taps the online navigation", async () => {
+    const setItem = vi.spyOn(window.localStorage, "setItem")
+    try {
+      const { AppProviders } = await import("@/app/providers")
+      const { OnlineInstallScreen } = await import("@/components/online-gate")
+      render(
+        <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+          <OnlineInstallScreen relayEligible />
+        </AppProviders>,
+      )
+
+      expect(
+        await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+      ).toBeVisible()
+      expect(setItem.mock.calls.some(([key]) => key === "oc-online-tab")).toBe(false)
+      expect(window.localStorage.getItem("oc-online-tab")).toBeNull()
+    } finally {
+      setItem.mockRestore()
+    }
+  })
+
   it("shows installation and eligible relay guidance while online and handles beforeinstallprompt", async () => {
     setTestOnlineStatus(true)
     const user = userEvent.setup()
