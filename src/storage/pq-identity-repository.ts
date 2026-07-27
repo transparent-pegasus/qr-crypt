@@ -8,7 +8,7 @@
 //   - Never persist expanded secret keys; persist only the seed's EncryptedSecret.
 import type { PostQuantumIdentity } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
-import { validatePostQuantumIdentity } from "@/schemas/key-schema"
+import { keyNameSchema, validatePostQuantumIdentity } from "@/schemas/key-schema"
 import { getDb, STORE_PQ_IDENTITIES } from "@/storage/database"
 
 function checkedIdentity(value: unknown): PostQuantumIdentity {
@@ -180,6 +180,25 @@ export async function deleteSupersededIdentities(
 export async function clearAllIdentities(): Promise<void> {
   try {
     await (await getDb()).clear(STORE_PQ_IDENTITIES)
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
+}
+
+// Renaming is a head-generation operation. Superseded rows stay stored so old messages
+// can still be decrypted, and their names are part of the audit trail the rotation left
+// behind — a direct caller must not be able to rewrite them.
+export async function renameIdentity(id: string, name: string): Promise<void> {
+  try {
+    const parsedName = keyNameSchema.parse(name)
+    const database = await getDb()
+    const tx = database.transaction(STORE_PQ_IDENTITIES, "readwrite")
+    const existing = await tx.store.get(id)
+    if (existing === undefined) throw new AppError("KEY_NOT_FOUND")
+    const checked = checkedIdentity(existing)
+    if (checked.status === "rotated") throw new AppError("KEY_NOT_FOUND")
+    await tx.store.put(checkedIdentity({ ...checked, name: parsedName }))
+    await tx.done
   } catch (error) {
     throw toAppError(error, "STORAGE_FAILED")
   }

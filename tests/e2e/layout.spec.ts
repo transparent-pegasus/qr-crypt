@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test"
 import {
   createPqIdentity,
   createSymmetricKey,
+  encryptWithStoredKey,
   expectStableTrailingDialogClose,
   goToOfflinePage,
   openOfflineApp,
@@ -222,6 +223,58 @@ test("keeps shared closes bottom-right, last in tab order, and outside every scr
   await expectStableTrailingDialogClose(scannerDialog, "Close")
   await page.keyboard.press("Escape")
   await expect(scannerDialog).toBeHidden()
+})
+
+test("keeps the encryption result scrollable and discardable in the narrow viewport", async ({
+  context,
+  page,
+}) => {
+  const viewport = { width: 360, height: 320 }
+  const keyName = "暗号結果レイアウト鍵"
+  await page.setViewportSize(viewport)
+  await openOfflineApp(page, context, "/keys")
+  await createSymmetricKey(page, keyName)
+  const { payload } = await encryptWithStoredKey(page, {
+    keyName,
+    plaintext: "狭い画面でも暗号結果の詳細と閉じるボタンへ到達できる日本語平文",
+  })
+
+  const dialog = page.getByRole("dialog", { name: "Encryption complete" })
+  const payloadText = dialog
+    .getByTestId("encrypt-result-payload")
+    .locator("p")
+    .first()
+  const detail = dialog.getByTestId("encrypt-result-detail")
+  const scrollBody = detail.locator("..")
+  const close = dialog.getByRole("button", { name: "Close", exact: true })
+
+  await expect(payloadText).toHaveText(payload)
+  const overflow = await scrollBody.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    clientWidth: element.clientWidth,
+    scrollHeight: element.scrollHeight,
+    scrollWidth: element.scrollWidth,
+  }))
+  expect(overflow.scrollHeight).toBeGreaterThan(overflow.clientHeight)
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
+  await expectStableTrailingDialogClose(dialog, "Close")
+
+  await detail.scrollIntoViewIfNeeded()
+  await expect(detail).toBeInViewport()
+  expect(await scrollBody.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await expectInsideViewport(close, viewport.width, viewport.height, "result close")
+  const [dialogBox, closeBox] = await Promise.all([
+    dialog.boundingBox(),
+    close.boundingBox(),
+  ])
+  expect(dialogBox).not.toBeNull()
+  expect(closeBox).not.toBeNull()
+  expect(closeBox!.x).toBeGreaterThan(dialogBox!.x + dialogBox!.width / 2)
+  expect(closeBox!.y).toBeGreaterThan(dialogBox!.y + dialogBox!.height / 2)
+
+  await close.click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByText(payload, { exact: true })).toHaveCount(0)
 })
 
 test("fits animated fullscreen QR controls without scrolling in portrait and short landscape", async ({

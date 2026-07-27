@@ -92,8 +92,12 @@ vi.mock("@/qr/export-image", () => ({
   triggerDownload: fakes.triggerDownload,
   copyTextToClipboard: fakes.copyTextToClipboard,
 }))
+vi.mock("@/qr/export-frames", () => ({
+  exportQrFramePayloads: fakes.exportQrFramePayloads,
+}))
 vi.mock("@/qr/decode", () => ({
   startQrScan: fakes.startQrScan,
+  warmQrReader: fakes.warmQrReader,
 }))
 vi.mock("@/qr/multipart/split", () => ({
   splitIntoFrames: fakes.splitIntoFrames,
@@ -121,6 +125,7 @@ vi.mock("@/storage/pq-identity-repository", () => ({
   listIdentities: fakes.listIdentities,
   saveIdentity: fakes.saveIdentity,
   saveRotation: fakes.saveRotation,
+  renameIdentity: fakes.renameIdentity,
   revokeIdentity: fakes.revokeIdentity,
   deleteIdentity: fakes.deleteIdentity,
   deleteSupersededIdentities: fakes.deleteSupersededIdentities,
