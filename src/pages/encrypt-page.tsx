@@ -36,11 +36,13 @@ import {
   useTransientClear,
 } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
+import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrDisplay } from "@/components/qr-display"
 import { QrScannerModal } from "@/components/qr-scanner-panel"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -83,7 +85,8 @@ import {
   qrPngBlob,
   triggerDownload,
 } from "@/qr/export-image"
-import { buildV2Payload } from "@/qr/payload-v2"
+import { exportQrFramePayloads } from "@/qr/export-frames"
+import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
 import { decodePayload, encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
@@ -225,17 +228,20 @@ export function EncryptPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const [compatibilityUpdating, setCompatibilityUpdating] = useState(false)
-  const [compatibilityError, setCompatibilityError] =
-    useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(
-    error ?? compatibilityError ?? keysError ?? pqError ?? preferencesError,
+    error ?? keysError ?? pqError ?? preferencesError,
   )
   const [result, setResult] = useState<EncryptionResult | null>(null)
+  const [resultExporting, setResultExporting] = useState(false)
+  const [resultError, setResultError] = useState<LocalizedMessage | null>(null)
+  const localizedResultError = useLocalizedMessage(resultError)
   const [outputName, setOutputName] = useState("")
   const [decryptInput, setDecryptInput] = useState("")
   const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
   const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
   const resultGenerationRef = useRef(0)
+  const resultAbortRef = useRef<AbortController | null>(null)
+  const pendingDecryptRef = useRef<string | null>(null)
   const pqResult = result?.kind === "pq" ? result : null
   const selectedFramePair = selectedGeneratedDisplayPair(preferences)
   const compatibilityEnabled =
@@ -261,11 +267,27 @@ export function EncryptPage() {
     enabled: pqResult !== null,
     generation: `${pqResult?.generation ?? 0}:${frameProfile.frameBytes}`,
   })
+  const pqFrames = useMemo(
+    () =>
+      [...frameSplit.frames]
+        .sort((left, right) => left.frameIndex - right.frameIndex)
+        .map((frame) => ({
+          frameIndex: frame.frameIndex,
+          payload: encodeFrameToPayload(frame),
+        })),
+    [frameSplit.frames],
+  )
+  const canExportResult =
+    result?.kind === "aes" ||
+    (pqFrames.length > 0 && !frameSplit.splitting && frameSplit.error === null)
   const localizedFrameError = useLocalizedMessage(frameSplit.error)
   const changeCompatibilityMode = useCallback(
     async (enabled: boolean) => {
+      const controller = resultAbortRef.current ?? new AbortController()
+      resultAbortRef.current = controller
+      const signal = resultAbortRef.current?.signal
       setCompatibilityUpdating(true)
-      setCompatibilityError(null)
+      setResultError(null)
       const pair = enabled
         ? COMPATIBLE_GENERATED_DISPLAY_PAIR
         : DEFAULT_GENERATED_DISPLAY_PAIR
@@ -275,9 +297,12 @@ export function EncryptPage() {
           frameIntervalMs: pair.frameIntervalMs,
         })
       } catch (caught) {
-        setCompatibilityError(toAppError(caught, "STORAGE_FAILED").code)
+        if (signal?.aborted) return
+        setResultError(toAppError(caught, "STORAGE_FAILED").code)
       } finally {
-        setCompatibilityUpdating(false)
+        if (!signal?.aborted) {
+          setCompatibilityUpdating(false)
+        }
       }
     },
     [updatePreferences],
@@ -387,6 +412,12 @@ export function EncryptPage() {
             isActiveIdentity(identity),
         )
       : undefined
+  const decryptKeyMissing =
+    parsedDecrypt !== null &&
+    !parsedPqUnsupported &&
+    (parsedDecrypt.kind === "message"
+      ? decryptAesKey === undefined
+      : decryptIdentity === undefined)
   const canDecrypt =
     !busy &&
     parsedDecrypt !== null &&
@@ -403,15 +434,29 @@ export function EncryptPage() {
       secretVisible: false,
     })
   }, [busy, decrypted, plaintext, setSensitiveSession])
-  useEffect(() => () => resetSensitiveSession(), [resetSensitiveSession])
+  useEffect(
+    () => () => {
+      resultAbortRef.current?.abort()
+      resultAbortRef.current = null
+      setCompatibilityUpdating(false)
+      resetSensitiveSession()
+    },
+    [resetSensitiveSession],
+  )
 
   const clearTransient = useCallback(() => {
+    resultAbortRef.current?.abort()
+    resultAbortRef.current = null
+    pendingDecryptRef.current = null
+    setCompatibilityUpdating(false)
+    setResultExporting(false)
     setPlaintext("")
     setDecryptInput("")
     setDecrypted(null)
     setResult(null)
     setOutputName("")
     setError(null)
+    setResultError(null)
     multipartSession.discard()
     setClearStatus("encrypt.toast.autoCleared")
     toast.info(t("encrypt.toast.autoCleared"))
@@ -425,11 +470,19 @@ export function EncryptPage() {
 
   const handleEncrypt = async () => {
     if (!canEncrypt) return
+    resultAbortRef.current?.abort()
+    resultAbortRef.current = null
+    setCompatibilityUpdating(false)
+    setResultExporting(false)
+    setResultError(null)
     setBusy(true)
     setError(null)
     setResult(null)
     try {
       const now = Date.now()
+      const suggestedOutputName = t("encrypt.output.suggestedName", {
+        date: formatSuggestedDate(now),
+      })
       if (algorithm === "A256GCM" && selectedKey?.symmetricKey) {
         const envelope = await encryptWithAesKey({
           key: selectedKey.symmetricKey,
@@ -441,6 +494,8 @@ export function EncryptPage() {
         if (!payloadFits(payload, ecLevelFor("message", preferences))) {
           throw new AppError("QR_TOO_LARGE")
         }
+        const sha256 = await payloadSha256Hex(payload)
+        setOutputName(suggestedOutputName)
         setResult({
           kind: "aes",
           payload,
@@ -448,7 +503,7 @@ export function EncryptPage() {
           key: selectedKey,
           createdAt: now,
           totalBytes: new TextEncoder().encode(payload).byteLength,
-          sha256: await payloadSha256Hex(payload),
+          sha256,
         })
         await markKeyUsed(selectedKey.id, now).catch(() => undefined)
       } else if (selectedRecipient) {
@@ -468,7 +523,9 @@ export function EncryptPage() {
         if (minimumFrameBytes > FRAME_BYTES_MAX) {
           throw new AppError("QR_TOO_LARGE")
         }
+        const sha256 = await sha256Hex(artifactBytes)
         resultGenerationRef.current += 1
+        setOutputName(suggestedOutputName)
         setResult({
           kind: "pq",
           payload: buildV2Payload("pq-message", artifactBytes),
@@ -480,16 +537,11 @@ export function EncryptPage() {
           ...(sender === undefined ? {} : { sender }),
           createdAt: now,
           totalBytes: artifactBytes.byteLength,
-          sha256: await sha256Hex(artifactBytes),
+          sha256,
         })
         await markBundleUsed(selectedRecipient.recordId, now).catch(() => undefined)
         if (sender) await markIdentityUsed(sender.id, now).catch(() => undefined)
       }
-      setOutputName(
-        t("encrypt.output.suggestedName", {
-          date: formatSuggestedDate(now),
-        }),
-      )
       if (preferences.autoClearPlaintextAfterEncrypt) {
         setPlaintext("")
         toast.info(t("encrypt.toast.plaintextClearedByPref"))
@@ -502,33 +554,61 @@ export function EncryptPage() {
     }
   }
 
-  const handleDecrypt = async () => {
-    if (!canDecrypt || parsedDecrypt === null) return
+  const runDecrypt = async (payload: string) => {
+    let parsed: ReturnType<typeof decodePayload> | null = null
+    try {
+      const decoded = decodePayload(payload.trim())
+      parsed =
+        decoded.kind === "message" || decoded.kind === "pq-message" ? decoded : null
+    } catch {
+      parsed = null
+    }
+    if (parsed === null) return
+    if (parsed.kind === "pq-message" && !isActiveWireSuite(parsed.envelope.suite)) return
+
+    const aesKey =
+      parsed.kind === "message"
+        ? symmetricKeys.find((key) => key.id === parsed.envelope.keyId)
+        : undefined
+    const identity =
+      parsed.kind === "pq-message"
+        ? identities.find(
+            (candidate) =>
+              candidate.kem.keyId === parsed.envelope.recipientKemKeyId &&
+              isActiveIdentity(candidate),
+          )
+        : undefined
+    if (parsed.kind === "message" ? aesKey === undefined : identity === undefined) return
+
     setBusy(true)
     setError(null)
     setDecrypted(null)
     try {
-      if (parsedDecrypt.kind === "message" && decryptAesKey?.symmetricKey) {
+      if (parsed.kind === "message" && aesKey?.symmetricKey) {
         const plaintextResult = await decryptWithAesKey({
-          key: decryptAesKey.symmetricKey,
-          envelope: parsedDecrypt.envelope,
+          key: aesKey.symmetricKey,
+          envelope: parsed.envelope,
         })
-        setDecrypted({ kind: "aes", text: bytesToUtf8(plaintextResult) })
-        await markKeyUsed(decryptAesKey.id, Date.now()).catch(() => undefined)
-      } else if (parsedDecrypt.kind === "pq-message" && decryptIdentity) {
+        const outcome: DecryptionResult = {
+          kind: "aes",
+          text: bytesToUtf8(plaintextResult),
+        }
+        await markKeyUsed(aesKey.id, Date.now()).catch(() => undefined)
+        setDecrypted(outcome)
+      } else if (parsed.kind === "pq-message" && identity) {
         // The cached list only gates the button. Re-resolve from storage at action
         // time so a generation discarded elsewhere cannot be decrypted from a stale
         // in-memory object. A delete landing between this lookup and the worker call
         // is a residual race, recorded in docs/security/threat-model.md T14.
         const recipient = await findIdentityByKemKeyId(
-          parsedDecrypt.envelope.recipientKemKeyId,
+          parsed.envelope.recipientKemKeyId,
         )
         if (recipient === undefined || !isActiveIdentity(recipient)) {
           throw new AppError("KEY_NOT_FOUND")
         }
         const pqResult = await decryptPqMessage({
           client: getPqClient(),
-          envelope: parsedDecrypt.envelope,
+          envelope: parsed.envelope,
           recipient,
           vaultKey: await getOrCreateVaultKey(),
           resolveSigningKey: async (keyId) => {
@@ -544,12 +624,13 @@ export function EncryptPage() {
                 }
           },
         })
+        let outcome: DecryptionResult
         if (pqResult.kind === "signed-key-unknown") {
-          setDecrypted(pqResult)
+          outcome = pqResult
         } else if (pqResult.kind === "unsigned") {
-          setDecrypted({ kind: "unsigned", text: bytesToUtf8(pqResult.plaintext) })
+          outcome = { kind: "unsigned", text: bytesToUtf8(pqResult.plaintext) }
         } else {
-          setDecrypted({
+          outcome = {
             kind: "signed-valid",
             text: bytesToUtf8(pqResult.plaintext),
             senderSigningKeyId: pqResult.senderSigningKeyId,
@@ -558,9 +639,10 @@ export function EncryptPage() {
                 bundle.signing.keyId === pqResult.senderSigningKeyId &&
                 isActiveBundle(bundle),
             ),
-          })
+          }
         }
         await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
+        setDecrypted(outcome)
       }
     } catch (caught) {
       setDecrypted(null)
@@ -572,19 +654,27 @@ export function EncryptPage() {
 
   const copyPayload = async () => {
     if (!result) return
+    const controller = resultAbortRef.current ?? new AbortController()
+    resultAbortRef.current = controller
+    const { signal } = controller
     try {
       await copyTextToClipboard(result.payload)
+      if (signal.aborted) return
       toast.success(t("encrypt.toast.payloadCopied"))
     } catch {
-      setError("common.copyFailed")
+      if (signal.aborted) return
+      setResultError("common.copyFailed")
     }
   }
 
   const exportSingle = async () => {
     if (result?.kind !== "aes") return
+    const controller = resultAbortRef.current ?? new AbortController()
+    resultAbortRef.current = controller
+    const { signal } = controller
     const parsedName = qrNameSchema.safeParse(outputName)
     if (!parsedName.success) {
-      setError(
+      setResultError(
         messageKeyOrFallback(
           parsedName.error.issues[0]?.message,
           "encrypt.validation.outputNameFallback",
@@ -599,9 +689,43 @@ export function EncryptPage() {
         ecLevel,
         size: env.qrRenderSize,
       })
+      if (signal.aborted) return
       triggerDownload(blob, buildExportFileName(parsedName.data, id, "png"))
     } catch (caught) {
-      setError(toAppError(caught, "QR_TOO_LARGE").code)
+      if (signal.aborted) return
+      setResultError(toAppError(caught, "QR_TOO_LARGE").code)
+    }
+  }
+
+  const exportFrames = async () => {
+    if (result?.kind !== "pq" || resultExporting || !canExportResult) return
+    const controller = resultAbortRef.current ?? new AbortController()
+    resultAbortRef.current = controller
+    const { signal } = controller
+    const parsedName = qrNameSchema.safeParse(outputName)
+    if (!parsedName.success) {
+      setResultError(
+        messageKeyOrFallback(
+          parsedName.error.issues[0]?.message,
+          "encrypt.validation.outputNameFallback",
+        ),
+      )
+      return
+    }
+    setResultExporting(true)
+    setResultError(null)
+    try {
+      await exportQrFramePayloads(pqFrames, {
+        outputName: parsedName.data,
+        size: env.qrRenderSize,
+        signal,
+      })
+      if (signal.aborted) return
+    } catch (caught) {
+      if (signal.aborted) return
+      setResultError(toAppError(caught, "QR_TOO_LARGE").code)
+    } finally {
+      if (!signal.aborted) setResultExporting(false)
     }
   }
 
@@ -619,10 +743,10 @@ export function EncryptPage() {
         }}
       >
         <TabsList className="grid h-11 w-full grid-cols-2">
-          <TabsTrigger value="encrypt" className="h-9 cursor-pointer">
+          <TabsTrigger value="encrypt" className="h-9 cursor-pointer" disabled={busy}>
             {t("encrypt.tab.encrypt")}
           </TabsTrigger>
-          <TabsTrigger value="decrypt" className="h-9 cursor-pointer">
+          <TabsTrigger value="decrypt" className="h-9 cursor-pointer" disabled={busy}>
             {t("encrypt.tab.decrypt")}
           </TabsTrigger>
         </TabsList>
@@ -780,11 +904,13 @@ export function EncryptPage() {
                 className="space-y-6"
                 singleTargets={["message"]}
                 cameraAvailable={camera}
+                triggerDisabled={busy}
                 title={t("encrypt.decrypt.scanTrigger")}
                 onSingleScan={(_target, payload) => {
                   setDecryptInput(payload)
                   setDecrypted(null)
                   setError(null)
+                  pendingDecryptRef.current = payload
                 }}
                 multipart={{
                   session: multipartSession,
@@ -792,12 +918,20 @@ export function EncryptPage() {
                     if (artifactType !== "pq-message")
                       throw new AppError("INVALID_QR_PAYLOAD")
                     const envelope = decodeMlKemEnvelopeV2(artifactBytes)
-                    setDecryptInput(
-                      buildV2Payload("pq-message", encodeMlKemEnvelopeV2(envelope)),
+                    const payload = buildV2Payload(
+                      "pq-message",
+                      encodeMlKemEnvelopeV2(envelope),
                     )
+                    setDecryptInput(payload)
                     setDecrypted(null)
                     setError(null)
+                    pendingDecryptRef.current = payload
                   },
+                }}
+                onClosed={() => {
+                  const payload = pendingDecryptRef.current
+                  pendingDecryptRef.current = null
+                  if (payload !== null) void runDecrypt(payload)
                 }}
               />
             </CardContent>
@@ -865,7 +999,7 @@ export function EncryptPage() {
                   <AlertDescription>{t("encrypt.pqUnsupported.body")}</AlertDescription>
                 </Alert>
               )}
-              {parsedDecrypt && !parsedPqUnsupported && !canDecrypt && (
+              {decryptKeyMissing && (
                 <Alert variant="destructive" role="alert">
                   <AlertTitle>KEY_NOT_FOUND</AlertTitle>
                   <AlertDescription>{t("errors.KEY_NOT_FOUND")}</AlertDescription>
@@ -875,7 +1009,7 @@ export function EncryptPage() {
                 type="button"
                 className="h-11 w-full cursor-pointer focus-visible:ring-2"
                 disabled={!canDecrypt}
-                onClick={() => void handleDecrypt()}
+                onClick={() => void runDecrypt(decryptInput)}
               >
                 {busy && <LoaderCircle aria-hidden="true" className="animate-spin" />}
                 {t(busy ? "encrypt.decryptButton.busy" : "encrypt.decryptButton.idle")}
@@ -898,15 +1032,230 @@ export function EncryptPage() {
               </AlertDescription>
             </Alert>
           )}
-          {decrypted && decrypted.kind !== "signed-key-unknown" && (
-            <Card>
-              <CardHeader className="p-4 pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
-                  {t("encrypt.result.decryptedTitle")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 p-4 pt-0">
+        </>
+      )}
+
+      {(keysError || pqError || preferencesError || error) && (
+        <Alert variant="destructive" role="alert">
+          <AlertCircle aria-hidden="true" className="size-4" />
+          <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+          <AlertDescription>{localizedError}</AlertDescription>
+        </Alert>
+      )}
+      <p aria-live="polite" className="sr-only">
+        {clearStatus === null ? "" : t(clearStatus)}
+      </p>
+
+      <Dialog
+        open={result !== null && mode === "encrypt"}
+        onOpenChange={(open) => {
+          if (open) return
+          resultAbortRef.current?.abort()
+          resultAbortRef.current = null
+          setCompatibilityUpdating(false)
+          setResultExporting(false)
+          setResult(null)
+          setOutputName("")
+          setResultError(null)
+        }}
+      >
+        <NoAutofocusDialogContent className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden">
+          <div className="grid min-h-0 gap-5 overflow-y-auto pb-14">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
+                {t("encrypt.result.modalTitle")}
+              </DialogTitle>
+            </DialogHeader>
+            {resultError && (
+              <Alert variant="destructive" role="alert">
+                <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+                <AlertDescription>{localizedResultError}</AlertDescription>
+              </Alert>
+            )}
+            {result !== null && (
+              <>
+                <div data-testid="encrypt-result-qr">
+                  {result.kind === "aes" ? (
+                    <QrDisplay
+                      payload={result.payload}
+                      ecLevel={ecLevelFor("message", preferences)}
+                      size={env.qrRenderSize}
+                      title={t("encrypt.result.qrTitle")}
+                    />
+                  ) : (
+                    <>
+                      {frameSplit.error && (
+                        <Alert variant="destructive" role="alert">
+                          <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>
+                          <AlertDescription>{localizedFrameError}</AlertDescription>
+                        </Alert>
+                      )}
+                      {frameSplit.frames.length === 0 && frameSplit.splitting && (
+                        <p
+                          aria-live="polite"
+                          className="text-sm text-muted-foreground"
+                        >
+                          {t("qrDisplay.generating")}
+                        </p>
+                      )}
+                      {(frameSplit.frames.length > 0 || frameSplit.splitting) && (
+                        <AnimatedQrFrames
+                          key={result.generation}
+                          frames={frameSplit.frames}
+                          frameIntervalMs={frameProfile.frameIntervalMs}
+                          densityRaised={frameProfile.densityRaised}
+                          compatibilityControl={{
+                            enabled: compatibilityEnabled,
+                            disabled:
+                              preferencesLoading ||
+                              preferencesError !== null ||
+                              compatibilityUpdating,
+                            onEnabledChange: changeCompatibilityMode,
+                          }}
+                          outputName={outputName || "pq-message"}
+                          title={t("encrypt.result.pqTitle")}
+                          exportsEnabled={false}
+                          splitting={frameSplit.splitting}
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <div data-testid="encrypt-result-payload" className="space-y-3">
+                  <p className="max-h-24 overflow-y-auto break-all rounded-md border p-3 font-mono text-xs">
+                    {result.payload}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 cursor-pointer"
+                    onClick={() => void copyPayload()}
+                  >
+                    <Clipboard aria-hidden="true" />
+                    {t("encrypt.result.copyPayload")}
+                  </Button>
+                </div>
+
+                <div data-testid="encrypt-result-output" className="space-y-2">
+                  <Label htmlFor="output-name">
+                    {t("encrypt.result.outputNameLabel")}
+                  </Label>
+                  <Input
+                    id="output-name"
+                    value={outputName}
+                    onChange={(event) => setOutputName(event.target.value)}
+                    maxLength={80}
+                    className="h-11"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full cursor-pointer"
+                    disabled={resultExporting || !canExportResult}
+                    onClick={() =>
+                      void (result.kind === "aes" ? exportSingle() : exportFrames())
+                    }
+                  >
+                    <Download aria-hidden="true" />
+                    {t("common.download")}
+                  </Button>
+                </div>
+
+                <Card
+                  data-testid="encrypt-result-detail"
+                  aria-label={t("encrypt.result.detailAria")}
+                >
+                  <CardHeader className="p-4 pb-3">
+                    <CardTitle className="text-base">
+                      {t("encrypt.result.detailTitle")}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 p-4 pt-0 text-sm">
+                    <DetailRow
+                      label={t("encrypt.detail.suite")}
+                      value={resultSuite ?? t("common.na")}
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.recipientKeyId")}
+                      value={
+                        result.kind === "aes"
+                          ? result.envelope.keyId
+                          : result.envelope.recipientKemKeyId
+                      }
+                      mono
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.senderSigningKeyId")}
+                      value={
+                        result.kind === "pq"
+                          ? (result.sender?.signing.keyId ?? t("common.na"))
+                          : t("common.na")
+                      }
+                      mono
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.totalBytes")}
+                      value={`${result.totalBytes} bytes`}
+                      mono
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.frameCount")}
+                      value={t("encrypt.detail.frameCountValue", {
+                        count: result.kind === "pq" ? frameSplit.frames.length : 1,
+                      })}
+                      mono
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.encryptedAt")}
+                      value={formatDateTime(result.createdAt, language)}
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.signature")}
+                      value={
+                        result.kind === "pq" && result.sender
+                          ? t("common.yes")
+                          : t("common.na")
+                      }
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.pqProfile")}
+                      value={
+                        result.kind === "pq"
+                          ? ACTIVE_PROFILE
+                          : t("encrypt.detail.notApplicable")
+                      }
+                    />
+                    <DetailRow
+                      label={t("encrypt.detail.wholeSha256")}
+                      value={result.sha256}
+                      mono
+                    />
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+        </NoAutofocusDialogContent>
+      </Dialog>
+
+      <Dialog
+        open={decrypted !== null && decrypted.kind !== "signed-key-unknown"}
+        onOpenChange={(open) => {
+          if (!open) setDecrypted(null)
+        }}
+      >
+        <NoAutofocusDialogContent className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden">
+          <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
+                {t("encrypt.result.decryptedModalTitle")}
+              </DialogTitle>
+            </DialogHeader>
+            {decrypted !== null && decrypted.kind !== "signed-key-unknown" && (
+              <>
                 {decrypted.kind === "unsigned" && (
                   <p className="text-sm font-medium">{t("encrypt.result.unsigned")}</p>
                 )}
@@ -937,190 +1286,11 @@ export function EncryptPage() {
                 <p className="text-xs text-muted-foreground">
                   {t("encrypt.result.memoryOnly")}
                 </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="h-11 w-full cursor-pointer"
-                  onClick={() => setDecrypted(null)}
-                >
-                  <Eraser aria-hidden="true" />
-                  {t("encrypt.clearPlaintext")}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
-
-      {(keysError || pqError || preferencesError || error || compatibilityError) && (
-        <Alert variant="destructive" role="alert">
-          <AlertCircle aria-hidden="true" className="size-4" />
-          <AlertTitle>{t("common.operationFailed")}</AlertTitle>
-          <AlertDescription>{localizedError}</AlertDescription>
-        </Alert>
-      )}
-      <p aria-live="polite" className="sr-only">
-        {clearStatus === null ? "" : t(clearStatus)}
-      </p>
-
-      {result && mode === "encrypt" && (
-        <section aria-label={t("encrypt.result.sectionAria")} className="space-y-5">
-          <Card>
-            <CardHeader className="p-4 pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
-                {t("encrypt.result.encryptDone")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 p-4 pt-0">
-              <p className="max-h-24 overflow-y-auto break-all rounded-md border p-3 font-mono text-xs">
-                {result.payload}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 cursor-pointer"
-                onClick={() => void copyPayload()}
-              >
-                <Clipboard aria-hidden="true" />
-                {t("encrypt.result.copyPayload")}
-              </Button>
-            </CardContent>
-          </Card>
-
-          {result.kind === "aes" ? (
-            <QrDisplay
-              payload={result.payload}
-              ecLevel={ecLevelFor("message", preferences)}
-              size={env.qrRenderSize}
-              title={t("encrypt.result.qrTitle")}
-            />
-          ) : (
-            <>
-              {frameSplit.error && (
-                <Alert variant="destructive" role="alert">
-                  <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>
-                  <AlertDescription>{localizedFrameError}</AlertDescription>
-                </Alert>
-              )}
-              {frameSplit.frames.length === 0 && frameSplit.splitting && (
-                <p aria-live="polite" className="text-sm text-muted-foreground">
-                  {t("qrDisplay.generating")}
-                </p>
-              )}
-              {(frameSplit.frames.length > 0 || frameSplit.splitting) && (
-                <AnimatedQrFrames
-                  key={result.generation}
-                  frames={frameSplit.frames}
-                  frameIntervalMs={frameProfile.frameIntervalMs}
-                  densityRaised={frameProfile.densityRaised}
-                  compatibilityControl={{
-                    enabled: compatibilityEnabled,
-                    disabled:
-                      preferencesLoading ||
-                      preferencesError !== null ||
-                      compatibilityUpdating,
-                    onEnabledChange: changeCompatibilityMode,
-                  }}
-                  outputName={outputName || "pq-message"}
-                  title={t("encrypt.result.pqTitle")}
-                  splitting={frameSplit.splitting}
-                />
-              )}
-            </>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="output-name">{t("encrypt.result.outputNameLabel")}</Label>
-            <Input
-              id="output-name"
-              value={outputName}
-              onChange={(event) => setOutputName(event.target.value)}
-              maxLength={80}
-              className="h-11"
-            />
+              </>
+            )}
           </div>
-
-          {result.kind === "aes" && (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-full cursor-pointer"
-              onClick={() => void exportSingle()}
-            >
-              <Download aria-hidden="true" />
-              {t("common.download")}
-            </Button>
-          )}
-
-          <Card aria-label={t("encrypt.result.detailAria")}>
-            <CardHeader className="p-4 pb-3">
-              <CardTitle className="text-base">
-                {t("encrypt.result.detailTitle")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 p-4 pt-0 text-sm">
-              <DetailRow
-                label={t("encrypt.detail.suite")}
-                value={resultSuite ?? t("common.na")}
-              />
-              <DetailRow
-                label={t("encrypt.detail.recipientKeyId")}
-                value={
-                  result.kind === "aes"
-                    ? result.envelope.keyId
-                    : result.envelope.recipientKemKeyId
-                }
-                mono
-              />
-              <DetailRow
-                label={t("encrypt.detail.senderSigningKeyId")}
-                value={
-                  result.kind === "pq"
-                    ? (result.sender?.signing.keyId ?? t("common.na"))
-                    : t("common.na")
-                }
-                mono
-              />
-              <DetailRow
-                label={t("encrypt.detail.totalBytes")}
-                value={`${result.totalBytes} bytes`}
-                mono
-              />
-              <DetailRow
-                label={t("encrypt.detail.frameCount")}
-                value={t("encrypt.detail.frameCountValue", {
-                  count: result.kind === "pq" ? frameSplit.frames.length : 1,
-                })}
-                mono
-              />
-              <DetailRow
-                label={t("encrypt.detail.encryptedAt")}
-                value={formatDateTime(result.createdAt, language)}
-              />
-              <DetailRow
-                label={t("encrypt.detail.signature")}
-                value={
-                  result.kind === "pq" && result.sender ? t("common.yes") : t("common.na")
-                }
-              />
-              <DetailRow
-                label={t("encrypt.detail.pqProfile")}
-                value={
-                  result.kind === "pq"
-                    ? ACTIVE_PROFILE
-                    : t("encrypt.detail.notApplicable")
-                }
-              />
-              <DetailRow
-                label={t("encrypt.detail.wholeSha256")}
-                value={result.sha256}
-                mono
-              />
-            </CardContent>
-          </Card>
-        </section>
-      )}
+        </NoAutofocusDialogContent>
+      </Dialog>
     </section>
   )
 }

@@ -234,6 +234,9 @@ const en = {
     "Increase the screen brightness and keep the device still for more reliable scanning.",
   "animatedQr.export.error.title": "The frames could not be exported",
 
+  "keyDetail.rename.label": "Key name",
+  "keyDetail.rename.submit": "Rename",
+  "keyDetail.rename.saved": "Key renamed",
   "keyDetail.qr.bundleTitle": "{name} public-key bundle",
   "keyDetail.qr.kemTitle": "{name} encryption public key",
   "keyDetail.qr.signingTitle": "{name} signature-verification public key",
@@ -423,6 +426,7 @@ const en = {
   "encrypt.signingKeyId": " Key ID: {id}",
   "encrypt.importSigningKey": "Import a signing key",
   "encrypt.result.decryptedTitle": "Decryption result",
+  "encrypt.result.decryptedModalTitle": "Decryption complete",
   "encrypt.result.unsigned": "Unsigned",
   "encrypt.result.aesUnsigned": "Symmetric-key message, unsigned",
   "encrypt.result.signatureValid": "The signature is valid for this key",
@@ -433,7 +437,7 @@ const en = {
     "Unverified. Key validity and identity verification are separate.",
   "encrypt.result.memoryOnly":
     "The decrypted result is held only in memory and is not stored.",
-  "encrypt.result.sectionAria": "Encryption result",
+  "encrypt.result.modalTitle": "Encryption complete",
   "encrypt.result.encryptDone": "Encryption is complete",
   "encrypt.result.copyPayload": "Copy payload",
   "encrypt.result.qrTitle": "Ciphertext QR",
@@ -479,6 +483,7 @@ const en = {
     "The camera view could not be prepared. Reopen the page.",
   "scanner.status.videoNotReady": "The camera view could not be prepared",
   "scanner.status.preparing": "Preparing the camera…",
+  "scanner.status.readerLoading": "Still loading the QR reader…",
   "scanner.status.qrRead": "The QR code was read",
   "scanner.error.multipartNotAccepted":
     "This screen does not accept multi-frame QR codes.",
@@ -527,6 +532,8 @@ const en = {
   "scanner.error.title": "The scan could not be completed",
   "scanner.diagnostic.ariaLabel": "Camera diagnostic",
   "scanner.diagnostic": "Diagnostic: {name} @{phase} [{detail}]",
+  "scanner.diagnostic.withMessage":
+    "Diagnostic: {name} @{phase} [{detail}] {message}",
   "scanner.pipelineDiagnostic.ariaLabel": "QR decode pipeline diagnostic",
   "scanner.pipelineDiagnostic":
     "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
@@ -886,6 +893,9 @@ const ja = {
     "画面の輝度を上げ、端末を動かさずに読み取ると安定します。",
   "animatedQr.export.error.title": "フレームを出力できません",
 
+  "keyDetail.rename.label": "鍵の名前",
+  "keyDetail.rename.submit": "改名",
+  "keyDetail.rename.saved": "鍵を改名しました",
   "keyDetail.qr.bundleTitle": "{name} 公開鍵セット",
   "keyDetail.qr.kemTitle": "{name} 暗号化用公開鍵",
   "keyDetail.qr.signingTitle": "{name} 署名検証用公開鍵",
@@ -1075,6 +1085,7 @@ const ja = {
   "encrypt.signingKeyId": " 鍵ID: {id}",
   "encrypt.importSigningKey": "署名鍵を取り込む",
   "encrypt.result.decryptedTitle": "復号結果",
+  "encrypt.result.decryptedModalTitle": "復号が完了しました",
   "encrypt.result.unsigned": "署名なし",
   "encrypt.result.aesUnsigned": "共通鍵メッセージ、署名なし",
   "encrypt.result.signatureValid": "署名はこの鍵に対して有効です",
@@ -1085,7 +1096,7 @@ const ja = {
     "未確認。鍵の有効性と人物確認は別です。",
   "encrypt.result.memoryOnly":
     "復号結果はメモリー内だけに保持し、保存しません。",
-  "encrypt.result.sectionAria": "暗号結果",
+  "encrypt.result.modalTitle": "暗号化が完了しました",
   "encrypt.result.encryptDone": "暗号化が完了しました",
   "encrypt.result.copyPayload": "ペイロードをコピー",
   "encrypt.result.qrTitle": "暗号文QR",
@@ -1131,6 +1142,7 @@ const ja = {
     "カメラ画面を準備できませんでした。ページを開き直してください。",
   "scanner.status.videoNotReady": "カメラ画面を準備できませんでした",
   "scanner.status.preparing": "カメラを準備しています…",
+  "scanner.status.readerLoading": "QRリーダーを読み込んでいます…",
   "scanner.status.qrRead": "QRコードを読み取りました",
   "scanner.error.multipartNotAccepted":
     "この画面では複数QRを受理しません。",
@@ -1179,6 +1191,7 @@ const ja = {
   "scanner.error.title": "読み取りを完了できません",
   "scanner.diagnostic.ariaLabel": "カメラ診断",
   "scanner.diagnostic": "診断: {name} @{phase} [{detail}]",
+  "scanner.diagnostic.withMessage": "診断: {name} @{phase} [{detail}] {message}",
   "scanner.pipelineDiagnostic.ariaLabel": "QR復号パイプライン診断",
   "scanner.pipelineDiagnostic":
     "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",

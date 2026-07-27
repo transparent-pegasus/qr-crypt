@@ -22,6 +22,8 @@ import {
   fakeKeys,
   listIdentities,
   listKeyRecords,
+  renameIdentity,
+  renameKeyRecord,
   renderQrDataUrl,
   revokeIdentity,
   saveRotation,
@@ -945,5 +947,61 @@ describe("key list page", () => {
     expect(
       within(dialog).getByRole("button", { name: "Delete 自分のPQ ID" }),
     ).toBeInTheDocument()
+  })
+
+  it("renames a symmetric key from the detail dialog", async () => {
+    const user = userEvent.setup()
+    await renderApp("/saved")
+
+    await user.click(await screen.findByText("共通鍵A"))
+    const field = await screen.findByLabelText("Key name")
+    await user.clear(field)
+    await user.type(field, "共通鍵A改")
+    await user.click(screen.getByRole("button", { name: "Rename" }))
+
+    expect(renameKeyRecord).toHaveBeenCalledWith(expect.any(String), "共通鍵A改")
+    expect(await screen.findAllByText("共通鍵A改")).toHaveLength(2)
+    expect(screen.queryByText("共通鍵A")).not.toBeInTheDocument()
+  })
+
+  it("renames a PQ identity from the detail dialog", async () => {
+    const user = userEvent.setup()
+    await renderApp("/saved")
+
+    await user.click(await screen.findByText("自分のPQ ID"))
+    const field = await screen.findByLabelText("Key name")
+    await user.clear(field)
+    await user.type(field, "自分のPQ ID改")
+    await user.click(screen.getByRole("button", { name: "Rename" }))
+
+    expect(renameIdentity).toHaveBeenCalledWith(expect.any(String), "自分のPQ ID改")
+    expect(await screen.findAllByText("自分のPQ ID改")).toHaveLength(2)
+    expect(screen.queryByText("自分のPQ ID")).not.toBeInTheDocument()
+  })
+
+  it("keeps the rename submit disabled for a blank name", async () => {
+    const user = userEvent.setup()
+    await renderApp("/saved")
+
+    await user.click(await screen.findByText("共通鍵A"))
+    const field = await screen.findByLabelText("Key name")
+    await user.clear(field)
+
+    expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled()
+  })
+
+  it("surfaces a repository failure without changing the displayed name", async () => {
+    const user = userEvent.setup()
+    renameKeyRecord.mockRejectedValueOnce(new AppError("STORAGE_FAILED"))
+    await renderApp("/saved")
+
+    await user.click(await screen.findByText("共通鍵A"))
+    const field = await screen.findByLabelText("Key name")
+    await user.clear(field)
+    await user.type(field, "失敗する名前")
+    await user.click(screen.getByRole("button", { name: "Rename" }))
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument()
+    expect(screen.queryByText("失敗する名前")).not.toBeInTheDocument()
   })
 })
