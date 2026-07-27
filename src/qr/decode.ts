@@ -203,6 +203,11 @@ function prepareQrReaderModule(): Promise<void> {
   }
 
   const preparation = started.then(() => {
+    // Symmetric with the rejection guard below: purgeZXingModule cannot cancel an
+    // in-flight instantiation, so a superseded generation can still settle. It must not
+    // declare the reader ready on behalf of the generation that replaced it — a false
+    // "ready" makes the next attempt skip its bounded wait and block inside readBarcodes.
+    if (zxingModulePromise !== preparation) return
     zxingModuleState = "ready"
     if (activeAttempt !== null) publishPipelineDiagnostic(activeAttempt)
   })
