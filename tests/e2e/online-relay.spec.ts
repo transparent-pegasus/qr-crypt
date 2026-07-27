@@ -117,7 +117,12 @@ async function assertNoRelayPersistence(
   })
 
   expect(snapshot.localStorageEntries.map(([key]) => key).sort()).toEqual(
-    expect.arrayContaining(["oc-lang", "oc-offline-ack-pending", "oc-theme"]),
+    expect.arrayContaining([
+      "oc-lang",
+      "oc-offline-ack-pending",
+      "oc-online-tab",
+      "oc-theme",
+    ]),
   )
   expect(
     snapshot.localStorageEntries.every(([key]) =>

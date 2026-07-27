@@ -95,6 +95,49 @@ describe("OnlineGate", () => {
     ).not.toBeVisible()
   })
 
+  it("keeps a stored relay selection closed while relay is not eligible", async () => {
+    window.localStorage.setItem("oc-online-tab", "relay")
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen relayEligible={false} />
+      </AppProviders>,
+    )
+
+    expect(
+      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+    ).toBeVisible()
+    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
+  })
+
+  it("opens a stored relay selection once eligibility arrives after mount", async () => {
+    window.localStorage.setItem("oc-online-tab", "relay")
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    const { rerender } = render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen relayEligible={false} />
+      </AppProviders>,
+    )
+
+    expect(
+      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+    ).toBeVisible()
+
+    rerender(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen relayEligible />
+      </AppProviders>,
+    )
+
+    expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
+    expect(
+      screen.getByText("Install the PWA or relay OCF2 message-header QR frames"),
+    ).not.toBeVisible()
+  })
+
   it("shows the home tab when the stored selection is absent or unrecognized", async () => {
     const { AppProviders } = await import("@/app/providers")
     const { OnlineInstallScreen } = await import("@/components/online-gate")

@@ -58,7 +58,8 @@ const ONLINE_TAB_STORAGE_KEY = "oc-online-tab"
 
 // An online-only device relays and never installs twice, so the last explicit
 // tab choice is the better default. Only the two literals are accepted, and the
-// oc- prefix keeps the key inside the existing reset sweep.
+// oc- prefix keeps the key inside the existing reset sweep. A stored value only
+// ever selects a tab the current session is already eligible to show.
 function readStoredOnlineTab(): OnlineTab {
   try {
     return window.localStorage.getItem(ONLINE_TAB_STORAGE_KEY) === "relay"
@@ -82,7 +83,12 @@ export function OnlineInstallScreen({
   )
   const [installing, setInstalling] = useState(false)
   const [installError, setInstallError] = useState<MessageKey | null>(null)
-  const [tab, setTab] = useState<OnlineTab>(readStoredOnlineTab)
+  // A stored selection is a preference, not a session choice: it takes effect
+  // only once relay eligibility is confirmed, so an ineligible gate shows
+  // neither the navigation nor, through it, a write path.
+  const [storedTab] = useState<OnlineTab>(readStoredOnlineTab)
+  const [chosenTab, setChosenTab] = useState<OnlineTab | null>(null)
+  const tab: OnlineTab = chosenTab ?? (relayEligible ? storedTab : "top")
   const activeTab: OnlineTab = relayEligible ? tab : "top"
   const navVisible = relayEligible || tab === "relay"
 
@@ -105,7 +111,7 @@ export function OnlineInstallScreen({
 
   // Persist only an explicit choice, so an untouched gate writes nothing.
   const selectTab = (next: OnlineTab) => {
-    setTab(next)
+    setChosenTab(next)
     try {
       window.localStorage.setItem(ONLINE_TAB_STORAGE_KEY, next)
     } catch {

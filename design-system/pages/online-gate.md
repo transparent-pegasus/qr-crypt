@@ -20,6 +20,7 @@
 - relay eligible の時だけ、共通下部シェルにアイコンのみの「トップ」「リレー」2 項目を表示する。選択したリレータブの eligibility が一時的に pending になった間もナビを消さないため、表示条件 `navVisible` は `relayEligible || tab === "relay"` とする。固定ナビ表示中は本文に `pb-content-safe` を付ける。
 - 下部操作は offline ナビと同じ `<nav>` + 各 `<button aria-current="page">` のページナビとして扱い、`role="tablist"` は使わない。
 - ナビを押した時だけ選択タブを localStorage `oc-online-tab`（`top` / `relay` の 2 値のみ）へ保存し、次回起動はその値で開く。未設定・未知の値は `top`。オンライン専用端末が毎回リレーを選び直さずに済むことが目的で、一度も押していない端末は書き込まない。`oc-*` 全削除で消えるため wipe / 全初期化後はトップに戻る。
+- 保存値 `relay` の復元は relay eligible が確定してからに限る。ineligible / 判定待ちの間は復元せず `tab` は `top` のままなので、ナビも書き込み経路も現れない（`navVisible` の既存規則を跨いだ復元で緩めない）。
 
 ## 状態遷移と保護
 
