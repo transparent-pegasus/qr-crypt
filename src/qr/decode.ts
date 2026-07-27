@@ -677,12 +677,14 @@ async function startAttempt(
         publishPipelineDiagnostic(attempt)
         return
       } catch (error) {
-        // A cancelled attempt is being torn down, and a timeout already spent the full
-        // budget — retrying it would hold a live camera for a second empty window.
+        // A cancelled attempt is being torn down and must not restart anything.
+        // A timeout is now retried like any other failure: a stall and an Emscripten
+        // abort are two transient failures of the same preparation operation, and making
+        // recovery depend on which settlement shape WebKit produces is an unhelpful
+        // asymmetry. Both spend the single retry.
         const retryable =
           !readerRetryUsed &&
           !(error instanceof AttemptCancelled) &&
-          !(error instanceof QrReaderPreparationTimeout) &&
           isActiveAttempt(attempt)
         if (!retryable) {
           if (!(error instanceof AttemptCancelled) && isActiveAttempt(attempt)) {
@@ -697,6 +699,10 @@ async function startAttempt(
         attempt.lastErrorName = diagnosticName(error)
         invalidateQrReaderModule(preparation)
         preparation = prepareQrReaderModule()
+        // The decode-progress watchdog was armed by the first drawn frame and would
+        // otherwise expire mid-retry, ending the attempt with the wrong error and
+        // cutting the second window to ~4 s. Starting a fresh generation is progress.
+        armDecodeProgressWatchdog()
         // pipelineDiagnostic only mirrors the module state while the attempt field is
         // idle or preparing, so publishing before this assignment would latch "failed"
         // for the whole retry window.
