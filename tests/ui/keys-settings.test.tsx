@@ -98,8 +98,11 @@ describe("key management v2", () => {
     const exampleCaption = screen.getByText(
       "Ask the other party to increase their screen brightness, hold the camera about 15–20 cm away, and keep it still until the image is in focus.",
     )
-    const scanIcon = exampleCaption.parentElement!.querySelector("svg.lucide-scan-line")!
+    const scanIcon = within(cameraCard as HTMLDivElement)
+      .getByRole("button", { name: "Scan a key QR code" })
+      .querySelector("svg.lucide-scan-line")!
     expect(scanIcon).toHaveAttribute("aria-hidden", "true")
+    expect((cameraCard as HTMLDivElement).querySelector("svg.size-32")).toBeNull()
     expect(exampleCaption.parentElement!.querySelector("img")).toBeNull()
     expect(
       screen.queryByText(
