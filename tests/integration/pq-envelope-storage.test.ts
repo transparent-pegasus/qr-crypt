@@ -33,6 +33,7 @@ import {
   findIdentityByKemKeyId,
   findIdentityBySigningKeyId,
   getIdentity,
+  renameIdentity,
   revokeIdentity,
   saveIdentity,
   saveRotation,
@@ -397,4 +398,77 @@ describe("deleteSupersededIdentities", () => {
       deleteSupersededIdentities(["A".repeat(22)]),
     ).resolves.toBeUndefined()
   })
+})
+
+describe("renameIdentity", () => {
+  it("renames a stored identity and trims the name", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const identity = await createIdentity({
+      client,
+      vaultKey,
+      name: "改名前",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(identity)
+
+    await renameIdentity(identity.id, "  改名した鍵  ")
+
+    expect((await getIdentity(identity.id))?.name).toBe("改名した鍵")
+  }, 30_000)
+
+  it("rejects a rename for an identity that is not stored", async () => {
+    await expect(renameIdentity("missing-identity", "any")).rejects.toMatchObject({
+      code: "KEY_NOT_FOUND",
+    })
+  })
+
+  it("rejects a blank rename", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const identity = await createIdentity({
+      client,
+      vaultKey,
+      name: "改名前",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(identity)
+
+    await expect(renameIdentity(identity.id, "   ")).rejects.toMatchObject({
+      code: "STORAGE_FAILED",
+    })
+  }, 30_000)
+
+  it("refuses to rename a superseded generation and leaves both names intact", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const identity = await createIdentity({
+      client,
+      vaultKey,
+      name: "first generation",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(identity)
+    const rotation = await rotateIdentity({
+      client,
+      vaultKey,
+      current: identity,
+      now: NOW + 1,
+    })
+    await saveRotation(rotation)
+    const { next, previous } = rotation
+
+    await expect(renameIdentity(previous.id, "旧世代改名")).rejects.toMatchObject({
+      code: "KEY_NOT_FOUND",
+    })
+
+    expect((await getIdentity(previous.id))?.name).toBe(previous.name)
+    expect((await getIdentity(next.id))?.name).toBe(next.name)
+  }, 30_000)
 })

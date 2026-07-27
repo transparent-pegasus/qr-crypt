@@ -75,7 +75,7 @@ test("a one-QR encryption downloads one PNG with no SVG affordance", async ({
     plaintext: "ダウンロードしたQRを再読取する日本語平文",
   })
 
-  const result = page.getByRole("region", { name: "Encryption result" })
+  const result = page.getByRole("dialog", { name: "Encryption complete" })
   await result.getByLabel("Output name", { exact: true }).fill("ダウンロード確認")
   const downloadButton = result.getByRole("button", {
     name: "Download",
@@ -209,7 +209,7 @@ test("controls signed multipart frames and preserves every PNG in its single ZIP
   await expect(frames.getByRole("button", { name: /SVG/i })).toHaveCount(0)
   await expect(
     frames.getByRole("button", { name: "Download", exact: true }),
-  ).toHaveCount(1)
+  ).toHaveCount(0)
   const counter = frames.getByText(/^\d+ \/ \d+$/).last()
   await frames.getByRole("button", { name: "Pause" }).click()
   const initialCounter = await counter.innerText()
@@ -228,10 +228,16 @@ test("controls signed multipart frames and preserves every PNG in its single ZIP
   const framePayloads = await collectAnimatedFramePayloads(frames)
   expect(framePayloads).toHaveLength(frameCount)
   expect(framePayloads.every((payload) => payload.startsWith("OCF2:"))).toBe(true)
-  await result.getByLabel("Output name", { exact: true }).fill("署名付き複数フレーム")
+  const output = result.getByTestId("encrypt-result-output")
+  await output.getByLabel("Output name", { exact: true }).fill("署名付き複数フレーム")
+  const downloadButton = output.getByRole("button", {
+    name: "Download",
+    exact: true,
+  })
+  await expect(downloadButton).toHaveCount(1)
 
   const zipPromise = page.waitForEvent("download", { timeout: 180_000 })
-  await frames.getByRole("button", { name: "Download", exact: true }).click()
+  await downloadButton.click()
   const zipDownload = await zipPromise
   expect(zipDownload.suggestedFilename()).toMatch(/-frames\.zip$/)
   const zip = parseStoreOnlyZip(await downloadBuffer(zipDownload))
@@ -305,9 +311,7 @@ test("measures a maximum 120000-byte signed PQ message through ZIP production", 
       }
     }
     const inspect = () => {
-      const result = document.querySelector(
-        'section[aria-label="Encryption result"]',
-      )
+      const result = document.querySelector('[data-testid="encrypt-result-detail"]')
       if (result !== null) markOnce("nodisp-encrypt-complete")
       const frames = document.querySelector(
         'section[aria-label="Ciphertext frame display"]',
@@ -336,10 +340,8 @@ test("measures a maximum 120000-byte signed PQ message through ZIP production", 
   })
   await encryptButton.click()
 
-  const result = page.getByRole("region", { name: "Encryption result" })
-  await expect(result.getByText("Encryption is complete")).toBeVisible({
-    timeout: 120_000,
-  })
+  const result = page.getByRole("dialog", { name: "Encryption complete" })
+  await expect(result).toBeVisible({ timeout: 120_000 })
   const frames = result.getByRole("region", {
     name: "Ciphertext frame display",
   })
@@ -361,7 +363,12 @@ test("measures a maximum 120000-byte signed PQ message through ZIP production", 
   expect(artifactBytes).toBe(126_619)
   expect(frameCount).toBe(127)
   await expect(frames.getByRole("button", { name: /SVG/i })).toHaveCount(0)
-  const downloadButton = frames.getByRole("button", {
+  await expect(
+    frames.getByRole("button", { name: "Download", exact: true }),
+  ).toHaveCount(0)
+  const output = result.getByTestId("encrypt-result-output")
+  await output.getByLabel("Output name", { exact: true }).fill("最大長署名付きメッセージ")
+  const downloadButton = output.getByRole("button", {
     name: "Download",
     exact: true,
   })

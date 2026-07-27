@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   KeyRound,
   LoaderCircle,
-  ScanLine,
   ShieldCheck,
   Trash2,
 } from "lucide-react"
@@ -493,7 +492,9 @@ export function KeysPage() {
               </h3>
             </CardHeader>
             <CardContent className="space-y-4 p-4 pt-0">
-              <DemoKeyQr />
+              <p className="text-sm text-muted-foreground">
+                {t("keys.demo.hint")}
+              </p>
               <QrScannerModal
                 triggerLabel={t("keys.import.scanTrigger")}
                 singleTargets={["symmetric-key"]}
@@ -695,23 +696,6 @@ export function KeysPage() {
         }}
         />
     </section>
-  )
-}
-
-function DemoKeyQr() {
-  const { t } = useI18n()
-  return (
-    // The space above the icon is CardHeader pb-3 (12px) + py-3 (12px) = 24px;
-    // use gap-6 below it to match that 24px spacing.
-    <div className="flex flex-col items-center gap-6 py-3">
-      <ScanLine
-        aria-hidden="true"
-        className="size-32 text-muted-foreground"
-      />
-      <p className="text-sm text-muted-foreground">
-        {t("keys.demo.hint")}
-      </p>
-    </div>
   )
 }
 
