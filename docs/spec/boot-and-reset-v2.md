@@ -132,8 +132,9 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    the Vault key record** (crypto-shredding; overwriting the bytes of a
    non-extractable `CryptoKey` is impossible and is not claimed).
 6. Delete all DBs (including `pqIdentities`/`pqPublicBundles`) + all `oc-*`
-   localStorage keys. This includes the UI language preference (`oc-lang`);
-   after a wipe or full reset the app reverts to the English default.
+   localStorage keys. This includes the UI language preference (`oc-lang`) and
+   the last online tab (`oc-online-tab`); after a wipe or full reset the app
+   reverts to the English default and to the install screen.
    Only in the `online-detected` case, re-set `oc-offline-ack-pending="1"`
    after the deletion and before publishing `wiped`. In the `user-requested`
    case it is not re-set.
@@ -167,10 +168,12 @@ not the ordering proof for camera teardown.
 This feature is "**reduction of residual data in the case where the current
 (trusted) code was able to run after connectivity**"; it does not defend
 against: malicious same-origin code, physical recovery (disk imaging), or
-compromised code that runs first through an update. The theme (`oc-theme`) and
-the pending-acknowledgement marker (`oc-offline-ack-pending="1"`) are
+compromised code that runs first through an update. The theme (`oc-theme`), the
+last online tab (`oc-online-tab`, `top`/`relay`), and the
+pending-acknowledgement marker (`oc-offline-ack-pending="1"`) are
 non-sensitive but are included in the bulk `oc-*` deletion. In an
-online-detected wipe only the latter is re-set, in the order above.
+online-detected wipe only the acknowledgement marker is re-set, in the order
+above; the tab preference is not.
 
 ## 7. Display-Only Offline Acknowledgement Phase and the Persistent Marker
 

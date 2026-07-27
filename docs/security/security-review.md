@@ -240,7 +240,7 @@ guaranteed; JS memory erasure has limits
      close / `pagehide` / timeout:** a unique frame marker is absent from
      request bodies and query values, CacheStorage keys/bodies (static shell
      permitted), localStorage (only `{oc-theme, oc-lang,
-     oc-offline-ack-pending}`), IndexedDB values, console,
+     oc-offline-ack-pending, oc-online-tab}`), IndexedDB values, console,
      `window.onerror` / unhandled rejections, visible error text,
      `document.title`, `location.href`, and history state.
    - Errors use fixed i18n / `AppError` mappings — never interpolate raw
