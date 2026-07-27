@@ -78,7 +78,7 @@ test("initializes the precached same-origin reader WASM on its first offline cam
   })
 
   await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
-  await page.getByRole("button", { name: "Import a key", exact: true }).click()
+  await page.getByRole("button", { name: "Scan a key QR", exact: true }).click()
   await page
     .getByRole("button", {
       name: "Scan a key QR code",

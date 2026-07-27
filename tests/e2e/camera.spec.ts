@@ -46,7 +46,7 @@ test("discards and restarts the fake camera, then stops every track when closed"
     )
   })
   await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
-  await page.getByRole("button", { name: "Import a key", exact: true }).click()
+  await page.getByRole("button", { name: "Scan a key QR", exact: true }).click()
   await expect(
     page.getByRole("heading", { name: "Scan with the camera", exact: true }),
   ).toBeVisible()

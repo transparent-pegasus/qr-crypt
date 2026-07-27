@@ -209,7 +209,7 @@ test("keeps shared closes bottom-right, last in tab order, and outside every scr
   await expect(savedDialog).toBeHidden()
   await goToOfflinePage(page, "/keys")
   await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
-  await page.getByRole("button", { name: "Import a key", exact: true }).click()
+  await page.getByRole("button", { name: "Scan a key QR", exact: true }).click()
   await page.getByRole("button", { name: "Scan a key QR code", exact: true }).click()
   const scannerDialog = page.getByRole("dialog", {
     name: "Scan a key QR code",

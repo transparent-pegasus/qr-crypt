@@ -294,7 +294,7 @@ const en = {
   "keyStatus.revoked": "Revoked",
 
   "keyList.action.create": "Create a key",
-  "keyList.action.import": "Import a key",
+  "keyList.action.import": "Scan a key QR",
   "keyList.error.identity": "Post-quantum identities could not be loaded",
   "keyList.error.symmetric": "Symmetric keys could not be loaded",
   "keyList.error.peer": "The other party's keys could not be updated",
@@ -943,7 +943,7 @@ const ja = {
   "keyStatus.revoked": "失効",
 
   "keyList.action.create": "鍵を作成",
-  "keyList.action.import": "鍵を読み込む",
+  "keyList.action.import": "鍵QRを読み取る",
   "keyList.error.identity": "ポスト量子IDを読み込めません",
   "keyList.error.symmetric": "共通鍵を読み込めません",
   "keyList.error.peer": "相手の鍵を更新できません",
