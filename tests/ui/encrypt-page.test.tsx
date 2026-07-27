@@ -1600,6 +1600,7 @@ describe("encrypt page v2", () => {
       name: "Compatibility mode",
     })
     expect(within(replacement).queryByRole("alert")).not.toBeInTheDocument()
+    await waitFor(() => expect(replacementCompatibility).toBeEnabled())
 
     await act(async () => {
       staleUpdate.reject(new AppError("STORAGE_FAILED"))
