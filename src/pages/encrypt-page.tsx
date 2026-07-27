@@ -300,7 +300,9 @@ export function EncryptPage() {
         if (signal?.aborted) return
         setResultError(toAppError(caught, "STORAGE_FAILED").code)
       } finally {
-        setCompatibilityUpdating(false)
+        if (!signal?.aborted) {
+          setCompatibilityUpdating(false)
+        }
       }
     },
     [updatePreferences],
@@ -436,6 +438,7 @@ export function EncryptPage() {
     () => () => {
       resultAbortRef.current?.abort()
       resultAbortRef.current = null
+      setCompatibilityUpdating(false)
       resetSensitiveSession()
     },
     [resetSensitiveSession],
@@ -445,6 +448,7 @@ export function EncryptPage() {
     resultAbortRef.current?.abort()
     resultAbortRef.current = null
     pendingDecryptRef.current = null
+    setCompatibilityUpdating(false)
     setResultExporting(false)
     setPlaintext("")
     setDecryptInput("")
@@ -468,6 +472,7 @@ export function EncryptPage() {
     if (!canEncrypt) return
     resultAbortRef.current?.abort()
     resultAbortRef.current = null
+    setCompatibilityUpdating(false)
     setResultExporting(false)
     setResultError(null)
     setBusy(true)
@@ -1047,6 +1052,7 @@ export function EncryptPage() {
           if (open) return
           resultAbortRef.current?.abort()
           resultAbortRef.current = null
+          setCompatibilityUpdating(false)
           setResultExporting(false)
           setResult(null)
           setOutputName("")
