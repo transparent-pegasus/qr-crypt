@@ -532,6 +532,8 @@ const en = {
   "scanner.error.title": "The scan could not be completed",
   "scanner.diagnostic.ariaLabel": "Camera diagnostic",
   "scanner.diagnostic": "Diagnostic: {name} @{phase} [{detail}]",
+  "scanner.diagnostic.withMessage":
+    "Diagnostic: {name} @{phase} [{detail}] {message}",
   "scanner.pipelineDiagnostic.ariaLabel": "QR decode pipeline diagnostic",
   "scanner.pipelineDiagnostic":
     "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
@@ -1189,6 +1191,7 @@ const ja = {
   "scanner.error.title": "読み取りを完了できません",
   "scanner.diagnostic.ariaLabel": "カメラ診断",
   "scanner.diagnostic": "診断: {name} @{phase} [{detail}]",
+  "scanner.diagnostic.withMessage": "診断: {name} @{phase} [{detail}] {message}",
   "scanner.pipelineDiagnostic.ariaLabel": "QR復号パイプライン診断",
   "scanner.pipelineDiagnostic":
     "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",

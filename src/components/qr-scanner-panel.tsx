@@ -842,11 +842,18 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             aria-label={t("scanner.diagnostic.ariaLabel")}
             className="font-mono text-xs text-muted-foreground"
           >
-            {t("scanner.diagnostic", {
-              name: diagnostic.name ?? "unknown",
-              phase: diagnostic.phase,
-              detail: diagnostic.detail,
-            })}
+            {diagnostic.message === null
+              ? t("scanner.diagnostic", {
+                  name: diagnostic.name ?? "unknown",
+                  phase: diagnostic.phase,
+                  detail: diagnostic.detail,
+                })
+              : t("scanner.diagnostic.withMessage", {
+                  name: diagnostic.name ?? "unknown",
+                  phase: diagnostic.phase,
+                  detail: diagnostic.detail,
+                  message: diagnostic.message,
+                })}
           </p>
         )}
         {pipelineDiagnostic && (

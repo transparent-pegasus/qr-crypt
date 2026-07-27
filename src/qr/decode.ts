@@ -51,6 +51,7 @@ export interface CameraDiagnostic {
   phase: CameraDiagnosticPhase
   name: string | null
   detail: string
+  message: string | null
 }
 
 export type CameraScanState = "idle" | "acquiring" | "playing" | "failed" | "track-ended"
@@ -71,6 +72,7 @@ const frameRetryDelayMs = 250
 const decodeIntervalMs = FRAME_INTERVAL_MS_MIN
 const maxFrameLongEdge = 1280
 const CAMERA_DIAGNOSTIC_NAME = /^[A-Za-z]{1,40}$/
+const CAMERA_DIAGNOSTIC_MESSAGE_MAX = 200
 
 const zxingModuleOverrides: ZXingModuleOverrides = {
   locateFile(path: string, scriptDirectory: string) {
@@ -138,6 +140,7 @@ interface CameraAttempt {
   decodeResultsSeen: number
   lastErrorName: string | null
   lastFrameErrorName: string | undefined
+  lastPreparationError: unknown | undefined
   retryDecoder: (() => void) | undefined
   cancelModulePreparationWait: (() => void) | undefined
   abortSignal: AbortSignal | undefined
@@ -267,6 +270,28 @@ function diagnosticName(error: unknown): string {
   }
 }
 
+// Bounded, printable-ASCII only. Fed exclusively from reader-preparation failures — never
+// from decode, delivery or acquisition errors, whose surrounding try block also covers the
+// scanned payload and the caller's onText callback.
+function diagnosticMessage(error: unknown): string | null {
+  try {
+    if (typeof error !== "object" || error === null) return null
+    const raw = Reflect.get(error, "message") as unknown
+    if (typeof raw !== "string" || raw.length === 0) return null
+    // Bound the input first: a hostile or runaway message must not cost a full scan.
+    const cleaned = raw
+      .slice(0, CAMERA_DIAGNOSTIC_MESSAGE_MAX * 2)
+      .replace(/[^ -~]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+    return cleaned.length === 0
+      ? null
+      : cleaned.slice(0, CAMERA_DIAGNOSTIC_MESSAGE_MAX)
+  } catch {
+    return null
+  }
+}
+
 function cameraTrack(attempt: CameraAttempt): MediaStreamTrack | undefined {
   const tracks = attempt.stream?.getTracks() ?? []
   return tracks.find((track) => track.kind === "video") ?? tracks[0]
@@ -329,11 +354,14 @@ function cameraDiagnostic(
   attempt: CameraAttempt,
   name: string | null,
   phase: CameraDiagnosticPhase = attempt.phase,
+  preparationError?: unknown,
 ): CameraDiagnostic {
   return {
     phase,
     name,
     detail: diagnosticDetail(attempt),
+    message:
+      preparationError === undefined ? null : diagnosticMessage(preparationError),
   }
 }
 
@@ -598,10 +626,17 @@ async function startAttempt(
   function failDecode(error: unknown): void {
     if (!isActiveAttempt(attempt)) return
     const mapped = cameraError(error)
+    const preparationError =
+      attempt.lastPreparationError === error ? error : undefined
     reportAttemptError(
       attempt,
       mapped,
-      cameraDiagnostic(attempt, diagnosticName(error)),
+      cameraDiagnostic(
+        attempt,
+        diagnosticName(error),
+        attempt.phase,
+        preparationError,
+      ),
     )
     stopAttempt(attempt)
   }
@@ -664,6 +699,7 @@ async function startAttempt(
 
   async function waitForReaderModulePreparation(): Promise<void> {
     if (attempt.readerModuleState === "ready" || zxingModuleState === "ready") {
+      attempt.lastPreparationError = undefined
       attempt.readerModuleState = "ready"
       publishPipelineDiagnostic(attempt)
       return
@@ -673,6 +709,7 @@ async function startAttempt(
     for (;;) {
       try {
         await awaitPreparation(preparation)
+        attempt.lastPreparationError = undefined
         attempt.readerModuleState = "ready"
         publishPipelineDiagnostic(attempt)
         return
@@ -688,6 +725,7 @@ async function startAttempt(
           isActiveAttempt(attempt)
         if (!retryable) {
           if (!(error instanceof AttemptCancelled) && isActiveAttempt(attempt)) {
+            attempt.lastPreparationError = error
             attempt.readerModuleState =
               error instanceof QrReaderPreparationTimeout ? "timed-out" : "failed"
             attempt.lastErrorName = diagnosticName(error)
@@ -1032,6 +1070,7 @@ async function startQrScanImplementation(
     decodeResultsSeen: 0,
     lastErrorName: null,
     lastFrameErrorName: undefined,
+    lastPreparationError: undefined,
     retryDecoder: undefined,
     cancelModulePreparationWait: undefined,
     abortSignal: undefined,

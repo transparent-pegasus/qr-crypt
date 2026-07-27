@@ -267,6 +267,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         phase: "track-ended",
         name: "NotReadableError",
         detail: "0x0 rs=2 track=ended/unmuted",
+        message: null,
       })
       throw cameraError
     })
@@ -329,6 +330,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         phase: "acquiring",
         name: null,
         detail: "0x0 rs=0 track=none",
+        message: null,
       })
     })
     await user.click(

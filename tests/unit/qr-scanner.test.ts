@@ -292,6 +292,7 @@ describe("camera scanner lifecycle", () => {
         phase: "playing",
         name: "AppError",
         detail: "640x480 rs=2 track=live/unmuted",
+        message: null,
       },
     )
     expect(zxing.prepareZXingModule).not.toHaveBeenCalled()
@@ -336,6 +337,7 @@ describe("camera scanner lifecycle", () => {
         phase: "playing",
         name: "AppError",
         detail: "640x480 rs=2 track=live/unmuted",
+        message: null,
       },
     )
     expect(zxing.readBarcodes).not.toHaveBeenCalled()
@@ -490,6 +492,7 @@ describe("camera scanner lifecycle", () => {
         phase: "playing",
         name: "QrDecodeProgressTimeout",
         detail: "640x480 rs=2 track=live/unmuted",
+        message: null,
       },
     )
     expect(onDiagnostic).toHaveBeenLastCalledWith({
@@ -717,6 +720,7 @@ describe("camera scanner lifecycle", () => {
         phase: "playing",
         name: "IndexSizeError",
         detail: "0x0 rs=2 track=live/unmuted",
+        message: null,
       },
     )
     expect(zxing.readBarcodes).not.toHaveBeenCalled()
@@ -853,6 +857,7 @@ describe("camera scanner lifecycle", () => {
         phase: "track-ended",
         name: null,
         detail: "640x480 rs=2 track=ended/unmuted",
+        message: null,
       },
     )
     expect(track.stop).toHaveBeenCalledOnce()
@@ -944,6 +949,7 @@ describe("camera scanner lifecycle", () => {
         phase: "playing",
         name: "QrDecodeProgressTimeout",
         detail: "640x480 rs=2 track=live/unmuted",
+        message: null,
       },
     )
     expect(oldTrack.stop).toHaveBeenCalledOnce()
@@ -996,6 +1002,7 @@ describe("camera scanner lifecycle", () => {
         phase: "acquiring",
         name: "unknown",
         detail: "640x480 rs=2 track=none",
+        message: null,
       },
     )
     expect(oldTrack.stop).toHaveBeenCalledOnce()
@@ -1256,6 +1263,7 @@ describe("camera scanner lifecycle", () => {
           phase: "playing",
           name,
           detail: "640x480 rs=2 track=live/unmuted",
+          message: null,
         },
       )
       expect(track.stop).toHaveBeenCalledOnce()
@@ -1333,6 +1341,7 @@ describe("camera scanner lifecycle", () => {
         phase: "playing",
         name: "QrReaderPreparationTimeout",
         detail: "640x480 rs=2 track=live/unmuted",
+        message: "QR reader preparation timed out",
       },
     )
     expect(onDiagnostic).toHaveBeenLastCalledWith({
@@ -1371,6 +1380,7 @@ describe("camera scanner lifecycle", () => {
         phase: "playing",
         name: "CompileError",
         detail: "640x480 rs=2 track=live/unmuted",
+        message: "bad reader module",
       },
     )
     expect(zxing.purgeZXingModule).toHaveBeenCalled()
@@ -1595,6 +1605,7 @@ describe("camera scanner lifecycle", () => {
         phase: "acquiring",
         name: "NotReadableError",
         detail: "640x480 rs=2 track=none",
+        message: null,
       },
     )
   })
@@ -1933,6 +1944,101 @@ describe("camera scanner lifecycle", () => {
       }),
     )
     expect(track.stop).toHaveBeenCalled()
+    handle.stop()
+  })
+
+  it("surfaces a bounded sanitized message from a preparation failure", async () => {
+    const failure = new Error("Aborted(both async and sync fetching of the wasm failed)")
+    failure.name = "RuntimeError"
+    zxing.prepareZXingModule.mockRejectedValue(failure)
+    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(videoElement(), vi.fn(), onError, {
+      once: false,
+    })
+    await advance(0)
+    await flushMicrotasks()
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
+      expect.objectContaining({
+        name: "RuntimeError",
+        message: "Aborted(both async and sync fetching of the wasm failed)",
+      }),
+    )
+    handle.stop()
+  })
+
+  it("strips control characters and bounds a long preparation message", async () => {
+    const noisy = `bad ${String.fromCharCode(0)} ${String.fromCharCode(27)} ${"x".repeat(400)}`
+    const failure = new Error(noisy)
+    failure.name = "RuntimeError"
+    zxing.prepareZXingModule.mockRejectedValue(failure)
+    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(videoElement(), vi.fn(), onError, {
+      once: false,
+    })
+    await advance(0)
+    await flushMicrotasks()
+
+    const message = onError.mock.calls.at(-1)?.[1]?.message as string
+    expect(message.length).toBeLessThanOrEqual(200)
+    for (const code of [...message].map((character) => character.charCodeAt(0))) {
+      expect(code).toBeGreaterThanOrEqual(0x20)
+      expect(code).toBeLessThanOrEqual(0x7e)
+    }
+    handle.stop()
+  })
+
+  it("survives a message getter that throws", async () => {
+    const hostile = new Proxy(new Error("x"), {
+      get(target, key, receiver) {
+        if (key === "message") throw new Error("trap")
+        return Reflect.get(target, key, receiver)
+      },
+    })
+    zxing.prepareZXingModule.mockRejectedValue(hostile)
+    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(videoElement(), vi.fn(), onError, {
+      once: false,
+    })
+    await advance(0)
+    await flushMicrotasks()
+
+    expect(onError).toHaveBeenCalled()
+    expect(onError.mock.calls.at(-1)?.[1]?.message).toBeNull()
+    handle.stop()
+  })
+
+  it("never carries a scanned payload into a diagnostic", async () => {
+    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
+    zxing.readBarcodes.mockResolvedValue(barcode("OCK1:SENTINEL-SECRET"))
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
+
+    const handle = await decoder.startQrScan(
+      videoElement(),
+      () => {
+        throw new Error("delivery failed for OCK1:SENTINEL-SECRET")
+      },
+      onError,
+      { once: false },
+    )
+    await advance(0)
+    await flushMicrotasks()
+
+    expect(onError).toHaveBeenCalled()
+    for (const call of onError.mock.calls) {
+      expect(JSON.stringify(call[1])).not.toContain("SENTINEL-SECRET")
+    }
     handle.stop()
   })
 

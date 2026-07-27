@@ -464,6 +464,7 @@ interface FakeCameraDiagnostic {
   phase: "acquiring" | "acquired" | "playing" | "track-ended"
   name: string | null
   detail: string
+  message: string | null
 }
 
 interface FakeCameraPipelineDiagnostic {
@@ -509,6 +510,7 @@ export function emitScanError(
     phase: "acquiring",
     name: null,
     detail: "0x0 rs=0 track=none",
+    message: null,
   },
 ): void {
   scanErrorCallback?.(new FakeAppError(code), diagnostic)
