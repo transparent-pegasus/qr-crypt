@@ -13,12 +13,9 @@ import {
 } from "@/qr/camera/acquire"
 import { isActiveAttempt } from "@/qr/camera/attempt-registry"
 import {
-  cameraDiagnostic,
   cameraError,
   cameraTrack,
-  diagnosticName,
   isFrameNotReadyDecodeError,
-  publishPipelineDiagnostic,
   videoDimension,
 } from "@/qr/camera/diagnostics"
 import {
@@ -66,18 +63,13 @@ function clearDecodeProgressTimeout(attempt: CameraAttempt): void {
 
 function clearFrameRecovery(attempt: CameraAttempt): void {
   attempt.frameRecoveryActive = false
-  attempt.lastFrameErrorName = undefined
   clearFrameReadyTimeout(attempt)
 }
 
 function failDecode(attempt: CameraAttempt, error: unknown): void {
   if (!isActiveAttempt(attempt)) return
   const mapped = cameraError(error)
-  reportAttemptError(
-    attempt,
-    mapped,
-    cameraDiagnostic(attempt, diagnosticName(error), attempt.phase),
-  )
+  reportAttemptError(attempt, mapped)
   stopAttempt(attempt)
 }
 
@@ -91,11 +83,8 @@ function armDecodeProgressWatchdog(attempt: CameraAttempt): void {
   }, CAMERA_DECODE_PROGRESS_TIMEOUT_MS)
 }
 
-function completeDecodeAttempt(attempt: CameraAttempt, resultsSeen: number): void {
-  attempt.decodeAttemptsCompleted += 1
-  attempt.decodeResultsSeen += resultsSeen
+function completeDecodeAttempt(attempt: CameraAttempt): void {
   armDecodeProgressWatchdog(attempt)
-  publishPipelineDiagnostic(attempt)
 }
 
 function ensureFrameReadyTimeout(attempt: CameraAttempt): void {
@@ -106,21 +95,14 @@ function ensureFrameReadyTimeout(attempt: CameraAttempt): void {
     if (cameraTrack(attempt)?.readyState !== "live") return
 
     const mapped = new ConcreteAppError("CAMERA_NOT_AVAILABLE")
-    reportAttemptError(
-      attempt,
-      mapped,
-      cameraDiagnostic(attempt, attempt.lastFrameErrorName ?? "unknown", "playing"),
-    )
+    reportAttemptError(attempt, mapped)
     stopAttempt(attempt)
   }, CAMERA_FRAME_READY_TIMEOUT_MS)
 }
 
-function beginFrameRecovery(attempt: CameraAttempt, error: unknown): void {
+function beginFrameRecovery(attempt: CameraAttempt): void {
   if (!isActiveAttempt(attempt)) return
   attempt.frameRecoveryActive = true
-  attempt.lastFrameErrorName = diagnosticName(error)
-  attempt.lastErrorName = attempt.lastFrameErrorName
-  publishPipelineDiagnostic(attempt)
   ensureFrameReadyTimeout(attempt)
   retryVideoPlayback(attempt)
 }
@@ -302,10 +284,8 @@ async function decodeFrame(context: ScanContext): Promise<void> {
       dimensions.width,
       dimensions.height,
     )
-    context.attempt.videoFramesDrawn += 1
     // A successful draw proves scheduling progress and starts a fresh decode window.
     armDecodeProgressWatchdog(context.attempt)
-    publishPipelineDiagnostic(context.attempt)
     clearFrameRecovery(context.attempt)
 
     const imageData = context.frameContext.getImageData(
@@ -321,7 +301,7 @@ async function decodeFrame(context: ScanContext): Promise<void> {
     const results = await readBarcodes(imageData, zxingReaderOptions)
     if (!isActiveAttempt(context.attempt)) return
     decodeCallCompleted = true
-    completeDecodeAttempt(context.attempt, results.length)
+    completeDecodeAttempt(context.attempt)
 
     const result = results[0]
     if (result === undefined) return
@@ -339,10 +319,10 @@ async function decodeFrame(context: ScanContext): Promise<void> {
   } catch (error) {
     if (!isActiveAttempt(context.attempt)) return
     if (decodeCallStarted && !decodeCallCompleted) {
-      completeDecodeAttempt(context.attempt, 0)
+      completeDecodeAttempt(context.attempt)
     }
     if (isFrameNotReadyDecodeError(context.attempt, error)) {
-      beginFrameRecovery(context.attempt, error)
+      beginFrameRecovery(context.attempt)
       return
     }
     failDecode(context.attempt, error)
@@ -375,7 +355,6 @@ export async function startAttempt(
   }
 
   attempt.stream = stream
-  attempt.phase = "acquired"
   watchTrackEnds(attempt, stream)
   if (!isActiveAttempt(attempt)) throw new AttemptCancelled()
   attempt.video.srcObject = stream
@@ -409,9 +388,7 @@ export async function startAttempt(
   attempt.controls = pump
   attempt.decodePumpStarted = true
   armDecodeProgressWatchdog(attempt)
-  attempt.phase = "playing"
   attempt.frameRecoveryActive = true
-  attempt.lastFrameErrorName = undefined
   ensureFrameReadyTimeout(attempt)
   attempt.retryDecoder = () => scheduleNextFrame(context, Date.now(), true)
   // Preserve the initial rVFC grace period; the frame-readiness watchdog is already

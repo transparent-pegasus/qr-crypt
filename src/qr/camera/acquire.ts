@@ -3,15 +3,11 @@ import {
   clearAttempt,
   isActiveAttempt,
 } from "@/qr/camera/attempt-registry"
-import {
-  cameraDiagnostic,
-  isTransientCameraAcquireError,
-  publishPipelineDiagnostic,
-} from "@/qr/camera/diagnostics"
+import { isTransientCameraAcquireError } from "@/qr/camera/diagnostics"
 import { AttemptCancelled } from "@/qr/camera/types"
 import type {
   CameraAttempt,
-  CameraDiagnostic,
+  CameraFailureState,
   ScannerControls,
 } from "@/qr/camera/types"
 
@@ -85,14 +81,12 @@ export function stopAttempt(attempt: CameraAttempt): void {
 export function reportAttemptError(
   attempt: CameraAttempt,
   error: ConcreteAppError,
-  diagnostic: CameraDiagnostic,
+  failureState: CameraFailureState = "failed",
 ): void {
   if (!isActiveAttempt(attempt) || attempt.errorReported) return
   attempt.errorReported = true
   attempt.failure = error
-  if (diagnostic.name !== null) attempt.lastErrorName = diagnostic.name
-  publishPipelineDiagnostic(attempt)
-  attempt.onError(error, diagnostic)
+  attempt.onError(error, failureState)
 }
 
 function acquireCamera(attempt: CameraAttempt): Promise<MediaStream> {
@@ -131,9 +125,8 @@ export function watchTrackEnds(
 ): void {
   const onEnded: EventListener = () => {
     if (!isActiveAttempt(attempt)) return
-    attempt.phase = "track-ended"
     const error = new ConcreteAppError("CAMERA_NOT_AVAILABLE")
-    reportAttemptError(attempt, error, cameraDiagnostic(attempt, null, "track-ended"))
+    reportAttemptError(attempt, error, "track-ended")
     stopAttempt(attempt)
   }
 
@@ -181,7 +174,6 @@ export async function acquireWithRetries(
   let retries = 0
   while (true) {
     if (!isActiveAttempt(attempt)) throw new AttemptCancelled()
-    attempt.phase = "acquiring"
     try {
       return await acquireCamera(attempt)
     } catch (error) {

@@ -542,12 +542,6 @@ const en = {
   "scanner.sha256Notice":
     "SHA-256 detects missing or mixed frames during transfer; it does not prove the sender's authenticity.",
   "scanner.error.title": "The scan could not be completed",
-  "scanner.diagnostic.ariaLabel": "Camera diagnostic",
-  "scanner.diagnostic": "Diagnostic: {name} @{phase} [{detail}]",
-  "scanner.pipelineDiagnostic.ariaLabel": "QR decode pipeline diagnostic",
-  "scanner.pipelineDiagnostic":
-    "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
-  "scanner.pipelineDiagnostic.noError": "none",
   "scanner.button.discard": "Discard scan state",
   "scanner.button.stopCamera": "Stop camera",
   "scanner.closed.multipartProgress":
@@ -1210,12 +1204,6 @@ const ja = {
   "scanner.sha256Notice":
     "SHA-256は転送中の欠損・混在検出用であり、送信者の真正性を証明しません。",
   "scanner.error.title": "読み取りを完了できません",
-  "scanner.diagnostic.ariaLabel": "カメラ診断",
-  "scanner.diagnostic": "診断: {name} @{phase} [{detail}]",
-  "scanner.pipelineDiagnostic.ariaLabel": "QR復号パイプライン診断",
-  "scanner.pipelineDiagnostic":
-    "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
-  "scanner.pipelineDiagnostic.noError": "なし",
   "scanner.button.discard": "読取状態を破棄",
   "scanner.button.stopCamera": "カメラを停止",
   "scanner.closed.multipartProgress":

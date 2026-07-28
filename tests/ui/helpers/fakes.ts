@@ -444,19 +444,7 @@ export const exportQrFramePayloads = vi.fn(
 )
 export const copyTextToClipboard = vi.fn(async () => undefined)
 
-interface FakeCameraDiagnostic {
-  phase: "acquiring" | "acquired" | "playing" | "track-ended"
-  name: string | null
-  detail: string
-}
-
-interface FakeCameraPipelineDiagnostic {
-  readerModuleState: "idle" | "preparing" | "ready" | "failed"
-  videoFramesDrawn: number
-  decodeAttemptsCompleted: number
-  decodeResultsSeen: number
-  lastErrorName: string | null
-}
+type FakeCameraFailureState = "failed" | "track-ended"
 
 export const scannerStop = vi.fn()
 export const CAMERA_READER_READY_TIMEOUT_MS = 30_000
@@ -466,20 +454,16 @@ export const readerModuleState = vi.fn<
 export const warmQrReader = vi.fn<() => Promise<void>>(() => Promise.resolve())
 let scanTextCallback: ((payload: string) => void) | null = null
 let scanErrorCallback:
-  | ((error: FakeAppError, diagnostic: FakeCameraDiagnostic) => void)
+  | ((error: FakeAppError, failureState: FakeCameraFailureState) => void)
   | null = null
 export const startQrScan = vi.fn(
   async (
     _video: HTMLVideoElement,
     onText: (payload: string) => void,
-    onError: (
-      error: FakeAppError,
-      diagnostic: FakeCameraDiagnostic,
-    ) => void,
+    onError: (error: FakeAppError, failureState: FakeCameraFailureState) => void,
     _options?: {
       once?: boolean
       signal?: AbortSignal
-      onDiagnostic?: (diagnostic: FakeCameraPipelineDiagnostic) => void
     },
   ): Promise<{ stop: () => void }> => {
     void _options
@@ -493,13 +477,9 @@ export function emitScannedPayload(payload: string): void {
 }
 export function emitScanError(
   code: ErrorCode,
-  diagnostic: FakeCameraDiagnostic = {
-    phase: "acquiring",
-    name: null,
-    detail: "0x0 rs=0 track=none",
-  },
+  failureState: FakeCameraFailureState = "failed",
 ): void {
-  scanErrorCallback?.(new FakeAppError(code), diagnostic)
+  scanErrorCallback?.(new FakeAppError(code), failureState)
 }
 
 export const disposePqClient = vi.fn()

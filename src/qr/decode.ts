@@ -11,12 +11,7 @@ import {
   currentAttempt,
   isActiveAttempt,
 } from "@/qr/camera/attempt-registry"
-import {
-  cameraDiagnostic,
-  cameraError,
-  diagnosticName,
-  publishPipelineDiagnostic,
-} from "@/qr/camera/diagnostics"
+import { cameraError } from "@/qr/camera/diagnostics"
 import { startAttempt } from "@/qr/camera/frame-pump"
 import {
   CAMERA_START_TIMEOUT_MS,
@@ -27,7 +22,7 @@ import {
 import { AttemptCancelled } from "@/qr/camera/types"
 import type {
   CameraAttempt,
-  CameraDiagnostic,
+  CameraFailureState,
   CameraScanState,
   QrScanHandle,
   ScannerControls,
@@ -43,9 +38,7 @@ export {
 export { readerModuleState }
 
 export type {
-  CameraDiagnostic,
-  CameraDiagnosticPhase,
-  CameraPipelineDiagnostic,
+  CameraFailureState,
   CameraScanState,
   QrScanHandle,
   ReaderModuleState,
@@ -55,7 +48,7 @@ export type {
 // Fetch and compile the reader ahead of any tap. The shared readiness gate awaits this
 // promise before enabling capture and owns presentation of a latched failure.
 export function warmQrReader(): Promise<void> {
-  return warmQrReaderModule(publishPipelineDiagnostic)
+  return warmQrReaderModule()
 }
 
 // true does not automatically restart; it directs the UI to transition to stopped
@@ -79,7 +72,7 @@ type AttemptOutcome =
 async function startQrScanImplementation(
   video: HTMLVideoElement,
   onText: (text: string) => void,
-  onError: (error: AppError, diagnostic: CameraDiagnostic) => void,
+  onError: (error: AppError, failureState: CameraFailureState) => void,
   options?: StartQrScanOptions,
 ): Promise<QrScanHandle> {
   // The UI gate is not the security boundary: future direct callers must not
@@ -100,10 +93,8 @@ async function startQrScanImplementation(
     id: createAttemptId(),
     video,
     onError,
-    onDiagnostic: options?.onDiagnostic,
     stoppedPromise,
     resolveStopped,
-    phase: "acquiring",
     stopped: false,
     emitted: false,
     errorReported: false,
@@ -117,12 +108,6 @@ async function startQrScanImplementation(
     decodeProgressTimeoutId: undefined,
     frameRecoveryActive: false,
     decodePumpStarted: false,
-    readerModuleState: "idle",
-    videoFramesDrawn: 0,
-    decodeAttemptsCompleted: 0,
-    decodeResultsSeen: 0,
-    lastErrorName: null,
-    lastFrameErrorName: undefined,
     retryDecoder: undefined,
     abortSignal: undefined,
     abortListener: undefined,
@@ -150,9 +135,7 @@ async function startQrScanImplementation(
 
   // Reuse the already-ready generation. The fail-closed check above guarantees
   // that a latched failure cannot reach zxing-wasm after its module was purged.
-  prepareQrReaderModule(publishPipelineDiagnostic)
-  attempt.readerModuleState = readerModuleState()
-  publishPipelineDiagnostic(attempt)
+  prepareQrReaderModule()
 
   const operation: Promise<AttemptOutcome> = startAttempt(
     attempt,
@@ -169,7 +152,7 @@ async function startQrScanImplementation(
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<AttemptOutcome>((resolve) => {
     timeoutId = setTimeout(() => {
-      // Once the pump owns a decode-progress watchdog, let its distinct diagnostic
+      // Once the pump owns a decode-progress watchdog, let its distinct error
       // resolve a stalled playback/scheduler path instead of collapsing it into the
       // generic startup timeout.
       if (attempt.decodePumpStarted) return
@@ -189,7 +172,7 @@ async function startQrScanImplementation(
 
     if (outcome.kind === "timeout") {
       const mapped = new ConcreteAppError("CAMERA_NOT_AVAILABLE")
-      reportAttemptError(attempt, mapped, cameraDiagnostic(attempt, "unknown"))
+      reportAttemptError(attempt, mapped)
       stopAttempt(attempt)
       throw mapped
     }
@@ -203,11 +186,7 @@ async function startQrScanImplementation(
     }
 
     const mapped = cameraError(outcome.error)
-    reportAttemptError(
-      attempt,
-      mapped,
-      cameraDiagnostic(attempt, diagnosticName(outcome.error)),
-    )
+    reportAttemptError(attempt, mapped)
     stopAttempt(attempt)
     throw mapped
   } finally {

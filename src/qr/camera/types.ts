@@ -7,40 +7,20 @@ export interface QrScanHandle {
 
 export type ReaderModuleState = "idle" | "preparing" | "ready" | "failed"
 
-export interface CameraPipelineDiagnostic {
-  readerModuleState: ReaderModuleState
-  videoFramesDrawn: number
-  decodeAttemptsCompleted: number
-  decodeResultsSeen: number
-  lastErrorName: string | null
-}
-
 export interface StartQrScanOptions {
   // Defaults to true: stop automatically after the first success and ignore later
   // detections to prevent duplicate reads.
   once?: boolean
   signal?: AbortSignal
-  onDiagnostic?: (diagnostic: CameraPipelineDiagnostic) => void
 }
 
-export type CameraDiagnosticPhase =
-  | "acquiring"
-  | "acquired"
-  | "playing"
-  | "track-ended"
-
-export interface CameraDiagnostic {
-  phase: CameraDiagnosticPhase
-  name: string | null
-  detail: string
-}
+export type CameraFailureState = "failed" | "track-ended"
 
 export type CameraScanState =
   | "idle"
   | "acquiring"
   | "playing"
-  | "failed"
-  | "track-ended"
+  | CameraFailureState
 
 export interface ScannerControls {
   stop(): void
@@ -66,13 +46,9 @@ export interface ScanContext {
 export interface CameraAttempt {
   readonly id: number
   readonly video: HTMLVideoElement
-  readonly onError: (error: AppError, diagnostic: CameraDiagnostic) => void
-  readonly onDiagnostic:
-    | ((diagnostic: CameraPipelineDiagnostic) => void)
-    | undefined
+  readonly onError: (error: AppError, failureState: CameraFailureState) => void
   readonly stoppedPromise: Promise<void>
   resolveStopped(): void
-  phase: CameraDiagnosticPhase
   stopped: boolean
   emitted: boolean
   errorReported: boolean
@@ -93,12 +69,6 @@ export interface CameraAttempt {
   decodeProgressTimeoutId: ReturnType<typeof setTimeout> | undefined
   frameRecoveryActive: boolean
   decodePumpStarted: boolean
-  readerModuleState: ReaderModuleState
-  videoFramesDrawn: number
-  decodeAttemptsCompleted: number
-  decodeResultsSeen: number
-  lastErrorName: string | null
-  lastFrameErrorName: string | undefined
   retryDecoder: (() => void) | undefined
   abortSignal: AbortSignal | undefined
   abortListener: EventListener | undefined
