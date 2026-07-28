@@ -9,6 +9,7 @@ import { AppError } from "@/crypto/errors"
 import { formatDateTime } from "@/features/presentation"
 import { LanguageProvider } from "@/i18n"
 import { translate } from "@/i18n/messages"
+import { decodeFramePayload } from "@/qr/payload-v2"
 import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
 import {
   confirmBundleFingerprint,
@@ -507,9 +508,20 @@ describe("key list page", () => {
         renderCallsBeforeResolve,
       ),
     )
-    expect(renderQrDataUrl.mock.calls[renderCallsBeforeResolve]?.[0]).toContain(
-      `:0:${compatibleFrames.length}:pq-public-identity`,
-    )
+    const {
+      frameIndex: compatibleFrameIndex,
+      frameCount: compatibleFrameCount,
+      artifactType: compatibleArtifactType,
+    } = decodeFramePayload(renderQrDataUrl.mock.calls[renderCallsBeforeResolve]![0])
+    expect({
+      frameIndex: compatibleFrameIndex,
+      frameCount: compatibleFrameCount,
+      artifactType: compatibleArtifactType,
+    }).toEqual({
+      frameIndex: 0,
+      frameCount: compatibleFrames.length,
+      artifactType: "pq-public-identity",
+    })
     expect(
       within(fullscreen).getAllByRole("button", { name: "Close" }),
     ).toHaveLength(1)

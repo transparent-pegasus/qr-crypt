@@ -640,32 +640,6 @@ export const splitIntoFrames = vi.fn(
   },
 )
 
-const V2_PREFIX: Record<V2ArtifactType, string> = {
-  "pq-message": "OCM2:",
-  "pq-public-identity": "OCI2:",
-  "pq-kem-public-key": "OCP2:",
-  "pq-dsa-public-key": "OCS2:",
-  "encrypted-seed-backup": "OCB2:",
-}
-export const buildV2Payload = vi.fn((kind: V2ArtifactType) => `${V2_PREFIX[kind]}fake`)
-export const splitV2Payload = vi.fn((payload: string) => {
-  const match = (Object.entries(V2_PREFIX) as [V2ArtifactType, string][]).find(
-    ([, prefix]) => payload.startsWith(prefix),
-  )
-  if (!match || match[0] === "encrypted-seed-backup") {
-    throw new FakeAppError("INVALID_QR_PAYLOAD")
-  }
-  const [kind] = match
-  return {
-    kind,
-    bytes: new Uint8Array(kind === "pq-public-identity" ? 650 : 350),
-  }
-})
-export const encodeFrameToPayload = vi.fn(
-  (frame: QrFrameV2) =>
-    `OCF2:${Array.from(frame.transferId).join("")}:${frame.frameIndex}:${frame.frameCount}:${frame.artifactType}`,
-)
-
 export function multipartPayload(
   transfer: string,
   index: number,

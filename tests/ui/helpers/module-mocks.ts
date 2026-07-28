@@ -50,7 +50,8 @@ vi.mock("@/crypto/pq/wire-bytes", () => ({
   pqKeyFingerprint: fakes.pqKeyFingerprint,
   pqIdentityFingerprint: fakes.pqIdentityFingerprint,
 }))
-vi.mock("@/crypto/pq/canonical-cbor", () => ({
+vi.mock("@/crypto/pq/canonical-cbor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/crypto/pq/canonical-cbor")>()),
   encodeUnsignedMessageBodyV2: fakes.encodeUnsignedMessageBodyV2,
   encodeSignedMessageV2: fakes.encodeSignedMessageV2,
   encodeMlKemEnvelopeV2: fakes.encodeMlKemEnvelopeV2,
@@ -100,11 +101,6 @@ vi.mock("@/qr/multipart/split", () => ({
 }))
 vi.mock("@/qr/multipart/assemble", () => ({
   TransferAssembler: fakes.FakeTransferAssembler,
-}))
-vi.mock("@/qr/payload-v2", () => ({
-  buildV2Payload: fakes.buildV2Payload,
-  splitV2Payload: fakes.splitV2Payload,
-  encodeFrameToPayload: fakes.encodeFrameToPayload,
 }))
 
 vi.mock("@/features/receipt-cache", async (importOriginal) => ({

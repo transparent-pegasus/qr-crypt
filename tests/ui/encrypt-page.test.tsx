@@ -7,6 +7,7 @@ import {
   FRAME_BYTES_MAX,
   maximumSymmetricPlaintextBytesForPayloadCapacity,
 } from "@/lib/limits"
+import { decodeFramePayload } from "@/qr/payload-v2"
 import { translate } from "@/i18n/messages"
 import type {
   MlKemMessageEnvelopeV2,
@@ -523,9 +524,20 @@ describe("encrypt page v2", () => {
         renderCallsBeforeResolve,
       ),
     )
-    expect(renderQrDataUrl.mock.calls[renderCallsBeforeResolve]?.[0]).toContain(
-      `:0:${compatibleFrames.length}:pq-message`,
-    )
+    const {
+      frameIndex: compatibleFrameIndex,
+      frameCount: compatibleFrameCount,
+      artifactType: compatibleArtifactType,
+    } = decodeFramePayload(renderQrDataUrl.mock.calls[renderCallsBeforeResolve]![0])
+    expect({
+      frameIndex: compatibleFrameIndex,
+      frameCount: compatibleFrameCount,
+      artifactType: compatibleArtifactType,
+    }).toEqual({
+      frameIndex: 0,
+      frameCount: compatibleFrames.length,
+      artifactType: "pq-message",
+    })
     expect(
       within(fullscreen).getAllByRole("button", { name: "Close" }),
     ).toHaveLength(1)
