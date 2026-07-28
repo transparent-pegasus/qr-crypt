@@ -54,6 +54,7 @@ describe("i18n catalog", () => {
     expect(messages.ja).toMatchObject({
       "animatedQr.missing.body":
         "欠損フレーム: {indexes}。欠損したままでは復元できません。",
+      "encrypt.toast.autoCleared": "平文と一時結果を自動消去しました",
       "scanner.error.singleWhileMultipart":
         "複数QR読取中です。単発QRは読取完了または破棄後に読み取ってください。",
       "scanner.progress.missingIndex": "欠損フレーム: {indexes}",
