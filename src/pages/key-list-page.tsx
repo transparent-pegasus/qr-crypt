@@ -292,7 +292,7 @@ export function KeyListPage() {
         <Button
           type="button"
           variant="outline"
-          className="mt-2 h-11 w-full cursor-pointer whitespace-normal"
+          className="mt-3 h-11 w-full cursor-pointer whitespace-normal"
           onClick={() => {
             setCreated(null)
             setAddMode(tab === "own" ? "create" : "import")

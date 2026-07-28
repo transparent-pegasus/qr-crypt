@@ -130,6 +130,14 @@ describe("key list page", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
+  it("separates the tab action from the tab bar by the own-key list gap", async () => {
+    await renderKeyList()
+
+    // The own-keys tab puts space-y-3 (12px) between the kind filter and the
+    // first item; the action under the tab bar must sit on the same rhythm.
+    expect(screen.getByRole("button", { name: "Create a key" })).toHaveClass("mt-3")
+  })
+
   it("defaults to owned keys, merges newest-first, and filters with one kind select", async () => {
     const user = userEvent.setup()
     await renderKeyList()
