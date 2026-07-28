@@ -186,7 +186,7 @@ export const FakeAppError = AppError
 export type FakeAppError = AppError
 
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
-export const probeWebAssemblyRuntime = vi.fn(async () => true)
+export const webAssemblyRuntimeSupport = vi.fn<() => boolean | undefined>(() => true)
 
 export const utf8ToBytes = vi.fn((value: string) => encoder.encode(value))
 export const bytesToUtf8 = vi.fn((value: Uint8Array) => decoder.decode(value))

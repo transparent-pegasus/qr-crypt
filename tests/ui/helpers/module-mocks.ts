@@ -3,7 +3,7 @@ import * as fakes from "./fakes"
 
 vi.mock("@/lib/feature-detect", () => ({
   detectFeatures: fakes.detectFeatures,
-  probeWebAssemblyRuntime: fakes.probeWebAssemblyRuntime,
+  webAssemblyRuntimeSupport: fakes.webAssemblyRuntimeSupport,
 }))
 
 vi.mock("@/lib/bytes", () => ({
