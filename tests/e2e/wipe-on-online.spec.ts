@@ -14,19 +14,46 @@ interface SentinelControl {
   hits: number
 }
 
+/**
+ * The sentinel is mocked inside the page rather than with `page.route`.
+ * The service worker claims every client in the context and proxies the
+ * NetworkOnly sentinel route, so a network-level mock is neither reached by a
+ * controlled page nor attributable to one of the two tabs this file drives
+ * independently. A `fetch` shim sits above the worker and keeps the per-tab
+ * control these tests are built on.
+ */
 async function controlSentinel(page: Page, control: SentinelControl): Promise<void> {
-  await page.route("**/reachability-sentinel.txt*", async (route) => {
+  await page.exposeFunction("__e2eSentinelProbe", () => {
     control.hits += 1
-    if (!control.reachable) {
-      await route.abort("internetdisconnected")
-      return
+    return control.reachable
+  })
+  await page.addInitScript(() => {
+    const probe = (window as Window & {
+      __e2eSentinelProbe?: () => Promise<boolean>
+    }).__e2eSentinelProbe
+    const nativeFetch = window.fetch.bind(window)
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url
+      if (
+        probe !== undefined &&
+        new URL(href, location.href).pathname === "/reachability-sentinel.txt"
+      ) {
+        if (!(await probe())) throw new TypeError("Failed to fetch")
+        return new Response("QR-CRYPT-REACHABLE", {
+          status: 200,
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            "cache-control": "no-store",
+          },
+        })
+      }
+      return nativeFetch(input, init)
     }
-    await route.fulfill({
-      status: 200,
-      contentType: "text/plain; charset=utf-8",
-      headers: { "cache-control": "no-store" },
-      body: "QR-CRYPT-REACHABLE",
-    })
   })
 }
 

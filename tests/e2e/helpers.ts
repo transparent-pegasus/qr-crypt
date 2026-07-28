@@ -561,7 +561,10 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
       scans.map(({ active, once, emissions }) => ({ active, once, emissions }))
   })
 
-  await page.route("**/assets/index-*.js", async (route) => {
+  // A regex, not a glob: the precache-priming refetch below appends a query so
+  // the service worker cannot answer it, and a glob ending in .js stops matching
+  // once that query is present.
+  await page.route(/\/assets\/index-[A-Za-z0-9_-]+\.js/, async (route) => {
     const response = await route.fetch()
     const source = await response.text()
     const startQrScanPattern =
@@ -586,7 +589,13 @@ export async function primeInjectedDecoderPrecache(page: Page): Promise<void> {
         if (!/\/assets\/index-[A-Za-z0-9_-]+\.js$/.test(new URL(request.url).pathname)) {
           continue
         }
-        const response = await fetch(request.url, { cache: "reload" })
+        // The page is controlled, so a plain refetch is answered by the worker
+        // from precache — the uninjected bundle. A query string the precache
+        // cannot match falls through to the network, where this suite's route
+        // interception injects the decoder hook.
+        const response = await fetch(`${request.url}?e2e-inject=1`, {
+          cache: "reload",
+        })
         if (!response.ok)
           throw new Error(`Injected bundle fetch failed: ${response.status}`)
         const source = await response.clone().text()
