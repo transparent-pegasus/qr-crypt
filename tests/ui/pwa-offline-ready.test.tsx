@@ -1,18 +1,35 @@
 import "./helpers/module-mocks"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
 import { fakeFeatures, fakePwa, useFakeRegisterSW } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
 
 class FakeServiceWorkerContainer extends EventTarget {
-  controller: object | null = null
+  private currentController: object | null = null
+  controllerReads = 0
+  controllerChangeSubscriptions = 0
   resolveReady!: () => void
   ready = new Promise<void>((resolve) => {
     this.resolveReady = resolve
   })
 
+  get controller(): object | null {
+    this.controllerReads += 1
+    return this.currentController
+  }
+
+  override addEventListener(
+    type: string,
+    callback: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    if (type === "controllerchange") this.controllerChangeSubscriptions += 1
+    super.addEventListener(type, callback, options)
+  }
+
   takeControl(): void {
-    this.controller = {}
+    this.currentController = {}
     this.dispatchEvent(new Event("controllerchange"))
   }
 }
@@ -65,6 +82,36 @@ describe("PWA offline readiness", () => {
       container.takeControl()
     })
     await waitFor(() => expect(row()).toHaveTextContent("Ready"))
+  })
+
+  it("detects control taken after the first snapshot but before subscription", async () => {
+    const container = installContainer()
+    fakePwa.offlineReady = false
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    let tookControl = false
+    const takeControlDuringRegistration: UseRegisterSwHook = () => {
+      if (!tookControl) {
+        expect(container.controllerReads).toBeGreaterThan(0)
+        expect(container.controllerChangeSubscriptions).toBe(0)
+        tookControl = true
+        container.takeControl()
+      }
+      return { offlineReady: [false, () => undefined] }
+    }
+
+    render(
+      <AppProviders
+        features={{ ...fakeFeatures }}
+        pwaHook={takeControlDuringRegistration}
+      >
+        <OnlineInstallScreen />
+      </AppProviders>,
+    )
+
+    const row = screen.getByText("Offline-use readiness").parentElement!
+    await waitFor(() => expect(row).toHaveTextContent("Ready"))
+    expect(container.controllerChangeSubscriptions).toBe(1)
   })
 
   it("shows a loader only after one second of preparation, and drops it when ready", async () => {

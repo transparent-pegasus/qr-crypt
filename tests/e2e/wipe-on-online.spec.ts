@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type BrowserContext, type Page } from "@playwright/test"
 import {
   createSymmetricKey,
   expectOnlineGate,
@@ -14,15 +14,26 @@ interface SentinelControl {
   hits: number
 }
 
+async function routeSentinelThroughNetwork(
+  context: BrowserContext,
+  control: SentinelControl,
+): Promise<void> {
+  await context.route(/\/reachability-sentinel\.txt(?:\?.*)?$/, async (route) => {
+    control.hits += 1
+    if (!control.reachable) {
+      await route.abort("failed")
+      return
+    }
+    await route.continue()
+  })
+}
+
 /**
- * The sentinel is mocked inside the page rather than with `page.route`.
- * The service worker claims every client in the context and proxies the
- * NetworkOnly sentinel route, so a network-level mock is neither reached by a
- * controlled page nor attributable to one of the two tabs this file drives
- * independently. A `fetch` shim sits above the worker and keeps the per-tab
- * control these tests are built on.
+ * The two-tab race needs independent sentinel reachability for clients in one
+ * browser context. Its page-level shim provides that per-tab control; the
+ * single-tab tests instead observe the worker's real NetworkOnly network hop.
  */
-async function controlSentinel(page: Page, control: SentinelControl): Promise<void> {
+async function controlPageSentinel(page: Page, control: SentinelControl): Promise<void> {
   await page.exposeFunction("__e2eSentinelProbe", () => {
     control.hits += 1
     return control.reachable
@@ -79,11 +90,12 @@ async function databaseDeleteCalls(page: Page): Promise<string[]> {
 }
 
 test("the install path stays on installation without resetting when the sentinel succeeds but no data exists", async ({
+  context,
   page,
 }) => {
   const sentinel: SentinelControl = { reachable: true, hits: 0 }
   await installDatabaseDeleteProbe(page)
-  await controlSentinel(page, sentinel)
+  await routeSentinelThroughNetwork(context, sentinel)
   await loadOnlineGate(page, "/encrypt")
   await expect.poll(() => sentinel.hits).toBeGreaterThan(0)
   await expectOnlineGate(page)
@@ -102,7 +114,7 @@ test("returning online to a reachable sentinel after key creation resets data an
   test.setTimeout(120_000)
   const sentinel: SentinelControl = { reachable: true, hits: 0 }
   await installDatabaseDeleteProbe(page)
-  await controlSentinel(page, sentinel)
+  await routeSentinelThroughNetwork(context, sentinel)
   await loadOnlineGate(page, "/keys")
 
   sentinel.reachable = false
@@ -183,8 +195,8 @@ test("preserves pending when a two-tab reset broadcast races a peer online-marke
       }
     })
     await Promise.all([
-      controlSentinel(page, senderSentinel),
-      controlSentinel(peer, peerSentinel),
+      controlPageSentinel(page, senderSentinel),
+      controlPageSentinel(peer, peerSentinel),
     ])
     await Promise.all([loadOnlineGate(page, "/keys"), loadOnlineGate(peer)])
 
