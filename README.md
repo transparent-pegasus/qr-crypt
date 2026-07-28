@@ -79,62 +79,16 @@ The algorithms themselves are the standard ones. The claim is about where they a
 ### Install route A: signed ZIP
 
 This is the default route. It keeps the offline device from ever contacting the live app
-origin.
-
-1. On a computer you trust, download the three assets of a release: the
-   `qr-crypt-…-static-install.zip` archive, its `.sigstore.json` bundle, and `SHA256SUMS`.
-2. Verify the archive **with policy values you obtained through some other channel** — not
-   from the download itself:
-
-   ```bash
-   cosign verify-blob qr-crypt-<tag>-static-install.zip \
-     --bundle qr-crypt-<tag>-static-install.zip.sigstore.json \
-     --trusted-root /independently/provisioned/trusted_root.json \
-     --certificate-identity "https://github.com/transparent-pegasus/qr-crypt/.github/workflows/github-release.yml@refs/heads/main" \
-     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-     --certificate-github-workflow-repository "transparent-pegasus/qr-crypt" \
-     --certificate-github-workflow-ref "refs/heads/main" \
-     --certificate-github-workflow-sha "<the source commit you expect>" \
-     --certificate-github-workflow-trigger "push"
-
-   sha256sum -c SHA256SUMS
-   ```
-
-3. Move the archive to the offline device. Whatever you carry it on — a USB stick, an SD
-   card — has to be trusted too: anything that can alter the storage can alter the app.
-4. Extract it. The ZIP creates a single directory; that directory is the document root.
-5. Serve it with a static server that was already installed on the offline device through
-   a trusted route, bound to `127.0.0.1` only. It must apply the bundled
-   `_headers` and `_redirects` semantics: the security headers, correct MIME types, the SPA
-   fallback to `/index.html`, and `no-store` for the reachability sentinel. The production
-   build also carries the supported part of the same CSP in a meta tag as a fallback, but
-   `frame-ancestors` cannot be enforced there and remains available only through the
-   `_headers` response header. Choose one uncommon fixed high port (not a collision-prone
-   default such as 8000 or 8080) and reserve that port for QR Crypt.
-6. Open the exact `http://127.0.0.1:PORT` origin and wait until the app reports that offline
-   use is ready.
-7. Stop the server, remove the transport medium, physically disconnect networking, and
-   confirm QR Crypt reports offline **before** entering or restoring any secret. The
-   install server's own sentinel deliberately makes the app treat that origin as
-   reachable, so never enter secrets while it is running.
+origin. Independent verification of the signed ZIP — Cosign policy values from a separate
+channel, checksum check, and an independent rebuild-and-compare — is required before
+installation. The complete procedure is in
+[docs/develop/install-route-a.md](docs/develop/install-route-a.md). The archive's
+`INSTALL.txt` is the self-contained copy that reaches the offline device.
 
 That exact host and port are a security and storage boundary. If another page is later
 served on the same host:port, it has same-origin access to the stored keys and Vault key;
 if the port is changed after installation, QR Crypt becomes a different origin and cannot
 reach its stored data.
-
-The `INSTALL.txt` inside the archive repeats these steps for whoever performs the
-deployment.
-
-It also gives the complete rebuild-and-compare commands for the archive-internal
-`SHA256SUMS.files`: use a clean checkout of the authenticated source commit and the
-toolchain pinned by `mise.toml`, keep the extracted archive and every copied build tree
-outside the checkout so Tailwind cannot change the rebuild, verify the archive's complete
-member set, then compare both sorted payload file names and per-file hashes. The CI gate
-shows only same-environment determinism, not environment-independent reproducibility.
-Cosign attests workflow/commit provenance, not source-to-binary correspondence; an
-attacker controlling the CI environment can still publish a correctly signed backdoor,
-which only an independent rebuild comparison can detect.
 
 ### Install route B: direct-origin PWA
 
@@ -151,7 +105,7 @@ that live origin: if it reconnects, a reachability probe goes to the same origin
 because wipe fires only after the sentinel confirms reachability, that beacon necessarily
 leaves before wipe. By contrast, route A's origin is `127.0.0.1`; after its dedicated
 server is stopped and its reserved port is not reused, there is no peer for the probe to
-contact.
+contact. High-assurance use must use Route A only.
 
 ### Sending a message through an online device
 
@@ -202,6 +156,7 @@ validation or an independent security assessment. Current status and blockers:
 * [docs/security/security-review.md](docs/security/security-review.md) — Security review record (v2, audit classification)
 * [docs/develop/development.md](docs/develop/development.md) — Tech stack, setup, commands, environment variables
 * [docs/develop/deployment.md](docs/develop/deployment.md) — Cloudflare Pages deployment and CI flow
+* [docs/develop/install-route-a.md](docs/develop/install-route-a.md) — Complete Route A signed-ZIP install procedure
 * [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — Browser verification matrix and reference measurements
 * [docs/develop/deviations.md](docs/develop/deviations.md) — Managed deviations from the specification
 * [SECURITY.md](SECURITY.md) — Reporting a vulnerability
