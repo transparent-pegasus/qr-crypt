@@ -44,7 +44,9 @@ export function PwaOfflineReady({
 }) {
   const { t } = useI18n()
   const [error, setError] = useState<MessageKey | null>(null)
-  const [swActive, setSwActive] = useState(false)
+  const [swControlling, setSwControlling] = useState(
+    () => "serviceWorker" in navigator && navigator.serviceWorker.controller !== null,
+  )
   const announcedOfflineReady = useRef(false)
   const registrationOptions = useMemo<RegisterSWOptions>(
     () => ({
@@ -59,25 +61,24 @@ export function PwaOfflineReady({
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return
-    let cancelled = false
-    void navigator.serviceWorker.ready.then(() => {
-      if (!cancelled) setSwActive(true)
-    })
-    return () => {
-      cancelled = true
-    }
+    const container = navigator.serviceWorker
+    const onControllerChange = () => setSwControlling(container.controller !== null)
+    container.addEventListener("controllerchange", onControllerChange)
+    return () => container.removeEventListener("controllerchange", onControllerChange)
   }, [])
 
+  const announceReady = offlineReady && swControlling
+
   useEffect(() => {
-    if (offlineReady && !announcedOfflineReady.current) {
+    if (announceReady && !announcedOfflineReady.current) {
       toast.success(t("pwa.offlineReady.toast"))
     }
-    announcedOfflineReady.current = offlineReady
-  }, [offlineReady, t])
+    announcedOfflineReady.current = announceReady
+  }, [announceReady, t])
 
   const contextValue = useMemo(
-    () => ({ offlineReady: offlineReady || swActive, error }),
-    [error, offlineReady, swActive],
+    () => ({ offlineReady: swControlling, error }),
+    [error, swControlling],
   )
 
   return (
