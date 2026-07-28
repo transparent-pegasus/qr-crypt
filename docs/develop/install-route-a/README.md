@@ -22,7 +22,7 @@ that the Service Worker persists. Going offline afterwards does not undo it: a
 tampered build can weaken the RNG, swap a loaded public key, or embed plaintext
 in data that looks like ciphertext and have the user carry it out as ordinary
 `OCF2:` frames. That covert-egress scenario is **T21** in
-[docs/security/threat-model.md](../security/threat-model.md). **T19** covers only
+[docs/security/threat-model.md](../../security/threat-model.md). **T19** covers only
 the relay mechanics (outer-header filter, no assembly or AEAD on the online hop,
 no frame-derived app persistence) — not installation integrity.
 
@@ -185,7 +185,7 @@ diff -u "$QR_CRYPT_COMPARE_TMP/rebuilt.sha256" \
 ```
 
 4. Open the archive's `INSTALL.txt` and
-   `$QR_CRYPT_CHECKOUT/docs/develop/install-route-a.md` from the authenticated
+   `$QR_CRYPT_CHECKOUT/docs/develop/install-route-a/README.md` from the authenticated
    checkout side by side. Check the archive's displayed version, tag, and full
    source commit against the independently authenticated values. Then compare
    every instruction, prohibition, prerequisite, security assumption, and server

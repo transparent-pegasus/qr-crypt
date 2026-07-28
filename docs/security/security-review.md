@@ -219,7 +219,7 @@ They do not close the external `release-approved` blocker.
 - **Found:** the README carried a partial Route A procedure while the archive's
   `INSTALL.txt` was the only self-contained copy that reaches the offline device;
   mandatory independent rebuild-and-compare was easy to understate.
-- **Shipped:** `docs/develop/install-route-a.md` holds the complete Route A
+- **Shipped:** `docs/develop/install-route-a/README.md` holds the complete Route A
   procedure, including pre-extraction container validation and an independent
   comparison that accounts for every archive member; both READMEs keep a summary
   plus a link. High-assurance use must use Route A only.
@@ -228,7 +228,7 @@ They do not close the external `release-approved` blocker.
   independent verifier therefore cannot byte-reproduce that member today. Until
   the release pipeline derives it from a versioned template, its instructions
   must be compared against the independently authenticated
-  `docs/develop/install-route-a.md`, with any added, omitted, or changed
+  `docs/develop/install-route-a/README.md`, with any added, omitted, or changed
   requirement treated as tampering. Moving the generator into versioned source
   is outside this branch.
 
