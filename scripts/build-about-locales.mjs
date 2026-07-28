@@ -19,6 +19,7 @@ const ATTRIBUTE_HOOKS = {
   "data-i18n-alt": "alt",
   "data-i18n-label": "aria-label",
   "data-i18n-content": "content",
+  "data-i18n-href": "href",
 }
 
 // Open Graph wants a territory, BCP 47 does not. Locales outside this map fall
