@@ -737,7 +737,9 @@ function CreateField({
             role="note"
             className={cn(
               buttonVariants({ variant: "outline" }),
-              "h-11 w-full cursor-default select-text touch-auto text-muted-foreground hover:bg-background hover:text-muted-foreground",
+              // buttonVariants carries whitespace-nowrap, which pushed this note
+              // past the modal's content box on a narrow screen.
+              "min-h-11 w-full cursor-default select-text touch-auto whitespace-normal py-2 text-center text-muted-foreground hover:bg-background hover:text-muted-foreground",
             )}
           >
             <ShieldCheck aria-hidden="true" />

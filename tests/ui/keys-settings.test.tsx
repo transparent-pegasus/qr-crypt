@@ -145,10 +145,13 @@ describe("key management v2", () => {
       await screen.findByText("experimental · not independently audited"),
     ).toBeInTheDocument()
     const auditNote = screen.getByRole("note")
+    // min-h-11, not h-11: the note wraps in a narrow modal instead of forcing
+    // the dialog wider than the screen.
     expect(auditNote).toHaveClass(
       "inline-flex",
-      "h-11",
+      "min-h-11",
       "w-full",
+      "whitespace-normal",
       "items-center",
       "justify-center",
       "gap-2",

@@ -150,6 +150,36 @@ async function expectAnimatedFullscreenLayout(
   await expect(detail).toBeVisible()
 }
 
+test("keeps ordinary modals clear of both screen edges at 320px", async ({
+  context,
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 780 })
+  await openOfflineApp(page, context, "/keys")
+  await page.getByRole("button", { name: "Create a key" }).click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog).toBeVisible()
+  await dialog.evaluate(async (element) => {
+    await Promise.all(
+      element
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => undefined)),
+    )
+  })
+
+  // A modal flush with the layout viewport reads as wider than the screen on
+  // iOS, where the visual viewport and the safe area are both narrower.
+  const box = await dialog.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x, "modal left inset").toBeGreaterThanOrEqual(8)
+  expect(box!.x + box!.width, "modal right edge").toBeLessThanOrEqual(320 - 8)
+  const overflow = await dialog.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
+})
+
 test("splits key tabs evenly without horizontal overflow at 320px", async ({
   context,
   page,
