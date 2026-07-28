@@ -6,14 +6,10 @@ vi.mock("@/lib/feature-detect", () => ({
   webAssemblyRuntimeSupport: fakes.webAssemblyRuntimeSupport,
 }))
 
-vi.mock("@/lib/bytes", () => ({
-  utf8ToBytes: fakes.utf8ToBytes,
-  bytesToUtf8: fakes.bytesToUtf8,
-  utf8ByteLength: fakes.utf8ByteLength,
-  bytesToHex: fakes.bytesToHex,
-  concatBytes: fakes.concatBytes,
-  bytesEqual: fakes.bytesEqual,
-  toOwnedArrayBuffer: fakes.toOwnedArrayBuffer,
+// Pure synchronous helpers run for real; only the WebCrypto digests are faked, because
+// UI assertions depend on the fake's deterministic fingerprint values.
+vi.mock("@/lib/bytes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bytes")>()),
   sha256: fakes.sha256,
   sha256Hex: fakes.sha256Hex,
 }))

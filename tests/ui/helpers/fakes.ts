@@ -30,7 +30,6 @@ import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
 import { MAX_ARTIFACT_BYTES_ABSOLUTE } from "@/lib/limits"
 
 const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 
 function cryptoKey(type: KeyType): CryptoKey {
   return {
@@ -188,27 +187,6 @@ export type FakeAppError = AppError
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
 export const webAssemblyRuntimeSupport = vi.fn<() => boolean | undefined>(() => true)
 
-export const utf8ToBytes = vi.fn((value: string) => encoder.encode(value))
-export const bytesToUtf8 = vi.fn((value: Uint8Array) => decoder.decode(value))
-export const utf8ByteLength = vi.fn((value: string) => encoder.encode(value).byteLength)
-export const bytesToHex = vi.fn((value: Uint8Array) =>
-  Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join(""),
-)
-export const concatBytes = vi.fn((...parts: Uint8Array[]) => {
-  const length = parts.reduce((total, part) => total + part.byteLength, 0)
-  const result = new Uint8Array(length)
-  let offset = 0
-  for (const part of parts) {
-    result.set(part, offset)
-    offset += part.byteLength
-  }
-  return result
-})
-export const bytesEqual = vi.fn(
-  (a: Uint8Array, b: Uint8Array) =>
-    a.length === b.length && a.every((byte, index) => byte === b[index]),
-)
-export const toOwnedArrayBuffer = vi.fn((value: Uint8Array) => value.slice().buffer)
 export const sha256 = vi.fn(async (value: Uint8Array) => {
   const result = new Uint8Array(32)
   result[0] = value.byteLength % 256
