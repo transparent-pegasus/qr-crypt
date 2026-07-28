@@ -7,6 +7,7 @@ import type {
   PublicKeyEnvelopeV1,
   SymmetricKeyEnvelopeV1,
 } from "@/crypto/envelope"
+import type { DecryptPqMessageArgs } from "@/crypto/pq/decrypt-orchestrator"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
 import type { FeatureSupport } from "@/lib/feature-detect"
 import type { QrExportOptions } from "@/qr/export-image"
@@ -813,19 +814,25 @@ export const encryptPq = vi.fn(
 export const fakePqDecrypt = {
   kind: "signed-valid" as "unsigned" | "signed-valid" | "signed-key-unknown",
 }
-export const decryptPqMessage = vi.fn(async () => {
-  if (fakePqDecrypt.kind === "signed-key-unknown") {
-    return { kind: "signed-key-unknown" as const, senderSigningKeyId: "T".repeat(22) }
-  }
+
+async function defaultDecryptPqMessage(args: DecryptPqMessageArgs) {
   if (fakePqDecrypt.kind === "unsigned") {
     return { kind: "unsigned" as const, plaintext: encoder.encode("PQ復号済み平文") }
+  }
+
+  const senderSigningKeyId = "T".repeat(22)
+  await args.resolveSigningKey(senderSigningKeyId)
+  if (fakePqDecrypt.kind === "signed-key-unknown") {
+    return { kind: "signed-key-unknown" as const, senderSigningKeyId }
   }
   return {
     kind: "signed-valid" as const,
     plaintext: encoder.encode("署名済みPQ復号結果"),
-    senderSigningKeyId: "T".repeat(22),
+    senderSigningKeyId,
   }
-})
+}
+
+export const decryptPqMessage = vi.fn(defaultDecryptPqMessage)
 
 export const armMaintenanceToken = vi.fn(async () => undefined)
 
@@ -943,12 +950,17 @@ export const deleteBundle = vi.fn(async (recordId: string) => {
   if (index >= 0) fakeBundles.splice(index, 1)
 })
 export const markBundleUsed = vi.fn(async () => undefined)
-export const findBundleBySigningKeyId = vi.fn(async (keyId: string) =>
-  fakeBundles.find((record) => record.signing.keyId === keyId),
-)
-export const findBundleByKemKeyId = vi.fn(async (keyId: string) =>
-  fakeBundles.find((record) => record.kem.keyId === keyId),
-)
+
+async function defaultFindBundleBySigningKeyId(keyId: string) {
+  return fakeBundles.find((record) => record.signing.keyId === keyId)
+}
+
+async function defaultFindBundleByKemKeyId(keyId: string) {
+  return fakeBundles.find((record) => record.kem.keyId === keyId)
+}
+
+export const findBundleBySigningKeyId = vi.fn(defaultFindBundleBySigningKeyId)
+export const findBundleByKemKeyId = vi.fn(defaultFindBundleByKemKeyId)
 
 export const getPreferences = vi.fn(async () => ({ ...fakePreferences }))
 export const updatePreferences = vi.fn(async (patch: Partial<Preferences>) => {
@@ -1012,5 +1024,8 @@ export function resetFakes(): void {
   scanTextCallback = null
   scanErrorCallback = null
   nextMultipartAddGate = null
+  decryptPqMessage.mockImplementation(defaultDecryptPqMessage)
+  findBundleBySigningKeyId.mockImplementation(defaultFindBundleBySigningKeyId)
+  findBundleByKemKeyId.mockImplementation(defaultFindBundleByKemKeyId)
   vi.clearAllMocks()
 }

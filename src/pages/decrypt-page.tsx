@@ -42,6 +42,7 @@ import type {
   WireSuite,
 } from "@/schemas/domain"
 import { markKeyUsed } from "@/storage/key-repository"
+import { findBundleBySigningKeyId } from "@/storage/pq-bundle-repository"
 import {
   findIdentityByKemKeyId,
   markIdentityUsed,
@@ -89,7 +90,7 @@ function isActiveWireSuite(suite: WireSuite): boolean {
 export function DecryptPage() {
   const { t } = useI18n()
   const { keys, error: keysError } = useKeys()
-  const { identities, bundles, error: pqError } = usePqRecords()
+  const { identities, error: pqError } = usePqRecords()
   const { preferences, error: preferencesError } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const { camera } = useFeatureSupport()
@@ -241,22 +242,23 @@ export function DecryptPage() {
         if (recipient === undefined || !isActiveIdentity(recipient)) {
           throw new AppError("KEY_NOT_FOUND")
         }
+        // Key ids are attacker-assertable, so the record that verifies the signature is
+        // also the record shown as the sender: one exact lookup, no list ordering.
+        let resolvedSender: PqPublicBundleRecord | undefined
         const pqResult = await decryptPqMessage({
           client: getPqClient(),
           envelope: parsed.envelope,
           recipient,
           vaultKey: await getOrCreateVaultKey(),
           resolveSigningKey: async (keyId) => {
-            const record = bundles.find(
-              (bundle) => bundle.signing.keyId === keyId && isActiveBundle(bundle),
-            )
-            return record === undefined
-              ? undefined
-              : {
-                  algorithm: record.signing.algorithm,
-                  publicKey: record.signing.publicKey,
-                  revoked: record.revokedAt !== undefined,
-                }
+            const record = await findBundleBySigningKeyId(keyId)
+            if (record === undefined || !isActiveBundle(record)) return undefined
+            resolvedSender = record
+            return {
+              algorithm: record.signing.algorithm,
+              publicKey: record.signing.publicKey,
+              revoked: record.revokedAt !== undefined,
+            }
           },
         })
         let outcome: DecryptionResult
@@ -269,11 +271,7 @@ export function DecryptPage() {
             kind: "signed-valid",
             text: bytesToUtf8(pqResult.plaintext),
             senderSigningKeyId: pqResult.senderSigningKeyId,
-            sender: bundles.find(
-              (bundle) =>
-                bundle.signing.keyId === pqResult.senderSigningKeyId &&
-                isActiveBundle(bundle),
-            ),
+            sender: resolvedSender,
           }
         }
         await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
@@ -375,8 +373,14 @@ export function DecryptPage() {
             />
           </div>
           {decryptInputInvalid && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>{t("encrypt.decrypt.invalidTitle")}</AlertTitle>
+            <Alert
+              variant="destructive"
+              role="alert"
+              aria-labelledby="decrypt-invalid-title"
+            >
+              <AlertTitle id="decrypt-invalid-title">
+                {t("encrypt.decrypt.invalidTitle")}
+              </AlertTitle>
               <AlertDescription>{t("encrypt.decrypt.invalidBody")}</AlertDescription>
             </Alert>
           )}
@@ -402,14 +406,24 @@ export function DecryptPage() {
             </div>
           )}
           {parsedPqUnsupported && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>{t("keyDetail.badge.legacyProfile")}</AlertTitle>
+            <Alert
+              variant="destructive"
+              role="alert"
+              aria-labelledby="decrypt-pq-unsupported-title"
+            >
+              <AlertTitle id="decrypt-pq-unsupported-title">
+                {t("keyDetail.badge.legacyProfile")}
+              </AlertTitle>
               <AlertDescription>{t("encrypt.pqUnsupported.body")}</AlertDescription>
             </Alert>
           )}
           {decryptKeyMissing && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>KEY_NOT_FOUND</AlertTitle>
+            <Alert
+              variant="destructive"
+              role="alert"
+              aria-labelledby="decrypt-key-missing-title"
+            >
+              <AlertTitle id="decrypt-key-missing-title">KEY_NOT_FOUND</AlertTitle>
               <AlertDescription>{t("errors.KEY_NOT_FOUND")}</AlertDescription>
             </Alert>
           )}
@@ -430,8 +444,14 @@ export function DecryptPage() {
       </Card>
 
       {decrypted?.kind === "signed-key-unknown" && (
-        <Alert variant="destructive" role="alert">
-          <AlertTitle>SIGNING_KEY_NOT_FOUND</AlertTitle>
+        <Alert
+          variant="destructive"
+          role="alert"
+          aria-labelledby="decrypt-signing-key-missing-title"
+        >
+          <AlertTitle id="decrypt-signing-key-missing-title">
+            SIGNING_KEY_NOT_FOUND
+          </AlertTitle>
           <AlertDescription>
             {t("errors.SIGNING_KEY_NOT_FOUND")}
             {t("encrypt.signingKeyId", {
@@ -446,9 +466,15 @@ export function DecryptPage() {
       )}
 
       {(keysError || pqError || preferencesError || error) && (
-        <Alert variant="destructive" role="alert">
+        <Alert
+          variant="destructive"
+          role="alert"
+          aria-labelledby="decrypt-operation-failed-title"
+        >
           <AlertCircle aria-hidden="true" className="size-4" />
-          <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+          <AlertTitle id="decrypt-operation-failed-title">
+            {t("common.operationFailed")}
+          </AlertTitle>
           <AlertDescription>{localizedError}</AlertDescription>
         </Alert>
       )}
@@ -479,22 +505,51 @@ export function DecryptPage() {
                   <p className="text-sm font-medium">{t("encrypt.result.aesUnsigned")}</p>
                 )}
                 {decrypted.kind === "signed-valid" && (
-                  <div className="space-y-1 text-sm">
-                    <p className="font-medium text-success">
-                      {t("encrypt.result.signatureValid")}
-                    </p>
-                    <p className="font-mono text-xs break-all">
-                      {t("encrypt.result.senderSigningKeyId", {
-                        id: decrypted.senderSigningKeyId,
-                      })}
-                    </p>
-                    <p>
-                      {t("encrypt.result.identityCheck.label")}{" "}
-                      {decrypted.sender?.trust === "fingerprint-confirmed"
-                        ? t("encrypt.result.identityCheck.confirmed")
-                        : t("encrypt.result.identityCheck.unverified")}
-                    </p>
-                  </div>
+                  <>
+                    <div className="space-y-1 text-sm">
+                      <p
+                        className={
+                          decrypted.sender?.trust === "fingerprint-confirmed"
+                            ? "font-medium text-success"
+                            : "font-medium"
+                        }
+                      >
+                        {t("encrypt.result.signatureValid")}
+                      </p>
+                      <p className="font-mono text-xs break-all">
+                        {t("encrypt.result.senderSigningKeyId", {
+                          id: decrypted.senderSigningKeyId,
+                        })}
+                      </p>
+                      {decrypted.sender?.trust === "fingerprint-confirmed" && (
+                        <p className="font-medium text-success">
+                          {t("encrypt.result.identityCheck.label")}{" "}
+                          {t("encrypt.result.identityCheck.confirmed")}
+                        </p>
+                      )}
+                    </div>
+                    {decrypted.sender?.trust !== "fingerprint-confirmed" && (
+                      <Alert
+                        variant="destructive"
+                        role="group"
+                        aria-labelledby="decrypt-identity-unconfirmed-title"
+                      >
+                        <AlertTitle id="decrypt-identity-unconfirmed-title">
+                          {t("encrypt.result.identityUnconfirmed.title")}
+                        </AlertTitle>
+                        <AlertDescription
+                          role="alert"
+                          aria-labelledby="decrypt-identity-unconfirmed-title"
+                        >
+                          <p>{t("encrypt.result.identityUnconfirmed.body")}</p>
+                          <p className="mt-2">
+                            {t("encrypt.result.identityCheck.label")}{" "}
+                            {t("encrypt.result.identityCheck.unverified")}
+                          </p>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </>
                 )}
                 <p className="select-text whitespace-pre-wrap break-words rounded-md border p-3 text-sm">
                   {decrypted.text}

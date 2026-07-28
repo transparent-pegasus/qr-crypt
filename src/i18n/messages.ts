@@ -433,6 +433,10 @@ const en = {
   "encrypt.result.identityCheck.confirmed": "Identity verified",
   "encrypt.result.identityCheck.unverified":
     "Unverified. Key validity and identity verification are separate.",
+  "encrypt.result.identityUnconfirmed.title":
+    "The sender's identity is not confirmed",
+  "encrypt.result.identityUnconfirmed.body":
+    "A valid signature only proves this message was signed with this key. It does not prove who holds that key. Confirm the fingerprint in person before you act on this message.",
   "encrypt.result.memoryOnly":
     "The decrypted result is held only in memory and is not stored.",
   "encrypt.result.modalTitle": "Encryption complete",
@@ -1090,6 +1094,9 @@ const ja = {
   "encrypt.result.identityCheck.confirmed": "人物確認済み",
   "encrypt.result.identityCheck.unverified":
     "未確認。鍵の有効性と人物確認は別です。",
+  "encrypt.result.identityUnconfirmed.title": "送信者の本人確認が取れていません",
+  "encrypt.result.identityUnconfirmed.body":
+    "署名が有効であることは、このメッセージがこの鍵で署名されたことだけを示します。その鍵を誰が持っているかは示しません。内容に従って行動する前に、対面でフィンガープリントを確認してください。",
   "encrypt.result.memoryOnly":
     "復号結果はメモリー内だけに保持し、保存しません。",
   "encrypt.result.modalTitle": "暗号化が完了しました",

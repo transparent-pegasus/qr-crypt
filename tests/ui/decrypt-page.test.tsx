@@ -16,6 +16,7 @@ import {
   fakeBundles,
   fakeIdentities,
   fakePqDecrypt,
+  findBundleBySigningKeyId,
   findIdentityByKemKeyId,
   markIdentityUsed,
   markKeyUsed,
@@ -103,6 +104,10 @@ describe("decrypt page v2", () => {
           )}`,
       ),
     ).toBeInTheDocument()
+    const warning = screen.getByRole("alert", {
+      name: "The sender's identity is not confirmed",
+    })
+    expect(within(warning).getByText(/identity/i)).toBeInTheDocument()
 
     const dialog = screen.getByRole("dialog", { name: "Decryption complete" })
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
@@ -115,6 +120,37 @@ describe("decrypt page v2", () => {
     await user.click(screen.getByRole("button", { name: "Decrypt" }))
     expect(await screen.findByText("SIGNING_KEY_NOT_FOUND")).toBeInTheDocument()
     expect(screen.queryByText("署名済みPQ復号結果")).not.toBeInTheDocument()
+  })
+
+  it("resolves the signing key from storage, not from the cached list", async () => {
+    const user = userEvent.setup()
+    const confirmed = fakeBundles[0]!
+    const staleShadow: PqPublicBundleRecord = {
+      ...confirmed,
+      recordId: "S".repeat(22),
+      trust: "unverified",
+      importedAt: confirmed.importedAt + 60_000,
+    }
+    delete staleShadow.trustConfirmedAt
+    fakeBundles.splice(0, fakeBundles.length, staleShadow, confirmed)
+    findBundleBySigningKeyId.mockResolvedValue(confirmed)
+
+    await renderApp("/decrypt")
+    await screen.findByRole("heading", { name: "Scan with the camera" })
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:fake" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+    await waitFor(() => expect(decryptPqMessage).toHaveBeenCalledOnce())
+
+    expect(findBundleBySigningKeyId).toHaveBeenCalledWith(confirmed.signing.keyId)
+    expect(
+      screen.getByText(translate("en", "encrypt.result.identityCheck.confirmed"), {
+        exact: false,
+      }),
+    ).toBeInTheDocument()
   })
 
   it("labels unsigned plaintext and suppresses it after a signature failure", async () => {
