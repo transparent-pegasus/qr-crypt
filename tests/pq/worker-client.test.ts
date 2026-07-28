@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { createPqCryptoClient } from "@/crypto/pq/worker-client"
+import {
+  createPqCryptoClient,
+  type OpenPqEnvelopeRequest,
+  type PqCryptoClient,
+  type VerifySignedMessageRequest,
+} from "@/crypto/pq/worker-client"
 
 type Listener = (event: MessageEvent<unknown>) => void
+
+const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
+const MESSAGE_ID = new Uint8Array(16).fill(0x41)
+const CREATED_AT = 1_700_000_000_123
 
 class FakeWorker {
   static instances: FakeWorker[] = []
@@ -48,6 +57,61 @@ function verifyRequest() {
     message: new Uint8Array([1, 2, 3]),
     signature: new Uint8Array(4627),
   }
+}
+
+function openRequest(signed: boolean): OpenPqEnvelopeRequest {
+  return {
+    envelope: {
+      version: 2,
+      type: "pq-message",
+      suite: signed
+        ? "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
+        : "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      recipientKemKeyId: KEY_ID,
+      kemCiphertext: new Uint8Array(1568),
+      hkdfSalt: new Uint8Array(32),
+      iv: new Uint8Array(12),
+      ciphertext: new Uint8Array(16),
+    },
+    recipient: {
+      identityId: KEY_ID,
+      kemAlgorithm: "ML-KEM-1024",
+      kemKeyId: KEY_ID,
+      encryptedKemSeed: {
+        iv: new Uint8Array(12),
+        ciphertext: new Uint8Array(80),
+      },
+      storedKemPublicKey: new Uint8Array(1568),
+      vaultKey: {
+        type: "secret",
+        extractable: false,
+        algorithm: { name: "AES-GCM", length: 256 },
+        usages: ["encrypt", "decrypt"],
+      } as CryptoKey,
+    },
+  }
+}
+
+function verifySignedMessageRequest(): VerifySignedMessageRequest {
+  return {
+    signedMessageBytes: new Uint8Array([1]),
+    senderPublicKey: new Uint8Array(2592),
+    algorithm: "ML-DSA-87",
+  }
+}
+
+async function expectResponseRejected(
+  invoke: (client: PqCryptoClient) => Promise<unknown>,
+  value: unknown,
+): Promise<void> {
+  browserGlobals(FakeWorker)
+  const client = createPqCryptoClient()
+  const worker = FakeWorker.instances[0]!
+  const pending = invoke(client)
+  const rpc = worker.messages[0] as { id: string }
+  worker.emit("message", { id: rpc.id, ok: true, value })
+  await expect(pending).rejects.toMatchObject({ code: "WORKER_UNAVAILABLE" })
+  expect(worker.terminated).toBe(true)
 }
 
 afterEach(() => {
@@ -128,5 +192,65 @@ describe("browser PQ Worker RPC client", () => {
     })
     await expect(pending).rejects.toMatchObject({ code: "WORKER_UNAVAILABLE" })
     expect(worker.terminated).toBe(true)
+  })
+
+  it("rejects an unsigned open response missing messageId", async () => {
+    await expectResponseRejected(
+      (client) => client.openPqEnvelope(openRequest(false)),
+      {
+        kind: "unsigned",
+        plaintext: new Uint8Array([1]),
+        createdAt: CREATED_AT,
+      },
+    )
+  })
+
+  it("rejects a valid verification response with a non-16-byte messageId", async () => {
+    await expectResponseRejected(
+      (client) => client.verifySignedMessage(verifySignedMessageRequest()),
+      {
+        valid: true,
+        plaintext: new Uint8Array([1]),
+        messageId: new Uint8Array(15),
+        createdAt: CREATED_AT,
+      },
+    )
+  })
+
+  it("rejects an unsigned open response with a non-integer createdAt", async () => {
+    await expectResponseRejected(
+      (client) => client.openPqEnvelope(openRequest(false)),
+      {
+        kind: "unsigned",
+        plaintext: new Uint8Array([1]),
+        messageId: MESSAGE_ID,
+        createdAt: CREATED_AT + 0.5,
+      },
+    )
+  })
+
+  it("rejects an invalid verification response carrying receipt fields", async () => {
+    await expectResponseRejected(
+      (client) => client.verifySignedMessage(verifySignedMessageRequest()),
+      {
+        valid: false,
+        messageId: MESSAGE_ID,
+        createdAt: CREATED_AT,
+      },
+    )
+  })
+
+  it("rejects a signed open response carrying receipt fields", async () => {
+    await expectResponseRejected(
+      (client) => client.openPqEnvelope(openRequest(true)),
+      {
+        kind: "signed",
+        signedMessageBytes: new Uint8Array([1]),
+        senderSigningKeyId: KEY_ID,
+        signatureAlgorithm: "ML-DSA-87",
+        messageId: MESSAGE_ID,
+        createdAt: CREATED_AT,
+      },
+    )
   })
 })

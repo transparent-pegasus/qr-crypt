@@ -3,13 +3,15 @@
 // Flow (frozen):
 //   openPqEnvelope (Worker: Decaps → HKDF → successful GCM authentication
 //   → inner-schema validation)
-//   → unsigned suite: {kind:"unsigned", plaintext}
+//   → unsigned suite: return plaintext plus authenticated messageId / createdAt
 //   → signed suite: resolveSigningKey by the inner senderSigningKeyId (repository lookup)
 //     → unknown key: {kind:"signed-key-unknown", senderSigningKeyId}
 //       (do not construct plaintext; zeroize in the Worker; continue to the signing-key
 //       import path)
-//     → known key: verifySignedMessage → {kind:"signed-valid", ...} only on success
+//     → known key: verifySignedMessage → return plaintext plus messageId / createdAt from
+//       the verified signed body only, never from the pre-verification open
 //       failure: AppError("SIGNATURE_INVALID") (do not display plaintext)
+// createdAt is authenticated device-asserted metadata, not trusted time.
 //
 // Cross-binding: compare the outer suite, the recipient identity's
 // algorithm and keyId,
@@ -76,7 +78,12 @@ export async function decryptPqMessage(
       zeroize(opened.plaintext)
       throw new AppError("DECRYPTION_FAILED")
     }
-    return { kind: "unsigned", plaintext: opened.plaintext }
+    return {
+      kind: "unsigned",
+      plaintext: opened.plaintext,
+      messageId: opened.messageId,
+      createdAt: opened.createdAt,
+    }
   }
 
   try {
@@ -108,6 +115,8 @@ export async function decryptPqMessage(
     return {
       kind: "signed-valid",
       plaintext: verified.plaintext,
+      messageId: verified.messageId,
+      createdAt: verified.createdAt,
       senderSigningKeyId: opened.senderSigningKeyId,
     }
   } finally {

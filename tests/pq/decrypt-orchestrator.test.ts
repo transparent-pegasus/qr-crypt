@@ -5,6 +5,11 @@ import type { MlKemMessageEnvelopeV2, PostQuantumIdentity } from "@/schemas/doma
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 const SENDER_ID = "EAESExQVFhcYGRobHB0eHw"
+const MESSAGE_ID = new Uint8Array([
+  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c,
+  0x0d, 0x0e, 0x0f,
+])
+const CREATED_AT = 1_700_000_000_123
 
 const envelope: MlKemMessageEnvelopeV2 = {
   version: 2,
@@ -58,6 +63,36 @@ function fakeClient(overrides: Partial<PqCryptoClient>): PqCryptoClient {
 }
 
 describe("decryptPqMessage", () => {
+  it("propagates authenticated receipt fields for an unsigned message", async () => {
+    const plaintext = new TextEncoder().encode("unsigned")
+    const client = fakeClient({
+      openPqEnvelope: vi.fn().mockResolvedValue({
+        kind: "unsigned",
+        plaintext,
+        messageId: MESSAGE_ID,
+        createdAt: CREATED_AT,
+      }),
+    })
+
+    await expect(
+      decryptPqMessage({
+        client,
+        envelope: {
+          ...envelope,
+          suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+        },
+        recipient,
+        vaultKey: {} as CryptoKey,
+        resolveSigningKey: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      kind: "unsigned",
+      plaintext,
+      messageId: MESSAGE_ID,
+      createdAt: CREATED_AT,
+    })
+  })
+
   it("returns unknown signer without constructing plaintext or invoking verify", async () => {
     const signedMessageBytes = new Uint8Array([1, 2, 3])
     const verifySignedMessage = vi.fn()
@@ -144,7 +179,12 @@ describe("decryptPqMessage", () => {
         senderSigningKeyId: SENDER_ID,
         signatureAlgorithm: "ML-DSA-87",
       }),
-      verifySignedMessage: vi.fn().mockResolvedValue({ valid: true, plaintext }),
+      verifySignedMessage: vi.fn().mockResolvedValue({
+        valid: true,
+        plaintext,
+        messageId: MESSAGE_ID,
+        createdAt: CREATED_AT,
+      }),
     })
     await expect(
       decryptPqMessage({
@@ -161,6 +201,8 @@ describe("decryptPqMessage", () => {
     ).resolves.toEqual({
       kind: "signed-valid",
       plaintext,
+      messageId: MESSAGE_ID,
+      createdAt: CREATED_AT,
       senderSigningKeyId: SENDER_ID,
     })
   })
