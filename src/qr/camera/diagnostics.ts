@@ -2,7 +2,7 @@ import { AppError as ConcreteAppError } from "@/crypto/errors"
 import type { CameraAttempt } from "@/qr/camera/types"
 
 const CAMERA_DIAGNOSTIC_NAME = /^[A-Za-z]{1,40}$/
-export function diagnosticName(error: unknown): string {
+function diagnosticName(error: unknown): string {
   if (typeof error !== "object" || error === null || !("name" in error)) {
     return "unknown"
   }
