@@ -1,6 +1,6 @@
 import "./helpers/module-mocks"
 import { act, render, screen, waitFor } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fakeFeatures, fakePwa, useFakeRegisterSW } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
 
@@ -65,5 +65,39 @@ describe("PWA offline readiness", () => {
       container.takeControl()
     })
     await waitFor(() => expect(row()).toHaveTextContent("Ready"))
+  })
+
+  it("shows a loader only after one second of preparation, and drops it when ready", async () => {
+    const container = installContainer()
+    fakePwa.offlineReady = false
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+
+    vi.useFakeTimers()
+    try {
+      render(
+        <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+          <OnlineInstallScreen />
+        </AppProviders>,
+      )
+
+      // A load that settles quickly must not flash a spinner.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900)
+      })
+      expect(screen.queryByLabelText("Loading")).toBeNull()
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200)
+      })
+      expect(screen.getByLabelText("Loading")).toBeInTheDocument()
+
+      await act(async () => {
+        container.takeControl()
+      })
+      expect(screen.queryByLabelText("Loading")).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
