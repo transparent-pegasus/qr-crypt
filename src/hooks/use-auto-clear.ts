@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { webAssemblyRuntimeSupport } from "@/lib/feature-detect"
+import { probeWebAssemblyRuntime } from "@/lib/feature-detect"
 import { env } from "@/schemas/env-schema"
 
 export interface UseAutoClearOptions {
@@ -22,11 +22,26 @@ export function useAutoClear({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clearedRef = useRef(false)
   const initialNonceRef = useRef(clearNonce)
+  const delaySecondsRef = useRef(env.autoClearSeconds)
 
   useEffect(() => {
     onClearRef.current = onClear
     nowRef.current = now
   }, [now, onClear])
+
+  useEffect(() => {
+    let active = true
+    void probeWebAssemblyRuntime().then((available) => {
+      if (!active) return
+      // Update future schedules only; a pending deadline is never extended after probing.
+      delaySecondsRef.current = available
+        ? env.autoClearSeconds
+        : env.autoClearFallbackSeconds
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     const cancelTimer = () => {
@@ -58,12 +73,7 @@ export function useAutoClear({
       cancelTimer()
       clearedRef.current = false
       hiddenAtRef.current = hiddenAt
-      // undefined means the probe has not resolved; keep the stricter delay.
-      const delaySeconds =
-        webAssemblyRuntimeSupport() === false
-          ? env.autoClearFallbackSeconds
-          : env.autoClearSeconds
-      const delay = Math.max(0, delaySeconds * 1000)
+      const delay = Math.max(0, delaySecondsRef.current * 1000)
       deadlineRef.current = hiddenAt + delay
       if (delay === 0 || nowRef.current() >= deadlineRef.current) {
         clearOnce()

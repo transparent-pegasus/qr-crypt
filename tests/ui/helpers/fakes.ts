@@ -185,7 +185,7 @@ export const FakeAppError = AppError
 export type FakeAppError = AppError
 
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
-export const webAssemblyRuntimeSupport = vi.fn<() => boolean | undefined>(() => true)
+export const probeWebAssemblyRuntime = vi.fn(async () => true)
 
 export const sha256 = vi.fn(async (value: Uint8Array) => {
   const result = new Uint8Array(32)

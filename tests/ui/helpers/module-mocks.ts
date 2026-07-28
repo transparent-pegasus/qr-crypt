@@ -3,7 +3,7 @@ import * as fakes from "./fakes"
 
 vi.mock("@/lib/feature-detect", () => ({
   detectFeatures: fakes.detectFeatures,
-  webAssemblyRuntimeSupport: fakes.webAssemblyRuntimeSupport,
+  probeWebAssemblyRuntime: fakes.probeWebAssemblyRuntime,
 }))
 
 // Pure synchronous helpers run for real; only the WebCrypto digests are faked, because
