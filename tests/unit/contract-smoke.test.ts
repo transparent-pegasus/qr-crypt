@@ -23,11 +23,12 @@ import encryptPageSource from "@/pages/encrypt-page.tsx?raw"
 
 describe("contract smoke", () => {
   it("keeps only error codes and resolves user messages explicitly by language", () => {
-    expect(ERROR_CODES).toHaveLength(24)
+    expect(ERROR_CODES).toHaveLength(25)
     expect(ERROR_CODES).toContain("QR_READER_PREPARATION_TIMEOUT")
     expect(ERROR_CODES).toContain("QR_DECODE_PROGRESS_TIMEOUT")
     expect(ERROR_CODES).toContain("QR_READER_BLOCKED")
     expect(ERROR_CODES).toContain("KEY_ID_CONFLICT")
+    expect(ERROR_CODES).toContain("MESSAGE_ID_REUSED")
     const error = new AppError("DECRYPTION_FAILED")
     expect(error.code).toBe("DECRYPTION_FAILED")
     expect(error).not.toHaveProperty("userMessage")

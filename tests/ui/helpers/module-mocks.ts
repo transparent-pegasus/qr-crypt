@@ -111,6 +111,11 @@ vi.mock("@/qr/payload-v2", () => ({
   encodeFrameToPayload: fakes.encodeFrameToPayload,
 }))
 
+vi.mock("@/features/receipt-cache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/receipt-cache")>()),
+  recordReceipt: fakes.recordReceipt,
+}))
+
 vi.mock("@/storage/key-repository", () => ({
   listKeyRecords: fakes.listKeyRecords,
   saveKeyRecord: fakes.saveKeyRecord,

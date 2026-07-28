@@ -84,6 +84,8 @@ const en = {
   "errors.DUPLICATE_QR": "A QR code with the same contents is already stored.",
   "errors.KEY_ID_CONFLICT":
     "One of these key IDs is already assigned to another stored bundle. The import was refused.",
+  "errors.MESSAGE_ID_REUSED":
+    "This message carries the identifier of a message this device already received in this session, but different ciphertext. The plaintext was not shown.",
   "errors.SIGNATURE_INVALID":
     "The signature could not be verified. The sender's signing key or the contents do not match.",
   "errors.SIGNING_KEY_NOT_FOUND":
@@ -437,6 +439,12 @@ const en = {
     "The sender's identity is not confirmed",
   "encrypt.result.identityUnconfirmed.body":
     "A valid signature only proves this message was signed with this key. It does not prove who holds that key. Confirm the fingerprint in person before you act on this message.",
+  "encrypt.result.replay.title": "Already received in this session",
+  "encrypt.result.replay.body":
+    "This exact ciphertext was already decrypted here at {time}. A repeat can be an ordinary re-read, or someone replaying an old message to you. Treat any instruction inside it as unconfirmed. Detection covers this session only: it restarts when the app reloads.",
+  "encrypt.result.replay.reveal": "Show the message anyway",
+  "encrypt.result.senderCreatedAt":
+    "Sender-reported time: {time} (asserted by the sending device, not verified)",
   "encrypt.result.memoryOnly":
     "The decrypted result is held only in memory and is not stored.",
   "encrypt.result.modalTitle": "Encryption complete",
@@ -743,6 +751,8 @@ const ja = {
   "errors.DUPLICATE_QR": "同じ内容のQRコードがすでに保存されています。",
   "errors.KEY_ID_CONFLICT":
     "この鍵IDのいずれかは、すでに別の保存済みバンドルに割り当てられています。取り込みを中止しました。",
+  "errors.MESSAGE_ID_REUSED":
+    "このメッセージは、このセッションで既に受け取ったメッセージと同じ識別子を持ちながら、暗号文が異なります。平文は表示していません。",
   "errors.SIGNATURE_INVALID":
     "署名を検証できませんでした。送信者の署名鍵、または内容が一致していません。",
   "errors.SIGNING_KEY_NOT_FOUND":
@@ -1097,6 +1107,12 @@ const ja = {
   "encrypt.result.identityUnconfirmed.title": "送信者の本人確認が取れていません",
   "encrypt.result.identityUnconfirmed.body":
     "署名が有効であることは、このメッセージがこの鍵で署名されたことだけを示します。その鍵を誰が持っているかは示しません。内容に従って行動する前に、対面でフィンガープリントを確認してください。",
+  "encrypt.result.replay.title": "このセッションで受信済みです",
+  "encrypt.result.replay.body":
+    "この暗号文は {time} にこの端末で復号済みです。単なる再読の場合もあれば、古いメッセージを再送されている場合もあります。中の指示は未確認として扱ってください。検知はこのセッション内のみで、アプリを再読み込みするとリセットされます。",
+  "encrypt.result.replay.reveal": "それでも表示する",
+  "encrypt.result.senderCreatedAt":
+    "送信端末の申告時刻: {time}(送信側の申告であり検証されていません)",
   "encrypt.result.memoryOnly":
     "復号結果はメモリー内だけに保持し、保存しません。",
   "encrypt.result.modalTitle": "暗号化が完了しました",

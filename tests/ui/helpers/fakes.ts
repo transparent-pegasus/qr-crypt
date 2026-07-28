@@ -8,6 +8,7 @@ import type {
   SymmetricKeyEnvelopeV1,
 } from "@/crypto/envelope"
 import type { DecryptPqMessageArgs } from "@/crypto/pq/decrypt-orchestrator"
+import type { ReceiptSubject, ReceiptVerdict } from "@/features/receipt-cache"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
 import type { FeatureSupport } from "@/lib/feature-detect"
 import type { QrExportOptions } from "@/qr/export-image"
@@ -17,6 +18,7 @@ import type {
   KemPublicKeyEnvelopeV2,
   MlKemMessageEnvelopeV2,
   PostQuantumIdentity,
+  PqDecryptResult,
   PqPublicBundleRecord,
   Preferences,
   PublicIdentityBundleV2,
@@ -395,6 +397,9 @@ export const decodePayload = vi.fn((payload: string) => {
 export const payloadSha256Hex = vi.fn(async (payload: string) =>
   encoder.encode(payload).byteLength.toString(16).padStart(64, "0"),
 )
+export const recordReceipt = vi.fn<
+  (subject: ReceiptSubject, now: number) => ReceiptVerdict
+>(() => ({ kind: "first-seen" }) as const)
 export const renderQrDataUrl = vi.fn(
   async (payload: string) => `data:image/png;base64,${btoa(payload)}`,
 )
@@ -790,7 +795,7 @@ export const encryptPq = vi.fn(
   }: {
     recipient: PqPublicBundleRecord
     plaintext: Uint8Array
-    sign?: { identity: PostQuantumIdentity }
+    sign?: { identity: PostQuantumIdentity } | undefined
     now: number
   }) => {
     void now
@@ -814,10 +819,22 @@ export const encryptPq = vi.fn(
 export const fakePqDecrypt = {
   kind: "signed-valid" as "unsigned" | "signed-valid" | "signed-key-unknown",
 }
+export const fakePqMessageId = Uint8Array.from(
+  { length: 16 },
+  (_, index) => index,
+)
+export const fakePqCreatedAt = 1_723_000_000_000
 
-async function defaultDecryptPqMessage(args: DecryptPqMessageArgs) {
+async function defaultDecryptPqMessage(
+  args: DecryptPqMessageArgs,
+): Promise<PqDecryptResult> {
   if (fakePqDecrypt.kind === "unsigned") {
-    return { kind: "unsigned" as const, plaintext: encoder.encode("PQ復号済み平文") }
+    return {
+      kind: "unsigned",
+      plaintext: encoder.encode("PQ復号済み平文"),
+      messageId: fakePqMessageId.slice(),
+      createdAt: fakePqCreatedAt,
+    }
   }
 
   const senderSigningKeyId = "T".repeat(22)
@@ -826,8 +843,10 @@ async function defaultDecryptPqMessage(args: DecryptPqMessageArgs) {
     return { kind: "signed-key-unknown" as const, senderSigningKeyId }
   }
   return {
-    kind: "signed-valid" as const,
+    kind: "signed-valid",
     plaintext: encoder.encode("署名済みPQ復号結果"),
+    messageId: fakePqMessageId.slice(),
+    createdAt: fakePqCreatedAt,
     senderSigningKeyId,
   }
 }
@@ -1027,5 +1046,6 @@ export function resetFakes(): void {
   decryptPqMessage.mockImplementation(defaultDecryptPqMessage)
   findBundleBySigningKeyId.mockImplementation(defaultFindBundleBySigningKeyId)
   findBundleByKemKeyId.mockImplementation(defaultFindBundleByKemKeyId)
+  recordReceipt.mockImplementation(() => ({ kind: "first-seen" }) as const)
   vi.clearAllMocks()
 }
