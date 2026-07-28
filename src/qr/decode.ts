@@ -580,6 +580,86 @@ async function acquireWithRetries(attempt: CameraAttempt): Promise<MediaStream> 
   }
 }
 
+function clearFrameReadyTimeout(attempt: CameraAttempt): void {
+  if (attempt.frameReadyTimeoutId === undefined) return
+  clearTimeout(attempt.frameReadyTimeoutId)
+  attempt.frameReadyTimeoutId = undefined
+}
+
+function clearDecodeProgressTimeout(attempt: CameraAttempt): void {
+  if (attempt.decodeProgressTimeoutId === undefined) return
+  clearTimeout(attempt.decodeProgressTimeoutId)
+  attempt.decodeProgressTimeoutId = undefined
+}
+
+function clearFrameRecovery(attempt: CameraAttempt): void {
+  attempt.frameRecoveryActive = false
+  attempt.lastFrameErrorName = undefined
+  clearFrameReadyTimeout(attempt)
+}
+
+function failDecode(attempt: CameraAttempt, error: unknown): void {
+  if (!isActiveAttempt(attempt)) return
+  const mapped = cameraError(error)
+  const preparationError =
+    attempt.lastPreparationError === error ? error : undefined
+  reportAttemptError(
+    attempt,
+    mapped,
+    cameraDiagnostic(
+      attempt,
+      diagnosticName(error),
+      attempt.phase,
+      preparationError,
+    ),
+  )
+  stopAttempt(attempt)
+}
+
+function armDecodeProgressWatchdog(attempt: CameraAttempt): void {
+  clearDecodeProgressTimeout(attempt)
+  if (!isActiveAttempt(attempt) || !attempt.decodePumpStarted) return
+  attempt.decodeProgressTimeoutId = setTimeout(() => {
+    attempt.decodeProgressTimeoutId = undefined
+    if (!isActiveAttempt(attempt) || !attempt.decodePumpStarted) return
+    failDecode(attempt, new QrDecodeProgressTimeout())
+  }, CAMERA_DECODE_PROGRESS_TIMEOUT_MS)
+}
+
+function completeDecodeAttempt(attempt: CameraAttempt, resultsSeen: number): void {
+  attempt.decodeAttemptsCompleted += 1
+  attempt.decodeResultsSeen += resultsSeen
+  armDecodeProgressWatchdog(attempt)
+  publishPipelineDiagnostic(attempt)
+}
+
+function ensureFrameReadyTimeout(attempt: CameraAttempt): void {
+  if (attempt.frameReadyTimeoutId !== undefined) return
+  attempt.frameReadyTimeoutId = setTimeout(() => {
+    attempt.frameReadyTimeoutId = undefined
+    if (!isActiveAttempt(attempt) || !attempt.frameRecoveryActive) return
+    if (cameraTrack(attempt)?.readyState !== "live") return
+
+    const mapped = new ConcreteAppError("CAMERA_NOT_AVAILABLE")
+    reportAttemptError(
+      attempt,
+      mapped,
+      cameraDiagnostic(attempt, attempt.lastFrameErrorName ?? "unknown", "playing"),
+    )
+    stopAttempt(attempt)
+  }, CAMERA_FRAME_READY_TIMEOUT_MS)
+}
+
+function beginFrameRecovery(attempt: CameraAttempt, error: unknown): void {
+  if (!isActiveAttempt(attempt)) return
+  attempt.frameRecoveryActive = true
+  attempt.lastFrameErrorName = diagnosticName(error)
+  attempt.lastErrorName = attempt.lastFrameErrorName
+  publishPipelineDiagnostic(attempt)
+  ensureFrameReadyTimeout(attempt)
+  retryVideoPlayback(attempt)
+}
+
 async function startAttempt(
   attempt: CameraAttempt,
   handle: ScanContext["handle"],
@@ -617,52 +697,6 @@ async function startAttempt(
       cancelScheduledFrame()
     },
   }
-  function clearFrameReadyTimeout(): void {
-    if (attempt.frameReadyTimeoutId === undefined) return
-    clearTimeout(attempt.frameReadyTimeoutId)
-    attempt.frameReadyTimeoutId = undefined
-  }
-
-  function clearDecodeProgressTimeout(): void {
-    if (attempt.decodeProgressTimeoutId === undefined) return
-    clearTimeout(attempt.decodeProgressTimeoutId)
-    attempt.decodeProgressTimeoutId = undefined
-  }
-
-  function clearFrameRecovery(): void {
-    attempt.frameRecoveryActive = false
-    attempt.lastFrameErrorName = undefined
-    clearFrameReadyTimeout()
-  }
-
-  function failDecode(error: unknown): void {
-    if (!isActiveAttempt(attempt)) return
-    const mapped = cameraError(error)
-    const preparationError =
-      attempt.lastPreparationError === error ? error : undefined
-    reportAttemptError(
-      attempt,
-      mapped,
-      cameraDiagnostic(
-        attempt,
-        diagnosticName(error),
-        attempt.phase,
-        preparationError,
-      ),
-    )
-    stopAttempt(attempt)
-  }
-
-  function armDecodeProgressWatchdog(): void {
-    clearDecodeProgressTimeout()
-    if (!isActiveAttempt(attempt) || !attempt.decodePumpStarted) return
-    attempt.decodeProgressTimeoutId = setTimeout(() => {
-      attempt.decodeProgressTimeoutId = undefined
-      if (!isActiveAttempt(attempt) || !attempt.decodePumpStarted) return
-      failDecode(new QrDecodeProgressTimeout())
-    }, CAMERA_DECODE_PROGRESS_TIMEOUT_MS)
-  }
-
   async function awaitPreparation(preparation: Promise<void>): Promise<void> {
     let settled = false
     let timeoutId: ReturnType<typeof setTimeout> | undefined
@@ -752,7 +786,7 @@ async function startAttempt(
         // The decode-progress watchdog was armed by the first drawn frame and would
         // otherwise expire mid-retry, ending the attempt with the wrong error and
         // cutting the second window to ~4 s. Starting a fresh generation is progress.
-        armDecodeProgressWatchdog()
+        armDecodeProgressWatchdog(attempt)
         // pipelineDiagnostic only mirrors the module state while the attempt field is
         // idle or preparing, so publishing before this assignment would latch "failed"
         // for the whole retry window.
@@ -760,30 +794,6 @@ async function startAttempt(
         publishPipelineDiagnostic(attempt)
       }
     }
-  }
-
-  function completeDecodeAttempt(resultsSeen: number): void {
-    attempt.decodeAttemptsCompleted += 1
-    attempt.decodeResultsSeen += resultsSeen
-    armDecodeProgressWatchdog()
-    publishPipelineDiagnostic(attempt)
-  }
-
-  function ensureFrameReadyTimeout(): void {
-    if (attempt.frameReadyTimeoutId !== undefined) return
-    attempt.frameReadyTimeoutId = setTimeout(() => {
-      attempt.frameReadyTimeoutId = undefined
-      if (!isActiveAttempt(attempt) || !attempt.frameRecoveryActive) return
-      if (cameraTrack(attempt)?.readyState !== "live") return
-
-      const mapped = new ConcreteAppError("CAMERA_NOT_AVAILABLE")
-      reportAttemptError(
-        attempt,
-        mapped,
-        cameraDiagnostic(attempt, attempt.lastFrameErrorName ?? "unknown", "playing"),
-      )
-      stopAttempt(attempt)
-    }, CAMERA_FRAME_READY_TIMEOUT_MS)
   }
 
   function cancelVideoFrameCallback(handle: number): void {
@@ -805,16 +815,6 @@ async function startAttempt(
       clearTimeout(pump.fallbackTimerId)
       pump.fallbackTimerId = undefined
     }
-  }
-
-  function beginFrameRecovery(error: unknown): void {
-    if (!isActiveAttempt(attempt)) return
-    attempt.frameRecoveryActive = true
-    attempt.lastFrameErrorName = diagnosticName(error)
-    attempt.lastErrorName = attempt.lastFrameErrorName
-    publishPipelineDiagnostic(attempt)
-    ensureFrameReadyTimeout()
-    retryVideoPlayback(attempt)
   }
 
   function takeScheduledFrame(
@@ -954,9 +954,9 @@ async function startAttempt(
       attempt.videoFramesDrawn += 1
       // A successful draw proves scheduling progress and starts a fresh decode window.
       // The shorter reader-preparation bound will still identify a hung module first.
-      armDecodeProgressWatchdog()
+      armDecodeProgressWatchdog(attempt)
       publishPipelineDiagnostic(attempt)
-      clearFrameRecovery()
+      clearFrameRecovery(attempt)
 
       const imageData = frameContext.getImageData(
         0,
@@ -981,7 +981,7 @@ async function startAttempt(
       const results = await readBarcodes(imageData, zxingReaderOptions)
       if (!isActiveAttempt(attempt)) return
       decodeCallCompleted = true
-      completeDecodeAttempt(results.length)
+      completeDecodeAttempt(attempt, results.length)
 
       const result = results[0]
       if (result === undefined) return
@@ -995,13 +995,13 @@ async function startAttempt(
     } catch (error) {
       if (!isActiveAttempt(attempt)) return
       if (decodeCallStarted && !decodeCallCompleted) {
-        completeDecodeAttempt(0)
+        completeDecodeAttempt(attempt, 0)
       }
       if (isFrameNotReadyDecodeError(attempt, error)) {
-        beginFrameRecovery(error)
+        beginFrameRecovery(attempt, error)
         return
       }
-      failDecode(error)
+      failDecode(attempt, error)
     } finally {
       pump.decodeInFlight = false
       if (!pump.cancelled && isActiveAttempt(attempt)) {
@@ -1020,11 +1020,11 @@ async function startAttempt(
 
   attempt.controls = pump
   attempt.decodePumpStarted = true
-  armDecodeProgressWatchdog()
+  armDecodeProgressWatchdog(attempt)
   attempt.phase = "playing"
   attempt.frameRecoveryActive = true
   attempt.lastFrameErrorName = undefined
-  ensureFrameReadyTimeout()
+  ensureFrameReadyTimeout(attempt)
   attempt.retryDecoder = () => scheduleNextFrame(Date.now(), true)
   // Preserve the initial rVFC grace period; the readiness watchdog is already armed.
   // Steady-state scheduling above uses the cadence deadline with no added grace.
