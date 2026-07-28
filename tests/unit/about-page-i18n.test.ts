@@ -19,7 +19,9 @@ const messages = (await import(
 }
 
 function documentKeys(): Set<string> {
-  const pattern = /data-i18n(?:-(?:alt|label|content))?="([^"]+)"/g
+  // Keep in sync with ATTRIBUTE_HOOKS in scripts/build-about-locales.mjs: a hook
+  // missing here reads every key it carries as stale.
+  const pattern = /data-i18n(?:-(?:alt|label|content|href))?="([^"]+)"/g
   return new Set(Array.from(html.matchAll(pattern), (match) => match[1] as string))
 }
 
