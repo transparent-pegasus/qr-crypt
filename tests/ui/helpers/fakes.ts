@@ -448,11 +448,10 @@ interface FakeCameraDiagnostic {
   phase: "acquiring" | "acquired" | "playing" | "track-ended"
   name: string | null
   detail: string
-  message: string | null
 }
 
 interface FakeCameraPipelineDiagnostic {
-  readerModuleState: "idle" | "preparing" | "ready" | "failed" | "timed-out"
+  readerModuleState: "idle" | "preparing" | "ready" | "failed"
   videoFramesDrawn: number
   decodeAttemptsCompleted: number
   decodeResultsSeen: number
@@ -462,7 +461,7 @@ interface FakeCameraPipelineDiagnostic {
 export const scannerStop = vi.fn()
 export const CAMERA_READER_READY_TIMEOUT_MS = 30_000
 export const readerModuleState = vi.fn<
-  () => "idle" | "preparing" | "ready" | "failed" | "timed-out"
+  () => "idle" | "preparing" | "ready" | "failed"
 >(() => "ready")
 export const warmQrReader = vi.fn<() => Promise<void>>(() => Promise.resolve())
 let scanTextCallback: ((payload: string) => void) | null = null
@@ -498,7 +497,6 @@ export function emitScanError(
     phase: "acquiring",
     name: null,
     detail: "0x0 rs=0 track=none",
-    message: null,
   },
 ): void {
   scanErrorCallback?.(new FakeAppError(code), diagnostic)

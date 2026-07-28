@@ -14,7 +14,7 @@ const scanStop = vi.hoisted(() => vi.fn())
 const copyText = vi.hoisted(() => vi.fn(async () => undefined))
 const renderQr = vi.hoisted(() => vi.fn())
 const readerModuleState = vi.hoisted(() =>
-  vi.fn<() => "idle" | "preparing" | "ready" | "failed" | "timed-out">(),
+  vi.fn<() => "idle" | "preparing" | "ready" | "failed">(),
 )
 const warmQrReader = vi.hoisted(() => vi.fn<() => Promise<void>>())
 

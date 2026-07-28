@@ -9,8 +9,6 @@ import type {
 } from "@/qr/camera/types"
 
 const CAMERA_DIAGNOSTIC_NAME = /^[A-Za-z]{1,40}$/
-const CAMERA_DIAGNOSTIC_MESSAGE_MAX = 200
-
 export function diagnosticName(error: unknown): string {
   if (typeof error !== "object" || error === null || !("name" in error)) {
     return "unknown"
@@ -22,28 +20,6 @@ export function diagnosticName(error: unknown): string {
       : "unknown"
   } catch {
     return "unknown"
-  }
-}
-
-// Bounded, printable-ASCII only. Fed exclusively from reader-preparation failures — never
-// from decode, delivery or acquisition errors, whose surrounding try block also covers the
-// scanned payload and the caller's onText callback.
-function diagnosticMessage(error: unknown): string | null {
-  try {
-    if (typeof error !== "object" || error === null) return null
-    const raw = Reflect.get(error, "message") as unknown
-    if (typeof raw !== "string" || raw.length === 0) return null
-    // Bound the input first: a hostile or runaway message must not cost a full scan.
-    const cleaned = raw
-      .slice(0, CAMERA_DIAGNOSTIC_MESSAGE_MAX * 2)
-      .replace(/[^ -~]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-    return cleaned.length === 0
-      ? null
-      : cleaned.slice(0, CAMERA_DIAGNOSTIC_MESSAGE_MAX)
-  } catch {
-    return null
   }
 }
 
@@ -103,14 +79,11 @@ export function cameraDiagnostic(
   attempt: CameraAttempt,
   name: string | null,
   phase: CameraDiagnosticPhase = attempt.phase,
-  preparationError?: unknown,
 ): CameraDiagnostic {
   return {
     phase,
     name,
     detail: diagnosticDetail(attempt),
-    message:
-      preparationError === undefined ? null : diagnosticMessage(preparationError),
   }
 }
 
@@ -118,9 +91,6 @@ export function cameraError(error: unknown): ConcreteAppError {
   if (error instanceof ConcreteAppError) return error
 
   const name = diagnosticName(error)
-  if (name === "QrReaderPreparationTimeout") {
-    return new ConcreteAppError("QR_READER_PREPARATION_TIMEOUT")
-  }
   if (name === "QrDecodeProgressTimeout") {
     return new ConcreteAppError("QR_DECODE_PROGRESS_TIMEOUT")
   }

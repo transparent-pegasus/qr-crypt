@@ -43,9 +43,6 @@ export function stopControlsOnce(
 export function stopAttempt(attempt: CameraAttempt): void {
   if (attempt.stopped) return
   attempt.stopped = true
-  const cancelModulePreparationWait = attempt.cancelModulePreparationWait
-  attempt.cancelModulePreparationWait = undefined
-  cancelModulePreparationWait?.()
   attempt.resolveStopped()
 
   if (attempt.abortSignal !== undefined && attempt.abortListener !== undefined) {

@@ -5,12 +5,7 @@ export interface QrScanHandle {
   stop(): void
 }
 
-export type ReaderModuleState =
-  | "idle"
-  | "preparing"
-  | "ready"
-  | "failed"
-  | "timed-out"
+export type ReaderModuleState = "idle" | "preparing" | "ready" | "failed"
 
 export interface CameraPipelineDiagnostic {
   readerModuleState: ReaderModuleState
@@ -38,7 +33,6 @@ export interface CameraDiagnostic {
   phase: CameraDiagnosticPhase
   name: string | null
   detail: string
-  message: string | null
 }
 
 export type CameraScanState =
@@ -67,9 +61,6 @@ export interface ScanContext {
   once: boolean
   handle: QrScanHandle
   onText(text: string): void
-  modulePreparation: Promise<void>
-  webAssemblyRuntimeSupport: Promise<boolean>
-  readerRetryUsed: boolean
 }
 
 export interface CameraAttempt {
@@ -108,9 +99,7 @@ export interface CameraAttempt {
   decodeResultsSeen: number
   lastErrorName: string | null
   lastFrameErrorName: string | undefined
-  lastPreparationError: unknown | undefined
   retryDecoder: (() => void) | undefined
-  cancelModulePreparationWait: (() => void) | undefined
   abortSignal: AbortSignal | undefined
   abortListener: EventListener | undefined
 }

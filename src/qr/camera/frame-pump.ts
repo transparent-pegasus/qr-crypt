@@ -25,7 +25,6 @@ import {
   CAMERA_DECODE_PROGRESS_TIMEOUT_MS,
   CAMERA_FRAME_READY_TIMEOUT_MS,
   QrDecodeProgressTimeout,
-  waitForReaderModulePreparation,
   zxingReaderOptions,
 } from "@/qr/camera/reader-module"
 import { AttemptCancelled } from "@/qr/camera/types"
@@ -74,17 +73,10 @@ function clearFrameRecovery(attempt: CameraAttempt): void {
 function failDecode(attempt: CameraAttempt, error: unknown): void {
   if (!isActiveAttempt(attempt)) return
   const mapped = cameraError(error)
-  const preparationError =
-    attempt.lastPreparationError === error ? error : undefined
   reportAttemptError(
     attempt,
     mapped,
-    cameraDiagnostic(
-      attempt,
-      diagnosticName(error),
-      attempt.phase,
-      preparationError,
-    ),
+    cameraDiagnostic(attempt, diagnosticName(error), attempt.phase),
   )
   stopAttempt(attempt)
 }
@@ -312,7 +304,6 @@ async function decodeFrame(context: ScanContext): Promise<void> {
     )
     context.attempt.videoFramesDrawn += 1
     // A successful draw proves scheduling progress and starts a fresh decode window.
-    // The shorter reader-preparation bound will still identify a hung module first.
     armDecodeProgressWatchdog(context.attempt)
     publishPipelineDiagnostic(context.attempt)
     clearFrameRecovery(context.attempt)
@@ -322,21 +313,6 @@ async function decodeFrame(context: ScanContext): Promise<void> {
       0,
       dimensions.width,
       dimensions.height,
-    )
-    if (!isActiveAttempt(context.attempt)) return
-
-    if (!(await context.webAssemblyRuntimeSupport)) {
-      throw new ConcreteAppError("QR_READER_BLOCKED")
-    }
-    if (!isActiveAttempt(context.attempt)) return
-
-    // Reader preparation remains after the first real draw so camera acquisition is
-    // never blocked on WASM, but unlike frame readiness it has its own bounded wait.
-    await waitForReaderModulePreparation(
-      context,
-      publishPipelineDiagnostic,
-      diagnosticName,
-      () => armDecodeProgressWatchdog(context.attempt),
     )
     if (!isActiveAttempt(context.attempt)) return
 
@@ -391,8 +367,6 @@ export async function startAttempt(
   handle: QrScanHandle,
   onText: (text: string) => void,
   once: boolean,
-  modulePreparation: Promise<void>,
-  webAssemblyRuntimeSupport: Promise<boolean>,
 ): Promise<ScannerControls> {
   const stream = await acquireWithRetries(attempt)
   if (!isActiveAttempt(attempt)) {
@@ -431,9 +405,6 @@ export async function startAttempt(
     once,
     handle,
     onText,
-    modulePreparation,
-    webAssemblyRuntimeSupport,
-    readerRetryUsed: false,
   }
   attempt.controls = pump
   attempt.decodePumpStarted = true
@@ -443,8 +414,8 @@ export async function startAttempt(
   attempt.lastFrameErrorName = undefined
   ensureFrameReadyTimeout(attempt)
   attempt.retryDecoder = () => scheduleNextFrame(context, Date.now(), true)
-  // Preserve the initial rVFC grace period; the readiness watchdog is already armed.
-  // Steady-state scheduling above uses the cadence deadline with no added grace.
+  // Preserve the initial rVFC grace period; the frame-readiness watchdog is already
+  // armed. Steady-state scheduling above uses the cadence deadline with no added grace.
   scheduleNextFrame(context, Date.now(), false, frameRetryDelayMs)
   retryVideoPlayback(attempt)
   return pump

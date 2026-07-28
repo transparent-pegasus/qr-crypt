@@ -40,8 +40,6 @@ describe("i18n catalog", () => {
       "animatedQr.missing.body":
         "Missing frames: {indexes}. Recovery is not possible while frames are missing.",
       "scanner.progress.missingIndex": "Missing frames: {indexes}",
-      "errors.QR_READER_PREPARATION_TIMEOUT":
-        "The QR reader did not finish preparing on this device.",
       "errors.QR_DECODE_PROGRESS_TIMEOUT":
         "The QR decoding pipeline stopped making progress on this device.",
       "settings.error.saveFailed":
@@ -58,8 +56,6 @@ describe("i18n catalog", () => {
       "scanner.error.singleWhileMultipart":
         "複数QR読取中です。単発QRは読取完了または破棄後に読み取ってください。",
       "scanner.progress.missingIndex": "欠損フレーム: {indexes}",
-      "errors.QR_READER_PREPARATION_TIMEOUT":
-        "この端末でQRリーダーの準備が完了しませんでした。",
       "errors.QR_DECODE_PROGRESS_TIMEOUT":
         "この端末でQR復号パイプラインの進行が停止しました。",
       "hooks.preferences.loadFailed":

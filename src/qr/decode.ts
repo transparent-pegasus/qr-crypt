@@ -1,6 +1,5 @@
 import type { AppError } from "@/crypto/errors"
 import { AppError as ConcreteAppError } from "@/crypto/errors"
-import { probeWebAssemblyRuntime } from "@/lib/feature-detect"
 import {
   reportAttemptError,
   stopAttempt,
@@ -38,7 +37,6 @@ import type {
 export {
   CAMERA_DECODE_PROGRESS_TIMEOUT_MS,
   CAMERA_FRAME_READY_TIMEOUT_MS,
-  CAMERA_READER_PREPARATION_TIMEOUT_MS,
   CAMERA_READER_READY_TIMEOUT_MS,
   CAMERA_START_TIMEOUT_MS,
 } from "@/qr/camera/reader-module"
@@ -118,9 +116,7 @@ async function startQrScanImplementation(
     decodeResultsSeen: 0,
     lastErrorName: null,
     lastFrameErrorName: undefined,
-    lastPreparationError: undefined,
     retryDecoder: undefined,
-    cancelModulePreparationWait: undefined,
     abortSignal: undefined,
     abortListener: undefined,
   }
@@ -145,21 +141,18 @@ async function startQrScanImplementation(
     throw attempt.failure ?? new ConcreteAppError("CAMERA_NOT_AVAILABLE")
   }
 
-  // Neither promise is awaited: getUserMedia has to run inside the tap's
-  // user-activation window. The decoder awaits both only after its first drawn frame,
-  // with a bounded wait for reader preparation.
-  const modulePreparation = prepareQrReaderModule(publishPipelineDiagnostic)
+  // Still seeded here: this is the only call that installs zxingModuleOverrides,
+  // and without it readBarcodes would fall back to zxing-wasm's CDN URL. The UI
+  // gate has already awaited it; nothing in the decode path waits any more.
+  prepareQrReaderModule(publishPipelineDiagnostic)
   attempt.readerModuleState = readerModuleState()
   publishPipelineDiagnostic(attempt)
-  const webAssemblyRuntimeSupport = probeWebAssemblyRuntime()
 
   const operation: Promise<AttemptOutcome> = startAttempt(
     attempt,
     handle,
     onText,
     options?.once ?? true,
-    modulePreparation,
-    webAssemblyRuntimeSupport,
   ).then(
     (controls) => ({ kind: "ready", controls }),
     (error: unknown) => ({ kind: "error", error }),

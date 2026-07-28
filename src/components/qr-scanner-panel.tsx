@@ -398,7 +398,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       setDiagnostic(
         scanError.code === "CAMERA_PERMISSION_DENIED" ||
           scanError.code === "CAMERA_NOT_AVAILABLE" ||
-          scanError.code === "QR_READER_PREPARATION_TIMEOUT" ||
           scanError.code === "QR_DECODE_PROGRESS_TIMEOUT"
           ? cameraDiagnostic
           : null,
@@ -767,18 +766,11 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             aria-label={t("scanner.diagnostic.ariaLabel")}
             className="font-mono text-xs text-muted-foreground"
           >
-            {diagnostic.message === null
-              ? t("scanner.diagnostic", {
-                  name: diagnostic.name ?? "unknown",
-                  phase: diagnostic.phase,
-                  detail: diagnostic.detail,
-                })
-              : t("scanner.diagnostic.withMessage", {
-                  name: diagnostic.name ?? "unknown",
-                  phase: diagnostic.phase,
-                  detail: diagnostic.detail,
-                  message: diagnostic.message,
-                })}
+            {t("scanner.diagnostic", {
+              name: diagnostic.name ?? "unknown",
+              phase: diagnostic.phase,
+              detail: diagnostic.detail,
+            })}
           </p>
         )}
         {pipelineDiagnostic && (

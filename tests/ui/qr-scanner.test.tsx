@@ -94,6 +94,33 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
   })
 
+  it("cleans up a pending reader gate when the panel unmounts", async () => {
+    readerModuleState.mockReturnValue("idle")
+    vi.useFakeTimers()
+    const preparation = deferred<void>()
+    void preparation.promise.catch(() => undefined)
+    warmQrReader.mockReturnValue(preparation.promise)
+    const view = render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    expect(startQrScan).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBeGreaterThan(0)
+
+    view.unmount()
+
+    expect(vi.getTimerCount()).toBe(0)
+    await act(async () => {
+      preparation.reject(new Error("late reader preparation failure"))
+      await preparation.promise.catch(() => undefined)
+    })
+    expect(probeWebAssemblyRuntime).not.toHaveBeenCalled()
+    expect(startQrScan).not.toHaveBeenCalled()
+  })
+
   it("does not auto-start when the reader was not ready at mount", async () => {
     readerModuleState.mockReturnValue("idle")
     const preparation = deferred<void>()
@@ -410,7 +437,6 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         phase: "track-ended",
         name: "NotReadableError",
         detail: "0x0 rs=2 track=ended/unmuted",
-        message: null,
       })
       throw cameraError
     })
@@ -473,7 +499,6 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         phase: "acquiring",
         name: null,
         detail: "0x0 rs=0 track=none",
-        message: null,
       })
     })
     await user.click(
