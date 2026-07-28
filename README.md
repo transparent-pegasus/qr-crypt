@@ -142,6 +142,10 @@ For post-quantum identities, the rotation cadence is the granularity of forward 
 Rotation retains superseded generations for decryption, so every envelope addressed to an
 older generation remains decryptable until you explicitly discard that generation.
 
+A message already received in this session is flagged before its contents are shown, and
+the same message identifier arriving with different ciphertext is refused. The check is
+session-scoped: it restarts when the app reloads.
+
 The post-quantum suites are **experimental** and **not independently audited**. QR Crypt
 adopts implementations of the FIPS 203 / FIPS 204 algorithms; that does not confer FIPS 140
 validation or an independent security assessment. Current status and blockers:

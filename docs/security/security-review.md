@@ -209,6 +209,64 @@ dismissible.
   re-verified after the override. `aube audit` currently exits 0.
 - Supply-chain pins re-verified clean: `react-hook-form@7.82.0`, `eslint-config-prettier@10.1.8`
 
+## 1.1 Findings F-01 / F-02 / F-03 (2026-07-28)
+
+Self-review findings closed or deferred on branch `feat/receipt-and-key-id-guard`.
+They do not close the external `release-approved` blocker.
+
+### F-01 — Route A install procedure completeness
+
+- **Found:** the README carried a partial Route A procedure while the archive's
+  `INSTALL.txt` was the only self-contained copy that reaches the offline device;
+  mandatory independent rebuild-and-compare was easy to understate.
+- **Shipped:** `docs/develop/install-route-a.md` holds the complete Route A
+  procedure with its mandatory set aligned to `INSTALL.txt`; both READMEs keep a
+  summary plus a link. High-assurance use must use Route A only.
+- **Deferred:** none for this finding.
+
+### F-02 — Replayed / re-presented ciphertext
+
+- **Found:** a recipient had no in-app signal that the same ciphertext had already
+  been accepted, and nothing refused a reused authenticated message ID carrying
+  different ciphertext.
+- **Shipped:** decryption returns the authenticated `messageId` and `createdAt`.
+  `src/features/receipt-cache.ts` keeps a session-memory receipt per authenticated
+  message (bounded at `MAX_SESSION_RECEIPTS`, oldest-first eviction). A
+  byte-identical re-presentation is flagged behind an explicit reveal; the same
+  authenticated message ID with different ciphertext is refused as
+  `MESSAGE_ID_REUSED`. `clearReceipts` runs from the wipe coordinator's buffer-drop
+  step and from the boot controller's transient-clear path. Nothing frame-derived
+  is persisted: the §1 / T11 / T19 / clean-origin boot-gate invariant is unchanged.
+  Residual, stated in the threat model: detection does not survive a reload or
+  restart; evicted entries become undetectable again; unsigned suites and v1 AES
+  bind only recipient key and ciphertext; `createdAt` remains sender-asserted.
+- **Deferred / open security-design decision — persistent cross-session replay
+  detection:** implementing it requires relaxing the no-frame-derived-persistence
+  invariant, device-keyed opaque tags instead of a public ciphertext hash,
+  `receivedMessages` ownership in `readBootDecision`
+  (`src/app/boot/boot-controller.ts`), and matching changes to
+  `docs/spec/boot-and-reset-v2.md` (§2 sensitive-store scan, ~48–57). Not
+  implemented here.
+- **Also deferred:** conversation IDs, monotonic sequence numbers, hash chains,
+  and adding a message ID to the AES v1 format (all wire-format changes).
+
+### F-03 — Imported-bundle key-ID shadowing
+
+- **Found:** an attacker-supplied public bundle asserting a stored `signing.keyId`
+  could displace the legitimate record because resolution took the newest import;
+  a confirmed record could be shadowed by a later unverified import.
+- **Shipped:** unique indexes on `signing.keyId` and `kem.keyId`; `saveBundle`
+  refuses a byte-identical re-import with `DUPLICATE_KEY` and any other key-ID
+  collision with `KEY_ID_CONFLICT` (including partial collisions and collisions
+  with revoked rows); signing-key resolution is an exact index lookup that treats
+  revoked as unknown; the decrypt page resolves the sender from storage and
+  separates signature validity from identity (success colour only when
+  `fingerprint-confirmed`; unverified sender gets a destructive identity alert
+  above the plaintext). Revoke confirmation copy states that revoking reserves
+  the key IDs while deleting frees them.
+- **Deferred:** hiding an unverified signer's plaintext behind an explicit action,
+  and binding the sender public key into the signing target.
+
 ## 2. Prohibited Claims (UI / README / CI)
 
 None of the following may be used in UI, README, or CI displays.
@@ -243,6 +301,12 @@ guaranteed; JS memory erasure has limits
      oc-offline-ack-pending, oc-online-tab}`), IndexedDB values, console,
      `window.onerror` / unhandled rejections, visible error text,
      `document.title`, `location.href`, and history state.
+   - **Session receipts must never appear in IndexedDB, localStorage, or
+     CacheStorage.** Receipts are intentional session-memory residue only
+     (`src/features/receipt-cache.ts`). A change that persists them fails this
+     gate: it would store a frame-derived value, break the clean-origin boot
+     gate's "no frame-derived residue" premise, and contradict
+     `docs/security/threat-model.md` §1 / T11 / T19.
    - Errors use fixed i18n / `AppError` mappings — never interpolate raw
      input, frame metadata, `transferId`, hashes, or `caught.message`.
 5. Review the `aube-lock.yaml` diff (provenance maintained)
