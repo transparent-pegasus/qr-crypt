@@ -29,6 +29,11 @@ const STORE_PREFERENCES = "preferences"
 const STORE_APP_METADATA = "appMetadata"
 const STORE_PQ_IDENTITIES = "pqIdentities"
 
+// Minimal early-boot storage ports. These are NOT a re-declaration of idb's types for
+// their own sake: readBootDecision accepts an injected getDatabase() and casts to
+// BootDatabase, and tests/ui/boot-controller.test.tsx supplies a hand-written structural
+// fake against exactly this surface. Widening them to idb's generic types would couple
+// this fail-closed boundary, and that fake, to surface neither one uses.
 interface BootStore {
   count(): Promise<number>
   get(key: IDBValidKey): Promise<unknown>
