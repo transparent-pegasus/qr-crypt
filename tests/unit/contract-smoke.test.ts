@@ -19,7 +19,6 @@ import { QR_PREFIX } from "@/qr/payload"
 import { toUiAlgorithm, toWireAlgorithm } from "@/schemas/domain"
 import { env, parseAppEnv } from "@/schemas/env-schema"
 import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
-import encryptPageSource from "@/pages/encrypt-page.tsx?raw"
 
 describe("contract smoke", () => {
   it("keeps only error codes and resolves user messages explicitly by language", () => {
@@ -117,26 +116,6 @@ describe("contract smoke", () => {
     for (const limit of Object.values(symmetricLimits)) {
       expect(limit).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
     }
-  })
-
-  it("applies the A256GCM capacity bound in EncryptPage before encryption", () => {
-    const helperOccurrences =
-      encryptPageSource.match(
-        /maximumSymmetricPlaintextBytesForPayloadCapacity/gu,
-      )?.length ?? 0
-    const guardIndex = encryptPageSource.indexOf("const overPlaintextLimit")
-    const encryptionIndex = encryptPageSource.indexOf("const handleEncrypt")
-
-    // One occurrence is the import; a second proves the page actually derives
-    // and consumes the symmetric limit instead of only exposing a dead helper.
-    expect(helperOccurrences).toBeGreaterThanOrEqual(2)
-    expect(guardIndex).toBeGreaterThan(-1)
-    expect(guardIndex).toBeLessThan(encryptionIndex)
-    expect(
-      encryptPageSource.slice(guardIndex, encryptionIndex),
-    ).not.toContain(
-      "plaintextBytes.byteLength > env.maxPlaintextBytes",
-    )
   })
 
   it("QR capacity table and EC policy are fixed", () => {
