@@ -24,6 +24,8 @@ export interface AppEnv {
   qrRenderSize: number
   // Post-quantum multipart plaintext ceiling.
   maxPlaintextBytes: number
+  // RSA has been retired. Expose the property for compatibility, but it is always false.
+  enableRsa: false
   enableEcdh: boolean
   enableMlKem: boolean
   enableMlDsa: boolean
@@ -121,6 +123,8 @@ const rawSchema = z.object({
   // Post-quantum multipart plaintext ceiling. The A256GCM single-QR path
   // derives its smaller pre-encryption limit from the selected EC capacity.
   VITE_MAX_PLAINTEXT_BYTES: intFromString(120_000, 1, 120_000),
+  // Retired compatibility variable. Accept true, but always produce false after parsing.
+  VITE_ENABLE_RSA: boolFromString("false"),
   VITE_ENABLE_ECDH: boolFromString("false"),
   VITE_ENABLE_ML_KEM: boolFromString("true"),
   VITE_ENABLE_ML_DSA: boolFromString("true"),
@@ -190,6 +194,8 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     qrErrorCorrection: v.VITE_QR_ERROR_CORRECTION,
     qrRenderSize: v.VITE_QR_RENDER_SIZE,
     maxPlaintextBytes: v.VITE_MAX_PLAINTEXT_BYTES,
+    // Ignore VITE_ENABLE_RSA=true as retired compatibility behavior.
+    enableRsa: false,
     enableEcdh: v.VITE_ENABLE_ECDH,
     enableMlKem: v.VITE_ENABLE_ML_KEM,
     enableMlDsa: v.VITE_ENABLE_ML_DSA,

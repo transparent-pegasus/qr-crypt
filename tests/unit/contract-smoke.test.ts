@@ -50,7 +50,8 @@ describe("contract smoke", () => {
     // deliberately NOT the post-quantum multipart ceiling.
     expect(MAX_SYMMETRIC_PLAINTEXT_BYTES).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
     expect(MAX_CIPHERTEXT_BYTES).toBe(MAX_SYMMETRIC_PLAINTEXT_BYTES + 16)
-    const normalized = parseAppEnv({})
+    const normalized = parseAppEnv({ VITE_ENABLE_RSA: "true" })
+    expect(normalized.enableRsa).toBe(false)
     expect(normalized.qrFrameBytes).toBe(1_000)
     expect(normalized.qrFrameIntervalMs).toBe(200)
     for (const frameIntervalMs of FRAME_INTERVAL_MS_VALUES) {
@@ -67,6 +68,9 @@ describe("contract smoke", () => {
         }),
       ).toThrow("Invalid environment variables")
     }
+    expect(() => parseAppEnv({ VITE_ENABLE_RSA: "yes" })).toThrow(
+      "Invalid environment variables",
+    )
     expect(() => parseAppEnv({ VITE_QR_RENDER_SIZE: "abc" })).toThrow(
       "Invalid environment variables",
     )
