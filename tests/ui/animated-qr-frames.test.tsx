@@ -18,10 +18,10 @@ import {
 } from "@/components/qr-display"
 import { AppError } from "@/crypto/errors"
 import { useFrameSplit } from "@/hooks/use-frame-split"
+import { encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
-  encodeFrameToPayload,
   exportQrFramePayloads,
   qrPngBlob,
   renderQrDataUrl,

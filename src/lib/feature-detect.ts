@@ -19,6 +19,7 @@ const EMPTY_WEBASSEMBLY_MODULE = Uint8Array.of(
 )
 
 let webAssemblyRuntimeProbe: Promise<boolean> | undefined
+let webAssemblyRuntimeResolved: boolean | undefined
 
 export function hasWebAssemblyInstantiationApi(): boolean {
   try {
@@ -48,7 +49,16 @@ export function probeWebAssemblyRuntime(): Promise<boolean> {
     }
   })()
   webAssemblyRuntimeProbe = probe
+  void probe.then((available) => {
+    webAssemblyRuntimeResolved = available
+  })
   return probe
+}
+
+// The resolved probe result, or undefined while it is still in flight. Callers that
+// cannot await must treat undefined as "not yet known" and choose the safe branch.
+export function webAssemblyRuntimeSupport(): boolean | undefined {
+  return webAssemblyRuntimeResolved
 }
 
 export function detectFeatures(): FeatureSupport {

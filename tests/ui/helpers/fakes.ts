@@ -30,7 +30,6 @@ import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
 import { MAX_ARTIFACT_BYTES_ABSOLUTE } from "@/lib/limits"
 
 const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 
 function cryptoKey(type: KeyType): CryptoKey {
   return {
@@ -186,29 +185,8 @@ export const FakeAppError = AppError
 export type FakeAppError = AppError
 
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
-export const probeWebAssemblyRuntime = vi.fn(async () => true)
+export const webAssemblyRuntimeSupport = vi.fn<() => boolean | undefined>(() => true)
 
-export const utf8ToBytes = vi.fn((value: string) => encoder.encode(value))
-export const bytesToUtf8 = vi.fn((value: Uint8Array) => decoder.decode(value))
-export const utf8ByteLength = vi.fn((value: string) => encoder.encode(value).byteLength)
-export const bytesToHex = vi.fn((value: Uint8Array) =>
-  Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join(""),
-)
-export const concatBytes = vi.fn((...parts: Uint8Array[]) => {
-  const length = parts.reduce((total, part) => total + part.byteLength, 0)
-  const result = new Uint8Array(length)
-  let offset = 0
-  for (const part of parts) {
-    result.set(part, offset)
-    offset += part.byteLength
-  }
-  return result
-})
-export const bytesEqual = vi.fn(
-  (a: Uint8Array, b: Uint8Array) =>
-    a.length === b.length && a.every((byte, index) => byte === b[index]),
-)
-export const toOwnedArrayBuffer = vi.fn((value: Uint8Array) => value.slice().buffer)
 export const sha256 = vi.fn(async (value: Uint8Array) => {
   const result = new Uint8Array(32)
   result[0] = value.byteLength % 256
@@ -660,32 +638,6 @@ export const splitIntoFrames = vi.fn(
       return frame
     })
   },
-)
-
-const V2_PREFIX: Record<V2ArtifactType, string> = {
-  "pq-message": "OCM2:",
-  "pq-public-identity": "OCI2:",
-  "pq-kem-public-key": "OCP2:",
-  "pq-dsa-public-key": "OCS2:",
-  "encrypted-seed-backup": "OCB2:",
-}
-export const buildV2Payload = vi.fn((kind: V2ArtifactType) => `${V2_PREFIX[kind]}fake`)
-export const splitV2Payload = vi.fn((payload: string) => {
-  const match = (Object.entries(V2_PREFIX) as [V2ArtifactType, string][]).find(
-    ([, prefix]) => payload.startsWith(prefix),
-  )
-  if (!match || match[0] === "encrypted-seed-backup") {
-    throw new FakeAppError("INVALID_QR_PAYLOAD")
-  }
-  const [kind] = match
-  return {
-    kind,
-    bytes: new Uint8Array(kind === "pq-public-identity" ? 650 : 350),
-  }
-})
-export const encodeFrameToPayload = vi.fn(
-  (frame: QrFrameV2) =>
-    `OCF2:${Array.from(frame.transferId).join("")}:${frame.frameIndex}:${frame.frameCount}:${frame.artifactType}`,
 )
 
 export function multipartPayload(

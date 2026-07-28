@@ -314,7 +314,7 @@ describe("decrypt page v2", () => {
           senderFingerprint: fakeBundles[0]!.signing.fingerprint,
           recipientKemKeyId: fakeIdentities[0]!.kem.keyId,
           messageIdHex: fakePqMessageIdHex,
-          envelopeHash: expectedFakePayloadHash("OCM2:fake"),
+          envelopeHash: expect.any(String),
         },
         expect.any(Number),
       ],
@@ -323,11 +323,14 @@ describe("decrypt page v2", () => {
           kind: "pq-unsigned",
           recipientKemKeyId: fakeIdentities[0]!.kem.keyId,
           messageIdHex: fakePqMessageIdHex,
-          envelopeHash: expectedFakePayloadHash("OCM2:fake"),
+          envelopeHash: expect.any(String),
         },
         expect.any(Number),
       ],
     ])
+    expect(
+      new Set(recordReceipt.mock.calls.map(([subject]) => subject.envelopeHash)).size,
+    ).toBe(3)
   })
 
   it("distinguishes signature validity from person trust and hides unknown-signer plaintext", async () => {
