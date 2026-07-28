@@ -104,6 +104,18 @@ interface ScannerPump extends ScannerControls {
   cancelled: boolean
 }
 
+interface ScanContext {
+  attempt: CameraAttempt
+  pump: ScannerPump
+  canvas: HTMLCanvasElement
+  frameContext: CanvasRenderingContext2D
+  once: boolean
+  handle: QrScanHandle
+  onText(text: string): void
+  modulePreparation: Promise<void>
+  webAssemblyRuntimeSupport: Promise<boolean>
+}
+
 interface CameraAttempt {
   readonly id: number
   readonly video: HTMLVideoElement
@@ -570,7 +582,7 @@ async function acquireWithRetries(attempt: CameraAttempt): Promise<MediaStream> 
 
 async function startAttempt(
   attempt: CameraAttempt,
-  handle: QrScanHandle,
+  handle: ScanContext["handle"],
   onText: (text: string) => void,
   once: boolean,
   modulePreparation: Promise<void>,
