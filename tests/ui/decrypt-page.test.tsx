@@ -3,9 +3,14 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
+import { encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import { formatDateTime } from "@/features/presentation"
 import { translate } from "@/i18n/messages"
-import type { PqPublicBundleRecord } from "@/schemas/domain"
+import { buildV2Payload } from "@/qr/payload-v2"
+import type {
+  MlKemMessageEnvelopeV2,
+  PqPublicBundleRecord,
+} from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
   deferNextMultipartAdd,
@@ -60,10 +65,12 @@ function expectedFakePayloadHash(payload: string): string {
     .padStart(64, "0")
 }
 
-async function preparePqPayload(signed: boolean): Promise<void> {
+async function preparePqPayload(
+  signed: boolean,
+): Promise<MlKemMessageEnvelopeV2> {
   const identity = fakeIdentities[0]!
   const storedBundle = fakeBundles[0]!
-  await encryptPq({
+  const envelope = await encryptPq({
     recipient: {
       ...storedBundle,
       kem: {
@@ -76,6 +83,7 @@ async function preparePqPayload(signed: boolean): Promise<void> {
     now: fakePqCreatedAt,
   })
   fakePqDecrypt.kind = signed ? "signed-valid" : "unsigned"
+  return envelope
 }
 
 describe("decrypt page v2", () => {
@@ -273,7 +281,10 @@ describe("decrypt page v2", () => {
       ).not.toBeInTheDocument(),
     )
 
-    await preparePqPayload(true)
+    const signedEnvelope = await preparePqPayload(true)
+    const signedEnvelopeHash = expectedFakePayloadHash(
+      buildV2Payload("pq-message", encodeMlKemEnvelopeV2(signedEnvelope)),
+    )
     fireEvent.change(input, {
       target: { value: "OCM2:signed" },
     })
@@ -289,7 +300,10 @@ describe("decrypt page v2", () => {
       ).not.toBeInTheDocument(),
     )
 
-    await preparePqPayload(false)
+    const unsignedEnvelope = await preparePqPayload(false)
+    const unsignedEnvelopeHash = expectedFakePayloadHash(
+      buildV2Payload("pq-message", encodeMlKemEnvelopeV2(unsignedEnvelope)),
+    )
     fireEvent.change(input, {
       target: { value: "OCM2:unsigned" },
     })
@@ -314,7 +328,7 @@ describe("decrypt page v2", () => {
           senderFingerprint: fakeBundles[0]!.signing.fingerprint,
           recipientKemKeyId: fakeIdentities[0]!.kem.keyId,
           messageIdHex: fakePqMessageIdHex,
-          envelopeHash: expect.any(String),
+          envelopeHash: signedEnvelopeHash,
         },
         expect.any(Number),
       ],
@@ -323,7 +337,7 @@ describe("decrypt page v2", () => {
           kind: "pq-unsigned",
           recipientKemKeyId: fakeIdentities[0]!.kem.keyId,
           messageIdHex: fakePqMessageIdHex,
-          envelopeHash: expect.any(String),
+          envelopeHash: unsignedEnvelopeHash,
         },
         expect.any(Number),
       ],
