@@ -43,11 +43,10 @@ export const MAX_PLAINTEXT_BYTES = MAX_PQ_PLAINTEXT_BYTES
 // This limit includes headroom.
 export const MAX_AAD_BYTES = 128
 
-// Payload-string limit exclusively for the v1 path; unused by v2.
-// Maximum RSA hybrid envelope ≈ CBOR (9 fixed keys + ciphertext 4112B
-// + wrappedKey 384B + iv 12B + aad ≤128B + string IDs) ≈ 4.7KB
-// → base64url ≈ ceil(4700×4/3) ≈ 6267 + 5-character prefix ≈ 6.3K < 8192
-// (including headroom).
+// Input ceiling for the v1 path before parsing; unused by v2. The value is a chosen
+// bound, not a derived one: the largest payload any live v1 envelope produces is far
+// below it, and the per-EC-level QR capacity in qr/encode.ts is what actually binds
+// generation. Kept as a cheap pre-parse guard against oversized input.
 export const MAX_PAYLOAD_CHARS = 8192
 
 // A v1 A256GCM message has a five-character OCM1 prefix and at most 201
@@ -90,9 +89,6 @@ export const MAX_CIPHERTEXT_BYTES = MAX_SYMMETRIC_PLAINTEXT_BYTES + 16
 // Key IDs / artifact IDs: base64url of 16 random bytes (22 characters).
 export const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/
 export const KEY_ID_RAW_BYTES = 16
-
-// RSA-OAEP-3072 wrapping output is always the modulus length: 384B.
-export const WRAPPED_KEY_BYTES = 384
 
 // AES-GCM IVs are fixed at 96 bits.
 export const IV_BYTES = 12

@@ -149,13 +149,15 @@ async function assertNoRelayPersistence(
 }
 
 test("relays verbatim header-declared message frames without frame-bearing persistence or requests", async ({
+  baseURL,
   browser,
   context,
   page,
 }) => {
   test.setTimeout(180_000)
+  if (baseURL === undefined) throw new Error("E2E_BASE_URL_MISSING")
   const sourceContext = await browser.newContext({
-    baseURL: "http://localhost:4173",
+    baseURL,
   })
   const source = await sourceContext.newPage()
   let framePayloads: string[]

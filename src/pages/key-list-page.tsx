@@ -7,6 +7,7 @@ import {
   KeyDetailDialog,
   type KeySelection,
 } from "@/components/key-detail-dialog"
+import { Fingerprint } from "@/components/fingerprint"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
@@ -41,7 +42,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toAppError } from "@/crypto/errors"
 import { assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
-import { formatDateTime, formatFingerprint } from "@/features/presentation"
+import { formatDateTime } from "@/features/presentation"
 import { useKeys } from "@/hooks/use-keys"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import {
@@ -563,19 +564,6 @@ export function KeyListPage() {
         </AlertDialogContent>
       </AlertDialog>
     </section>
-  )
-}
-
-function Fingerprint({ label, value }: { label: string; value: string }) {
-  const { t } = useI18n()
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="break-all font-mono text-xs">{value}</p>
-      <p className="font-mono text-sm">
-        {t("common.fingerprintCompare", { value: formatFingerprint(value) })}
-      </p>
-    </div>
   )
 }
 
