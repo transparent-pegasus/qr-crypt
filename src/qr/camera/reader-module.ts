@@ -7,8 +7,7 @@ import {
 import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url"
 
 import { hasWebAssemblyInstantiationApi } from "@/lib/feature-detect"
-import { currentAttempt } from "@/qr/camera/attempt-registry"
-import type { CameraAttempt, ReaderModuleState } from "@/qr/camera/types"
+import type { ReaderModuleState } from "@/qr/camera/types"
 
 export const CAMERA_START_TIMEOUT_MS = 8_000
 export const CAMERA_FRAME_READY_TIMEOUT_MS = 6_000
@@ -19,11 +18,6 @@ export const CAMERA_READER_READY_TIMEOUT_MS = 30_000
 // Two frame-readiness windows remain far beyond the healthy 200 ms empty-decode
 // cadence while bounding a readBarcodes call that never settles.
 export const CAMERA_DECODE_PROGRESS_TIMEOUT_MS = CAMERA_FRAME_READY_TIMEOUT_MS * 2
-
-export type PipelineDiagnosticPublisher = (
-  attempt: CameraAttempt,
-  readerModuleState?: ReaderModuleState,
-) => void
 
 const zxingModuleOverrides: ZXingModuleOverrides = {
   locateFile(path: string, scriptDirectory: string) {
@@ -59,9 +53,7 @@ export function readerModuleState(): ReaderModuleState {
 // Start or reuse WASM preparation. The shared readiness gate awaits this before
 // enabling capture; startQrScan refuses every non-ready state before camera
 // acquisition so a purged failed generation cannot reach the CDN default.
-export function prepareQrReaderModule(
-  publishPipelineDiagnostic: PipelineDiagnosticPublisher,
-): Promise<void> {
+export function prepareQrReaderModule(): Promise<void> {
   // Latched for the life of the document: the reported failure mode does not
   // recover in-page, and re-preparing only produces a second stalled generation.
   if (zxingModuleFailure !== undefined) return zxingModuleFailure
@@ -99,29 +91,22 @@ export function prepareQrReaderModule(
 
   const preparation = started.then(() => {
     zxingModuleState = "ready"
-    const attempt = currentAttempt()
-    if (attempt !== null) publishPipelineDiagnostic(attempt, zxingModuleState)
   })
   zxingModulePromise = preparation
   // Latch the failure for this document and swallow the rejection here: the seeding
-  // call in startQrScan deliberately does not await it. Cleanup runs to completion
-  // before the diagnostic so callbacks observe the terminal generation.
+  // call in startQrScan deliberately does not await it.
   void preparation.catch(() => {
     if (zxingModulePromise !== preparation) return
     zxingModuleFailure = preparation
     zxingModulePromise = undefined
     zxingModuleState = "failed"
     purgeZXingModule()
-    const attempt = currentAttempt()
-    if (attempt !== null) publishPipelineDiagnostic(attempt, zxingModuleState)
   })
   return preparation
 }
 
 // Fetch and compile the reader ahead of any tap. The readiness gate awaits the returned
 // promise and presents a latched failure instead of starting another generation in-page.
-export function warmQrReaderModule(
-  publishPipelineDiagnostic: PipelineDiagnosticPublisher,
-): Promise<void> {
-  return prepareQrReaderModule(publishPipelineDiagnostic)
+export function warmQrReaderModule(): Promise<void> {
+  return prepareQrReaderModule()
 }

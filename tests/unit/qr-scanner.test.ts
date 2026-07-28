@@ -402,7 +402,6 @@ describe("camera scanner lifecycle", () => {
     })
     getUserMedia.mockResolvedValue(mediaStream(track))
     const onError = vi.fn()
-    const onDiagnostic = vi.fn()
     const decoder = await loadDecoder()
     const nativeSetTimeout = globalThis.setTimeout
     let suppressedTimerHandle = 1_000_000
@@ -430,7 +429,7 @@ describe("camera scanner lifecycle", () => {
       asVideoElement(fakeVideo),
       vi.fn(),
       onError,
-      { once: false, onDiagnostic },
+      { once: false },
     )
     await flushMicrotasks()
 
@@ -444,19 +443,8 @@ describe("camera scanner lifecycle", () => {
 
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "QR_DECODE_PROGRESS_TIMEOUT" }),
-      {
-        phase: "playing",
-        name: "QrDecodeProgressTimeout",
-        detail: "640x480 rs=2 track=live/unmuted",
-      },
+      "failed",
     )
-    expect(onDiagnostic).toHaveBeenLastCalledWith({
-      readerModuleState: "ready",
-      videoFramesDrawn: 0,
-      decodeAttemptsCompleted: 0,
-      decodeResultsSeen: 0,
-      lastErrorName: "QrDecodeProgressTimeout",
-    })
     expect(zxing.readBarcodes).not.toHaveBeenCalled()
     expect(track.stop).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
@@ -671,11 +659,7 @@ describe("camera scanner lifecycle", () => {
 
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      {
-        phase: "playing",
-        name: "IndexSizeError",
-        detail: "0x0 rs=2 track=live/unmuted",
-      },
+      "failed",
     )
     expect(zxing.readBarcodes).not.toHaveBeenCalled()
     expect(fakeVideo.play).toHaveBeenCalled()
@@ -807,11 +791,7 @@ describe("camera scanner lifecycle", () => {
     expect(onError).toHaveBeenCalledOnce()
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      {
-        phase: "track-ended",
-        name: null,
-        detail: "640x480 rs=2 track=ended/unmuted",
-      },
+      "track-ended",
     )
     expect(track.stop).toHaveBeenCalledOnce()
     handle.stop()
@@ -898,11 +878,7 @@ describe("camera scanner lifecycle", () => {
     expect(oldText).not.toHaveBeenCalled()
     expect(replacementError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "QR_DECODE_PROGRESS_TIMEOUT" }),
-      {
-        phase: "playing",
-        name: "QrDecodeProgressTimeout",
-        detail: "640x480 rs=2 track=live/unmuted",
-      },
+      "failed",
     )
     expect(oldTrack.stop).toHaveBeenCalledOnce()
     expect(replacementTrack.stop).toHaveBeenCalledOnce()
@@ -950,11 +926,7 @@ describe("camera scanner lifecycle", () => {
     expect(oldText).not.toHaveBeenCalled()
     expect(replacementError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      {
-        phase: "acquiring",
-        name: "unknown",
-        detail: "640x480 rs=2 track=none",
-      },
+      "failed",
     )
     expect(oldTrack.stop).toHaveBeenCalledOnce()
     expect(replacementTrack.stop).not.toHaveBeenCalled()
@@ -1112,7 +1084,6 @@ describe("camera scanner lifecycle", () => {
   it("keeps completing empty decode attempts across many watchdog windows", async () => {
     const track = new FakeTrack()
     const onError = vi.fn()
-    const onDiagnostic = vi.fn()
     getUserMedia.mockResolvedValue(mediaStream(track))
     zxing.readBarcodes.mockResolvedValue([])
     const decoder = await loadDecoder()
@@ -1121,7 +1092,7 @@ describe("camera scanner lifecycle", () => {
       videoElement(),
       vi.fn(),
       onError,
-      { once: false, onDiagnostic },
+      { once: false },
     )
 
     await advance(decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS * 10)
@@ -1129,13 +1100,6 @@ describe("camera scanner lifecycle", () => {
     expect(zxing.readBarcodes.mock.calls.length).toBeGreaterThan(100)
     expect(onError).not.toHaveBeenCalled()
     expect(track.stop).not.toHaveBeenCalled()
-    expect(onDiagnostic).toHaveBeenLastCalledWith({
-      readerModuleState: "ready",
-      videoFramesDrawn: zxing.readBarcodes.mock.calls.length,
-      decodeAttemptsCompleted: zxing.readBarcodes.mock.calls.length,
-      decodeResultsSeen: 0,
-      lastErrorName: null,
-    })
 
     handle.stop()
     expect(track.stop).toHaveBeenCalledOnce()
@@ -1189,7 +1153,7 @@ describe("camera scanner lifecycle", () => {
       },
     },
   ])(
-    "stops with playing diagnostics when readBarcodes $behavior",
+    "stops with a camera error when readBarcodes $behavior",
     async ({ name, arrange }) => {
       const track = new FakeTrack()
       getUserMedia.mockResolvedValue(mediaStream(track))
@@ -1209,11 +1173,7 @@ describe("camera scanner lifecycle", () => {
 
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-        {
-          phase: "playing",
-          name,
-          detail: "640x480 rs=2 track=live/unmuted",
-        },
+        "failed",
       )
       expect(track.stop).toHaveBeenCalledOnce()
       expect(vi.getTimerCount()).toBe(0)
@@ -1302,11 +1262,7 @@ describe("camera scanner lifecycle", () => {
     expect(getUserMedia).toHaveBeenCalledTimes(4)
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
-      {
-        phase: "acquiring",
-        name: "NotReadableError",
-        detail: "640x480 rs=2 track=none",
-      },
+      "failed",
     )
   })
 
@@ -1445,7 +1401,7 @@ describe("camera scanner lifecycle", () => {
     expect(getUserMedia).not.toHaveBeenCalled()
   })
 
-  it("never carries a scanned payload into a diagnostic", async () => {
+  it("reports a scanned-payload callback failure as a camera error", async () => {
     getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
     zxing.readBarcodes.mockResolvedValue(barcode("OCK1:SENTINEL-SECRET"))
     const onError = vi.fn()
@@ -1462,10 +1418,10 @@ describe("camera scanner lifecycle", () => {
     await advance(0)
     await flushMicrotasks()
 
-    expect(onError).toHaveBeenCalled()
-    for (const call of onError.mock.calls) {
-      expect(JSON.stringify(call[1])).not.toContain("SENTINEL-SECRET")
-    }
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "CAMERA_NOT_AVAILABLE" }),
+      "failed",
+    )
     handle.stop()
   })
 
@@ -1496,24 +1452,15 @@ describe("camera scanner lifecycle", () => {
 
   it("reuses a warm preparation instead of starting a second one", async () => {
     getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
-    const onDiagnostic = vi.fn()
     const decoder = await loadDecoder()
 
     await decoder.warmQrReader()
     const handle = await decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), {
       once: false,
-      onDiagnostic,
     })
     await advance(0)
 
     expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
-    expect(onDiagnostic.mock.calls[0]?.[0]).toEqual({
-      readerModuleState: "ready",
-      videoFramesDrawn: 0,
-      decodeAttemptsCompleted: 0,
-      decodeResultsSeen: 0,
-      lastErrorName: null,
-    })
     handle.stop()
   })
 })

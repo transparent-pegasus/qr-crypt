@@ -20,7 +20,7 @@ import {
 import { AppError, messageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
 import { translate } from "@/i18n/messages"
-import type { CameraDiagnostic, QrScanHandle } from "@/qr/decode"
+import type { QrScanHandle } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import {
   emitScannedPayload,
@@ -433,20 +433,6 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     expect(startQrScan.mock.calls[0]?.[3]).toMatchObject({ once: false })
     expect(startQrScan.mock.calls[0]?.[3]?.signal?.aborted).toBe(false)
-    act(() => {
-      startQrScan.mock.calls[0]?.[3]?.onDiagnostic?.({
-        readerModuleState: "preparing",
-        videoFramesDrawn: 0,
-        decodeAttemptsCompleted: 0,
-        decodeResultsSeen: 0,
-        lastErrorName: null,
-      })
-    })
-    expect(
-      screen.getByText(
-        "Pipeline: module=preparing frames=0 attempts=0 results=0 last=none",
-      ),
-    ).toBeInTheDocument()
 
     await act(async () => emitScannedPayload("OCM1:message"))
     await act(async () => emitScannedPayload("OCM1:message"))
@@ -562,21 +548,10 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     ).toBeEnabled()
   })
 
-  it("shows the camera user message and diagnostic before an explicit restart", async () => {
+  it("shows the camera user message before an explicit restart", async () => {
     const cameraError = new AppError("CAMERA_NOT_AVAILABLE")
-    startQrScan.mockImplementationOnce(async (_video, _onText, onError, options) => {
-      options?.onDiagnostic?.({
-        readerModuleState: "ready",
-        videoFramesDrawn: 12,
-        decodeAttemptsCompleted: 11,
-        decodeResultsSeen: 0,
-        lastErrorName: "NotReadableError",
-      })
-      onError(cameraError, {
-        phase: "track-ended",
-        name: "NotReadableError",
-        detail: "0x0 rs=2 track=ended/unmuted",
-      })
+    startQrScan.mockImplementationOnce(async (_video, _onText, onError) => {
+      onError(cameraError, "track-ended")
       throw cameraError
     })
     const user = userEvent.setup()
@@ -587,16 +562,6 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     expect(
       await screen.findByText(messageFor(cameraError.code, "en")),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "Diagnostic: NotReadableError @track-ended [0x0 rs=2 track=ended/unmuted]",
-      ),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "Pipeline: module=ready frames=12 attempts=11 results=0 last=NotReadableError",
-      ),
     ).toBeInTheDocument()
     expect(startQrScan).toHaveBeenCalledOnce()
 
@@ -610,7 +575,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     const newStop = vi.fn()
     let oldText: ((payload: string) => void) | undefined
     let oldError:
-      | ((error: AppError, diagnostic: CameraDiagnostic) => void)
+      | ((error: AppError, failureState: "failed" | "track-ended") => void)
       | undefined
     let newText: ((payload: string) => void) | undefined
     startQrScan
@@ -634,11 +599,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     )
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     act(() => {
-      oldError?.(new AppError("CAMERA_NOT_AVAILABLE"), {
-        phase: "acquiring",
-        name: null,
-        detail: "0x0 rs=0 track=none",
-      })
+      oldError?.(new AppError("CAMERA_NOT_AVAILABLE"), "failed")
     })
     await user.click(
       await screen.findByRole("button", { name: "Restart camera" }),

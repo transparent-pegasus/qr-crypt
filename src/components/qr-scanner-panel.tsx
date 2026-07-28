@@ -12,8 +12,7 @@ import { formatFramePositions } from "@/features/presentation"
 import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
 import {
   startQrScan,
-  type CameraDiagnostic,
-  type CameraPipelineDiagnostic,
+  type CameraFailureState,
   type CameraScanState,
   type QrScanHandle,
 } from "@/qr/decode"
@@ -99,9 +98,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   )
   const localizedError =
     error === null ? null : t(error.key, error.values)
-  const [diagnostic, setDiagnostic] = useState<CameraDiagnostic | null>(null)
-  const [pipelineDiagnostic, setPipelineDiagnostic] =
-    useState<CameraPipelineDiagnostic | null>(null)
   const [integrityConfirmed, setIntegrityConfirmed] = useState(
     transferState.kind === "complete",
   )
@@ -213,8 +209,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       cancelRun(run, "idle")
       publishCameraMode("delivering")
       setError(null)
-      setDiagnostic(null)
-      setPipelineDiagnostic(null)
       setCameraStatus(localized("scanner.status.delivering"))
       void (async () => {
         try {
@@ -254,8 +248,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       cameraStateRef.current = "failed"
       publishCameraMode("stopped")
       setError(localized("scanner.error.videoNotReady"))
-      setDiagnostic(null)
-      setPipelineDiagnostic(null)
       setCameraStatus(localized("scanner.status.videoNotReady"))
       return
     }
@@ -265,8 +257,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     cameraStateRef.current = "acquiring"
     publishCameraMode("running")
     setError(null)
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.preparing"))
 
     const finishSingleScan = (target: ScannerTarget, payload: string) => {
@@ -392,30 +382,14 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
 
     const onCameraError = (
       scanError: AppError,
-      cameraDiagnostic: CameraDiagnostic,
+      failedState: CameraFailureState,
     ) => {
       if (run.cancelled || activeRunRef.current !== run) return
       run.errorReported = true
-      const failedState: CameraScanState =
-        cameraDiagnostic.phase === "track-ended" ? "track-ended" : "failed"
       cancelRun(run, failedState)
       publishCameraMode("stopped")
       setError(localizedErrorCode(scanError.code))
-      setDiagnostic(
-        scanError.code === "CAMERA_PERMISSION_DENIED" ||
-          scanError.code === "CAMERA_NOT_AVAILABLE" ||
-          scanError.code === "QR_DECODE_PROGRESS_TIMEOUT"
-          ? cameraDiagnostic
-          : null,
-      )
       setCameraStatus(localized("scanner.status.cameraError"))
-    }
-
-    const onPipelineDiagnostic = (
-      nextDiagnostic: CameraPipelineDiagnostic,
-    ) => {
-      if (run.cancelled || activeRunRef.current !== run) return
-      setPipelineDiagnostic(nextDiagnostic)
     }
 
     let startPromise: Promise<QrScanHandle>
@@ -425,7 +399,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       startPromise = startQrScan(video, onText, onCameraError, {
         once: false,
         signal: run.abortController.signal,
-        onDiagnostic: onPipelineDiagnostic,
       })
     } catch (caught) {
       const appError = deliveryError(caught)
@@ -433,8 +406,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       cancelRun(run, "failed")
       publishCameraMode("stopped")
       setError(localizedErrorCode(appError.code))
-      setDiagnostic(null)
-      setPipelineDiagnostic(null)
       setCameraStatus(localized("scanner.status.startFailed"))
       return
     }
@@ -473,8 +444,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         cancelRun(run, "failed")
         publishCameraMode("stopped")
         setError(localizedErrorCode(appError.code))
-        setDiagnostic(null)
-        setPipelineDiagnostic(null)
         setCameraStatus(localized("scanner.status.startFailed"))
       })
   }, [
@@ -491,8 +460,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     cancelRun(run, "idle")
     publishCameraMode("stopped")
     setError(localized("scanner.error.stopped"))
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.stopped"))
   }, [cancelRun, publishCameraMode])
 
@@ -506,8 +473,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     publishCameraMode("idle")
     setIntegrityConfirmed(false)
     setError(null)
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.discardedCanStart"))
   }, [cancelRun, publishCameraMode, publishTransferState])
 
@@ -533,8 +498,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         cancelRun(run, "track-ended")
         publishCameraMode("stopped")
         setError(localized("scanner.error.hiddenStopped"))
-        setDiagnostic(null)
-        setPipelineDiagnostic(null)
         setCameraStatus(localized("scanner.status.leftScreenStopped"))
         return
       }
@@ -559,8 +522,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     cancelRun(activeRunRef.current, "failed")
     publishCameraMode("stopped")
     setError(localized("scanner.error.cameraUnavailable"))
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.cameraUnavailable"))
   }, [cameraAvailable, cancelRun, publishCameraMode])
 
@@ -578,8 +539,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     setError(
       next.kind === "error" ? localizedErrorCode(next.code) : null,
     )
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.idlePrompt"))
   }, [
     cancelRun,
@@ -604,8 +563,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       if (run !== null) cancelRun(run, "idle")
       publishCameraMode("idle")
       setIntegrityConfirmed(false)
-      setDiagnostic(null)
-      setPipelineDiagnostic(null)
       setError(
         previousKind === "collecting"
           ? localized("scanner.error.expiredDiscarded")
@@ -777,34 +734,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             <AlertTitle>{t("scanner.error.title")}</AlertTitle>
             <AlertDescription>{localizedError}</AlertDescription>
           </Alert>
-        )}
-        {diagnostic && (
-          <p
-            aria-label={t("scanner.diagnostic.ariaLabel")}
-            className="font-mono text-xs text-muted-foreground"
-          >
-            {t("scanner.diagnostic", {
-              name: diagnostic.name ?? "unknown",
-              phase: diagnostic.phase,
-              detail: diagnostic.detail,
-            })}
-          </p>
-        )}
-        {pipelineDiagnostic && (
-          <p
-            aria-label={t("scanner.pipelineDiagnostic.ariaLabel")}
-            className="font-mono text-[11px] leading-relaxed text-muted-foreground"
-          >
-            {t("scanner.pipelineDiagnostic", {
-              moduleState: pipelineDiagnostic.readerModuleState,
-              frames: pipelineDiagnostic.videoFramesDrawn,
-              attempts: pipelineDiagnostic.decodeAttemptsCompleted,
-              results: pipelineDiagnostic.decodeResultsSeen,
-              lastError:
-                pipelineDiagnostic.lastErrorName ??
-                t("scanner.pipelineDiagnostic.noError"),
-            })}
-          </p>
         )}
 
         {multipart !== undefined ? (
