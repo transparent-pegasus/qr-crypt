@@ -568,21 +568,16 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
     const response = await route.fetch()
     const source = await response.text()
     const startQrScanPattern =
-      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=[\s\S]{0,1000}?video:\1,onError:\3,onDiagnostic:\4\?\.onDiagnostic,stoppedPromise:[$\w]+,resolveStopped:[$\w]+,phase:[`"']acquiring[`"'],stopped:!1,emitted:!1,errorReported:!1)/g
+      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=if\([$\w]+\(\)!==[`"']ready[`"']\)throw new [$\w]+\([`"']QR_READER_BLOCKED[`"']\);)/g
     const matches = [...source.matchAll(startQrScanPattern)]
-    // Every occurrence, not exactly one: the bundler emits the scanner entry more
-    // than once now that both an eagerly loaded module and the lazy scan screens
-    // import it. Injecting into each copy is harmless — the hook is opt-in on a
-    // global — while requiring one copy only pinned a bundler detail.
-    if (matches.length === 0) {
-      throw new Error("Production scanner bundle marker was not found")
+    if (matches.length !== 1) {
+      throw new Error(
+        `Expected exactly one production scanner bundle marker, found ${matches.length}`,
+      )
     }
-    const body = source.replace(
-      startQrScanPattern,
-      (marker, video, onText, onError, options) =>
-        `${marker}if(globalThis.__qrCryptE2eDecoder){return await globalThis.__qrCryptE2eDecoder(${video},${onText},${onError},${options})}`,
-    )
-    await route.fulfill({ response, body })
+    const [marker, video, onText, onError, options] = matches[0]!
+    const injected = `${marker}if(globalThis.__qrCryptE2eDecoder){return await globalThis.__qrCryptE2eDecoder(${video},${onText},${onError},${options})}`
+    await route.fulfill({ response, body: source.replace(marker, injected) })
   })
 }
 

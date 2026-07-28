@@ -15,7 +15,7 @@ import {
   workerObservations,
 } from "./helpers"
 
-test("initializes the precached same-origin reader WASM on its first offline camera use", async ({
+test("warms the precached same-origin reader WASM before offline camera capture", async ({
   context,
   page,
 }) => {

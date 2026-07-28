@@ -17,23 +17,32 @@ export type QrReaderReadiness = "preparing" | "ready" | "failed" | "blocked"
  * scanners pass nothing and warm on mount.
  */
 export function useQrReaderReadiness(enabled = true): QrReaderReadiness {
-  const [readiness, setReadiness] = useState<QrReaderReadiness>(() =>
-    readerModuleState() === "ready" ? "ready" : "preparing",
-  )
+  const [readiness, setReadiness] = useState<QrReaderReadiness>(() => {
+    const moduleState = readerModuleState()
+    if (moduleState === "ready") return "ready"
+    if (moduleState === "failed") return "failed"
+    return "preparing"
+  })
 
   useEffect(() => {
     if (!enabled || readiness !== "preparing") return
 
     let settled = false
+    let classificationSettled = false
+    let timeoutId: number | undefined
     let classificationTimeoutId: number | undefined
     const finish = (next: QrReaderReadiness) => {
       if (settled) return
       settled = true
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId)
+        timeoutId = undefined
+      }
       setReadiness(next)
     }
     // A never-settling preparation must still reach a terminal state, or the
     // control stays disabled with nothing on screen to explain it.
-    const timeoutId = window.setTimeout(
+    timeoutId = window.setTimeout(
       () => finish("failed"),
       CAMERA_READER_READY_TIMEOUT_MS,
     )
@@ -44,7 +53,6 @@ export function useQrReaderReadiness(enabled = true): QrReaderReadiness {
 
         // A blocked runtime cannot be fixed by reloading, so the copy differs.
         // The probe is cached from boot; bound it too rather than trust it.
-        let classificationSettled = false
         const finishClassification = (next: QrReaderReadiness) => {
           if (classificationSettled) return
           classificationSettled = true
@@ -66,7 +74,8 @@ export function useQrReaderReadiness(enabled = true): QrReaderReadiness {
 
     return () => {
       settled = true
-      window.clearTimeout(timeoutId)
+      classificationSettled = true
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
       if (classificationTimeoutId !== undefined) {
         window.clearTimeout(classificationTimeoutId)
       }

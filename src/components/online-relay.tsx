@@ -6,6 +6,7 @@ import {
   ClipboardCopy,
   MessageSquareText,
   QrCode,
+  RefreshCw,
   ScanLine,
 } from "lucide-react"
 import type { RelaySessionEndReason } from "@/app/boot/boot-controller"
@@ -551,6 +552,33 @@ export function OnlineRelay({
                 ? t("relay.capture.cameraActive")
                 : t("relay.capture.startCamera")}
             </Button>
+
+            {readerReadiness !== "ready" && (
+              <div
+                aria-live="polite"
+                className="space-y-3 text-sm text-muted-foreground"
+              >
+                <p>
+                  {t(
+                    readerReadiness === "preparing"
+                      ? "scanner.status.readerLoading"
+                      : readerReadiness === "blocked"
+                        ? "errors.QR_READER_BLOCKED"
+                        : "scanner.reader.reloadHint",
+                  )}
+                </p>
+                {readerReadiness === "failed" && (
+                  <Button
+                    type="button"
+                    className="h-11 cursor-pointer focus-visible:ring-2"
+                    onClick={() => window.location.reload()}
+                  >
+                    <RefreshCw aria-hidden="true" />
+                    {t("scanner.button.reload")}
+                  </Button>
+                )}
+              </div>
+            )}
 
             {captureSet.metadata !== null && (
               <div className="space-y-1" aria-live="polite">

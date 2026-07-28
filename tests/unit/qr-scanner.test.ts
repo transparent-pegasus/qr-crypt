@@ -198,8 +198,14 @@ async function advance(ms: number): Promise<void> {
   await flushMicrotasks()
 }
 
-async function loadDecoder(): Promise<typeof import("@/qr/decode")> {
+async function loadColdDecoder(): Promise<typeof import("@/qr/decode")> {
   return import("@/qr/decode")
+}
+
+async function loadDecoder(): Promise<typeof import("@/qr/decode")> {
+  const decoder = await loadColdDecoder()
+  await decoder.warmQrReader()
+  return decoder
 }
 
 beforeEach(() => {
@@ -237,38 +243,62 @@ describe("camera scanner lifecycle", () => {
     vi.useFakeTimers()
   })
 
-  it("caches one pending reader preparation across scanner starts", async () => {
+  it("fails closed before camera acquisition while the reader is cold", async () => {
+    const decoder = await loadColdDecoder()
+
+    await expect(
+      decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), { once: false }),
+    ).rejects.toMatchObject({
+      name: "AppError",
+      code: "QR_READER_BLOCKED",
+    })
+
+    expect(zxing.prepareZXingModule).not.toHaveBeenCalled()
+    expect(getUserMedia).not.toHaveBeenCalled()
+    expect(zxing.readBarcodes).not.toHaveBeenCalled()
+  })
+
+  it("fails closed before camera acquisition while reader preparation is pending", async () => {
     const preparation = deferred<unknown>()
     zxing.prepareZXingModule.mockReturnValueOnce(preparation.promise)
-    const firstTrack = new FakeTrack()
-    const secondTrack = new FakeTrack()
-    getUserMedia
-      .mockResolvedValueOnce(mediaStream(firstTrack))
-      .mockResolvedValueOnce(mediaStream(secondTrack))
-    const decoder = await loadDecoder()
-
-    const firstHandle = await decoder.startQrScan(
-      videoElement(),
-      vi.fn(),
-      vi.fn(),
-      { once: false },
-    )
-    const secondHandle = await decoder.startQrScan(
-      videoElement(),
-      vi.fn(),
-      vi.fn(),
-      { once: false },
-    )
+    const decoder = await loadColdDecoder()
+    const warm = decoder.warmQrReader()
 
     expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
-    expect(firstTrack.stop).toHaveBeenCalledOnce()
-    expect(secondTrack.stop).not.toHaveBeenCalled()
+    expect(decoder.readerModuleState()).toBe("preparing")
+    await expect(
+      decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), { once: false }),
+    ).rejects.toMatchObject({
+      name: "AppError",
+      code: "QR_READER_BLOCKED",
+    })
+    expect(getUserMedia).not.toHaveBeenCalled()
+    expect(zxing.readBarcodes).not.toHaveBeenCalled()
+
     preparation.resolve({})
-    await flushMicrotasks()
+    await warm
     expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
-    firstHandle.stop()
-    secondHandle.stop()
-    expect(secondTrack.stop).toHaveBeenCalledOnce()
+  })
+
+  it("fails closed after a latched warm failure without reaching the CDN-capable reader path", async () => {
+    const failure = new WebAssembly.CompileError("reader warm failed")
+    zxing.prepareZXingModule.mockRejectedValueOnce(failure)
+    const decoder = await loadColdDecoder()
+
+    await expect(decoder.warmQrReader()).rejects.toBe(failure)
+    expect(decoder.readerModuleState()).toBe("failed")
+    expect(zxing.purgeZXingModule).toHaveBeenCalledOnce()
+
+    await expect(
+      decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), { once: false }),
+    ).rejects.toMatchObject({
+      name: "AppError",
+      code: "QR_READER_BLOCKED",
+    })
+
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    expect(getUserMedia).not.toHaveBeenCalled()
+    expect(zxing.readBarcodes).not.toHaveBeenCalled()
   })
 
   it("prepares one reader module with the stable same-origin WASM override", async () => {
@@ -1382,7 +1412,7 @@ describe("camera scanner lifecycle", () => {
         throw failure
       })
       .mockResolvedValueOnce({})
-    const decoder = await loadDecoder()
+    const decoder = await loadColdDecoder()
 
     const firstWarm = decoder.warmQrReader()
     const secondWarm = decoder.warmQrReader()
@@ -1398,7 +1428,7 @@ describe("camera scanner lifecycle", () => {
 
   it("latches the missing WebAssembly API branch for every warm call", async () => {
     vi.stubGlobal("WebAssembly", undefined)
-    const decoder = await loadDecoder()
+    const decoder = await loadColdDecoder()
 
     const firstWarm = decoder.warmQrReader()
     const secondWarm = decoder.warmQrReader()
@@ -1440,7 +1470,7 @@ describe("camera scanner lifecycle", () => {
   })
 
   it("warms the reader module without touching the camera", async () => {
-    const decoder = await loadDecoder()
+    const decoder = await loadColdDecoder()
 
     await expect(decoder.warmQrReader()).resolves.toBeUndefined()
 
@@ -1452,7 +1482,7 @@ describe("camera scanner lifecycle", () => {
     const failure = new Error("Aborted(wasm)")
     failure.name = "RuntimeError"
     zxing.prepareZXingModule.mockRejectedValueOnce(failure)
-    const decoder = await loadDecoder()
+    const decoder = await loadColdDecoder()
 
     const firstWarm = decoder.warmQrReader()
     await expect(firstWarm).rejects.toBe(failure)

@@ -82,6 +82,13 @@ async function startQrScanImplementation(
   onError: (error: AppError, diagnostic: CameraDiagnostic) => void,
   options?: StartQrScanOptions,
 ): Promise<QrScanHandle> {
+  // The UI gate is not the security boundary: future direct callers must not
+  // acquire a camera or reach zxing-wasm while its same-origin override is
+  // absent, pending, or latched failed.
+  if (readerModuleState() !== "ready") {
+    throw new ConcreteAppError("QR_READER_BLOCKED")
+  }
+
   const previous = currentAttempt()
   if (previous !== null) stopAttempt(previous)
 
@@ -141,9 +148,8 @@ async function startQrScanImplementation(
     throw attempt.failure ?? new ConcreteAppError("CAMERA_NOT_AVAILABLE")
   }
 
-  // Still seeded here: this is the only call that installs zxingModuleOverrides,
-  // and without it readBarcodes would fall back to zxing-wasm's CDN URL. The UI
-  // gate has already awaited it; nothing in the decode path waits any more.
+  // Reuse the already-ready generation. The fail-closed check above guarantees
+  // that a latched failure cannot reach zxing-wasm after its module was purged.
   prepareQrReaderModule(publishPipelineDiagnostic)
   attempt.readerModuleState = readerModuleState()
   publishPipelineDiagnostic(attempt)

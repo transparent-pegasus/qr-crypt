@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   Camera,
   CameraOff,
@@ -53,6 +53,7 @@ const IDLE_TRANSFER_STATE: TransferState = { kind: "idle" }
 export function QrScannerPanel(props: QrScannerPanelProps) {
   const { language, t } = useI18n()
   const readiness = useQrReaderReadiness()
+  const readinessRef = useRef(readiness)
   const readyAtMountRef = useRef(readiness === "ready")
   const {
     singleTargets,
@@ -104,6 +105,10 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const [integrityConfirmed, setIntegrityConfirmed] = useState(
     transferState.kind === "complete",
   )
+
+  useLayoutEffect(() => {
+    readinessRef.current = readiness
+  }, [readiness])
 
   useEffect(() => {
     cameraAvailableRef.current = cameraAvailable
@@ -173,6 +178,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       startLockedRef.current ||
       cameraModeRef.current === "running" ||
       cameraModeRef.current === "delivering" ||
+      readinessRef.current !== "ready" ||
       !cameraAvailableRef.current
     ) {
       return
@@ -619,6 +625,18 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const received = collecting?.receivedIndexes.size ?? 0
   const frameCount = collecting?.frameCount ?? 0
   const restartBlocked = transferState.kind === "error"
+  const announcedStatus = (() => {
+    switch (readiness) {
+      case "preparing":
+        return t("scanner.status.readerLoading")
+      case "blocked":
+        return t("errors.QR_READER_BLOCKED")
+      case "failed":
+        return t("scanner.reader.reloadHint")
+      case "ready":
+        return t(cameraStatus.key, cameraStatus.values)
+    }
+  })()
 
   return (
     <Card aria-busy={cameraMode === "running" || cameraMode === "delivering"}>
@@ -702,12 +720,11 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         )}
 
         <p
+          role="status"
           aria-live="polite"
           className="text-center text-sm text-muted-foreground"
         >
-          {readiness === "preparing"
-            ? t("scanner.status.readerLoading")
-            : t(cameraStatus.key, cameraStatus.values)}
+          {announcedStatus}
         </p>
 
         {collecting && (

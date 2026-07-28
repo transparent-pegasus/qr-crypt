@@ -182,9 +182,9 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         }),
       ).not.toBeInTheDocument(),
     )
-    expect(
-      screen.getByText(translate("en", "scanner.reader.reloadHint")),
-    ).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent(
+      translate("en", "scanner.reader.reloadHint"),
+    )
     expect(
       screen.getByRole("button", {
         name: translate("en", "scanner.button.reload"),
@@ -218,15 +218,154 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         }),
       ).not.toBeInTheDocument(),
     )
-    expect(
-      screen.getByText(translate("en", "errors.QR_READER_BLOCKED")),
-    ).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent(
+      translate("en", "errors.QR_READER_BLOCKED"),
+    )
     expect(
       screen.queryByRole("button", {
         name: translate("en", "scanner.button.reload"),
       }),
     ).not.toBeInTheDocument()
     expect(startQrScan).not.toHaveBeenCalled()
+  })
+
+  it("maps a latched module failure directly to failed without warming again", () => {
+    readerModuleState.mockReturnValue("failed")
+
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    expect(warmQrReader).not.toHaveBeenCalled()
+    expect(screen.getByRole("status")).toHaveTextContent(
+      translate("en", "scanner.reader.reloadHint"),
+    )
+    expect(
+      screen.getByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).toBeEnabled()
+  })
+
+  it("bounds a never-settling failure classification to two seconds", async () => {
+    readerModuleState.mockReturnValue("idle")
+    vi.useFakeTimers()
+    const preparation = deferred<void>()
+    const classification = deferred<boolean>()
+    void preparation.promise.catch(() => undefined)
+    warmQrReader.mockReturnValue(preparation.promise)
+    probeWebAssemblyRuntime.mockReturnValue(classification.promise)
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    await act(async () => {
+      preparation.reject(new Error("reader preparation failed"))
+      await preparation.promise.catch(() => undefined)
+      await Promise.resolve()
+    })
+    expect(probeWebAssemblyRuntime).toHaveBeenCalledOnce()
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_999))
+    expect(screen.getByRole("status")).toHaveTextContent(
+      translate("en", "scanner.status.readerLoading"),
+    )
+    expect(
+      screen.queryByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).not.toBeInTheDocument()
+
+    await act(async () => vi.advanceTimersByTimeAsync(1))
+    expect(screen.getByRole("status")).toHaveTextContent(
+      translate("en", "scanner.reader.reloadHint"),
+    )
+    expect(
+      screen.getByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).toBeEnabled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it("ignores a classification result that settles after the two-second bound", async () => {
+    readerModuleState.mockReturnValue("idle")
+    vi.useFakeTimers()
+    const preparation = deferred<void>()
+    const classification = deferred<boolean>()
+    void preparation.promise.catch(() => undefined)
+    warmQrReader.mockReturnValue(preparation.promise)
+    probeWebAssemblyRuntime.mockReturnValue(classification.promise)
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    await act(async () => {
+      preparation.reject(new Error("reader preparation failed"))
+      await preparation.promise.catch(() => undefined)
+      await Promise.resolve()
+    })
+    await act(async () => vi.advanceTimersByTimeAsync(2_000))
+
+    await act(async () => {
+      classification.resolve(false)
+      await classification.promise
+    })
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      translate("en", "scanner.reader.reloadHint"),
+    )
+    expect(
+      screen.queryByText(translate("en", "errors.QR_READER_BLOCKED")),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).toBeEnabled()
+  })
+
+  it("clears and ignores classification work when unmounted", async () => {
+    readerModuleState.mockReturnValue("idle")
+    vi.useFakeTimers()
+    const preparation = deferred<void>()
+    const classification = deferred<boolean>()
+    void preparation.promise.catch(() => undefined)
+    warmQrReader.mockReturnValue(preparation.promise)
+    probeWebAssemblyRuntime.mockReturnValue(classification.promise)
+    const view = render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    await act(async () => {
+      preparation.reject(new Error("reader preparation failed"))
+      await preparation.promise.catch(() => undefined)
+      await Promise.resolve()
+    })
+    expect(probeWebAssemblyRuntime).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBeGreaterThan(0)
+
+    view.unmount()
+
+    expect(vi.getTimerCount()).toBe(0)
+    await act(async () => {
+      classification.resolve(false)
+      await classification.promise
+    })
+    expect(startQrScan).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it("gives up on a never-settling preparation", async () => {
@@ -248,9 +387,9 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
         name: translate("en", "scanner.button.start"),
       }),
     ).not.toBeInTheDocument()
-    expect(
-      screen.getByText(translate("en", "scanner.reader.reloadHint")),
-    ).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent(
+      translate("en", "scanner.reader.reloadHint"),
+    )
     expect(
       screen.getByRole("button", {
         name: translate("en", "scanner.button.reload"),

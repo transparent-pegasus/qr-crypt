@@ -57,8 +57,8 @@ export function readerModuleState(): ReaderModuleState {
 }
 
 // Start or reuse WASM preparation. The shared readiness gate awaits this before
-// enabling capture; startQrScan also calls it to ensure direct callers install the
-// bundled same-origin locateFile override before readBarcodes runs.
+// enabling capture; startQrScan refuses every non-ready state before camera
+// acquisition so a purged failed generation cannot reach the CDN default.
 export function prepareQrReaderModule(
   publishPipelineDiagnostic: PipelineDiagnosticPublisher,
 ): Promise<void> {

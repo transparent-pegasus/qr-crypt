@@ -253,6 +253,7 @@ units:
       - docs/develop/browser-matrix.md # release-gate device measurements
       - src/app/App.tsx # UNSUPPORTED_BROWSER gate copy
       - src/lib/feature-detect.ts # WebCrypto/IDB/camera/SW probes
+      - src/hooks/use-qr-reader-readiness.ts # bounded reader-before-camera gate and failure classification
       - docs/spec/qr-protocol-v2.md # generated-display preferences, effective clamps, and QR capacity claims
     why: >
       Browser/OS releases invalidate measured rows (未計測 cells), support
@@ -260,10 +261,16 @@ units:
     method: |
       Re-measure on at least Android Chrome + iOS Safari with current browser
       versions and VITE_BUILD_SHA; fill matrix rows. The zxing-wasm scanner
-      rows include offline instantiation warmed on scanner mount and the single
-      in-attempt preparation retry, which covers both a rejected and a stalled
-      preparation and is bounded to two preparation windows, and both
-      user-selected
+      rows exercise the reader-before-camera contract: the offline application
+      starts the shared warm-up before a scan surface opens, the online relay
+      starts it only after capture opens, and startQrScan refuses every
+      non-ready module state before getUserMedia or readBarcodes. Verify the
+      30-second gate reaches a visible terminal state, failed preparation
+      remains latched for the document, runtime classification is bounded to
+      two seconds, failed offers reload, blocked does not, and both the scanner
+      panel and open relay dialog announce those states. Confirm successful
+      preparation uses only the precached same-origin WASM and no retry or CDN
+      path remains. Measure both user-selected
       generated-display preferences: switch off is the shipped 1000B/200ms
       default, and switch on is the 100B/2000ms compatible preference. Exercise
       per-artifact effective density clamps and verify the raised value is not
