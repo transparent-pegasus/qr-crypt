@@ -119,9 +119,10 @@ export interface EncryptPqMessageRequest {
 }
 
 // Decryption phase 1 (Decaps → HKDF → GCM authentication → inner-schema validation):
-//   unsigned suite → return plaintext
+//   unsigned suite → return plaintext plus authenticated messageId / createdAt
 //   signed suite   → return canonical bytes of the inner SignedMessageV2, not plaintext
-//     (private to the orchestrator; do not construct plaintext until verification succeeds)
+//     or receipt fields (private to the orchestrator; do not construct plaintext or expose
+//     signed-body metadata until verification succeeds)
 export interface OpenPqEnvelopeRequest {
   envelope: MlKemMessageEnvelopeV2
   recipient: {
@@ -135,7 +136,12 @@ export interface OpenPqEnvelopeRequest {
 }
 
 export type OpenedPqEnvelope =
-  | { kind: "unsigned"; plaintext: Uint8Array }
+  | {
+      kind: "unsigned"
+      plaintext: Uint8Array
+      messageId: Uint8Array
+      createdAt: number
+    }
   | {
       kind: "signed"
       signedMessageBytes: Uint8Array
@@ -143,8 +149,9 @@ export type OpenedPqEnvelope =
       signatureAlgorithm: MlDsaAlgorithm
     }
 
-// Decryption phase 2: construct and return plaintext only after signature verification
-// succeeds. On failure, zeroize inside the Worker and do not create a plaintext property.
+// Decryption phase 2: construct and return plaintext plus authenticated messageId / createdAt
+// only after signature verification succeeds. On failure, zeroize inside the Worker and do
+// not create any of those properties.
 export interface VerifySignedMessageRequest {
   signedMessageBytes: Uint8Array
   senderPublicKey: Uint8Array
@@ -152,7 +159,13 @@ export interface VerifySignedMessageRequest {
 }
 
 export type VerifySignedMessageResult =
-  { valid: true; plaintext: Uint8Array } | { valid: false }
+  | {
+      valid: true
+      plaintext: Uint8Array
+      messageId: Uint8Array
+      createdAt: number
+    }
+  | { valid: false }
 
 export interface PqCryptoClient {
   generateIdentityKeys(req: GenerateIdentityKeysRequest): Promise<GeneratedIdentityKeys>
@@ -219,6 +232,10 @@ function isBytes(value: unknown, length?: number): value is Uint8Array {
     Object.prototype.toString.call(value) === "[object Uint8Array]" &&
     (length === undefined || value.byteLength === length)
   )
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
 }
 
 function isKeyId(value: unknown): value is string {
@@ -541,14 +558,25 @@ function validateWorkerResult<K extends PqWorkerOperation>(
         }
         const components = suiteComponents(req.envelope.suite)
         if (value["kind"] === "unsigned") {
-          if (components.signature !== undefined || !isBytes(value["plaintext"])) {
+          if (
+            components.signature !== undefined ||
+            !isBytes(value["plaintext"]) ||
+            !isBytes(value["messageId"], MESSAGE_ID_BYTES) ||
+            !isSafeNonNegativeInteger(value["createdAt"]) ||
+            "signedMessageBytes" in value ||
+            "senderSigningKeyId" in value ||
+            "signatureAlgorithm" in value
+          ) {
             throw new TypeError("worker result")
           }
         } else if (
           components.signature === undefined ||
           !isBytes(value["signedMessageBytes"]) ||
           !isKeyId(value["senderSigningKeyId"]) ||
-          value["signatureAlgorithm"] !== components.signature
+          value["signatureAlgorithm"] !== components.signature ||
+          "plaintext" in value ||
+          "messageId" in value ||
+          "createdAt" in value
         ) {
           throw new TypeError("worker result")
         }
@@ -558,10 +586,23 @@ function validateWorkerResult<K extends PqWorkerOperation>(
         if (!isRecord(value) || typeof value["valid"] !== "boolean") {
           throw new TypeError("worker result")
         }
-        if (value["valid"] && !isBytes(value["plaintext"])) {
+        if (
+          value["valid"] &&
+          (!isBytes(value["plaintext"]) ||
+            !isBytes(value["messageId"], MESSAGE_ID_BYTES) ||
+            !isSafeNonNegativeInteger(value["createdAt"]) ||
+            "signedMessageBytes" in value ||
+            "senderSigningKeyId" in value ||
+            "signatureAlgorithm" in value)
+        ) {
           throw new TypeError("worker result")
         }
-        if (!value["valid"] && "plaintext" in value) throw new TypeError("worker result")
+        if (
+          !value["valid"] &&
+          ("plaintext" in value || "messageId" in value || "createdAt" in value)
+        ) {
+          throw new TypeError("worker result")
+        }
         break
     }
     return value as WorkerResultMap[K]

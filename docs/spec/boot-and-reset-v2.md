@@ -123,8 +123,9 @@ offline-confirmed -- display online re-commit --> probing (at most once)
 1. Fail-close all new UI/crypto/storage operations (subsequent
    repository/worker calls error immediately).
 2. Cancel/terminate the Workers. Drop (zeroize) the app-owned
-   seed/plaintext/sharedSecret buffers, the Vault key cache, and the promise
-   references.
+   seed/plaintext/sharedSecret buffers, the Vault key cache, the session
+   receipt cache (`clearReceipts` in `src/features/receipt-cache.ts`), and the
+   promise references.
 3. Hide and reset transient/SensitiveSession state.
 4. Request stop/close in all tabs via `navigator.locks` (with a fallback) +
    `BroadcastChannel("qr-crypt-wipe")`.

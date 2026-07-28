@@ -7,6 +7,8 @@ import type {
   PublicKeyEnvelopeV1,
   SymmetricKeyEnvelopeV1,
 } from "@/crypto/envelope"
+import type { DecryptPqMessageArgs } from "@/crypto/pq/decrypt-orchestrator"
+import type { ReceiptSubject, ReceiptVerdict } from "@/features/receipt-cache"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
 import type { FeatureSupport } from "@/lib/feature-detect"
 import type { QrExportOptions } from "@/qr/export-image"
@@ -16,6 +18,7 @@ import type {
   KemPublicKeyEnvelopeV2,
   MlKemMessageEnvelopeV2,
   PostQuantumIdentity,
+  PqDecryptResult,
   PqPublicBundleRecord,
   Preferences,
   PublicIdentityBundleV2,
@@ -394,6 +397,9 @@ export const decodePayload = vi.fn((payload: string) => {
 export const payloadSha256Hex = vi.fn(async (payload: string) =>
   encoder.encode(payload).byteLength.toString(16).padStart(64, "0"),
 )
+export const recordReceipt = vi.fn<
+  (subject: ReceiptSubject, now: number) => ReceiptVerdict
+>(() => ({ kind: "first-seen" }) as const)
 export const renderQrDataUrl = vi.fn(
   async (payload: string) => `data:image/png;base64,${btoa(payload)}`,
 )
@@ -789,7 +795,7 @@ export const encryptPq = vi.fn(
   }: {
     recipient: PqPublicBundleRecord
     plaintext: Uint8Array
-    sign?: { identity: PostQuantumIdentity }
+    sign?: { identity: PostQuantumIdentity } | undefined
     now: number
   }) => {
     void now
@@ -813,19 +819,43 @@ export const encryptPq = vi.fn(
 export const fakePqDecrypt = {
   kind: "signed-valid" as "unsigned" | "signed-valid" | "signed-key-unknown",
 }
-export const decryptPqMessage = vi.fn(async () => {
-  if (fakePqDecrypt.kind === "signed-key-unknown") {
-    return { kind: "signed-key-unknown" as const, senderSigningKeyId: "T".repeat(22) }
-  }
+export const fakePqMessageId = Uint8Array.from(
+  { length: 16 },
+  (_, index) => index,
+)
+export const fakePqCreatedAt = 1_723_000_000_000
+
+async function defaultDecryptPqMessage(
+  args: DecryptPqMessageArgs,
+): Promise<PqDecryptResult> {
   if (fakePqDecrypt.kind === "unsigned") {
-    return { kind: "unsigned" as const, plaintext: encoder.encode("PQ復号済み平文") }
+    return {
+      kind: "unsigned",
+      plaintext: encoder.encode("PQ復号済み平文"),
+      messageId: fakePqMessageId.slice(),
+      createdAt: fakePqCreatedAt,
+    }
+  }
+
+  const senderSigningKeyId = "T".repeat(22)
+  const resolvedSigningKey = await args.resolveSigningKey(senderSigningKeyId)
+  if (
+    fakePqDecrypt.kind === "signed-key-unknown" ||
+    resolvedSigningKey === undefined ||
+    resolvedSigningKey.revoked
+  ) {
+    return { kind: "signed-key-unknown" as const, senderSigningKeyId }
   }
   return {
-    kind: "signed-valid" as const,
+    kind: "signed-valid",
     plaintext: encoder.encode("署名済みPQ復号結果"),
-    senderSigningKeyId: "T".repeat(22),
+    messageId: fakePqMessageId.slice(),
+    createdAt: fakePqCreatedAt,
+    senderSigningKeyId,
   }
-})
+}
+
+export const decryptPqMessage = vi.fn(defaultDecryptPqMessage)
 
 export const armMaintenanceToken = vi.fn(async () => undefined)
 
@@ -943,12 +973,21 @@ export const deleteBundle = vi.fn(async (recordId: string) => {
   if (index >= 0) fakeBundles.splice(index, 1)
 })
 export const markBundleUsed = vi.fn(async () => undefined)
-export const findBundleBySigningKeyId = vi.fn(async (keyId: string) =>
-  fakeBundles.find((record) => record.signing.keyId === keyId),
-)
-export const findBundleByKemKeyId = vi.fn(async (keyId: string) =>
-  fakeBundles.find((record) => record.kem.keyId === keyId),
-)
+
+async function defaultFindBundleBySigningKeyId(keyId: string) {
+  return fakeBundles.find(
+    (record) => record.signing.keyId === keyId && record.revokedAt === undefined,
+  )
+}
+
+async function defaultFindBundleByKemKeyId(keyId: string) {
+  return fakeBundles.find(
+    (record) => record.kem.keyId === keyId && record.revokedAt === undefined,
+  )
+}
+
+export const findBundleBySigningKeyId = vi.fn(defaultFindBundleBySigningKeyId)
+export const findBundleByKemKeyId = vi.fn(defaultFindBundleByKemKeyId)
 
 export const getPreferences = vi.fn(async () => ({ ...fakePreferences }))
 export const updatePreferences = vi.fn(async (patch: Partial<Preferences>) => {
@@ -1012,5 +1051,9 @@ export function resetFakes(): void {
   scanTextCallback = null
   scanErrorCallback = null
   nextMultipartAddGate = null
+  decryptPqMessage.mockImplementation(defaultDecryptPqMessage)
+  findBundleBySigningKeyId.mockImplementation(defaultFindBundleBySigningKeyId)
+  findBundleByKemKeyId.mockImplementation(defaultFindBundleByKemKeyId)
+  recordReceipt.mockImplementation(() => ({ kind: "first-seen" }) as const)
   vi.clearAllMocks()
 }

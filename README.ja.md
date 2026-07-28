@@ -72,56 +72,14 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
 ### 導入方式A: 署名付き ZIP
 
 これは既定の導入方式です。オフライン端末をアプリの生きた配信元に一度も接触させずに導入できます。
-
-1. 信頼できる PC で、リリースの 3 つの資産をダウンロードします。`qr-crypt-…-static-install.zip`
-   本体、その `.sigstore.json` バンドル、`SHA256SUMS`。
-2. **検証に使う値は別の経路で入手したものを使い**、ダウンロードしたファイル自身から取らないで
-   ください。
-
-   ```bash
-   cosign verify-blob qr-crypt-<tag>-static-install.zip \
-     --bundle qr-crypt-<tag>-static-install.zip.sigstore.json \
-     --trusted-root /independently/provisioned/trusted_root.json \
-     --certificate-identity "https://github.com/transparent-pegasus/qr-crypt/.github/workflows/github-release.yml@refs/heads/main" \
-     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-     --certificate-github-workflow-repository "transparent-pegasus/qr-crypt" \
-     --certificate-github-workflow-ref "refs/heads/main" \
-     --certificate-github-workflow-sha "<期待するソースコミット>" \
-     --certificate-github-workflow-trigger "push"
-
-   sha256sum -c SHA256SUMS
-   ```
-
-3. 検証済みのアーカイブをオフライン端末へ移します。運搬に使う媒体（USB メモリー、SD カード）も
-   信頼できる必要があります。ストレージを書き換えられる者は、アプリも書き換えられます。
-4. 展開します。ZIP はディレクトリを 1 つ作り、それがドキュメントルートになります。
-5. あらかじめ信頼できる経路でオフライン端末に導入しておいた静的サーバーで、`127.0.0.1` のみに
-   バインドして配信します。同梱の `_headers` / `_redirects` の意味を満たすことが必要です。
-   セキュリティヘッダー、正しい MIME タイプ、`/index.html` への SPA フォールバック、到達性
-   sentinel の `no-store`。本番ビルドは同じ CSP のうち meta タグで表現できる部分も
-   フォールバックとして持ちますが、`frame-ancestors` は meta CSP では適用できないため、
-   `_headers` のレスポンスヘッダーでのみ提供されます。8000 や 8080 のような衝突しやすい既定値を
-   避け、固定の高位ポートを 1 つ選び、そのポートを QR Crypt 専用にしてください。
-6. 正確な `http://127.0.0.1:PORT` オリジンを開き、オフライン利用の準備完了が表示されるまで
-   待ちます。
-7. サーバーを停止し、運搬媒体を外し、物理的にネットワークを切断します。秘密の入力・復元は、
-   QR Crypt がオフラインと表示していることを確認してから行ってください。導入用サーバーの
-   sentinel は、そのオリジンを到達可能として扱わせる設計です。稼働中に秘密を入力しないでください。
+署名付き ZIP の独立検証 — 別経路で入手した Cosign ポリシー値、チェックサム確認、独立した
+再ビルド比較 — を導入前に行う必要があります。完全な手順は
+[docs/develop/install-route-a.md](docs/develop/install-route-a.md)（英語）にあります。アーカイブ内の
+`INSTALL.txt` が、オフライン端末へ届く自己完結したコピーです。
 
 この正確な host と port がセキュリティと保存領域の境界です。あとで同じ host:port から別のページを
 配信すると、そのページは同一オリジンとして保存済みの鍵と Vault key に到達できます。導入後に
 port を変えると QR Crypt は別オリジンになり、保存済みデータへ到達できません。
-
-アーカイブ内の `INSTALL.txt` にも、導入作業者向けに同じ手順が入っています。
-
-また `INSTALL.txt` には、アーカイブ内の `SHA256SUMS.files` を使う再ビルド比較の完全なコマンドが
-あります。認証済みソースコミットのクリーンなチェックアウトと `mise.toml` 固定のツールチェーンを
-使い、Tailwind が再ビルドを変えないよう、展開済みアーカイブとビルド成果物のコピーはチェックアウト
-外に置いてください。そのうえで全アーカイブメンバーを検証し、ソート済み payload ファイル集合と
-各ファイルのハッシュを比較します。CI ゲートが示すのは同一環境での決定性だけで、環境非依存の再現性
-ではありません。Cosign が証明するのは workflow / commit の provenance であり、ソースとバイナリの
-対応ではありません。CI 環境を掌握した攻撃者は正しく署名されたバックドアを公開でき、それを検出
-できるのは独立した再ビルド比較だけです。
 
 ### 導入方式B: 配信元からの PWA
 
@@ -136,7 +94,8 @@ port を変えると QR Crypt は別オリジンになり、保存済みデー�
 手段はなく、Service Worker が改変物を永続化します。また、その端末は生きたオリジンを保持し続け、
 再接続すると同一オリジンへ到達性プローブを送ります。wipe は sentinel の確認後に発火するため、
 ビーコンは必ず wipe より先に出ます。これに対して方式 A のオリジンは `127.0.0.1` です。専用
-サーバーを停止し、予約したポートを再利用しなければ、プローブの相手は存在しません。
+サーバーを停止し、予約したポートを再利用しなければ、プローブの相手は存在しません。高保証が必要な
+用途では方式 A のみを使ってください。
 
 ### オンライン端末を介してメッセージを送る
 
@@ -170,6 +129,10 @@ port を変えると QR Crypt は別オリジンになり、保存済みデー�
 ポスト量子識別子では、世代交代の周期が前方秘匿性の粒度になります。世代交代後も旧世代は復号用に
 保持されるため、その世代宛のすべての封筒は、旧世代を明示的に破棄するまで復号できます。
 
+このセッションで既に受け取ったメッセージは、内容を表示する前に警告されます。同じメッセージ識別子が
+異なる暗号文で届いた場合は拒否されます。この検査はセッション内のみで、アプリを再読み込みすると
+リセットされます。
+
 ポスト量子スイートは **experimental** かつ **独立監査を受けていません**。FIPS 203 / FIPS 204 の
 アルゴリズムの実装を採用していますが、FIPS 140 検証や独立した安全性評価を受けたことを意味しません。
 現在の状態とブロッカー: [docs/security/security-review.md](docs/security/security-review.md)。
@@ -183,6 +146,7 @@ port を変えると QR Crypt は別オリジンになり、保存済みデー�
 * [docs/security/security-review.md](docs/security/security-review.md) — セキュリティレビュー記録（v2・監査区分）
 * [docs/develop/development.md](docs/develop/development.md) — 技術スタック、セットアップ、コマンド、環境変数
 * [docs/develop/deployment.md](docs/develop/deployment.md) — Cloudflare Pages へのデプロイと CI の流れ
+* [docs/develop/install-route-a.md](docs/develop/install-route-a.md) — 方式 A（署名付き ZIP）の完全な導入手順（英語）
 * [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — ブラウザー検証マトリクスと参考計測値
 * [docs/develop/deviations.md](docs/develop/deviations.md) — 仕様からの管理された逸脱
 * [SECURITY.md](SECURITY.md) — 脆弱性の報告

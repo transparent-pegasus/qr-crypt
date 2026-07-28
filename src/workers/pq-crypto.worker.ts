@@ -449,7 +449,12 @@ async function openPqEnvelope(request: OpenPqEnvelopeRequest): Promise<OpenedPqE
       if (body.recipientKemKeyId !== envelope.recipientKemKeyId) {
         throw new AppError("DECRYPTION_FAILED")
       }
-      return { kind: "unsigned", plaintext: Uint8Array.from(body.plaintext) }
+      return {
+        kind: "unsigned",
+        plaintext: Uint8Array.from(body.plaintext),
+        messageId: Uint8Array.from(body.messageId),
+        createdAt: body.createdAt,
+      }
     }
 
     const signed = decodeSignedMessageV2(decrypted)
@@ -498,7 +503,12 @@ function verifySignedMessage(
       senderPublicKey: request.senderPublicKey,
     })
     return valid
-      ? { valid: true, plaintext: Uint8Array.from(signed.body.plaintext) }
+      ? {
+          valid: true,
+          plaintext: Uint8Array.from(signed.body.plaintext),
+          messageId: Uint8Array.from(signed.body.messageId),
+          createdAt: signed.body.createdAt,
+        }
       : { valid: false }
   } catch {
     return { valid: false }

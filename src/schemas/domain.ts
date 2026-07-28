@@ -232,11 +232,24 @@ export interface MlKemAadV2 {
 // ---------------------------------------------------------------------------
 // v2 decryption result. signed-key-unknown has no plaintext property;
 // the type prevents constructing one. senderSigningKeyId supports the signing-key import path.
+// Both receipt values are authenticated as part of the inner message body. createdAt is
+// device-asserted metadata, not trusted time.
 // ---------------------------------------------------------------------------
 
 export type PqDecryptResult =
-  | { kind: "unsigned"; plaintext: Uint8Array }
-  | { kind: "signed-valid"; plaintext: Uint8Array; senderSigningKeyId: string }
+  | {
+      kind: "unsigned"
+      plaintext: Uint8Array
+      messageId: Uint8Array
+      createdAt: number
+    }
+  | {
+      kind: "signed-valid"
+      plaintext: Uint8Array
+      messageId: Uint8Array
+      createdAt: number
+      senderSigningKeyId: string
+    }
   | { kind: "signed-key-unknown"; senderSigningKeyId: string }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,8 @@ export const ERROR_CODES = [
   "DUPLICATE_KEY",
   "DUPLICATE_QR",
   // v2 post-quantum additions.
+  "KEY_ID_CONFLICT",
+  "MESSAGE_ID_REUSED",
   "SIGNATURE_INVALID",
   "SIGNING_KEY_NOT_FOUND",
   "FRAME_MISMATCH",

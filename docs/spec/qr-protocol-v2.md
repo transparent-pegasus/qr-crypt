@@ -167,7 +167,11 @@ verification → `SIGNATURE_INVALID`.
   `SignedMessageBodyV2` map** (`signingTargetBytes`)
 - ML-DSA context = fixed `UTF8("QR-CRYPT-MESSAGE-V2")` (≤255B)
 - `messageId` = fixed-length CSPRNG 16B. **It is not a replay-prevention
-  mechanism**. `createdAt` is the device-reported time (not trusted time)
+  mechanism** of the wire format. The receiving implementation keeps a
+  session-memory receipt keyed by the authenticated message ID
+  (`src/features/receipt-cache.ts`); that check is session-scoped and does not
+  change the wire format. `createdAt` is the device-reported time (not trusted
+  time)
 - The unsigned and signed post-quantum paths accept at most 120,000 UTF-8
   plaintext bytes. This is not a shared application limit: the v1 A256GCM
   path remains one OCM1 QR and derives its smaller pre-encryption ceiling from

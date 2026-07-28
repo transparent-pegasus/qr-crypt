@@ -28,13 +28,15 @@ export function formatDateTime(
   language: Language,
 ): string {
   if (timestamp === undefined) return translate(language, "common.unused")
+  const date = new Date(timestamp)
+  if (!Number.isFinite(date.getTime())) return "—"
   return new Intl.DateTimeFormat(language === "ja" ? "ja-JP" : "en-US", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(timestamp))
+  }).format(date)
 }
 
 export function formatSuggestedDate(timestamp: number): string {

@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-07-27 # last revision of this registry itself
+updated: 2026-07-28 # last revision of this registry itself
 
 units:
   - id: deps
@@ -105,19 +105,21 @@ units:
   - id: ci-actions
     category: dependencies
     cadence_days: 60
-    last_checked: 2026-07-27
+    last_checked: 2026-07-28
     files:
       - .github/workflows/cloudflare-pages.yml
       - .github/workflows/dev-to-main-pr.yml
       - .github/workflows/github-release.yml
       - docs/develop/deployment.md # prose mirror of the deploy/CI/release flow
+      - docs/develop/install-route-a.md # complete Route A procedure; README is summary + link
       - scripts/serve-dist.mjs # header-aware server called directly by the release workflow
       - tests/unit/serve-dist.test.ts # executable containment and server startup contract
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
       image, and GitHub runner/CLI behavior all drift with upstream releases.
-      docs/develop/deployment.md restates the same flow in prose, and the README
-      install route A publishes the cosign verification policy values.
+      docs/develop/deployment.md restates the same flow in prose;
+      docs/develop/install-route-a.md holds the complete Route A Cosign /
+      rebuild procedure while the README publishes only a summary plus a link.
     method: |
       Review all three workflows. Check each action repository for newer majors and
       security advisories. Keep release-workflow actions pinned to full SHAs;
@@ -134,9 +136,12 @@ units:
       PR triggers pull_request workflows but may leave them held at "Approve
       workflows to run". Reconfirm that the repository-wide setting allowing
       Actions to create and approve pull requests is enabled. Reconcile
-      docs/develop/deployment.md with the workflows, and the cosign verify-blob
-      policy values quoted in README.md / README.ja.md (certificate identity,
-      OIDC issuer, repository, ref, trigger) with github-release.yml.
+      docs/develop/deployment.md with the workflows. Reconcile
+      docs/develop/install-route-a.md (mandatory set, cosign verify-blob variables,
+      rebuild-and-compare) with the INSTALL.txt heredoc and verification contract
+      in github-release.yml; confirm README.md / README.ja.md Route A sections
+      remain a summary plus a link to that document (not a second incomplete
+      procedure) and that their quoted policy values still match the workflow.
     sync: [readme]
     verify: |
       Local only — a freshness sweep must not push:
@@ -154,13 +159,22 @@ units:
       rg -n 'uses:|cosign-release:' .github/workflows/*.yml, then
       git ls-remote --exit-code <action repo> <tag> for every referenced tag
       and confirm pinned release-workflow SHAs match.
+      # Relative links in the Route A install document and deployment prose must
+      # resolve (README is summary + link; this document is the authority).
+      for f in docs/develop/install-route-a.md docs/develop/deployment.md; do
+        for target in $(rg -oN --no-filename '\]\(([^):#]+)\)' -r '$1' "$f" |
+          sort -u); do
+          case "$target" in http*|mailto:*) continue;; esac
+          test -e "$(dirname "$f")/$target" || echo "MISSING $f -> $target"
+        done
+      done
       If a recent user-authorized CI run exists, confirm it is green.
       Otherwise report the unit as blocked and leave last_checked unchanged.
 
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-07-27
+    last_checked: 2026-07-28
     files:
       - docs/security/threat-model.md
       - src/crypto/pq/canonical-cbor.ts # structural allocation caps and retained-key behavior cited by T20
@@ -179,8 +193,11 @@ units:
       active policy in src/crypto/pq/suites.ts and boot behavior in
       src/app/boot/. Reconcile T5's scanner bounds with decode.ts and T20's
       frame/paste allocation and CBOR caps with limits.ts, payload-v2.ts,
-      assemble.ts, and canonical-cbor.ts. Convert any new relative dates to
-      absolute.
+      assemble.ts, and canonical-cbor.ts. Re-check the §5 session-memory
+      receipt / replay bullet and the §7 imported-bundle key-ID shadowing row
+      (T22) against src/features/receipt-cache.ts and
+      src/storage/pq-bundle-repository.ts; confirm nothing frame-derived is
+      claimed as persisted. Convert any new relative dates to absolute.
     verify: >
       Diff claims against README security section and the settings page
       "About security" copy (settings.security.* keys in
@@ -191,7 +208,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-07-27
+    last_checked: 2026-07-28
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
@@ -271,7 +288,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-07-27
+    last_checked: 2026-07-28
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
@@ -305,9 +322,14 @@ units:
       limits.ts, frame-bytes.ts, frame-interval.ts, payload-v2.ts, domain.ts,
       preferences-repository.ts, encrypt-page.tsx, decrypt-page.tsx,
       key-detail-dialog.tsx,
-      animated-qr-frames.tsx, and online-relay.tsx. Diff
+      animated-qr-frames.tsx, and online-relay.tsx. Confirm the
+      qr-protocol-v2.md messageId note (~169–170) still states the wire format
+      is not a replay-prevention mechanism while documenting the receiving
+      session-memory receipt keyed by it, and that the clarification matches
+      src/features/receipt-cache.ts (no wire change). Diff
       boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
-      and wipe coordinator behavior. Update dated statements to current state.
+      and wipe coordinator behavior (including clearReceipts in the buffer-drop
+      inventory). Update dated statements to current state.
     verify: aube run test:pq && aube run test -- tests/ui/boot-controller.test.tsx
 
   - id: size-goldens
@@ -376,7 +398,7 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-07-27
+    last_checked: 2026-07-28
     files:
       - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
@@ -405,7 +427,7 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-07-27
+    last_checked: 2026-07-28
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together
@@ -436,7 +458,7 @@ units:
       # Every relative link in the registered Markdown files resolves.
       # Must print nothing; --no-filename is required or every match is
       # prefixed with its file and tested as a nonexistent path.
-      for f in README.md README.ja.md SECURITY.md docs/develop/deviations.md; do
+      for f in README.md README.ja.md SECURITY.md docs/develop/deviations.md docs/develop/install-route-a.md; do
         for target in $(rg -oN --no-filename '\]\(([^):#]+)\)' -r '$1' "$f" |
           sort -u); do
           case "$target" in http*|mailto:*) continue;; esac
@@ -449,15 +471,14 @@ units:
   - id: external-links
     category: links
     cadence_days: 180
-    last_checked: 2026-07-25
+    last_checked: 2026-07-28
     files:
       - components.json # https://ui.shadcn.com/schema.json
       - design-system/PROVENANCE.md # plugin path/version provenance
       - src/lib/best-effort-zip.ts # fflate provenance/version claim in header
       - tests/pq-vectors/acvp-fixtures.ts # upstream repo URLs
-      # https://qr-crypt.pages.dev/ answered 522 on 2026-07-25 (no production
-      # deployment attached yet; qr-crypt-dev.pages.dev answered 200). The page
-      # links and the QR encode it deliberately — recheck once main deploys.
+      # The production app, About routes, and OG image all answered 200 on
+      # 2026-07-28. The page links and QR deliberately encode that origin.
       - public/about/index.html # production app URL, GitHub repo and releases/latest, og:url and og:image
       - public/about/install-qr.svg # encodes the production app URL; regenerate whenever that URL moves
     why: >

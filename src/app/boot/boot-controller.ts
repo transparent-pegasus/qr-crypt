@@ -17,6 +17,7 @@ import {
 } from "@/lib/limits"
 import { getDb } from "@/storage/database"
 import { setAckPending } from "@/app/offline-ack-marker"
+import { clearReceipts } from "@/features/receipt-cache"
 
 export const BOOT_PROBE_TIMEOUT_MS = 3_000
 export const MAINTENANCE_TOKEN_METADATA_KEY = "maintenance-token"
@@ -494,6 +495,7 @@ export function createBootController(
   }
 
   const resetTransient = () => {
+    clearReceipts()
     for (const handler of transientResetHandlers) {
       try {
         handler()
