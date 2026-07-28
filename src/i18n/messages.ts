@@ -82,6 +82,8 @@ const en = {
     "This browser blocks the QR reader. On iPhone, use Safari 16 or newer.",
   "errors.DUPLICATE_KEY": "A key with the same contents is already stored.",
   "errors.DUPLICATE_QR": "A QR code with the same contents is already stored.",
+  "errors.KEY_ID_CONFLICT":
+    "One of these key IDs is already assigned to another stored bundle. The import was refused.",
   "errors.SIGNATURE_INVALID":
     "The signature could not be verified. The sender's signing key or the contents do not match.",
   "errors.SIGNING_KEY_NOT_FOUND":
@@ -320,6 +322,10 @@ const en = {
   "keyList.bundle.legacyNote":
     "This legacy profile is unsupported, so only deletion is available.",
   "keyList.bundle.revoke": "Disable on this device",
+  "keyList.bundle.revokeTitle": "Disable this public-key bundle?",
+  "keyList.bundle.revokeBody":
+    "Revoking keeps this key ID reserved, so the same key cannot be re-imported; deleting instead removes the record and frees the ID.",
+  "keyList.bundle.revokeConfirm": "Disable",
   "keyList.bundle.confirmOpen": "Compare and confirm the fingerprint",
   "keyList.bundle.confirmTitle": "Confirm this identity's fingerprint",
   "keyList.bundle.confirmBody":
@@ -731,6 +737,8 @@ const ja = {
     "このブラウザーではQRコードリーダーがブロックされています。iPhoneではSafari 16以降を使用してください。",
   "errors.DUPLICATE_KEY": "同じ内容の鍵がすでに保存されています。",
   "errors.DUPLICATE_QR": "同じ内容のQRコードがすでに保存されています。",
+  "errors.KEY_ID_CONFLICT":
+    "この鍵IDのいずれかは、すでに別の保存済みバンドルに割り当てられています。取り込みを中止しました。",
   "errors.SIGNATURE_INVALID":
     "署名を検証できませんでした。送信者の署名鍵、または内容が一致していません。",
   "errors.SIGNING_KEY_NOT_FOUND":
@@ -968,6 +976,10 @@ const ja = {
   "keyList.bundle.legacyNote":
     "非対応（旧プロファイル）のため、削除以外の操作はできません。",
   "keyList.bundle.revoke": "利用停止",
+  "keyList.bundle.revokeTitle": "この公開鍵セットを利用停止にしますか?",
+  "keyList.bundle.revokeBody":
+    "利用停止するとこの鍵IDは予約されたままとなり、同じ鍵を再取り込みできませんが、代わりに削除すると記録が削除され、IDが解放されます。",
+  "keyList.bundle.revokeConfirm": "利用停止にする",
   "keyList.bundle.confirmOpen": "指紋を比較して確認する",
   "keyList.bundle.confirmTitle": "この識別子の指紋を確認しますか?",
   "keyList.bundle.confirmBody":

@@ -9,6 +9,16 @@ import {
 } from "@/components/key-detail-dialog"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -122,6 +132,7 @@ export function KeyListPage() {
   const [bundleError, setBundleError] = useState<LocalizedMessage | null>(null)
   const [bundleConfirmation, setBundleConfirmation] =
     useState<PqPublicBundleRecord | null>(null)
+  const [bundleRevocation, setBundleRevocation] = useState<string | null>(null)
   const [bundleFingerprintChecked, setBundleFingerprintChecked] = useState(false)
   const localizedPqError = useLocalizedMessage(pqError)
   const localizedKeysError = useLocalizedMessage(keysError)
@@ -407,9 +418,7 @@ export function KeyListPage() {
                 setBundleConfirmation(record)
                 setBundleFingerprintChecked(false)
               }}
-              onRevoke={(recordId) =>
-                mutateBundle(() => revokeBundle(recordId, Date.now()))
-              }
+              onRevoke={setBundleRevocation}
               onDelete={(recordId) =>
                 mutateBundle(() => deleteBundle(recordId))
               }
@@ -521,6 +530,38 @@ export function KeyListPage() {
           </DialogFooter>
         </NoAutofocusDialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={bundleRevocation !== null}
+        onOpenChange={(open) => {
+          if (!open && !bundleBusy) setBundleRevocation(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("keyList.bundle.revokeTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("keyList.bundle.revokeBody")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={bundleBusy}
+              onClick={() => {
+                const recordId = bundleRevocation
+                if (recordId === null) return
+                setBundleRevocation(null)
+                void mutateBundle(() => revokeBundle(recordId, Date.now()))
+              }}
+            >
+              {t("keyList.bundle.revokeConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }
@@ -548,7 +589,7 @@ function BundleList({
   bundles: PqPublicBundleRecord[]
   busy: boolean
   onConfirm: (record: PqPublicBundleRecord) => void
-  onRevoke: (recordId: string) => Promise<void>
+  onRevoke: (recordId: string) => void
   onDelete: (recordId: string) => Promise<void>
 }) {
   const { t } = useI18n()
@@ -626,7 +667,7 @@ function BundleList({
                     type="button"
                     variant="outline"
                     disabled={busy}
-                    onClick={() => void onRevoke(record.recordId)}
+                    onClick={() => onRevoke(record.recordId)}
                   >
                     {t("keyList.bundle.revoke")}
                   </Button>
