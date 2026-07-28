@@ -11,11 +11,15 @@ describe("OnlineGate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
-  it("shows ready when a previously installed service worker is active", async () => {
+  it("shows ready when the service worker already controls this page", async () => {
     const original = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")
+    const container = Object.assign(new EventTarget(), {
+      ready: Promise.resolve(),
+      controller: {},
+    })
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
-      value: { ready: Promise.resolve() },
+      value: container,
     })
     fakePwa.offlineReady = false
     try {

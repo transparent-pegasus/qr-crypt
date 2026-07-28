@@ -26,6 +26,7 @@ import {
   renameIdentity,
   renameKeyRecord,
   renderQrDataUrl,
+  revokeBundle,
   revokeIdentity,
   saveRotation,
   splitIntoFrames,
@@ -130,6 +131,14 @@ describe("key list page", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
+  it("separates the tab action from the tab bar by the own-key list gap", async () => {
+    await renderKeyList()
+
+    // The own-keys tab puts space-y-3 (12px) between the kind filter and the
+    // first item; the action under the tab bar must sit on the same rhythm.
+    expect(screen.getByRole("button", { name: "Create a key" })).toHaveClass("mt-3")
+  })
+
   it("defaults to owned keys, merges newest-first, and filters with one kind select", async () => {
     const user = userEvent.setup()
     await renderKeyList()
@@ -208,6 +217,38 @@ describe("key list page", () => {
     await waitFor(() => expect(dialog).not.toBeInTheDocument())
   })
 
+  it("lists peer bundles as compact rows and shows their detail in a modal", async () => {
+    const user = userEvent.setup()
+    const bundle = fakeBundles[0]!
+    await renderKeyList()
+    await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
+
+    const row = rowFor("確認済みの相手")
+    expect(
+      within(row).getByText(
+        translate("en", "keyList.bundle.itemMeta", {
+          datetime: formatDateTime(bundle.importedAt, "en"),
+        }),
+      ),
+    ).toBeInTheDocument()
+    // The three fingerprints left the row entirely.
+    expect(screen.queryByText(bundle.identityFingerprint)).toBeNull()
+    expect(screen.queryByText(bundle.kem.fingerprint)).toBeNull()
+    expect(screen.queryByText(bundle.signing.fingerprint)).toBeNull()
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull()
+
+    await user.click(row)
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText(bundle.identityId)).toBeInTheDocument()
+    expect(within(dialog).getByText(bundle.identityFingerprint)).toBeInTheDocument()
+    expect(within(dialog).getByText(bundle.kem.fingerprint)).toBeInTheDocument()
+    expect(within(dialog).getByText(bundle.signing.fingerprint)).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole("button", { name: "Disable on this device" }),
+    ).toBeInTheDocument()
+    expect(within(dialog).getByRole("button", { name: "Delete" })).toBeInTheDocument()
+  })
+
   it("shows imported bundles only on the peer-key tab and keeps their actions", async () => {
     const user = userEvent.setup()
     const recordId = fakeBundles[0]!.recordId
@@ -219,16 +260,19 @@ describe("key list page", () => {
     expect(screen.getByRole("button", { name: "Scan a key QR" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Create a key" })).toBeNull()
     expect(screen.getByText("確認済みの相手")).toBeInTheDocument()
-    expect(screen.getByText("Identity verified")).toBeInTheDocument()
-    expect(screen.getByText("4".repeat(64))).toBeInTheDocument()
-    expect(screen.getByText("5".repeat(64))).toBeInTheDocument()
-    expect(screen.getByText("6".repeat(64))).toBeInTheDocument()
     expect(screen.queryByRole("combobox", { name: "Type" })).not.toBeInTheDocument()
+
+    await user.click(rowFor("確認済みの相手"))
+    const detail = await screen.findByRole("dialog")
+    expect(within(detail).getByText("Identity verified")).toBeInTheDocument()
+    expect(within(detail).getByText("4".repeat(64))).toBeInTheDocument()
+    expect(within(detail).getByText("5".repeat(64))).toBeInTheDocument()
+    expect(within(detail).getByText("6".repeat(64))).toBeInTheDocument()
     expect(
-      screen.getByRole("button", { name: "Disable on this device" }),
+      within(detail).getByRole("button", { name: "Disable on this device" }),
     ).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "Delete" }))
+    await user.click(within(detail).getByRole("button", { name: "Delete" }))
     await waitFor(() => expect(deleteBundle).toHaveBeenCalledWith(recordId))
     expect(
       await screen.findByText("There are no imported public-key bundles."),
@@ -256,8 +300,10 @@ describe("key list page", () => {
     await renderKeyList()
     await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
 
+    await user.click(rowFor(translate("en", "keyList.bundle.nameUnverified")))
+    const detail = await screen.findByRole("dialog")
     await user.click(
-      await screen.findByRole("button", {
+      within(detail).getByRole("button", {
         name: translate("en", "keyList.bundle.confirmOpen"),
       }),
     )
@@ -290,6 +336,28 @@ describe("key list page", () => {
         unverifiedBundle.recordId,
         expect.any(Number),
       ),
+    )
+  })
+
+  it("revokes a peer bundle from its detail modal", async () => {
+    const user = userEvent.setup()
+    const recordId = fakeBundles[0]!.recordId
+    await renderKeyList()
+    await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
+    await user.click(rowFor("確認済みの相手"))
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Disable on this device",
+      }),
+    )
+    const alert = await screen.findByRole("alertdialog")
+    await user.click(
+      within(alert).getByRole("button", {
+        name: translate("en", "keyList.bundle.revokeConfirm"),
+      }),
+    )
+    await waitFor(() =>
+      expect(revokeBundle).toHaveBeenCalledWith(recordId, expect.any(Number)),
     )
   })
 

@@ -127,6 +127,11 @@ export default defineConfig(() => {
           navigateFallbackDenylist: [/^\/about\//],
           navigateFallback: "/index.html",
           cleanupOutdatedCaches: true,
+          // Without this the worker never controls the page that installed it, so the
+          // precached reader WASM is unreachable on the first run once the device goes
+          // offline. Claiming happens at activation only; waiting-worker semantics and
+          // the message-driven SKIP_WAITING path are unchanged.
+          clientsClaim: true,
           // The reachability sentinel gating the destructive wipe-on-online path
           // must always bypass the service worker: excluded from precache and
           // served NetworkOnly, so it always fails while offline.

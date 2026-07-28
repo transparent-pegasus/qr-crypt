@@ -315,6 +315,7 @@ const en = {
   "keyList.empty.ownAll": "You have no keys.",
   "keyList.empty.ownFiltered": "There are no keys of the selected type.",
   "keyList.bundle.empty": "There are no imported public-key bundles.",
+  "keyList.bundle.itemMeta": "Imported {datetime}",
   "keyList.bundle.nameConfirmed": "Verified public key",
   "keyList.bundle.nameUnverified": "Unverified public key",
   "keyList.bundle.badge.confirmed": "Identity verified",
@@ -619,7 +620,7 @@ const en = {
   "settings.info.version": "Version",
   "settings.info.build": "Build",
   "settings.pwa.offlineReadyNote":
-    "Offline-use readiness describes whether assets are stored. It does not indicate security.",
+    "Offline-use readiness means this page is controlled by the installed service worker. It does not indicate security.",
   "settings.card.featureDetect": "Feature detection",
   "settings.featureDetect.note":
     "If Web Crypto or IndexedDB is unavailable, the UNSUPPORTED_BROWSER screen stops all features.",
@@ -981,6 +982,7 @@ const ja = {
   "keyList.empty.ownAll": "自分の鍵がありません。",
   "keyList.empty.ownFiltered": "選択した種別の鍵がありません。",
   "keyList.bundle.empty": "取り込んだ公開鍵セットがありません。",
+  "keyList.bundle.itemMeta": "取り込み {datetime}",
   "keyList.bundle.nameConfirmed": "確認済み公開鍵",
   "keyList.bundle.nameUnverified": "未確認の公開鍵",
   "keyList.bundle.badge.confirmed": "人物確認済み",
@@ -1288,7 +1290,7 @@ const ja = {
   "settings.info.version": "バージョン",
   "settings.info.build": "ビルド",
   "settings.pwa.offlineReadyNote":
-    "オフライン利用準備状態は資産の保存状態を示します。安全性を示すものではありません。",
+    "オフライン利用準備状態は、このページがインストール済みの Service Worker によって制御されていることを示します。安全性を示すものではありません。",
   "settings.card.featureDetect": "機能検出",
   "settings.featureDetect.note":
     "Web CryptoまたはIndexedDBが利用できない場合はUNSUPPORTED_BROWSER画面で全機能を停止します。",

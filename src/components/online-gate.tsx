@@ -4,6 +4,7 @@ import {
   Download,
   ExternalLink,
   Home,
+  LoaderCircle,
   MessageSquareText,
   Share2,
   WifiOff,
@@ -38,6 +39,24 @@ function isIosSafari(): boolean {
   return (
     /iP(?:hone|ad|od)/i.test(navigator.userAgent) && /Safari/i.test(navigator.userAgent)
   )
+}
+
+const PREPARING_LOADER_DELAY_MS = 1_000
+
+// Mounted only for a preparing episode, so every episode starts from a fresh
+// false and only the timer callback ever sets state. Resetting the flag from
+// inside an effect would trip react-hooks/set-state-in-effect.
+function DelayedSpinner({ label }: { label: string }) {
+  const [elapsed, setElapsed] = useState(false)
+  useEffect(() => {
+    const timeoutId = window.setTimeout(
+      () => setElapsed(true),
+      PREPARING_LOADER_DELAY_MS,
+    )
+    return () => window.clearTimeout(timeoutId)
+  }, [])
+  if (!elapsed) return null
+  return <LoaderCircle aria-label={label} className="size-4 animate-spin" />
 }
 
 export function OnlineGate({ children }: { children: ReactNode }) {
@@ -195,6 +214,7 @@ export function OnlineInstallScreen({
                   : t("pwa.offlineReady.preparing")
               }
               ready={offlineReady}
+              loading={!offlineReady && registrationError === null}
             />
 
             {!installed && installPrompt && (
@@ -293,16 +313,20 @@ function StatusRow({
   label,
   value,
   ready,
+  loading = false,
 }: {
   label: string
   value: string
   ready: boolean
+  loading?: boolean
 }) {
+  const { t } = useI18n()
   return (
     <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border px-3 text-sm">
       <span className="text-muted-foreground">{label}</span>
       <span className="flex items-center gap-1.5 font-medium">
         {ready && <CheckCircle2 aria-hidden="true" className="size-4 text-success" />}
+        {!ready && loading && <DelayedSpinner label={t("common.loading")} />}
         {value}
       </span>
     </div>

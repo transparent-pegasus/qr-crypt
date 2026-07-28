@@ -21,7 +21,13 @@ test("initializes the precached same-origin reader WASM on its first offline cam
 }) => {
   test.setTimeout(120_000)
   await loadOnlineGate(page, "/keys")
-  await waitForServiceWorkerControl(page)
+  // No reload: this is the owner's first access. waitForServiceWorkerControl()
+  // reloads when the page is uncontrolled, which is the workaround being removed.
+  await expect
+    .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), {
+      timeout: 30_000,
+    })
+    .toBe(true)
 
   const appOrigin = new URL(page.url()).origin
   const cached = await precachedUrls(page)

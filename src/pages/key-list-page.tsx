@@ -9,6 +9,7 @@ import {
 } from "@/components/key-detail-dialog"
 import { Fingerprint } from "@/components/fingerprint"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
+import { PeerBundleDetailDialog } from "@/components/peer-bundle-detail-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
@@ -22,7 +23,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -131,6 +131,7 @@ export function KeyListPage() {
   const [ownKeyFilter, setOwnKeyFilter] = useState<OwnKeyFilter>("all")
   const [bundleBusy, setBundleBusy] = useState(false)
   const [bundleError, setBundleError] = useState<LocalizedMessage | null>(null)
+  const [bundleDetailId, setBundleDetailId] = useState<string | null>(null)
   const [bundleConfirmation, setBundleConfirmation] =
     useState<PqPublicBundleRecord | null>(null)
   const [bundleRevocation, setBundleRevocation] = useState<string | null>(null)
@@ -138,6 +139,13 @@ export function KeyListPage() {
   const localizedPqError = useLocalizedMessage(pqError)
   const localizedKeysError = useLocalizedMessage(keysError)
   const localizedBundleError = useLocalizedMessage(bundleError)
+  const bundleDetail =
+    bundleDetailId === null
+      ? null
+      : (bundles.find((record) => record.recordId === bundleDetailId) ?? null)
+  if (bundleDetailId !== null && !pqLoading && bundleDetail === null) {
+    setBundleDetailId(null)
+  }
   const symmetricKeys = useMemo(
     () => keys.filter((key) => key.kind === "symmetric"),
     [keys],
@@ -292,7 +300,7 @@ export function KeyListPage() {
         <Button
           type="button"
           variant="outline"
-          className="mt-2 h-11 w-full cursor-pointer whitespace-normal"
+          className="mt-3 h-11 w-full cursor-pointer whitespace-normal"
           onClick={() => {
             setCreated(null)
             setAddMode(tab === "own" ? "create" : "import")
@@ -412,18 +420,7 @@ export function KeyListPage() {
 
         <TabsContent value="peer" className="mt-6 space-y-3">
           {!pqLoading && !pqError && (
-            <BundleList
-              bundles={bundles}
-              busy={bundleBusy}
-              onConfirm={(record) => {
-                setBundleConfirmation(record)
-                setBundleFingerprintChecked(false)
-              }}
-              onRevoke={setBundleRevocation}
-              onDelete={(recordId) =>
-                mutateBundle(() => deleteBundle(recordId))
-              }
-            />
+            <BundleList bundles={bundles} onSelect={setBundleDetailId} />
           )}
         </TabsContent>
       </Tabs>
@@ -463,6 +460,28 @@ export function KeyListPage() {
         onChanged={async (nextSelection) => {
           await applyDetailChange(nextSelection)
           setSelection(nextSelection)
+        }}
+      />
+
+      <PeerBundleDetailDialog
+        bundle={bundleDetail}
+        supported={bundleDetail === null ? false : isUsableBundle(bundleDetail)}
+        busy={bundleBusy}
+        onOpenChange={(open) => {
+          if (!open) setBundleDetailId(null)
+        }}
+        onConfirm={(record) => {
+          setBundleDetailId(null)
+          setBundleConfirmation(record)
+          setBundleFingerprintChecked(false)
+        }}
+        onRevoke={(recordId) => {
+          setBundleDetailId(null)
+          setBundleRevocation(recordId)
+        }}
+        onDelete={(recordId) => {
+          setBundleDetailId(null)
+          void mutateBundle(() => deleteBundle(recordId))
         }}
       />
 
@@ -569,18 +588,12 @@ export function KeyListPage() {
 
 function BundleList({
   bundles,
-  busy,
-  onConfirm,
-  onRevoke,
-  onDelete,
+  onSelect,
 }: {
   bundles: PqPublicBundleRecord[]
-  busy: boolean
-  onConfirm: (record: PqPublicBundleRecord) => void
-  onRevoke: (recordId: string) => void
-  onDelete: (recordId: string) => Promise<void>
+  onSelect: (recordId: string) => void
 }) {
-  const { t } = useI18n()
+  const { language, t } = useI18n()
   if (bundles.length === 0) {
     return <Empty text={t("keyList.bundle.empty")} />
   }
@@ -589,88 +602,38 @@ function BundleList({
     <>
       {bundles.map((record) => {
         const supported = isUsableBundle(record)
+        const confirmed = record.trust === "fingerprint-confirmed"
         return (
-          <Card key={record.recordId}>
-            <CardContent className="space-y-3 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium">
-                    {record.trust === "fingerprint-confirmed"
-                      ? (record.name ?? t("keyList.bundle.nameConfirmed"))
-                      : t("keyList.bundle.nameUnverified")}
-                  </p>
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {record.identityId}
-                  </p>
-                </div>
-                <Badge
-                  variant={
-                    supported && record.trust === "fingerprint-confirmed"
-                      ? "default"
-                      : "secondary"
-                  }
-                >
+          <button
+            key={record.recordId}
+            type="button"
+            className="select-none touch-manipulation w-full cursor-pointer rounded-xl border bg-card p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2"
+            onClick={() => onSelect(record.recordId)}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate font-medium">
+                  {confirmed
+                    ? (record.name ?? t("keyList.bundle.nameConfirmed"))
+                    : t("keyList.bundle.nameUnverified")}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t("keyList.bundle.itemMeta", {
+                    datetime: formatDateTime(record.importedAt, language),
+                  })}
+                </p>
+              </div>
+              <div className="max-w-[45%] shrink-0 text-right">
+                <Badge variant={supported && confirmed ? "default" : "secondary"}>
                   {supported
-                    ? record.trust === "fingerprint-confirmed"
+                    ? confirmed
                       ? t("keyList.bundle.badge.confirmed")
                       : t("keyList.bundle.badge.unverified")
                     : t("keyDetail.badge.legacyProfile")}
                 </Badge>
               </div>
-              <Fingerprint
-                label={t("keyList.bundle.fingerprintKem", {
-                  algorithm: record.kem.algorithm,
-                })}
-                value={record.kem.fingerprint}
-              />
-              <Fingerprint
-                label={t("keyList.bundle.fingerprintSigning", {
-                  algorithm: record.signing.algorithm,
-                })}
-                value={record.signing.fingerprint}
-              />
-              <Fingerprint
-                label={t("common.identityFingerprint")}
-                value={record.identityFingerprint}
-              />
-              {!supported && (
-                <p className="text-sm text-destructive">
-                  {t("keyList.bundle.legacyNote")}
-                </p>
-              )}
-              {record.trust !== "fingerprint-confirmed" && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  disabled={busy}
-                  onClick={() => onConfirm(record)}
-                >
-                  {t("keyList.bundle.confirmOpen")}
-                </Button>
-              )}
-              <div className={`grid gap-2 ${supported ? "grid-cols-2" : "grid-cols-1"}`}>
-                {supported && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => onRevoke(record.recordId)}
-                  >
-                    {t("keyList.bundle.revoke")}
-                  </Button>
-                )}
-                <Button
-                  type="button"
-                  variant="destructive"
-                  disabled={busy}
-                  onClick={() => void onDelete(record.recordId)}
-                >
-                  {t("common.delete")}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </button>
         )
       })}
     </>
