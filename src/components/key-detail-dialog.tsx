@@ -67,6 +67,7 @@ import {
   useLocalizedMessage,
   type LocalizedMessage,
 } from "@/i18n"
+import { selectedGeneratedDisplayPair } from "@/lib/generated-display"
 import { FRAME_BYTES_MAX, minimumFrameBytesForArtifact } from "@/lib/limits"
 import { ecLevelFor } from "@/qr/encode"
 import {
@@ -79,7 +80,6 @@ import { encodeEnvelopeToPayload } from "@/qr/payload"
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
   DEFAULT_GENERATED_DISPLAY_PAIR,
-  type GeneratedDisplayPair,
   type PostQuantumIdentity,
   type Preferences,
   type StoredKeyRecord,
@@ -116,16 +116,6 @@ interface SymmetricQrView {
 }
 
 type DetailView = { kind: "detail" } | IdentityQrView | SymmetricQrView
-
-function selectedGeneratedDisplayPair(
-  preferences: Pick<Preferences, "frameBytes" | "frameIntervalMs">,
-): GeneratedDisplayPair {
-  return preferences.frameBytes === COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes &&
-    preferences.frameIntervalMs ===
-      COMPATIBLE_GENERATED_DISPLAY_PAIR.frameIntervalMs
-    ? COMPATIBLE_GENERATED_DISPLAY_PAIR
-    : DEFAULT_GENERATED_DISPLAY_PAIR
-}
 
 interface PendingDelete {
   kind: "identity" | "symmetric"
