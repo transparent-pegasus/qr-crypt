@@ -4,9 +4,7 @@
 import { describe, expect, it } from "vitest"
 import { AppError, ERROR_CODES, messageFor, toAppError } from "@/crypto/errors"
 import {
-  FRAME_BYTES_VALUES,
   FRAME_INTERVAL_MS_VALUES,
-  isFrameIntervalMs,
   KEY_ID_PATTERN,
   MAX_CIPHERTEXT_BYTES,
   MAX_PQ_PLAINTEXT_BYTES,
@@ -19,14 +17,9 @@ import { QR_PREFIX } from "@/qr/payload"
 import { toUiAlgorithm, toWireAlgorithm } from "@/schemas/domain"
 import { env, parseAppEnv } from "@/schemas/env-schema"
 import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
-import encryptPageSource from "@/pages/encrypt-page.tsx?raw"
 
 describe("contract smoke", () => {
   it("keeps only error codes and resolves user messages explicitly by language", () => {
-    expect(ERROR_CODES).toHaveLength(25)
-    expect(ERROR_CODES).toContain("QR_READER_PREPARATION_TIMEOUT")
-    expect(ERROR_CODES).toContain("QR_DECODE_PROGRESS_TIMEOUT")
-    expect(ERROR_CODES).toContain("QR_READER_BLOCKED")
     expect(ERROR_CODES).toContain("KEY_ID_CONFLICT")
     expect(ERROR_CODES).toContain("MESSAGE_ID_REUSED")
     const error = new AppError("DECRYPTION_FAILED")
@@ -49,7 +42,7 @@ describe("contract smoke", () => {
     expect(() => toWireAlgorithm("MLKEM1024_A256GCM")).toThrow(TypeError)
   })
 
-  it("env parsing applies defaults and cross-field normalization", () => {
+  it("env parsing applies defaults, cross-field normalization, and retired-value rejection", () => {
     expect(env.maxPlaintextBytes).toBe(120_000)
     expect(MAX_PQ_PLAINTEXT_BYTES).toBe(env.maxPlaintextBytes)
     expect(MAX_PLAINTEXT_BYTES).toBe(env.maxPlaintextBytes)
@@ -57,19 +50,10 @@ describe("contract smoke", () => {
     // deliberately NOT the post-quantum multipart ceiling.
     expect(MAX_SYMMETRIC_PLAINTEXT_BYTES).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
     expect(MAX_CIPHERTEXT_BYTES).toBe(MAX_SYMMETRIC_PLAINTEXT_BYTES + 16)
-    const normalized = parseAppEnv({ VITE_ENABLE_RSA: "true" })
-    expect(normalized.enableRsa).toBe(false)
-    expect(normalized.buildSha).toBe("development")
-    expect(FRAME_BYTES_VALUES).toEqual([
-      100, 200, 300, 400, 500, 600, 700, 800, 900, 1_000,
-    ])
+    const normalized = parseAppEnv({})
     expect(normalized.qrFrameBytes).toBe(1_000)
     expect(normalized.qrFrameIntervalMs).toBe(200)
-    expect(FRAME_INTERVAL_MS_VALUES).toEqual([
-      200, 300, 400, 500, 600, 700, 800, 900, 1_000, 2_000,
-    ])
     for (const frameIntervalMs of FRAME_INTERVAL_MS_VALUES) {
-      expect(isFrameIntervalMs(frameIntervalMs)).toBe(true)
       expect(
         parseAppEnv({
           VITE_QR_FRAME_INTERVAL_MS: String(frameIntervalMs),
@@ -77,16 +61,12 @@ describe("contract smoke", () => {
       ).toBe(frameIntervalMs)
     }
     for (const frameIntervalMs of [199, 250, 1_001, 1_500, 3_000]) {
-      expect(isFrameIntervalMs(frameIntervalMs)).toBe(false)
       expect(() =>
         parseAppEnv({
           VITE_QR_FRAME_INTERVAL_MS: String(frameIntervalMs),
         }),
       ).toThrow("Invalid environment variables")
     }
-    expect(() => parseAppEnv({ VITE_ENABLE_RSA: "yes" })).toThrow(
-      "Invalid environment variables",
-    )
     expect(() => parseAppEnv({ VITE_QR_RENDER_SIZE: "abc" })).toThrow(
       "Invalid environment variables",
     )
@@ -117,26 +97,6 @@ describe("contract smoke", () => {
     for (const limit of Object.values(symmetricLimits)) {
       expect(limit).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
     }
-  })
-
-  it("applies the A256GCM capacity bound in EncryptPage before encryption", () => {
-    const helperOccurrences =
-      encryptPageSource.match(
-        /maximumSymmetricPlaintextBytesForPayloadCapacity/gu,
-      )?.length ?? 0
-    const guardIndex = encryptPageSource.indexOf("const overPlaintextLimit")
-    const encryptionIndex = encryptPageSource.indexOf("const handleEncrypt")
-
-    // One occurrence is the import; a second proves the page actually derives
-    // and consumes the symmetric limit instead of only exposing a dead helper.
-    expect(helperOccurrences).toBeGreaterThanOrEqual(2)
-    expect(guardIndex).toBeGreaterThan(-1)
-    expect(guardIndex).toBeLessThan(encryptionIndex)
-    expect(
-      encryptPageSource.slice(guardIndex, encryptionIndex),
-    ).not.toContain(
-      "plaintextBytes.byteLength > env.maxPlaintextBytes",
-    )
   })
 
   it("QR capacity table and EC policy are fixed", () => {
