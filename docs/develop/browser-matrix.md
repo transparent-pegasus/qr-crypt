@@ -29,6 +29,16 @@ This table maps the target browser environments to the primary verification item
   persistence of non-extractable `CryptoKey`s (generate → close tab → restore → decrypt)
   is a mandatory manual on-device item. Success on `fake-indexeddb` is not treated as a
   sufficient condition.
+* **First-session camera decoder (added 2026-07-29)**: the router only mounts once the
+  device is offline-confirmed, so the reader WASM is never fetched while online — it has to
+  come from precache. That requires the service worker to control the page *before* the
+  device goes offline, which since 2026-07-29 is what `workbox.clientsClaim` and the
+  install screen's **Offline-use readiness: Ready** row guarantee. The manual case to run
+  on device is therefore: one online load, **no reload**, wait for readiness Ready, go
+  offline, then open the camera for the first time. Ephemeral private sessions (observed
+  on Brave iOS Private tabs, where the worker registration appears not to survive the
+  session) make every session that first session, so run the case there too. Both stay
+  `manual-pending` until verified on device.
 * **Offline launch / camera scanning**: partial automation via chromium e2e is planned. Real devices on Android / Windows, as well as Safari / Edge, are manual.
 * **Online relay (camera / display / clipboard / BFCache)**: chromium e2e may cover synthetic paths; real-device rows above stay `manual-pending` until measured. Clipboard sync targets and OS QR capture are outside app control.
 * **Edge**: manual on-device row. Screen-reader verification is also manual.

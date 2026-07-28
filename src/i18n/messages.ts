@@ -620,7 +620,7 @@ const en = {
   "settings.info.version": "Version",
   "settings.info.build": "Build",
   "settings.pwa.offlineReadyNote":
-    "Offline-use readiness describes whether assets are stored. It does not indicate security.",
+    "Offline-use readiness means this page is served by the installed service worker. It does not indicate security.",
   "settings.card.featureDetect": "Feature detection",
   "settings.featureDetect.note":
     "If Web Crypto or IndexedDB is unavailable, the UNSUPPORTED_BROWSER screen stops all features.",
@@ -1290,7 +1290,7 @@ const ja = {
   "settings.info.version": "バージョン",
   "settings.info.build": "ビルド",
   "settings.pwa.offlineReadyNote":
-    "オフライン利用準備状態は資産の保存状態を示します。安全性を示すものではありません。",
+    "オフライン利用準備状態は、このページがインストール済みの Service Worker から配信されていることを示します。安全性を示すものではありません。",
   "settings.card.featureDetect": "機能検出",
   "settings.featureDetect.note":
     "Web CryptoまたはIndexedDBが利用できない場合はUNSUPPORTED_BROWSER画面で全機能を停止します。",
