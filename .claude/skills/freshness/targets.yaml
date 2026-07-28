@@ -29,7 +29,7 @@ units:
       - aube-lock.yaml
       - vite.config.ts # PWA/workbox options reviewed on plugin bumps; globPatterns must keep `wasm`
       - public/_headers # script-src carries 'wasm-unsafe-eval' for the zxing-wasm reader
-      - src/qr/decode.ts # same-origin locateFile routing for the reader wasm
+      - src/qr/camera/reader-module.ts # same-origin locateFile routing for the reader wasm
     why: >
       Dependency ranges, exact security pins, aube.overrides, and the frozen
       lock graph fall behind registry releases and advisories.
@@ -181,7 +181,7 @@ units:
       - src/lib/limits.ts # frames × chunk receiver-allocation bound cited by T20
       - src/qr/payload-v2.ts # bare-paste character and decoded-byte bounds cited by T20
       - src/qr/multipart/assemble.ts # receiver assembly enforcement cited by T20
-      - src/qr/decode.ts # scanner downscale, in-flight bound, and scheduled interval cited by T5
+      - src/qr/camera/frame-pump.ts # scanner downscale, in-flight bound, and scheduled interval cited by T5
     why: >
       Living threat model. §5.1 supply-chain advisories are dated (2026-07-21);
       §7 v2 addendum cites algorithm defaults that can diverge from the active
@@ -281,7 +281,7 @@ units:
       reference bench" table (dated development-machine values) in the same
       document. Reconcile the README "Requirements" sections (target browsers,
       Web Crypto / IndexedDB gate, WebAssembly decoder behaviour) with
-      detectFeatures(), App.tsx, and src/qr/decode.ts.
+      detectFeatures(), App.tsx, and src/qr/camera/reader-module.ts.
     verify: aube bench:pq && aube test:e2e && aube test -- tests/ui/app-shell.test.tsx
     sync: [readme]
 
@@ -291,6 +291,7 @@ units:
     last_checked: 2026-07-28
     files:
       - docs/spec/qr-protocol-v2.md
+      - docs/spec/qr-protocol.md # v1 A256GCM path; must not regrow retired RSA sections
       - docs/spec/boot-and-reset-v2.md
       - src/crypto/pq/wire-bytes.ts # mirrors documented wire layout
       - src/crypto/pq/canonical-cbor.ts # mirrors documented canonical encoding
@@ -302,7 +303,9 @@ units:
       - src/storage/preferences-repository.ts # atomic pair writes and boot-readable pair canonicalization
       - src/pages/encrypt-page.tsx # message-display preference and per-artifact effective clamp
       - src/pages/decrypt-page.tsx # decoded-artifact ceilings on the paste and scan paths
+      - src/lib/generated-display.ts # the one selectedGeneratedDisplayPair, shared by every display surface
       - src/components/key-detail-dialog.tsx # identity-display preference and per-artifact effective clamp
+      - src/components/key-detail/identity-qr-session.tsx # the identity display surface that consumes the pair
       - src/components/animated-qr-frames.tsx # labelled compatibility switch, commit-gated dwell, and one-button export
       - src/components/online-relay.tsx # independent replay cadence and deliberately absent switch
       - tests/pq/wire-bytes.golden.test.ts # frozen hex must match the docs
@@ -321,7 +324,8 @@ units:
       effective clamps, cycle, relay-cadence, and export contracts with
       limits.ts, frame-bytes.ts, frame-interval.ts, payload-v2.ts, domain.ts,
       preferences-repository.ts, encrypt-page.tsx, decrypt-page.tsx,
-      key-detail-dialog.tsx,
+      generated-display.ts, key-detail-dialog.tsx,
+      key-detail/identity-qr-session.tsx,
       animated-qr-frames.tsx, and online-relay.tsx. Confirm the
       qr-protocol-v2.md messageId note (~169–170) still states the wire format
       is not a replay-prevention mechanism while documenting the receiving
