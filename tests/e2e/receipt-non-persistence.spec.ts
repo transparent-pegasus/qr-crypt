@@ -350,11 +350,14 @@ async function clearLegitimatePqKeyRows(page: Page): Promise<void> {
 }
 
 test("receipts never persist and do not survive a reload", async ({
+  baseURL,
   context,
   page,
 }) => {
   test.setTimeout(180_000)
-  const appOrigin = process.env["RECEIPT_E2E_ORIGIN"] ?? "http://localhost:4173"
+  // Take the origin from the Playwright config rather than a literal: a stray server
+  // on the default port would otherwise silently test a different build.
+  const appOrigin = baseURL ?? "http://localhost:4173"
   await installReceiptInputProbe(page)
   const identityName = "受領票非永続化-ID"
   const plaintext = "受領票を永続化しない実復号-E2E"
