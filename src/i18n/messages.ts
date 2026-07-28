@@ -74,8 +74,6 @@ const en = {
   "errors.CAMERA_PERMISSION_DENIED":
     "Camera access is not permitted. Allow it in the browser settings.",
   "errors.CAMERA_NOT_AVAILABLE": "The camera is unavailable.",
-  "errors.QR_READER_PREPARATION_TIMEOUT":
-    "The QR reader did not finish preparing on this device.",
   "errors.QR_DECODE_PROGRESS_TIMEOUT":
     "The QR decoding pipeline stopped making progress on this device.",
   "errors.QR_READER_BLOCKED":
@@ -495,6 +493,8 @@ const en = {
   "scanner.status.videoNotReady": "The camera view could not be prepared",
   "scanner.status.preparing": "Preparing the camera…",
   "scanner.status.readerLoading": "Still loading the QR reader…",
+  "scanner.reader.reloadHint":
+    "The QR reader could not be prepared. Reload the page and try again.",
   "scanner.status.qrRead": "The QR code was read",
   "scanner.error.multipartNotAccepted":
     "This screen does not accept multi-frame QR codes.",
@@ -532,6 +532,7 @@ const en = {
   "scanner.video.ariaLabel": "Camera video for QR scanning",
   "scanner.button.restart": "Restart camera",
   "scanner.button.start": "Start camera",
+  "scanner.button.reload": "Reload",
   "scanner.progress.ariaLabel": "Multi-frame QR scan progress",
   "scanner.progress.received": "Received {received} / {total}",
   "scanner.progress.missingIndex": "Missing frames: {indexes}",
@@ -543,8 +544,6 @@ const en = {
   "scanner.error.title": "The scan could not be completed",
   "scanner.diagnostic.ariaLabel": "Camera diagnostic",
   "scanner.diagnostic": "Diagnostic: {name} @{phase} [{detail}]",
-  "scanner.diagnostic.withMessage":
-    "Diagnostic: {name} @{phase} [{detail}] {message}",
   "scanner.pipelineDiagnostic.ariaLabel": "QR decode pipeline diagnostic",
   "scanner.pipelineDiagnostic":
     "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
@@ -742,8 +741,6 @@ const ja = {
   "errors.CAMERA_PERMISSION_DENIED":
     "カメラの使用が許可されていません。ブラウザーの設定で許可してください。",
   "errors.CAMERA_NOT_AVAILABLE": "カメラを利用できません。",
-  "errors.QR_READER_PREPARATION_TIMEOUT":
-    "この端末でQRリーダーの準備が完了しませんでした。",
   "errors.QR_DECODE_PROGRESS_TIMEOUT":
     "この端末でQR復号パイプラインの進行が停止しました。",
   "errors.QR_READER_BLOCKED":
@@ -1164,6 +1161,8 @@ const ja = {
   "scanner.status.videoNotReady": "カメラ画面を準備できませんでした",
   "scanner.status.preparing": "カメラを準備しています…",
   "scanner.status.readerLoading": "QRリーダーを読み込んでいます…",
+  "scanner.reader.reloadHint":
+    "QRリーダーを準備できませんでした。ページを再読み込みしてからやり直してください。",
   "scanner.status.qrRead": "QRコードを読み取りました",
   "scanner.error.multipartNotAccepted":
     "この画面では複数QRを受理しません。",
@@ -1201,6 +1200,7 @@ const ja = {
   "scanner.video.ariaLabel": "QRコード読取用カメラ映像",
   "scanner.button.restart": "カメラを再起動",
   "scanner.button.start": "カメラを起動",
+  "scanner.button.reload": "再読み込み",
   "scanner.progress.ariaLabel": "複数QR読取進捗",
   "scanner.progress.received": "受信 {received} / {total}",
   "scanner.progress.missingIndex": "欠損フレーム: {indexes}",
@@ -1212,7 +1212,6 @@ const ja = {
   "scanner.error.title": "読み取りを完了できません",
   "scanner.diagnostic.ariaLabel": "カメラ診断",
   "scanner.diagnostic": "診断: {name} @{phase} [{detail}]",
-  "scanner.diagnostic.withMessage": "診断: {name} @{phase} [{detail}] {message}",
   "scanner.pipelineDiagnostic.ariaLabel": "QR復号パイプライン診断",
   "scanner.pipelineDiagnostic":
     "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",

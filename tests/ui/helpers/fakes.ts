@@ -448,11 +448,10 @@ interface FakeCameraDiagnostic {
   phase: "acquiring" | "acquired" | "playing" | "track-ended"
   name: string | null
   detail: string
-  message: string | null
 }
 
 interface FakeCameraPipelineDiagnostic {
-  readerModuleState: "idle" | "preparing" | "ready" | "failed" | "timed-out"
+  readerModuleState: "idle" | "preparing" | "ready" | "failed"
   videoFramesDrawn: number
   decodeAttemptsCompleted: number
   decodeResultsSeen: number
@@ -460,7 +459,11 @@ interface FakeCameraPipelineDiagnostic {
 }
 
 export const scannerStop = vi.fn()
-export const warmQrReader = vi.fn(() => undefined)
+export const CAMERA_READER_READY_TIMEOUT_MS = 30_000
+export const readerModuleState = vi.fn<
+  () => "idle" | "preparing" | "ready" | "failed"
+>(() => "ready")
+export const warmQrReader = vi.fn<() => Promise<void>>(() => Promise.resolve())
 let scanTextCallback: ((payload: string) => void) | null = null
 let scanErrorCallback:
   | ((error: FakeAppError, diagnostic: FakeCameraDiagnostic) => void)
@@ -494,7 +497,6 @@ export function emitScanError(
     phase: "acquiring",
     name: null,
     detail: "0x0 rs=0 track=none",
-    message: null,
   },
 ): void {
   scanErrorCallback?.(new FakeAppError(code), diagnostic)
@@ -1008,4 +1010,7 @@ export function resetFakes(): void {
   findBundleByKemKeyId.mockImplementation(defaultFindBundleByKemKeyId)
   recordReceipt.mockImplementation(() => ({ kind: "first-seen" }) as const)
   vi.clearAllMocks()
+  probeWebAssemblyRuntime.mockImplementation(async () => true)
+  readerModuleState.mockImplementation(() => "ready")
+  warmQrReader.mockImplementation(() => Promise.resolve())
 }

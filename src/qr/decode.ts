@@ -1,6 +1,5 @@
 import type { AppError } from "@/crypto/errors"
 import { AppError as ConcreteAppError } from "@/crypto/errors"
-import { probeWebAssemblyRuntime } from "@/lib/feature-detect"
 import {
   reportAttemptError,
   stopAttempt,
@@ -38,9 +37,10 @@ import type {
 export {
   CAMERA_DECODE_PROGRESS_TIMEOUT_MS,
   CAMERA_FRAME_READY_TIMEOUT_MS,
-  CAMERA_READER_PREPARATION_TIMEOUT_MS,
+  CAMERA_READER_READY_TIMEOUT_MS,
   CAMERA_START_TIMEOUT_MS,
 } from "@/qr/camera/reader-module"
+export { readerModuleState }
 
 export type {
   CameraDiagnostic,
@@ -52,12 +52,10 @@ export type {
   StartQrScanOptions,
 } from "@/qr/camera/types"
 
-// Fetch and compile the reader ahead of any tap. iOS Safari raises the camera permission
-// prompt while a cold one-megabyte fetch is still in flight, and losing that fetch aborts
-// the Emscripten runtime. Warming on mount takes the fetch off the acquisition path
-// entirely; the rejection is swallowed because nothing awaits a warm-up.
-export function warmQrReader(): void {
-  warmQrReaderModule(publishPipelineDiagnostic)
+// Fetch and compile the reader ahead of any tap. The shared readiness gate awaits this
+// promise before enabling capture and owns presentation of a latched failure.
+export function warmQrReader(): Promise<void> {
+  return warmQrReaderModule(publishPipelineDiagnostic)
 }
 
 // true does not automatically restart; it directs the UI to transition to stopped
@@ -84,6 +82,13 @@ async function startQrScanImplementation(
   onError: (error: AppError, diagnostic: CameraDiagnostic) => void,
   options?: StartQrScanOptions,
 ): Promise<QrScanHandle> {
+  // The UI gate is not the security boundary: future direct callers must not
+  // acquire a camera or reach zxing-wasm while its same-origin override is
+  // absent, pending, or latched failed.
+  if (readerModuleState() !== "ready") {
+    throw new ConcreteAppError("QR_READER_BLOCKED")
+  }
+
   const previous = currentAttempt()
   if (previous !== null) stopAttempt(previous)
 
@@ -118,9 +123,7 @@ async function startQrScanImplementation(
     decodeResultsSeen: 0,
     lastErrorName: null,
     lastFrameErrorName: undefined,
-    lastPreparationError: undefined,
     retryDecoder: undefined,
-    cancelModulePreparationWait: undefined,
     abortSignal: undefined,
     abortListener: undefined,
   }
@@ -145,21 +148,17 @@ async function startQrScanImplementation(
     throw attempt.failure ?? new ConcreteAppError("CAMERA_NOT_AVAILABLE")
   }
 
-  // Neither promise is awaited: getUserMedia has to run inside the tap's
-  // user-activation window. The decoder awaits both only after its first drawn frame,
-  // with a bounded wait for reader preparation.
-  const modulePreparation = prepareQrReaderModule(publishPipelineDiagnostic)
+  // Reuse the already-ready generation. The fail-closed check above guarantees
+  // that a latched failure cannot reach zxing-wasm after its module was purged.
+  prepareQrReaderModule(publishPipelineDiagnostic)
   attempt.readerModuleState = readerModuleState()
   publishPipelineDiagnostic(attempt)
-  const webAssemblyRuntimeSupport = probeWebAssemblyRuntime()
 
   const operation: Promise<AttemptOutcome> = startAttempt(
     attempt,
     handle,
     onText,
     options?.once ?? true,
-    modulePreparation,
-    webAssemblyRuntimeSupport,
   ).then(
     (controls) => ({ kind: "ready", controls }),
     (error: unknown) => ({ kind: "error", error }),

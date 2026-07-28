@@ -6,6 +6,7 @@ import {
   ClipboardCopy,
   MessageSquareText,
   QrCode,
+  RefreshCw,
   ScanLine,
 } from "lucide-react"
 import type { RelaySessionEndReason } from "@/app/boot/boot-controller"
@@ -25,6 +26,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { AppError, errorMessageKey } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"
+import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
 import {
   FRAME_INTERVAL_MS_DEFAULT,
   TRANSFER_TIMEOUT_MINUTES_DEFAULT,
@@ -87,6 +89,9 @@ export function OnlineRelay({
   const { language, t } = useI18n()
   const { camera: cameraAvailable } = useFeatureSupport()
   const [dialogMode, setDialogMode] = useState<DialogMode>(null)
+  // Only once the user asks for the camera: the online gate must not pull the
+  // reader at runtime before that, which offline-pwa.spec.ts pins as a contract.
+  const readerReadiness = useQrReaderReadiness(dialogMode === "capture")
   const [captureSet, setCaptureSet] = useState<RelayFrameSet>(emptyRelayFrameSet)
   const [joinedText, setJoinedText] = useState("")
   const [captureError, setCaptureError] = useState<MessageKey | null>(null)
@@ -297,6 +302,7 @@ export function OnlineRelay({
   const startCamera = () => {
     if (
       !cameraAvailable ||
+      readerReadiness !== "ready" ||
       cameraActive ||
       startupAbortRef.current !== null ||
       liveHandleRef.current !== null ||
@@ -489,6 +495,16 @@ export function OnlineRelay({
               {t("relay.capture.unavailable")}
             </p>
           )}
+          {(readerReadiness === "failed" ||
+            readerReadiness === "blocked") && (
+            <p className="text-sm text-muted-foreground">
+              {t(
+                readerReadiness === "blocked"
+                  ? "errors.QR_READER_BLOCKED"
+                  : "scanner.reader.reloadHint",
+              )}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -524,7 +540,11 @@ export function OnlineRelay({
             <Button
               type="button"
               className="h-11 cursor-pointer focus-visible:ring-2"
-              disabled={cameraActive || joinedText.length > 0}
+              disabled={
+                readerReadiness !== "ready" ||
+                cameraActive ||
+                joinedText.length > 0
+              }
               onClick={startCamera}
             >
               <Camera aria-hidden="true" />
@@ -532,6 +552,33 @@ export function OnlineRelay({
                 ? t("relay.capture.cameraActive")
                 : t("relay.capture.startCamera")}
             </Button>
+
+            {readerReadiness !== "ready" && (
+              <div
+                aria-live="polite"
+                className="space-y-3 text-sm text-muted-foreground"
+              >
+                <p>
+                  {t(
+                    readerReadiness === "preparing"
+                      ? "scanner.status.readerLoading"
+                      : readerReadiness === "blocked"
+                        ? "errors.QR_READER_BLOCKED"
+                        : "scanner.reader.reloadHint",
+                  )}
+                </p>
+                {readerReadiness === "failed" && (
+                  <Button
+                    type="button"
+                    className="h-11 cursor-pointer focus-visible:ring-2"
+                    onClick={() => window.location.reload()}
+                  >
+                    <RefreshCw aria-hidden="true" />
+                    {t("scanner.button.reload")}
+                  </Button>
+                )}
+              </div>
+            )}
 
             {captureSet.metadata !== null && (
               <div className="space-y-1" aria-live="polite">

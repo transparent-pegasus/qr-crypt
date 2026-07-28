@@ -2,7 +2,7 @@ import "./helpers/module-mocks"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { fakeFeatures } from "./helpers/fakes"
+import { fakeFeatures, warmQrReader } from "./helpers/fakes"
 import { setTestOnlineStatus } from "./helpers/network"
 import { renderApp, resetUi } from "./helpers/render-app"
 
@@ -37,6 +37,14 @@ describe("app shell and feature gate", () => {
     await renderApp("/encrypt")
     expect(await screen.findByText("Offline")).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent("Offline means safe")
+  })
+
+  it("warms the QR reader when the offline application mounts before any scanner is opened", async () => {
+    await renderApp("/decrypt")
+
+    await screen.findByRole("button", { name: "Scan a ciphertext QR code" })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(warmQrReader).toHaveBeenCalledOnce()
   })
 
   it("supports keyboard navigation with visible-focus classes and Space activation", async () => {

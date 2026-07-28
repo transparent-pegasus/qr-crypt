@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   Camera,
   CameraOff,
@@ -9,9 +9,9 @@ import {
 import { AppError } from "@/crypto/errors"
 import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import { formatFramePositions } from "@/features/presentation"
+import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
 import {
   startQrScan,
-  warmQrReader,
   type CameraDiagnostic,
   type CameraPipelineDiagnostic,
   type CameraScanState,
@@ -52,6 +52,9 @@ const IDLE_TRANSFER_STATE: TransferState = { kind: "idle" }
 
 export function QrScannerPanel(props: QrScannerPanelProps) {
   const { language, t } = useI18n()
+  const readiness = useQrReaderReadiness()
+  const readinessRef = useRef(readiness)
+  const readyAtMountRef = useRef(readiness === "ready")
   const {
     singleTargets,
     onSingleScan,
@@ -99,22 +102,13 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const [diagnostic, setDiagnostic] = useState<CameraDiagnostic | null>(null)
   const [pipelineDiagnostic, setPipelineDiagnostic] =
     useState<CameraPipelineDiagnostic | null>(null)
-  const readerStillLoading =
-    cameraMode === "running" &&
-    pipelineDiagnostic !== null &&
-    pipelineDiagnostic.videoFramesDrawn > 0 &&
-    pipelineDiagnostic.decodeAttemptsCompleted === 0 &&
-    (pipelineDiagnostic.readerModuleState === "preparing" ||
-      pipelineDiagnostic.readerModuleState === "idle")
   const [integrityConfirmed, setIntegrityConfirmed] = useState(
     transferState.kind === "complete",
   )
 
-  // Take the one-megabyte reader fetch off the acquisition path: warming here means the
-  // binary is normally compiled before the user ever taps start.
-  useEffect(() => {
-    warmQrReader()
-  }, [])
+  useLayoutEffect(() => {
+    readinessRef.current = readiness
+  }, [readiness])
 
   useEffect(() => {
     cameraAvailableRef.current = cameraAvailable
@@ -184,6 +178,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       startLockedRef.current ||
       cameraModeRef.current === "running" ||
       cameraModeRef.current === "delivering" ||
+      readinessRef.current !== "ready" ||
       !cameraAvailableRef.current
     ) {
       return
@@ -409,7 +404,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       setDiagnostic(
         scanError.code === "CAMERA_PERMISSION_DENIED" ||
           scanError.code === "CAMERA_NOT_AVAILABLE" ||
-          scanError.code === "QR_READER_PREPARATION_TIMEOUT" ||
           scanError.code === "QR_DECODE_PROGRESS_TIMEOUT"
           ? cameraDiagnostic
           : null,
@@ -528,7 +522,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   }, [cancelRun])
 
   useEffect(() => {
-    if (autoStart) startCamera()
+    if (autoStart && readyAtMountRef.current) startCamera()
   }, [autoStart, startCamera])
 
   useEffect(() => {
@@ -631,6 +625,18 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const received = collecting?.receivedIndexes.size ?? 0
   const frameCount = collecting?.frameCount ?? 0
   const restartBlocked = transferState.kind === "error"
+  const announcedStatus = (() => {
+    switch (readiness) {
+      case "preparing":
+        return t("scanner.status.readerLoading")
+      case "blocked":
+        return t("errors.QR_READER_BLOCKED")
+      case "failed":
+        return t("scanner.reader.reloadHint")
+      case "ready":
+        return t(cameraStatus.key, cameraStatus.values)
+    }
+  })()
 
   return (
     <Card aria-busy={cameraMode === "running" || cameraMode === "delivering"}>
@@ -662,21 +668,47 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           </div>
           {cameraMode !== "running" && cameraMode !== "delivering" && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-950/65 p-4">
-              <Button
-                type="button"
-                className="h-11 cursor-pointer focus-visible:ring-2"
-                disabled={!cameraAvailable || restartBlocked}
-                onClick={startCamera}
-              >
-                {cameraMode === "stopped" ? (
-                  <RefreshCw aria-hidden="true" />
-                ) : (
-                  <Camera aria-hidden="true" />
-                )}
-                {cameraMode === "stopped"
-                  ? t("scanner.button.restart")
-                  : t("scanner.button.start")}
-              </Button>
+              {readiness === "failed" || readiness === "blocked" ? (
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <p className="text-sm text-white">
+                    {t(
+                      readiness === "blocked"
+                        ? "errors.QR_READER_BLOCKED"
+                        : "scanner.reader.reloadHint",
+                    )}
+                  </p>
+                  {readiness === "failed" && (
+                    <Button
+                      type="button"
+                      className="h-11 cursor-pointer focus-visible:ring-2"
+                      onClick={() => window.location.reload()}
+                    >
+                      <RefreshCw aria-hidden="true" />
+                      {t("scanner.button.reload")}
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  className="h-11 cursor-pointer focus-visible:ring-2"
+                  disabled={
+                    !cameraAvailable ||
+                    restartBlocked ||
+                    readiness !== "ready"
+                  }
+                  onClick={startCamera}
+                >
+                  {cameraMode === "stopped" ? (
+                    <RefreshCw aria-hidden="true" />
+                  ) : (
+                    <Camera aria-hidden="true" />
+                  )}
+                  {cameraMode === "stopped"
+                    ? t("scanner.button.restart")
+                    : t("scanner.button.start")}
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -688,12 +720,11 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         )}
 
         <p
+          role="status"
           aria-live="polite"
           className="text-center text-sm text-muted-foreground"
         >
-          {readerStillLoading
-            ? t("scanner.status.readerLoading")
-            : t(cameraStatus.key, cameraStatus.values)}
+          {announcedStatus}
         </p>
 
         {collecting && (
@@ -752,18 +783,11 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             aria-label={t("scanner.diagnostic.ariaLabel")}
             className="font-mono text-xs text-muted-foreground"
           >
-            {diagnostic.message === null
-              ? t("scanner.diagnostic", {
-                  name: diagnostic.name ?? "unknown",
-                  phase: diagnostic.phase,
-                  detail: diagnostic.detail,
-                })
-              : t("scanner.diagnostic.withMessage", {
-                  name: diagnostic.name ?? "unknown",
-                  phase: diagnostic.phase,
-                  detail: diagnostic.detail,
-                  message: diagnostic.message,
-                })}
+            {t("scanner.diagnostic", {
+              name: diagnostic.name ?? "unknown",
+              phase: diagnostic.phase,
+              detail: diagnostic.detail,
+            })}
           </p>
         )}
         {pipelineDiagnostic && (

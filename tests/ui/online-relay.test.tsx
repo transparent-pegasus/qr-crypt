@@ -13,11 +13,20 @@ const scanStart = vi.hoisted(() => vi.fn())
 const scanStop = vi.hoisted(() => vi.fn())
 const copyText = vi.hoisted(() => vi.fn(async () => undefined))
 const renderQr = vi.hoisted(() => vi.fn())
+const probeWebAssemblyRuntime = vi.hoisted(() =>
+  vi.fn<() => Promise<boolean>>(),
+)
+const readerModuleState = vi.hoisted(() =>
+  vi.fn<() => "idle" | "preparing" | "ready" | "failed">(),
+)
+const warmQrReader = vi.hoisted(() => vi.fn<() => Promise<void>>())
 
 vi.mock("@/qr/decode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/decode")>()),
+  CAMERA_READER_READY_TIMEOUT_MS: 30_000,
+  readerModuleState,
   startQrScan: scanStart,
-  warmQrReader: vi.fn(() => undefined),
+  warmQrReader,
 }))
 
 vi.mock("@/qr/export-image", async (importOriginal) => ({
@@ -30,6 +39,11 @@ vi.mock("@/qr/encode", async (importOriginal) => ({
   renderQrDataUrl: renderQr,
 }))
 
+vi.mock("@/lib/feature-detect", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/feature-detect")>()),
+  probeWebAssemblyRuntime,
+}))
+
 vi.mock("@/hooks/use-register-sw", () => ({
   useDefaultRegisterSW: () => ({ offlineReady: [false, vi.fn()] }),
 }))
@@ -37,6 +51,7 @@ vi.mock("@/hooks/use-register-sw", () => ({
 import { FeatureSupportProvider } from "@/app/providers"
 import { OnlineRelay } from "@/components/online-relay"
 import { LanguageProvider } from "@/i18n"
+import { translate } from "@/i18n/messages"
 import { TRANSFER_TIMEOUT_MINUTES_DEFAULT } from "@/lib/limits"
 import { decodeFramePayload, encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2 } from "@/schemas/domain"
@@ -136,6 +151,9 @@ beforeEach(() => {
   scanText = null
   scanFailure = null
   scanSignal = undefined
+  probeWebAssemblyRuntime.mockResolvedValue(true)
+  readerModuleState.mockReturnValue("ready")
+  warmQrReader.mockImplementation(() => Promise.resolve())
   renderQr.mockImplementation(async (value: string) => dataUrl(value))
   scanStart.mockImplementation(
     async (
@@ -163,6 +181,78 @@ afterEach(() => {
 })
 
 describe("online relay UI", () => {
+  it("does not pull the reader before the user opens capture, then gates the camera on it", async () => {
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    warmQrReader.mockReturnValueOnce(preparation.promise)
+    const user = userEvent.setup()
+    renderRelay()
+
+    // The online gate must not fetch the reader at runtime until the user asks
+    // for the camera; tests/e2e/offline-pwa.spec.ts pins that as a contract.
+    expect(warmQrReader).not.toHaveBeenCalled()
+
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.capture.open"),
+      }),
+    )
+    expect(warmQrReader).toHaveBeenCalled()
+
+    const startCamera = await screen.findByRole("button", {
+      name: translate("en", "relay.capture.startCamera"),
+    })
+    expect(startCamera).toBeDisabled()
+    expect(scanStart).not.toHaveBeenCalled()
+
+    await act(async () => preparation.resolve())
+
+    await waitFor(() => expect(startCamera).toBeEnabled())
+    expect(scanStart).not.toHaveBeenCalled()
+  })
+
+  it("shows preparation failure and reload inside the open capture dialog", async () => {
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    void preparation.promise.catch(() => undefined)
+    warmQrReader.mockReturnValueOnce(preparation.promise)
+    const user = userEvent.setup()
+    renderRelay()
+
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.capture.open"),
+      }),
+    )
+    const dialog = await screen.findByRole("dialog", {
+      name: translate("en", "relay.capture.title"),
+    })
+    expect(
+      within(dialog).getByText(
+        translate("en", "scanner.status.readerLoading"),
+      ),
+    ).toBeInTheDocument()
+
+    await act(async () => {
+      preparation.reject(new Error("reader preparation failed"))
+      await preparation.promise.catch(() => undefined)
+    })
+
+    await waitFor(() =>
+      expect(
+        within(dialog).getByText(
+          translate("en", "scanner.reader.reloadHint"),
+        ),
+      ).toBeInTheDocument(),
+    )
+    expect(
+      within(dialog).getByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).toBeEnabled()
+    expect(scanStart).not.toHaveBeenCalled()
+  })
+
   it("keeps both scrolling dialog bodies bounded with one trailing close and Escape dismissal", async () => {
     renderRelay()
     const user = userEvent.setup()
