@@ -2,7 +2,7 @@
 
 This document is the authoritative specification of the v1 payloads exchanged via QR codes. The implementation (`src/qr/payload.ts`, `src/crypto/*`) and the unit tests follow this document.
 
-> **Status (v2):** the AES-256-GCM message payload (`OCM1` with `alg: "A256GCM"`) remains produced and accepted. The RSA hybrid portions of this document are **historical**: the RSA path was removed in the v2 update, and schema validation rejects non-`A256GCM` `OCM1` messages. See [qr-protocol-v2.md](qr-protocol-v2.md).
+> **Status (v2):** the AES-256-GCM message payload (`OCM1` with `alg: "A256GCM"`) remains produced and accepted. Schema validation rejects non-`A256GCM` `OCM1` messages. See [qr-protocol-v2.md](qr-protocol-v2.md).
 
 ## 1. Payload String
 
@@ -15,7 +15,7 @@ This document is the authoritative specification of the v1 payloads exchanged vi
 
 | Prefix | Kind | Envelope type |
 |---|---|---|
-| `OCM1:` | Ciphertext message | `AesMessageEnvelopeV1` or `RsaHybridEnvelopeV1` |
+| `OCM1:` | Ciphertext message | `AesMessageEnvelopeV1` |
 | `OCK1:` | Symmetric key | `SymmetricKeyEnvelopeV1` |
 | `OCP1:` | Public key | `PublicKeyEnvelopeV1` |
 | `OCB1:` | Encrypted private-key backup | **Reserved only in v1; neither generated nor accepted** (on receipt it is rejected with `INVALID_QR_PAYLOAD` as an unsupported type, not with `UNSUPPORTED_ALGORITHM`) |
@@ -38,18 +38,14 @@ This document is the authoritative specification of the v1 payloads exchanged vi
 | `keyId` | text | `^[A-Za-z0-9_-]{22}$` (base64url of 16 random bytes) |
 | `createdAt` | int | Unix ms; `0 < x < 2^53` |
 | `iv` | bytes | **fixed 12 bytes** |
-| `ciphertext` | bytes | 16–4112 bytes (= plaintext limit 4096 + GCM tag 16; the upper bound is derived from `VITE_MAX_PLAINTEXT_BYTES + 16`) |
+| `ciphertext` | bytes | plaintext + a 16-byte GCM tag. The plaintext ceiling is derived per selected EC level by `maximumSymmetricPlaintextBytesForPayloadCapacity` in `src/lib/limits.ts` — 2010 (L), 1543 (M), 1042 (Q), 750 (H) — not `VITE_MAX_PLAINTEXT_BYTES`, which bounds the post-quantum multipart path. |
 | `aad` | bytes | ≤128 bytes; must byte-for-byte match the value recomputed per §4 |
 
-### 3.2 `RsaHybridEnvelopeV1` (OCM1)
-
-Same as 3.1 except: `keyId` → `recipientKeyId` (same format), `algorithm` = `"RSA-OAEP-3072+A256GCM"`, plus an additional `wrappedKey`: bytes, **fixed 384 bytes** (the raw AES-256 key wrapped with RSA-OAEP/SHA-256).
-
-### 3.3 `SymmetricKeyEnvelopeV1` (OCK1)
+### 3.2 `SymmetricKeyEnvelopeV1` (OCK1)
 
 `v:1, type:"symmetric-key", algorithm:"A256GCM", keyId, createdAt, key: bytes` — `key` is **fixed 32 bytes** (raw AES-256).
 
-### 3.4 `PublicKeyEnvelopeV1` (OCP1)
+### 3.3 `PublicKeyEnvelopeV1` (OCP1)
 
 `v:1, type:"public-key", algorithm:"RSA-OAEP-3072", keyId, createdAt, spki: bytes` — `spki` is a SubjectPublicKeyInfo (DER). Validated by a 350–1200 byte range check, with a successful `importKey` as the final confirmation.
 
@@ -59,14 +55,12 @@ Same as 3.1 except: `keyId` → `recipientKeyId` (same format), `algorithm` = `"
 AAD = UTF-8( "OCAAD1|" + v + "|" + type + "|" + algorithm + "|" + keyId + "|" + createdAt )
 ```
 
-- The `keyId` component is `keyId` for AES and `recipientKeyId` for RSA hybrid.
 - On encryption: this value is stored in `envelope.aad` and used as the AES-GCM `additionalData`.
 - On decryption: the AAD is **recomputed** from the envelope's plaintext fields; if it does not byte-match `envelope.aad`, decryption is not attempted and the operation fails (DECRYPTION_FAILED). Only on a match is it passed as `additionalData` for decryption. As a result, tampering with the version, type, algorithm, key ID, or creation time is also detected by GCM tag verification.
 
 ## 5. Cryptographic Operations
 
 - **AES-256-GCM**: 256-bit key, extractable (required to generate symmetric-key QR codes). A fresh IV per encryption via `crypto.getRandomValues(new Uint8Array(12))`. IV reuse under the same key is forbidden (the implementation is covered by tests verifying IV uniqueness across repeated encryptions). Tag length 128 bits (the WebCrypto default).
-- **RSA hybrid**: generate a single-use AES-256-GCM key per message → encrypt the body with AES-GCM → wrap the AES key with the recipient's RSA-OAEP (3072/SHA-256) public key via `wrapKey('raw')` → `wrappedKey`. The body is never encrypted directly with RSA. Decryption uses `unwrapKey` (the unwrapped key is non-extractable, `['decrypt']`) → AES-GCM decryption.
 - Recipient key pair: public key `['encrypt','wrapKey']`, extractable / private key `['decrypt','unwrapKey']`, **non-extractable**.
 
 ## 6. Validation Order and Error Mapping
