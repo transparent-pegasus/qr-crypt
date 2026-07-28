@@ -114,6 +114,7 @@ interface ScanContext {
   onText(text: string): void
   modulePreparation: Promise<void>
   webAssemblyRuntimeSupport: Promise<boolean>
+  readerRetryUsed: boolean
 }
 
 interface CameraAttempt {
@@ -660,43 +661,19 @@ function beginFrameRecovery(attempt: CameraAttempt, error: unknown): void {
   retryVideoPlayback(attempt)
 }
 
-async function startAttempt(
-  attempt: CameraAttempt,
-  handle: ScanContext["handle"],
-  onText: (text: string) => void,
-  once: boolean,
-  modulePreparation: Promise<void>,
-  webAssemblyRuntimeSupport: Promise<boolean>,
-): Promise<ScannerControls> {
-  const stream = await acquireWithRetries(attempt)
-  if (!isActiveAttempt(attempt)) {
-    stopStream(stream, attempt.video)
-    throw new AttemptCancelled()
+function cancelVideoFrameCallback(context: ScanContext, handle: number): void {
+  const cancel = context.attempt.video.cancelVideoFrameCallback
+  if (typeof cancel !== "function") return
+  try {
+    cancel.call(context.attempt.video, handle)
+  } catch {
+    // The callback may already have won the race with the fallback timer.
   }
+}
 
-  attempt.stream = stream
-  attempt.phase = "acquired"
-  watchTrackEnds(attempt, stream)
-  if (!isActiveAttempt(attempt)) throw new AttemptCancelled()
-  attempt.video.srcObject = stream
-  watchFrameReadiness(attempt, stream)
+async function waitForReaderModulePreparation(context: ScanContext): Promise<void> {
+  const { attempt } = context
 
-  const canvas = document.createElement("canvas")
-  const context = canvas.getContext("2d", { willReadFrequently: true })
-  if (context === null) throw new Error("Camera frame canvas is unavailable")
-  const frameContext = context
-
-  const pump: ScannerPump = {
-    requestVideoFrameCallbackHandle: undefined,
-    fallbackTimerId: undefined,
-    decodeInFlight: false,
-    cancelled: false,
-    stop() {
-      if (pump.cancelled) return
-      pump.cancelled = true
-      cancelScheduledFrame()
-    },
-  }
   async function awaitPreparation(preparation: Promise<void>): Promise<void> {
     let settled = false
     let timeoutId: ReturnType<typeof setTimeout> | undefined
@@ -741,283 +718,345 @@ async function startAttempt(
     }
   }
 
-  let readerRetryUsed = false
+  if (attempt.readerModuleState === "ready" || zxingModuleState === "ready") {
+    attempt.lastPreparationError = undefined
+    attempt.readerModuleState = "ready"
+    publishPipelineDiagnostic(attempt)
+    return
+  }
 
-  async function waitForReaderModulePreparation(): Promise<void> {
-    if (attempt.readerModuleState === "ready" || zxingModuleState === "ready") {
+  let preparation = context.modulePreparation
+  for (;;) {
+    try {
+      await awaitPreparation(preparation)
       attempt.lastPreparationError = undefined
       attempt.readerModuleState = "ready"
       publishPipelineDiagnostic(attempt)
       return
-    }
-
-    let preparation = modulePreparation
-    for (;;) {
-      try {
-        await awaitPreparation(preparation)
-        attempt.lastPreparationError = undefined
-        attempt.readerModuleState = "ready"
-        publishPipelineDiagnostic(attempt)
-        return
-      } catch (error) {
-        // A cancelled attempt is being torn down and must not restart anything.
-        // A timeout is now retried like any other failure: a stall and an Emscripten
-        // abort are two transient failures of the same preparation operation, and making
-        // recovery depend on which settlement shape WebKit produces is an unhelpful
-        // asymmetry. Both spend the single retry.
-        const retryable =
-          !readerRetryUsed &&
-          !(error instanceof AttemptCancelled) &&
-          isActiveAttempt(attempt)
-        if (!retryable) {
-          if (!(error instanceof AttemptCancelled) && isActiveAttempt(attempt)) {
-            attempt.lastPreparationError = error
-            attempt.readerModuleState =
-              error instanceof QrReaderPreparationTimeout ? "timed-out" : "failed"
-            attempt.lastErrorName = diagnosticName(error)
-            publishPipelineDiagnostic(attempt)
-          }
-          throw error
+    } catch (error) {
+      // A cancelled attempt is being torn down and must not restart anything.
+      // A timeout is now retried like any other failure: a stall and an Emscripten
+      // abort are two transient failures of the same preparation operation, and making
+      // recovery depend on which settlement shape WebKit produces is an unhelpful
+      // asymmetry. Both spend the single retry.
+      const retryable =
+        !context.readerRetryUsed &&
+        !(error instanceof AttemptCancelled) &&
+        isActiveAttempt(attempt)
+      if (!retryable) {
+        if (!(error instanceof AttemptCancelled) && isActiveAttempt(attempt)) {
+          attempt.lastPreparationError = error
+          attempt.readerModuleState =
+            error instanceof QrReaderPreparationTimeout ? "timed-out" : "failed"
+          attempt.lastErrorName = diagnosticName(error)
+          publishPipelineDiagnostic(attempt)
         }
-        readerRetryUsed = true
-        attempt.lastErrorName = diagnosticName(error)
-        invalidateQrReaderModule(preparation)
-        preparation = prepareQrReaderModule()
-        // The decode-progress watchdog was armed by the first drawn frame and would
-        // otherwise expire mid-retry, ending the attempt with the wrong error and
-        // cutting the second window to ~4 s. Starting a fresh generation is progress.
-        armDecodeProgressWatchdog(attempt)
-        // pipelineDiagnostic only mirrors the module state while the attempt field is
-        // idle or preparing, so publishing before this assignment would latch "failed"
-        // for the whole retry window.
-        attempt.readerModuleState = "preparing"
-        publishPipelineDiagnostic(attempt)
+        throw error
       }
+      context.readerRetryUsed = true
+      attempt.lastErrorName = diagnosticName(error)
+      invalidateQrReaderModule(preparation)
+      preparation = prepareQrReaderModule()
+      // The decode-progress watchdog was armed by the first drawn frame and would
+      // otherwise expire mid-retry, ending the attempt with the wrong error and
+      // cutting the second window to ~4 s. Starting a fresh generation is progress.
+      armDecodeProgressWatchdog(attempt)
+      // pipelineDiagnostic only mirrors the module state while the attempt field is
+      // idle or preparing, so publishing before this assignment would latch "failed"
+      // for the whole retry window.
+      attempt.readerModuleState = "preparing"
+      publishPipelineDiagnostic(attempt)
     }
   }
+}
 
-  function cancelVideoFrameCallback(handle: number): void {
-    const cancel = attempt.video.cancelVideoFrameCallback
-    if (typeof cancel !== "function") return
+function cancelScheduledFrame(context: ScanContext): void {
+  const callbackHandle = context.pump.requestVideoFrameCallbackHandle
+  context.pump.requestVideoFrameCallbackHandle = undefined
+  if (callbackHandle !== undefined)
+    cancelVideoFrameCallback(context, callbackHandle)
+
+  if (context.pump.fallbackTimerId !== undefined) {
+    clearTimeout(context.pump.fallbackTimerId)
+    context.pump.fallbackTimerId = undefined
+  }
+}
+
+function takeScheduledFrame(
+  context: ScanContext,
+  source: "video" | "timer",
+  nextDecodeDeadline: number,
+): void {
+  if (source === "video") {
+    context.pump.requestVideoFrameCallbackHandle = undefined
+    if (context.pump.fallbackTimerId !== undefined) {
+      clearTimeout(context.pump.fallbackTimerId)
+      context.pump.fallbackTimerId = undefined
+    }
+  } else {
+    context.pump.fallbackTimerId = undefined
+    const callbackHandle = context.pump.requestVideoFrameCallbackHandle
+    context.pump.requestVideoFrameCallbackHandle = undefined
+    if (callbackHandle !== undefined)
+      cancelVideoFrameCallback(context, callbackHandle)
+  }
+
+  if (
+    context.pump.cancelled ||
+    context.pump.decodeInFlight ||
+    !isActiveAttempt(context.attempt)
+  ) {
+    return
+  }
+
+  if (Date.now() < nextDecodeDeadline) {
+    scheduleNextFrame(context, nextDecodeDeadline)
+    return
+  }
+
+  context.pump.decodeInFlight = true
+  void decodeFrame(context)
+}
+
+function armFrameRace(
+  context: ScanContext,
+  nextDecodeDeadline: number,
+  callbackFallbackDelayMs = 0,
+): void {
+  if (
+    context.pump.cancelled ||
+    context.pump.decodeInFlight ||
+    !isActiveAttempt(context.attempt) ||
+    context.pump.requestVideoFrameCallbackHandle !== undefined ||
+    context.pump.fallbackTimerId !== undefined
+  ) {
+    return
+  }
+
+  // Early video callbacks re-arm with this unchanged absolute deadline. The timer
+  // targets the same deadline, so a silent callback cannot add a second wait.
+  let callbackRegistered = false
+  let callbackFiredSynchronously = false
+  let callbackRegistrationComplete = false
+  const requestVideoFrameCallback =
+    context.attempt.video.requestVideoFrameCallback
+  if (typeof requestVideoFrameCallback === "function") {
     try {
-      cancel.call(attempt.video, handle)
-    } catch {
-      // The callback may already have won the race with the fallback timer.
-    }
-  }
-
-  function cancelScheduledFrame(): void {
-    const callbackHandle = pump.requestVideoFrameCallbackHandle
-    pump.requestVideoFrameCallbackHandle = undefined
-    if (callbackHandle !== undefined) cancelVideoFrameCallback(callbackHandle)
-
-    if (pump.fallbackTimerId !== undefined) {
-      clearTimeout(pump.fallbackTimerId)
-      pump.fallbackTimerId = undefined
-    }
-  }
-
-  function takeScheduledFrame(
-    source: "video" | "timer",
-    nextDecodeDeadline: number,
-  ): void {
-    if (source === "video") {
-      pump.requestVideoFrameCallbackHandle = undefined
-      if (pump.fallbackTimerId !== undefined) {
-        clearTimeout(pump.fallbackTimerId)
-        pump.fallbackTimerId = undefined
-      }
-    } else {
-      pump.fallbackTimerId = undefined
-      const callbackHandle = pump.requestVideoFrameCallbackHandle
-      pump.requestVideoFrameCallbackHandle = undefined
-      if (callbackHandle !== undefined) cancelVideoFrameCallback(callbackHandle)
-    }
-
-    if (
-      pump.cancelled ||
-      pump.decodeInFlight ||
-      !isActiveAttempt(attempt)
-    ) {
-      return
-    }
-
-    if (Date.now() < nextDecodeDeadline) {
-      scheduleNextFrame(nextDecodeDeadline)
-      return
-    }
-
-    pump.decodeInFlight = true
-    void decodeFrame()
-  }
-
-  function armFrameRace(
-    nextDecodeDeadline: number,
-    callbackFallbackDelayMs = 0,
-  ): void {
-    if (
-      pump.cancelled ||
-      pump.decodeInFlight ||
-      !isActiveAttempt(attempt) ||
-      pump.requestVideoFrameCallbackHandle !== undefined ||
-      pump.fallbackTimerId !== undefined
-    ) {
-      return
-    }
-
-    // Early video callbacks re-arm with this unchanged absolute deadline. The timer
-    // targets the same deadline, so a silent callback cannot add a second wait.
-    let callbackRegistered = false
-    let callbackFiredSynchronously = false
-    let callbackRegistrationComplete = false
-    const requestVideoFrameCallback = attempt.video.requestVideoFrameCallback
-    if (typeof requestVideoFrameCallback === "function") {
-      try {
-        const callbackHandle = requestVideoFrameCallback.call(attempt.video, () => {
+      const callbackHandle = requestVideoFrameCallback.call(
+        context.attempt.video,
+        () => {
           if (!callbackRegistrationComplete) {
             callbackFiredSynchronously = true
             return
           }
-          takeScheduledFrame("video", nextDecodeDeadline)
-        })
-        callbackRegistrationComplete = true
-        if (!callbackFiredSynchronously) {
-          pump.requestVideoFrameCallbackHandle = callbackHandle
-          callbackRegistered = true
-        } else if (Date.now() >= nextDecodeDeadline) {
-          takeScheduledFrame("video", nextDecodeDeadline)
-        }
-      } catch {
-        callbackRegistrationComplete = true
-        // Fall through to the timer scheduler when rVFC is unavailable at runtime.
+          takeScheduledFrame(context, "video", nextDecodeDeadline)
+        },
+      )
+      callbackRegistrationComplete = true
+      if (!callbackFiredSynchronously) {
+        context.pump.requestVideoFrameCallbackHandle = callbackHandle
+        callbackRegistered = true
+      } else if (Date.now() >= nextDecodeDeadline) {
+        takeScheduledFrame(context, "video", nextDecodeDeadline)
       }
+    } catch {
+      callbackRegistrationComplete = true
+      // Fall through to the timer scheduler when rVFC is unavailable at runtime.
+    }
+  }
+
+  if (
+    context.pump.cancelled ||
+    context.pump.decodeInFlight ||
+    !isActiveAttempt(context.attempt)
+  ) {
+    return
+  }
+
+  context.pump.fallbackTimerId = setTimeout(
+    () => takeScheduledFrame(context, "timer", nextDecodeDeadline),
+    Math.max(
+      0,
+      nextDecodeDeadline - Date.now(),
+      callbackRegistered ? callbackFallbackDelayMs : 0,
+    ),
+  )
+}
+
+function scheduleNextFrame(
+  context: ScanContext,
+  nextDecodeDeadline = Date.now(),
+  replaceScheduled = false,
+  callbackFallbackDelayMs = 0,
+): void {
+  if (
+    context.pump.cancelled ||
+    context.pump.decodeInFlight ||
+    !isActiveAttempt(context.attempt)
+  )
+    return
+
+  if (
+    context.pump.requestVideoFrameCallbackHandle !== undefined ||
+    context.pump.fallbackTimerId !== undefined
+  ) {
+    if (!replaceScheduled) return
+    cancelScheduledFrame(context)
+  }
+
+  armFrameRace(context, nextDecodeDeadline, callbackFallbackDelayMs)
+}
+
+async function decodeFrame(context: ScanContext): Promise<void> {
+  let decodeStartedAt: number | undefined
+  let decodeCallStarted = false
+  let decodeCallCompleted = false
+  try {
+    if (!isActiveAttempt(context.attempt)) return
+
+    const sourceWidth = videoDimension(context.attempt.video.videoWidth)
+    const sourceHeight = videoDimension(context.attempt.video.videoHeight)
+    if (sourceWidth === 0 || sourceHeight === 0) {
+      throw new DOMException("Camera frame has no dimensions", "IndexSizeError")
+    }
+    if (cameraTrack(context.attempt)?.muted === true) {
+      throw new DOMException("Camera frame is muted", "InvalidStateError")
     }
 
+    const dimensions = scaledFrameDimensions(sourceWidth, sourceHeight)
+    if (context.canvas.width !== dimensions.width)
+      context.canvas.width = dimensions.width
+    if (context.canvas.height !== dimensions.height)
+      context.canvas.height = dimensions.height
+
+    if (!isActiveAttempt(context.attempt)) return
+    context.frameContext.drawImage(
+      context.attempt.video,
+      0,
+      0,
+      dimensions.width,
+      dimensions.height,
+    )
+    context.attempt.videoFramesDrawn += 1
+    // A successful draw proves scheduling progress and starts a fresh decode window.
+    // The shorter reader-preparation bound will still identify a hung module first.
+    armDecodeProgressWatchdog(context.attempt)
+    publishPipelineDiagnostic(context.attempt)
+    clearFrameRecovery(context.attempt)
+
+    const imageData = context.frameContext.getImageData(
+      0,
+      0,
+      dimensions.width,
+      dimensions.height,
+    )
+    if (!isActiveAttempt(context.attempt)) return
+
+    if (!(await context.webAssemblyRuntimeSupport)) {
+      throw new ConcreteAppError("QR_READER_BLOCKED")
+    }
+    if (!isActiveAttempt(context.attempt)) return
+
+    // Reader preparation remains after the first real draw so camera acquisition is
+    // never blocked on WASM, but unlike frame readiness it has its own bounded wait.
+    await waitForReaderModulePreparation(context)
+    if (!isActiveAttempt(context.attempt)) return
+
+    decodeStartedAt = Date.now()
+    decodeCallStarted = true
+    const results = await readBarcodes(imageData, zxingReaderOptions)
+    if (!isActiveAttempt(context.attempt)) return
+    decodeCallCompleted = true
+    completeDecodeAttempt(context.attempt, results.length)
+
+    const result = results[0]
+    if (result === undefined) return
     if (
-      pump.cancelled ||
-      pump.decodeInFlight ||
-      !isActiveAttempt(attempt)
-    ) {
+      !isActiveAttempt(context.attempt) ||
+      (context.once && context.attempt.emitted)
+    )
+      return
+
+    const text = result.text
+    if (!isActiveAttempt(context.attempt)) return
+    context.attempt.emitted = true
+    if (context.once) context.handle.stop()
+    context.onText(text)
+  } catch (error) {
+    if (!isActiveAttempt(context.attempt)) return
+    if (decodeCallStarted && !decodeCallCompleted) {
+      completeDecodeAttempt(context.attempt, 0)
+    }
+    if (isFrameNotReadyDecodeError(context.attempt, error)) {
+      beginFrameRecovery(context.attempt, error)
       return
     }
-
-    pump.fallbackTimerId = setTimeout(
-      () => takeScheduledFrame("timer", nextDecodeDeadline),
-      Math.max(
-        0,
-        nextDecodeDeadline - Date.now(),
-        callbackRegistered ? callbackFallbackDelayMs : 0,
-      ),
-    )
-  }
-
-  function scheduleNextFrame(
-    nextDecodeDeadline = Date.now(),
-    replaceScheduled = false,
-    callbackFallbackDelayMs = 0,
-  ): void {
-    if (pump.cancelled || pump.decodeInFlight || !isActiveAttempt(attempt)) return
-
-    if (
-      pump.requestVideoFrameCallbackHandle !== undefined ||
-      pump.fallbackTimerId !== undefined
-    ) {
-      if (!replaceScheduled) return
-      cancelScheduledFrame()
-    }
-
-    armFrameRace(nextDecodeDeadline, callbackFallbackDelayMs)
-  }
-
-  async function decodeFrame(): Promise<void> {
-    let decodeStartedAt: number | undefined
-    let decodeCallStarted = false
-    let decodeCallCompleted = false
-    try {
-      if (!isActiveAttempt(attempt)) return
-
-      const sourceWidth = videoDimension(attempt.video.videoWidth)
-      const sourceHeight = videoDimension(attempt.video.videoHeight)
-      if (sourceWidth === 0 || sourceHeight === 0) {
-        throw new DOMException("Camera frame has no dimensions", "IndexSizeError")
-      }
-      if (cameraTrack(attempt)?.muted === true) {
-        throw new DOMException("Camera frame is muted", "InvalidStateError")
-      }
-
-      const dimensions = scaledFrameDimensions(sourceWidth, sourceHeight)
-      if (canvas.width !== dimensions.width) canvas.width = dimensions.width
-      if (canvas.height !== dimensions.height) canvas.height = dimensions.height
-
-      if (!isActiveAttempt(attempt)) return
-      frameContext.drawImage(attempt.video, 0, 0, dimensions.width, dimensions.height)
-      attempt.videoFramesDrawn += 1
-      // A successful draw proves scheduling progress and starts a fresh decode window.
-      // The shorter reader-preparation bound will still identify a hung module first.
-      armDecodeProgressWatchdog(attempt)
-      publishPipelineDiagnostic(attempt)
-      clearFrameRecovery(attempt)
-
-      const imageData = frameContext.getImageData(
-        0,
-        0,
-        dimensions.width,
-        dimensions.height,
-      )
-      if (!isActiveAttempt(attempt)) return
-
-      if (!(await webAssemblyRuntimeSupport)) {
-        throw new ConcreteAppError("QR_READER_BLOCKED")
-      }
-      if (!isActiveAttempt(attempt)) return
-
-      // Reader preparation remains after the first real draw so camera acquisition is
-      // never blocked on WASM, but unlike frame readiness it has its own bounded wait.
-      await waitForReaderModulePreparation()
-      if (!isActiveAttempt(attempt)) return
-
-      decodeStartedAt = Date.now()
-      decodeCallStarted = true
-      const results = await readBarcodes(imageData, zxingReaderOptions)
-      if (!isActiveAttempt(attempt)) return
-      decodeCallCompleted = true
-      completeDecodeAttempt(attempt, results.length)
-
-      const result = results[0]
-      if (result === undefined) return
-      if (!isActiveAttempt(attempt) || (once && attempt.emitted)) return
-
-      const text = result.text
-      if (!isActiveAttempt(attempt)) return
-      attempt.emitted = true
-      if (once) handle.stop()
-      onText(text)
-    } catch (error) {
-      if (!isActiveAttempt(attempt)) return
-      if (decodeCallStarted && !decodeCallCompleted) {
-        completeDecodeAttempt(attempt, 0)
-      }
-      if (isFrameNotReadyDecodeError(attempt, error)) {
-        beginFrameRecovery(attempt, error)
-        return
-      }
-      failDecode(attempt, error)
-    } finally {
-      pump.decodeInFlight = false
-      if (!pump.cancelled && isActiveAttempt(attempt)) {
-        if (decodeStartedAt === undefined) {
-          if (isActiveAttempt(attempt)) {
-            scheduleNextFrame(Date.now() + frameRetryDelayMs)
-          }
-        } else {
-          if (isActiveAttempt(attempt)) {
-            scheduleNextFrame(decodeStartedAt + decodeIntervalMs)
-          }
+    failDecode(context.attempt, error)
+  } finally {
+    context.pump.decodeInFlight = false
+    if (!context.pump.cancelled && isActiveAttempt(context.attempt)) {
+      if (decodeStartedAt === undefined) {
+        if (isActiveAttempt(context.attempt)) {
+          scheduleNextFrame(context, Date.now() + frameRetryDelayMs)
+        }
+      } else {
+        if (isActiveAttempt(context.attempt)) {
+          scheduleNextFrame(context, decodeStartedAt + decodeIntervalMs)
         }
       }
     }
   }
+}
 
+async function startAttempt(
+  attempt: CameraAttempt,
+  handle: QrScanHandle,
+  onText: (text: string) => void,
+  once: boolean,
+  modulePreparation: Promise<void>,
+  webAssemblyRuntimeSupport: Promise<boolean>,
+): Promise<ScannerControls> {
+  const stream = await acquireWithRetries(attempt)
+  if (!isActiveAttempt(attempt)) {
+    stopStream(stream, attempt.video)
+    throw new AttemptCancelled()
+  }
+
+  attempt.stream = stream
+  attempt.phase = "acquired"
+  watchTrackEnds(attempt, stream)
+  if (!isActiveAttempt(attempt)) throw new AttemptCancelled()
+  attempt.video.srcObject = stream
+  watchFrameReadiness(attempt, stream)
+
+  const canvas = document.createElement("canvas")
+  const canvasContext = canvas.getContext("2d", { willReadFrequently: true })
+  if (canvasContext === null) throw new Error("Camera frame canvas is unavailable")
+  const frameContext = canvasContext
+
+  const pump: ScannerPump = {
+    requestVideoFrameCallbackHandle: undefined,
+    fallbackTimerId: undefined,
+    decodeInFlight: false,
+    cancelled: false,
+    stop() {
+      if (pump.cancelled) return
+      pump.cancelled = true
+      cancelScheduledFrame(context)
+    },
+  }
+  const context: ScanContext = {
+    attempt,
+    pump,
+    canvas,
+    frameContext,
+    once,
+    handle,
+    onText,
+    modulePreparation,
+    webAssemblyRuntimeSupport,
+    readerRetryUsed: false,
+  }
   attempt.controls = pump
   attempt.decodePumpStarted = true
   armDecodeProgressWatchdog(attempt)
@@ -1025,10 +1064,10 @@ async function startAttempt(
   attempt.frameRecoveryActive = true
   attempt.lastFrameErrorName = undefined
   ensureFrameReadyTimeout(attempt)
-  attempt.retryDecoder = () => scheduleNextFrame(Date.now(), true)
+  attempt.retryDecoder = () => scheduleNextFrame(context, Date.now(), true)
   // Preserve the initial rVFC grace period; the readiness watchdog is already armed.
   // Steady-state scheduling above uses the cadence deadline with no added grace.
-  scheduleNextFrame(Date.now(), false, frameRetryDelayMs)
+  scheduleNextFrame(context, Date.now(), false, frameRetryDelayMs)
   retryVideoPlayback(attempt)
   return pump
 }
