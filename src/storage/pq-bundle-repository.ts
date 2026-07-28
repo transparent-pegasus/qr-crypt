@@ -135,9 +135,13 @@ export async function saveBundle(record: PqPublicBundleRecord): Promise<void> {
         signing !== undefined && kem !== undefined && signing.recordId === kem.recordId
           ? signing
           : undefined
+      const reservedByRevokedBundle =
+        signing?.revokedAt !== undefined || kem?.revokedAt !== undefined
       await tx.done
       throw new AppError(
-        existing !== undefined && sameKeyMaterial(existing, checked)
+        !reservedByRevokedBundle &&
+          existing !== undefined &&
+          sameKeyMaterial(existing, checked)
           ? "DUPLICATE_KEY"
           : "KEY_ID_CONFLICT",
       )
@@ -145,8 +149,8 @@ export async function saveBundle(record: PqPublicBundleRecord): Promise<void> {
     await tx.store.add(checked)
     await tx.done
   } catch (error) {
-    // A unique-index ConstraintError is the database backstop for a racing import.
-    // Map it to the collision code rather than a generic storage failure.
+    // Fail-closed backstop for a lost import race: deliberately report the
+    // conflict code even when the racing import carried the same key material.
     if (error instanceof DOMException && error.name === "ConstraintError") {
       throw new AppError("KEY_ID_CONFLICT")
     }

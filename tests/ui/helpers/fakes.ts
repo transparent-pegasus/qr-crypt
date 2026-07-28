@@ -790,8 +790,12 @@ async function defaultDecryptPqMessage(
   }
 
   const senderSigningKeyId = "T".repeat(22)
-  await args.resolveSigningKey(senderSigningKeyId)
-  if (fakePqDecrypt.kind === "signed-key-unknown") {
+  const resolvedSigningKey = await args.resolveSigningKey(senderSigningKeyId)
+  if (
+    fakePqDecrypt.kind === "signed-key-unknown" ||
+    resolvedSigningKey === undefined ||
+    resolvedSigningKey.revoked
+  ) {
     return { kind: "signed-key-unknown" as const, senderSigningKeyId }
   }
   return {
@@ -923,11 +927,15 @@ export const deleteBundle = vi.fn(async (recordId: string) => {
 export const markBundleUsed = vi.fn(async () => undefined)
 
 async function defaultFindBundleBySigningKeyId(keyId: string) {
-  return fakeBundles.find((record) => record.signing.keyId === keyId)
+  return fakeBundles.find(
+    (record) => record.signing.keyId === keyId && record.revokedAt === undefined,
+  )
 }
 
 async function defaultFindBundleByKemKeyId(keyId: string) {
-  return fakeBundles.find((record) => record.kem.keyId === keyId)
+  return fakeBundles.find(
+    (record) => record.kem.keyId === keyId && record.revokedAt === undefined,
+  )
 }
 
 export const findBundleBySigningKeyId = vi.fn(defaultFindBundleBySigningKeyId)

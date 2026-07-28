@@ -74,7 +74,7 @@ ML-KEM / ML-DSA）、鍵生成・管理、QR の表示・読取、PWA として�
 これは既定の導入方式です。オフライン端末をアプリの生きた配信元に一度も接触させずに導入できます。
 署名付き ZIP の独立検証 — 別経路で入手した Cosign ポリシー値、チェックサム確認、独立した
 再ビルド比較 — を導入前に行う必要があります。完全な手順は
-[docs/develop/install-route-a.md](docs/develop/install-route-a.md)（英語）にあります。アーカイブ内の
+[docs/develop/install-route-a/README.ja.md](docs/develop/install-route-a/README.ja.md)にあります。アーカイブ内の
 `INSTALL.txt` が、オフライン端末へ届く自己完結したコピーです。
 
 この正確な host と port がセキュリティと保存領域の境界です。あとで同じ host:port から別のページを
@@ -146,7 +146,7 @@ port を変えると QR Crypt は別オリジンになり、保存済みデー�
 * [docs/security/security-review.md](docs/security/security-review.md) — セキュリティレビュー記録（v2・監査区分）
 * [docs/develop/development.md](docs/develop/development.md) — 技術スタック、セットアップ、コマンド、環境変数
 * [docs/develop/deployment.md](docs/develop/deployment.md) — Cloudflare Pages へのデプロイと CI の流れ
-* [docs/develop/install-route-a.md](docs/develop/install-route-a.md) — 方式 A（署名付き ZIP）の完全な導入手順（英語）
+* [docs/develop/install-route-a/README.ja.md](docs/develop/install-route-a/README.ja.md) — 方式 A（署名付き ZIP）の完全な導入手順（[English](docs/develop/install-route-a/README.md)）
 * [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — ブラウザー検証マトリクスと参考計測値
 * [docs/develop/deviations.md](docs/develop/deviations.md) — 仕様からの管理された逸脱
 * [SECURITY.md](SECURITY.md) — 脆弱性の報告

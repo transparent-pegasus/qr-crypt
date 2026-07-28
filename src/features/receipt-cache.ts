@@ -1,4 +1,5 @@
-// Session-scoped receipts for authenticated messages accepted on this device.
+// Window-realm-scoped receipts for authenticated messages accepted since this
+// app window loaded or the cache was last cleared.
 //
 // Rules (frozen):
 //   - Memory only. Nothing here is written to IndexedDB, localStorage, or CacheStorage:
@@ -9,7 +10,8 @@
 //     verification have both succeeded.
 //   - firstSeenAt is local time at the first sighting and is never refreshed. The
 //     sender's own createdAt is never a freshness source.
-//   - Detection does not survive a reload. That limit is documented, not worked around.
+//   - Detection is not shared with other tabs/windows and resets on reload,
+//     transient clear, or wipe. The bounded map evicts its oldest entries.
 export const MAX_SESSION_RECEIPTS = 500
 
 export type ReceiptSubject =
@@ -45,7 +47,7 @@ function subjectKey(subject: ReceiptSubject): string {
   switch (subject.kind) {
     case "aes":
       // No message id exists in v1, so identity is the ciphertext itself: only a
-      // byte-identical re-presentation matches.
+      // matching ciphertext hash is treated as the same receipt.
       return `aes\n${subject.recipientKeyId}\n${subject.envelopeHash}`
     case "pq-unsigned":
       return `pq-unsigned\n${subject.recipientKemKeyId}\n${subject.messageIdHex}`

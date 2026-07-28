@@ -112,7 +112,7 @@ not enforce `frame-ancestors`. The authoritative full Route A procedure —
 independently authenticated Cosign inputs, `cosign verify-blob`, checksum
 verification, mandatory independent rebuild-and-compare, deploy to the offline
 device, and the host:port origin boundary — is
-[install-route-a.md](install-route-a.md). Its mandatory set matches the
+[install-route-a/README.md](install-route-a/README.md). Its mandatory set matches the
 archive's `INSTALL.txt`; do not treat this page as a second incomplete copy of
 that procedure.
 
