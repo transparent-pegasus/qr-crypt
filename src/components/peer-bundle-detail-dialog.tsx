@@ -43,7 +43,7 @@ export function PeerBundleDetailDialog({
     >
       <NoAutofocusDialogContent className="max-h-[95dvh] overflow-y-auto">
         {bundle !== null && (
-          <div className="space-y-4">
+          <div className="space-y-4 pb-14">
             <DialogHeader>
               <DialogTitle>
                 {confirmed
@@ -100,12 +100,16 @@ export function PeerBundleDetailDialog({
               </Button>
             )}
 
-            <div className={`grid gap-2 ${supported ? "grid-cols-2" : "grid-cols-1"}`}>
+            <div
+              className={`grid gap-2 ${
+                supported ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
+              }`}
+            >
               {supported && (
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-11 cursor-pointer"
+                  className="h-auto min-h-11 cursor-pointer whitespace-normal"
                   disabled={busy}
                   onClick={() => onRevoke(bundle.recordId)}
                 >
@@ -115,7 +119,7 @@ export function PeerBundleDetailDialog({
               <Button
                 type="button"
                 variant="destructive"
-                className="h-11 cursor-pointer"
+                className="h-auto min-h-11 cursor-pointer whitespace-normal"
                 disabled={busy}
                 onClick={() => onDelete(bundle.recordId)}
               >
