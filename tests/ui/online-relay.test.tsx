@@ -13,11 +13,17 @@ const scanStart = vi.hoisted(() => vi.fn())
 const scanStop = vi.hoisted(() => vi.fn())
 const copyText = vi.hoisted(() => vi.fn(async () => undefined))
 const renderQr = vi.hoisted(() => vi.fn())
+const readerModuleState = vi.hoisted(() =>
+  vi.fn<() => "idle" | "preparing" | "ready" | "failed" | "timed-out">(),
+)
+const warmQrReader = vi.hoisted(() => vi.fn<() => Promise<void>>())
 
 vi.mock("@/qr/decode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/decode")>()),
+  CAMERA_READER_READY_TIMEOUT_MS: 30_000,
+  readerModuleState,
   startQrScan: scanStart,
-  warmQrReader: vi.fn(() => undefined),
+  warmQrReader,
 }))
 
 vi.mock("@/qr/export-image", async (importOriginal) => ({
@@ -37,6 +43,7 @@ vi.mock("@/hooks/use-register-sw", () => ({
 import { FeatureSupportProvider } from "@/app/providers"
 import { OnlineRelay } from "@/components/online-relay"
 import { LanguageProvider } from "@/i18n"
+import { translate } from "@/i18n/messages"
 import { TRANSFER_TIMEOUT_MINUTES_DEFAULT } from "@/lib/limits"
 import { decodeFramePayload, encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2 } from "@/schemas/domain"
@@ -136,6 +143,8 @@ beforeEach(() => {
   scanText = null
   scanFailure = null
   scanSignal = undefined
+  readerModuleState.mockReturnValue("ready")
+  warmQrReader.mockImplementation(() => Promise.resolve())
   renderQr.mockImplementation(async (value: string) => dataUrl(value))
   scanStart.mockImplementation(
     async (
@@ -163,6 +172,24 @@ afterEach(() => {
 })
 
 describe("online relay UI", () => {
+  it("disables the scan control until the reader is ready", async () => {
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    warmQrReader.mockReturnValueOnce(preparation.promise)
+    renderRelay()
+
+    const scanControl = screen.getByRole("button", {
+      name: translate("en", "relay.capture.open"),
+    })
+    expect(scanControl).toBeDisabled()
+    expect(scanStart).not.toHaveBeenCalled()
+
+    await act(async () => preparation.resolve())
+
+    await waitFor(() => expect(scanControl).toBeEnabled())
+    expect(scanStart).not.toHaveBeenCalled()
+  })
+
   it("keeps both scrolling dialog bodies bounded with one trailing close and Escape dismissal", async () => {
     renderRelay()
     const user = userEvent.setup()

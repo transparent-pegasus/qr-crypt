@@ -9,9 +9,9 @@ import {
 import { AppError } from "@/crypto/errors"
 import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import { formatFramePositions } from "@/features/presentation"
+import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
 import {
   startQrScan,
-  warmQrReader,
   type CameraDiagnostic,
   type CameraPipelineDiagnostic,
   type CameraScanState,
@@ -52,6 +52,8 @@ const IDLE_TRANSFER_STATE: TransferState = { kind: "idle" }
 
 export function QrScannerPanel(props: QrScannerPanelProps) {
   const { language, t } = useI18n()
+  const readiness = useQrReaderReadiness()
+  const readyAtMountRef = useRef(readiness === "ready")
   const {
     singleTargets,
     onSingleScan,
@@ -99,22 +101,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const [diagnostic, setDiagnostic] = useState<CameraDiagnostic | null>(null)
   const [pipelineDiagnostic, setPipelineDiagnostic] =
     useState<CameraPipelineDiagnostic | null>(null)
-  const readerStillLoading =
-    cameraMode === "running" &&
-    pipelineDiagnostic !== null &&
-    pipelineDiagnostic.videoFramesDrawn > 0 &&
-    pipelineDiagnostic.decodeAttemptsCompleted === 0 &&
-    (pipelineDiagnostic.readerModuleState === "preparing" ||
-      pipelineDiagnostic.readerModuleState === "idle")
   const [integrityConfirmed, setIntegrityConfirmed] = useState(
     transferState.kind === "complete",
   )
-
-  // Take the one-megabyte reader fetch off the acquisition path: warming here means the
-  // binary is normally compiled before the user ever taps start.
-  useEffect(() => {
-    warmQrReader()
-  }, [])
 
   useEffect(() => {
     cameraAvailableRef.current = cameraAvailable
@@ -528,7 +517,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   }, [cancelRun])
 
   useEffect(() => {
-    if (autoStart) startCamera()
+    if (autoStart && readyAtMountRef.current) startCamera()
   }, [autoStart, startCamera])
 
   useEffect(() => {
@@ -662,21 +651,47 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           </div>
           {cameraMode !== "running" && cameraMode !== "delivering" && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-950/65 p-4">
-              <Button
-                type="button"
-                className="h-11 cursor-pointer focus-visible:ring-2"
-                disabled={!cameraAvailable || restartBlocked}
-                onClick={startCamera}
-              >
-                {cameraMode === "stopped" ? (
-                  <RefreshCw aria-hidden="true" />
-                ) : (
-                  <Camera aria-hidden="true" />
-                )}
-                {cameraMode === "stopped"
-                  ? t("scanner.button.restart")
-                  : t("scanner.button.start")}
-              </Button>
+              {readiness === "failed" || readiness === "blocked" ? (
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <p className="text-sm text-white">
+                    {t(
+                      readiness === "blocked"
+                        ? "errors.QR_READER_BLOCKED"
+                        : "scanner.reader.reloadHint",
+                    )}
+                  </p>
+                  {readiness === "failed" && (
+                    <Button
+                      type="button"
+                      className="h-11 cursor-pointer focus-visible:ring-2"
+                      onClick={() => window.location.reload()}
+                    >
+                      <RefreshCw aria-hidden="true" />
+                      {t("scanner.button.reload")}
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  className="h-11 cursor-pointer focus-visible:ring-2"
+                  disabled={
+                    !cameraAvailable ||
+                    restartBlocked ||
+                    readiness !== "ready"
+                  }
+                  onClick={startCamera}
+                >
+                  {cameraMode === "stopped" ? (
+                    <RefreshCw aria-hidden="true" />
+                  ) : (
+                    <Camera aria-hidden="true" />
+                  )}
+                  {cameraMode === "stopped"
+                    ? t("scanner.button.restart")
+                    : t("scanner.button.start")}
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -691,7 +706,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           aria-live="polite"
           className="text-center text-sm text-muted-foreground"
         >
-          {readerStillLoading
+          {readiness === "preparing"
             ? t("scanner.status.readerLoading")
             : t(cameraStatus.key, cameraStatus.values)}
         </p>

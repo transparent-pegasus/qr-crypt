@@ -26,6 +26,7 @@ import {
   useI18n,
   type Language,
 } from "@/i18n"
+import { warmQrReader } from "@/qr/decode"
 
 export interface AppProps {
   bootController?: BootController
@@ -107,6 +108,11 @@ function OfflineApplication({
   routerFactory: typeof createAppRouter
 }) {
   const router = useMemo(() => routerFactory(), [routerFactory])
+  useEffect(() => {
+    // Take the first compile off the scan path: it runs while the user is still
+    // navigating. The rejection is handled where the readiness hook awaits it.
+    void warmQrReader().catch(() => undefined)
+  }, [])
   return (
     <OnlineGate>
       <RouterProvider router={router} />

@@ -93,6 +93,8 @@ vi.mock("@/qr/export-frames", () => ({
   exportQrFramePayloads: fakes.exportQrFramePayloads,
 }))
 vi.mock("@/qr/decode", () => ({
+  CAMERA_READER_READY_TIMEOUT_MS: fakes.CAMERA_READER_READY_TIMEOUT_MS,
+  readerModuleState: fakes.readerModuleState,
   startQrScan: fakes.startQrScan,
   warmQrReader: fakes.warmQrReader,
 }))

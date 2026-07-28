@@ -495,6 +495,8 @@ const en = {
   "scanner.status.videoNotReady": "The camera view could not be prepared",
   "scanner.status.preparing": "Preparing the camera…",
   "scanner.status.readerLoading": "Still loading the QR reader…",
+  "scanner.reader.reloadHint":
+    "The QR reader could not be prepared. Reload the page and try again.",
   "scanner.status.qrRead": "The QR code was read",
   "scanner.error.multipartNotAccepted":
     "This screen does not accept multi-frame QR codes.",
@@ -532,6 +534,7 @@ const en = {
   "scanner.video.ariaLabel": "Camera video for QR scanning",
   "scanner.button.restart": "Restart camera",
   "scanner.button.start": "Start camera",
+  "scanner.button.reload": "Reload",
   "scanner.progress.ariaLabel": "Multi-frame QR scan progress",
   "scanner.progress.received": "Received {received} / {total}",
   "scanner.progress.missingIndex": "Missing frames: {indexes}",
@@ -1164,6 +1167,8 @@ const ja = {
   "scanner.status.videoNotReady": "カメラ画面を準備できませんでした",
   "scanner.status.preparing": "カメラを準備しています…",
   "scanner.status.readerLoading": "QRリーダーを読み込んでいます…",
+  "scanner.reader.reloadHint":
+    "QRリーダーを準備できませんでした。ページを再読み込みしてからやり直してください。",
   "scanner.status.qrRead": "QRコードを読み取りました",
   "scanner.error.multipartNotAccepted":
     "この画面では複数QRを受理しません。",
@@ -1201,6 +1206,7 @@ const ja = {
   "scanner.video.ariaLabel": "QRコード読取用カメラ映像",
   "scanner.button.restart": "カメラを再起動",
   "scanner.button.start": "カメラを起動",
+  "scanner.button.reload": "再読み込み",
   "scanner.progress.ariaLabel": "複数QR読取進捗",
   "scanner.progress.received": "受信 {received} / {total}",
   "scanner.progress.missingIndex": "欠損フレーム: {indexes}",

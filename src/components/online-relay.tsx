@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { AppError, errorMessageKey } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"
+import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
 import {
   FRAME_INTERVAL_MS_DEFAULT,
   TRANSFER_TIMEOUT_MINUTES_DEFAULT,
@@ -86,6 +87,7 @@ export function OnlineRelay({
 }: OnlineRelayProps) {
   const { language, t } = useI18n()
   const { camera: cameraAvailable } = useFeatureSupport()
+  const readerReadiness = useQrReaderReadiness()
   const [dialogMode, setDialogMode] = useState<DialogMode>(null)
   const [captureSet, setCaptureSet] = useState<RelayFrameSet>(emptyRelayFrameSet)
   const [joinedText, setJoinedText] = useState("")
@@ -297,6 +299,7 @@ export function OnlineRelay({
   const startCamera = () => {
     if (
       !cameraAvailable ||
+      readerReadiness !== "ready" ||
       cameraActive ||
       startupAbortRef.current !== null ||
       liveHandleRef.current !== null ||
@@ -467,7 +470,7 @@ export function OnlineRelay({
               type="button"
               variant="outline"
               className="h-11 cursor-pointer focus-visible:ring-2"
-              disabled={!cameraAvailable}
+              disabled={!cameraAvailable || readerReadiness !== "ready"}
               onClick={() => void openDialog("capture")}
             >
               <ScanLine aria-hidden="true" />
@@ -487,6 +490,16 @@ export function OnlineRelay({
             <p className="flex items-start gap-2 text-sm text-muted-foreground">
               <CameraOff aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
               {t("relay.capture.unavailable")}
+            </p>
+          )}
+          {(readerReadiness === "failed" ||
+            readerReadiness === "blocked") && (
+            <p className="text-sm text-muted-foreground">
+              {t(
+                readerReadiness === "blocked"
+                  ? "errors.QR_READER_BLOCKED"
+                  : "scanner.reader.reloadHint",
+              )}
             </p>
           )}
         </CardContent>
@@ -524,7 +537,11 @@ export function OnlineRelay({
             <Button
               type="button"
               className="h-11 cursor-pointer focus-visible:ring-2"
-              disabled={cameraActive || joinedText.length > 0}
+              disabled={
+                readerReadiness !== "ready" ||
+                cameraActive ||
+                joinedText.length > 0
+              }
               onClick={startCamera}
             >
               <Camera aria-hidden="true" />

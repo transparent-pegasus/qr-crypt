@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ScanLine } from "lucide-react"
 import { AppError } from "@/crypto/errors"
-import { warmQrReader } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import { QrScannerPanel } from "@/components/qr-scanner-panel"
 import {
@@ -59,12 +58,6 @@ export function QrScannerModal(props: QrScannerModalProps) {
     closedNotice === null
       ? null
       : t(closedNotice.key, closedNotice.values)
-
-  // Take the one-megabyte reader fetch off the acquisition path: warming here means the
-  // binary is normally compiled before the user ever taps start.
-  useEffect(() => {
-    warmQrReader()
-  }, [])
 
   const beginDelivery = useCallback((): boolean => {
     if (deliveryBusyRef.current) return false

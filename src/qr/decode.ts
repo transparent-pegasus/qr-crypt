@@ -39,8 +39,10 @@ export {
   CAMERA_DECODE_PROGRESS_TIMEOUT_MS,
   CAMERA_FRAME_READY_TIMEOUT_MS,
   CAMERA_READER_PREPARATION_TIMEOUT_MS,
+  CAMERA_READER_READY_TIMEOUT_MS,
   CAMERA_START_TIMEOUT_MS,
 } from "@/qr/camera/reader-module"
+export { readerModuleState }
 
 export type {
   CameraDiagnostic,
@@ -52,12 +54,10 @@ export type {
   StartQrScanOptions,
 } from "@/qr/camera/types"
 
-// Fetch and compile the reader ahead of any tap. iOS Safari raises the camera permission
-// prompt while a cold one-megabyte fetch is still in flight, and losing that fetch aborts
-// the Emscripten runtime. Warming on mount takes the fetch off the acquisition path
-// entirely; the rejection is swallowed because nothing awaits a warm-up.
-export function warmQrReader(): void {
-  warmQrReaderModule(publishPipelineDiagnostic)
+// Fetch and compile the reader ahead of any tap. The shared readiness gate awaits this
+// promise before enabling capture and owns presentation of a latched failure.
+export function warmQrReader(): Promise<void> {
+  return warmQrReaderModule(publishPipelineDiagnostic)
 }
 
 // true does not automatically restart; it directs the UI to transition to stopped

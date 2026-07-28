@@ -20,6 +20,10 @@ import type {
 
 export const CAMERA_START_TIMEOUT_MS = 8_000
 export const CAMERA_FRAME_READY_TIMEOUT_MS = 6_000
+// A first compile that shares a phone with a starting 1080p capture can run past
+// any budget worth setting mid-decode, so the wait moved to the gate. It stays
+// bounded: a preparation that never settles must still reach a terminal state.
+export const CAMERA_READER_READY_TIMEOUT_MS = 30_000
 // A cached one-megabyte reader should fetch and compile within the same eight-second
 // budget as camera startup. Bounding it here prevents a successful first draw from
 // clearing the frame-readiness watchdog and then waiting on WebKit forever.
@@ -50,6 +54,7 @@ export const zxingReaderOptions: ReaderOptions = {
 }
 
 let zxingModulePromise: Promise<void> | undefined
+let zxingModuleFailure: Promise<void> | undefined
 let zxingModuleState: ReaderModuleState = "idle"
 
 export class QrReaderPreparationTimeout extends Error {
@@ -78,6 +83,10 @@ export function readerModuleState(): ReaderModuleState {
 export function prepareQrReaderModule(
   publishPipelineDiagnostic: PipelineDiagnosticPublisher,
 ): Promise<void> {
+  // Latched for the life of the document: the reported failure mode does not
+  // recover in-page, and re-preparing only produces a second stalled generation.
+  if (zxingModuleFailure !== undefined) return zxingModuleFailure
+
   const existing = zxingModulePromise
   if (existing !== undefined) return existing
 
@@ -86,6 +95,7 @@ export function prepareQrReaderModule(
     const unsupported = Promise.reject(
       new Error("WebAssembly is unavailable for the QR reader"),
     )
+    zxingModuleFailure = unsupported
     void unsupported.catch(() => undefined)
     return unsupported
   }
@@ -103,6 +113,7 @@ export function prepareQrReaderModule(
     const rejected = Promise.reject(
       error instanceof Error ? error : new Error(String(error)),
     )
+    zxingModuleFailure = rejected
     void rejected.catch(() => undefined)
     return rejected
   }
@@ -124,6 +135,7 @@ export function prepareQrReaderModule(
   // preparation and must not have it purged from under it.
   void preparation.catch(() => {
     if (zxingModulePromise !== preparation) return
+    zxingModuleFailure = preparation
     zxingModulePromise = undefined
     zxingModuleState = "failed"
     purgeZXingModule()
@@ -139,18 +151,17 @@ export function prepareQrReaderModule(
 function invalidateQrReaderModule(failed: Promise<void>): void {
   if (zxingModulePromise !== undefined && zxingModulePromise !== failed) return
   zxingModulePromise = undefined
-  zxingModuleState = "idle"
+  zxingModuleState =
+    zxingModuleFailure === undefined ? "idle" : "failed"
   purgeZXingModule()
 }
 
-// Fetch and compile the reader ahead of any tap. iOS Safari raises the camera permission
-// prompt while a cold one-megabyte fetch is still in flight, and losing that fetch aborts
-// the Emscripten runtime. Warming on mount takes the fetch off the acquisition path
-// entirely; the rejection is swallowed because nothing awaits a warm-up.
+// Fetch and compile the reader ahead of any tap. The readiness gate awaits the returned
+// promise and presents a latched failure instead of starting another generation in-page.
 export function warmQrReaderModule(
   publishPipelineDiagnostic: PipelineDiagnosticPublisher,
-): void {
-  void prepareQrReaderModule(publishPipelineDiagnostic).catch(() => undefined)
+): Promise<void> {
+  return prepareQrReaderModule(publishPipelineDiagnostic)
 }
 
 export async function waitForReaderModulePreparation(

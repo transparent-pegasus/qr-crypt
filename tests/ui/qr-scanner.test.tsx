@@ -19,11 +19,14 @@ import {
 } from "@/components/ui/dialog"
 import { AppError, messageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
+import { translate } from "@/i18n/messages"
 import type { CameraDiagnostic, QrScanHandle } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import {
   emitScannedPayload,
   multipartPayload,
+  probeWebAssemblyRuntime,
+  readerModuleState,
   scannerStop,
   startQrScan,
   warmQrReader,
@@ -57,8 +60,192 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     resetUi()
   })
   afterEach(() => {
+    vi.useRealTimers()
     setVisibility("visible")
     resetUi()
+  })
+
+  it("keeps the scan disabled until the reader is ready", async () => {
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    warmQrReader.mockReturnValue(preparation.promise)
+    const user = userEvent.setup()
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    const startButton = screen.getByRole("button", {
+      name: translate("en", "scanner.button.start"),
+    })
+    expect(startButton).toBeDisabled()
+    expect(
+      screen.getByText(translate("en", "scanner.status.readerLoading")),
+    ).toBeInTheDocument()
+    expect(startQrScan).not.toHaveBeenCalled()
+
+    await act(async () => preparation.resolve())
+
+    await waitFor(() => expect(startButton).toBeEnabled())
+    expect(startQrScan).not.toHaveBeenCalled()
+    await user.click(startButton)
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+  })
+
+  it("does not auto-start when the reader was not ready at mount", async () => {
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    warmQrReader.mockReturnValue(preparation.promise)
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        autoStart
+      />,
+    )
+    expect(warmQrReader).toHaveBeenCalled()
+
+    await act(async () => preparation.resolve())
+
+    expect(startQrScan).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole("button", {
+        name: translate("en", "scanner.button.start"),
+      }),
+    ).toBeEnabled()
+  })
+
+  it("auto-starts when the reader was already ready at mount", async () => {
+    readerModuleState.mockReturnValue("ready")
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+        autoStart
+      />,
+    )
+
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    expect(readerModuleState).toHaveBeenCalled()
+  })
+
+  it("offers a reload when preparation fails", async () => {
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    void preparation.promise.catch(() => undefined)
+    warmQrReader.mockReturnValue(preparation.promise)
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    await act(async () => {
+      preparation.reject(new Error("reader preparation failed"))
+      await preparation.promise.catch(() => undefined)
+    })
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", {
+          name: translate("en", "scanner.button.start"),
+        }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(
+      screen.getByText(translate("en", "scanner.reader.reloadHint")),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).toBeEnabled()
+    expect(startQrScan).not.toHaveBeenCalled()
+  })
+
+  it("reports a blocked runtime instead of a reload when WebAssembly is unusable", async () => {
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    void preparation.promise.catch(() => undefined)
+    warmQrReader.mockReturnValue(preparation.promise)
+    probeWebAssemblyRuntime.mockResolvedValue(false)
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    await act(async () => {
+      preparation.reject(new Error("reader preparation failed"))
+      await preparation.promise.catch(() => undefined)
+    })
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", {
+          name: translate("en", "scanner.button.start"),
+        }),
+      ).not.toBeInTheDocument(),
+    )
+    expect(
+      screen.getByText(translate("en", "errors.QR_READER_BLOCKED")),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).not.toBeInTheDocument()
+    expect(startQrScan).not.toHaveBeenCalled()
+  })
+
+  it("gives up on a never-settling preparation", async () => {
+    readerModuleState.mockReturnValue("idle")
+    vi.useFakeTimers()
+    const preparation = deferred<void>()
+    warmQrReader.mockReturnValue(preparation.promise)
+    render(
+      <QrScannerPanel
+        singleTargets={["message"]}
+        onSingleScan={vi.fn()}
+      />,
+    )
+
+    await act(async () => vi.advanceTimersByTimeAsync(30_001))
+
+    expect(
+      screen.queryByRole("button", {
+        name: translate("en", "scanner.button.start"),
+      }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(translate("en", "scanner.reader.reloadHint")),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).toBeEnabled()
+    expect(startQrScan).not.toHaveBeenCalled()
+
+    await act(async () => {
+      preparation.resolve()
+      await preparation.promise
+    })
+
+    expect(
+      screen.getByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).toBeEnabled()
+    expect(
+      screen.queryByRole("button", {
+        name: translate("en", "scanner.button.start"),
+      }),
+    ).not.toBeInTheDocument()
   })
 
   it("renders the video while idle and starts only from a click", async () => {
@@ -101,48 +288,6 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     expect(onSingleScan).toHaveBeenCalledOnce()
     expect(onSingleScan).toHaveBeenCalledWith("message", "OCM1:message")
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
-  })
-
-  it("tells the user the reader is still loading, and stops once it is ready", async () => {
-    const user = userEvent.setup()
-    render(
-      <QrScannerPanel
-        singleTargets={["message"]}
-        onSingleScan={vi.fn()}
-      />,
-    )
-
-    await user.click(screen.getByRole("button", { name: "Start camera" }))
-    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
-    const onDiagnostic = startQrScan.mock.calls[0]?.[3]?.onDiagnostic
-
-    act(() => {
-      onDiagnostic?.({
-        readerModuleState: "preparing",
-        videoFramesDrawn: 1,
-        decodeAttemptsCompleted: 0,
-        decodeResultsSeen: 0,
-        lastErrorName: "QrReaderPreparationTimeout",
-      })
-    })
-    expect(
-      await screen.findByText("Still loading the QR reader…"),
-    ).toBeInTheDocument()
-
-    act(() => {
-      onDiagnostic?.({
-        readerModuleState: "ready",
-        videoFramesDrawn: 2,
-        decodeAttemptsCompleted: 1,
-        decodeResultsSeen: 0,
-        lastErrorName: null,
-      })
-    })
-    await waitFor(() => {
-      expect(
-        screen.queryByText("Still loading the QR reader…"),
-      ).not.toBeInTheDocument()
-    })
   })
 
   it("starts automatically only when autoStart is enabled", async () => {
@@ -364,6 +509,7 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
   })
 
   it("warms the QR reader when the scanner panel mounts", async () => {
+    readerModuleState.mockReturnValue("idle")
     render(
       <QrScannerPanel singleTargets={["message"]} onSingleScan={vi.fn()} />,
     )
@@ -742,15 +888,4 @@ describe("QrScannerModal", () => {
     ).toBeInTheDocument()
   })
 
-  it("warms the QR reader when the scanner modal mounts, before any tap", async () => {
-    render(
-      <QrScannerModal
-        triggerLabel="Scan a ciphertext QR code"
-        singleTargets={["message"]}
-        onSingleScan={vi.fn()}
-      />,
-    )
-
-    expect(warmQrReader).toHaveBeenCalled()
-  })
 })
