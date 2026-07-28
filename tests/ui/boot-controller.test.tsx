@@ -13,6 +13,11 @@ import {
   createWipeCoordinator,
   installWipeBroadcastListener,
 } from "@/app/boot/wipe-coordinator"
+import {
+  clearReceipts,
+  recordReceipt,
+  type ReceiptSubject,
+} from "@/features/receipt-cache"
 
 class MemoryStorage implements Storage {
   readonly values = new Map<string, string>()
@@ -127,6 +132,7 @@ function fakeBootDatabase(options: FakeBootDatabaseOptions = {}) {
 }
 
 afterEach(() => {
+  clearReceipts()
   cleanup()
   window.localStorage.clear()
   vi.useRealTimers()
@@ -535,6 +541,24 @@ describe("boot decisions", () => {
     expect(performWipe).not.toHaveBeenCalled()
   })
 
+  it("clears session receipts with other transient state", async () => {
+    const subject: ReceiptSubject = {
+      kind: "aes",
+      recipientKeyId: "receipt-recipient",
+      envelopeHash: "receipt-envelope",
+    }
+    expect(recordReceipt(subject, 100)).toEqual({ kind: "first-seen" })
+
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      readDecision: async () =>
+        decision({ sensitiveDataExists: true, wipeOnOnline: false }),
+    })
+    await controller.probe()
+
+    expect(recordReceipt(subject, 200)).toEqual({ kind: "first-seen" })
+  })
+
   it("fails safe to wipe when preferences failed and sensitive data is confirmed", async () => {
     const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
     const controller = createBootController({
@@ -737,6 +761,30 @@ describe("boot decisions", () => {
 })
 
 describe("WipeCoordinator order", () => {
+  it("clears session receipts during the buffer-drop step", async () => {
+    const subject: ReceiptSubject = {
+      kind: "aes",
+      recipientKeyId: "wipe-recipient",
+      envelopeHash: "wipe-envelope",
+    }
+    expect(recordReceipt(subject, 100)).toEqual({ kind: "first-seen" })
+
+    const coordinator = createWipeCoordinator({
+      engageBarrier: () => undefined,
+      disposeCrypto: () => undefined,
+      coordinateTabs: () => undefined,
+      withExclusiveLock: (operation) => operation(),
+      bestEffortReset: async () => ({ ok: true, failedSteps: [] }),
+    })
+    await coordinator.wipe({
+      reason: "online-detected",
+      resetChurnMb: 0,
+      resetTransient: () => undefined,
+    })
+
+    expect(recordReceipt(subject, 200)).toEqual({ kind: "first-seen" })
+  })
+
   it("runs the fail-closed sequence once in its frozen order", async () => {
     const order: string[] = []
     const coordinator = createWipeCoordinator({

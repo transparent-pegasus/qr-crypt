@@ -1,6 +1,7 @@
 import { WIPE_BROADCAST_CHANNEL } from "@/app/boot/boot-contract"
 import { dropVaultKeyCache as dropVaultKeyCacheModule } from "@/crypto/vault/vault-key"
 import type { PqCryptoClient } from "@/crypto/pq/worker-client"
+import { clearReceipts } from "@/features/receipt-cache"
 import {
   bestEffortLocalReset,
   type BestEffortResetArgs,
@@ -93,6 +94,8 @@ async function dropVaultKeyCache(): Promise<void> {
     dropVaultKeyCacheModule()
   } catch (error) {
     if (!notImplemented(error)) throw error
+  } finally {
+    clearReceipts()
   }
 }
 
