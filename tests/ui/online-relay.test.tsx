@@ -172,21 +172,33 @@ afterEach(() => {
 })
 
 describe("online relay UI", () => {
-  it("disables the scan control until the reader is ready", async () => {
+  it("does not pull the reader before the user opens capture, then gates the camera on it", async () => {
     readerModuleState.mockReturnValue("idle")
     const preparation = deferred<void>()
     warmQrReader.mockReturnValueOnce(preparation.promise)
+    const user = userEvent.setup()
     renderRelay()
 
-    const scanControl = screen.getByRole("button", {
-      name: translate("en", "relay.capture.open"),
+    // The online gate must not fetch the reader at runtime until the user asks
+    // for the camera; tests/e2e/offline-pwa.spec.ts pins that as a contract.
+    expect(warmQrReader).not.toHaveBeenCalled()
+
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.capture.open"),
+      }),
+    )
+    expect(warmQrReader).toHaveBeenCalled()
+
+    const startCamera = await screen.findByRole("button", {
+      name: translate("en", "relay.capture.startCamera"),
     })
-    expect(scanControl).toBeDisabled()
+    expect(startCamera).toBeDisabled()
     expect(scanStart).not.toHaveBeenCalled()
 
     await act(async () => preparation.resolve())
 
-    await waitFor(() => expect(scanControl).toBeEnabled())
+    await waitFor(() => expect(startCamera).toBeEnabled())
     expect(scanStart).not.toHaveBeenCalled()
   })
 

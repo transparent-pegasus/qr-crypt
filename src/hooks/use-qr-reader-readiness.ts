@@ -10,13 +10,19 @@ const QR_READER_CLASSIFICATION_TIMEOUT_MS = 2_000
 
 export type QrReaderReadiness = "preparing" | "ready" | "failed" | "blocked"
 
-export function useQrReaderReadiness(): QrReaderReadiness {
+/**
+ * `enabled` exists for the online relay: that surface must not pull the reader
+ * at runtime until the user actually asks for the camera, which
+ * tests/e2e/offline-pwa.spec.ts pins as a contract of the online gate. Offline
+ * scanners pass nothing and warm on mount.
+ */
+export function useQrReaderReadiness(enabled = true): QrReaderReadiness {
   const [readiness, setReadiness] = useState<QrReaderReadiness>(() =>
     readerModuleState() === "ready" ? "ready" : "preparing",
   )
 
   useEffect(() => {
-    if (readiness !== "preparing") return
+    if (!enabled || readiness !== "preparing") return
 
     let settled = false
     let classificationTimeoutId: number | undefined
@@ -65,7 +71,7 @@ export function useQrReaderReadiness(): QrReaderReadiness {
         window.clearTimeout(classificationTimeoutId)
       }
     }
-  }, [readiness])
+  }, [enabled, readiness])
 
   return readiness
 }

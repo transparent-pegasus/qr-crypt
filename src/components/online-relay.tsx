@@ -87,8 +87,10 @@ export function OnlineRelay({
 }: OnlineRelayProps) {
   const { language, t } = useI18n()
   const { camera: cameraAvailable } = useFeatureSupport()
-  const readerReadiness = useQrReaderReadiness()
   const [dialogMode, setDialogMode] = useState<DialogMode>(null)
+  // Only once the user asks for the camera: the online gate must not pull the
+  // reader at runtime before that, which offline-pwa.spec.ts pins as a contract.
+  const readerReadiness = useQrReaderReadiness(dialogMode === "capture")
   const [captureSet, setCaptureSet] = useState<RelayFrameSet>(emptyRelayFrameSet)
   const [joinedText, setJoinedText] = useState("")
   const [captureError, setCaptureError] = useState<MessageKey | null>(null)
@@ -470,7 +472,7 @@ export function OnlineRelay({
               type="button"
               variant="outline"
               className="h-11 cursor-pointer focus-visible:ring-2"
-              disabled={!cameraAvailable || readerReadiness !== "ready"}
+              disabled={!cameraAvailable}
               onClick={() => void openDialog("capture")}
             >
               <ScanLine aria-hidden="true" />
