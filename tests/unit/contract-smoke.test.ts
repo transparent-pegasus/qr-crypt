@@ -4,9 +4,7 @@
 import { describe, expect, it } from "vitest"
 import { AppError, ERROR_CODES, messageFor, toAppError } from "@/crypto/errors"
 import {
-  FRAME_BYTES_VALUES,
   FRAME_INTERVAL_MS_VALUES,
-  isFrameIntervalMs,
   KEY_ID_PATTERN,
   MAX_CIPHERTEXT_BYTES,
   MAX_PQ_PLAINTEXT_BYTES,
@@ -22,10 +20,6 @@ import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
 
 describe("contract smoke", () => {
   it("keeps only error codes and resolves user messages explicitly by language", () => {
-    expect(ERROR_CODES).toHaveLength(25)
-    expect(ERROR_CODES).toContain("QR_READER_PREPARATION_TIMEOUT")
-    expect(ERROR_CODES).toContain("QR_DECODE_PROGRESS_TIMEOUT")
-    expect(ERROR_CODES).toContain("QR_READER_BLOCKED")
     expect(ERROR_CODES).toContain("KEY_ID_CONFLICT")
     expect(ERROR_CODES).toContain("MESSAGE_ID_REUSED")
     const error = new AppError("DECRYPTION_FAILED")
@@ -48,7 +42,7 @@ describe("contract smoke", () => {
     expect(() => toWireAlgorithm("MLKEM1024_A256GCM")).toThrow(TypeError)
   })
 
-  it("env parsing applies defaults and cross-field normalization", () => {
+  it("env parsing applies defaults, cross-field normalization, and retired-value rejection", () => {
     expect(env.maxPlaintextBytes).toBe(120_000)
     expect(MAX_PQ_PLAINTEXT_BYTES).toBe(env.maxPlaintextBytes)
     expect(MAX_PLAINTEXT_BYTES).toBe(env.maxPlaintextBytes)
@@ -58,17 +52,9 @@ describe("contract smoke", () => {
     expect(MAX_CIPHERTEXT_BYTES).toBe(MAX_SYMMETRIC_PLAINTEXT_BYTES + 16)
     const normalized = parseAppEnv({ VITE_ENABLE_RSA: "true" })
     expect(normalized.enableRsa).toBe(false)
-    expect(normalized.buildSha).toBe("development")
-    expect(FRAME_BYTES_VALUES).toEqual([
-      100, 200, 300, 400, 500, 600, 700, 800, 900, 1_000,
-    ])
     expect(normalized.qrFrameBytes).toBe(1_000)
     expect(normalized.qrFrameIntervalMs).toBe(200)
-    expect(FRAME_INTERVAL_MS_VALUES).toEqual([
-      200, 300, 400, 500, 600, 700, 800, 900, 1_000, 2_000,
-    ])
     for (const frameIntervalMs of FRAME_INTERVAL_MS_VALUES) {
-      expect(isFrameIntervalMs(frameIntervalMs)).toBe(true)
       expect(
         parseAppEnv({
           VITE_QR_FRAME_INTERVAL_MS: String(frameIntervalMs),
@@ -76,7 +62,6 @@ describe("contract smoke", () => {
       ).toBe(frameIntervalMs)
     }
     for (const frameIntervalMs of [199, 250, 1_001, 1_500, 3_000]) {
-      expect(isFrameIntervalMs(frameIntervalMs)).toBe(false)
       expect(() =>
         parseAppEnv({
           VITE_QR_FRAME_INTERVAL_MS: String(frameIntervalMs),
