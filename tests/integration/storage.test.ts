@@ -88,8 +88,14 @@ describe("database creation", () => {
     expect(identities.index("by-kemKeyId").unique).toBe(true)
     expect(identities.index("by-signingKeyId").unique).toBe(true)
     const bundles = database.transaction(STORE_PQ_PUBLIC_BUNDLES).store
-    expect(Array.from(bundles.indexNames)).toEqual(["by-identityId"])
+    expect(Array.from(bundles.indexNames).sort()).toEqual([
+      "by-identityId",
+      "by-kemKeyId",
+      "by-signingKeyId",
+    ])
     expect(bundles.index("by-identityId").unique).toBe(false)
+    expect(bundles.index("by-kemKeyId").unique).toBe(true)
+    expect(bundles.index("by-signingKeyId").unique).toBe(true)
 
     const record = await createSymmetricKeyRecord("再オープン", NOW)
     await saveKeyRecord(record)
@@ -119,6 +125,15 @@ describe("database creation", () => {
     expect(database.version).toBe(DB_VERSION)
     expect(Array.from(database.objectStoreNames).sort()).toEqual(CURRENT_STORES)
     expect(Array.from(database.objectStoreNames)).not.toContain("legacyDummyStore")
+    const bundles = database.transaction(STORE_PQ_PUBLIC_BUNDLES).store
+    expect(Array.from(bundles.indexNames).sort()).toEqual([
+      "by-identityId",
+      "by-kemKeyId",
+      "by-signingKeyId",
+    ])
+    expect(bundles.index("by-identityId").unique).toBe(false)
+    expect(bundles.index("by-kemKeyId").unique).toBe(true)
+    expect(bundles.index("by-signingKeyId").unique).toBe(true)
   })
 })
 
