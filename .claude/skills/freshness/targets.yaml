@@ -191,7 +191,8 @@ units:
       Re-run aube audit; refresh §5.1 advisory status for the pinned deps.
       Reconcile threat/mitigation entries (T14/T15 algorithm names) with the
       active policy in src/crypto/pq/suites.ts and boot behavior in
-      src/app/boot/. Reconcile T5's scanner bounds with decode.ts and T20's
+      src/app/boot/. Reconcile T5's scanner bounds with qr/camera/frame-pump.ts
+      — decode.ts is now a thin facade and holds none of them — and T20's
       frame/paste allocation and CBOR caps with limits.ts, payload-v2.ts,
       assemble.ts, and canonical-cbor.ts. Re-check the §5 session-memory
       receipt / replay bullet and the §7 imported-bundle key-ID shadowing row
