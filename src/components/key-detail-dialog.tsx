@@ -2,19 +2,21 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import {
   ArrowLeft,
-  ChevronDown,
   Clipboard,
   Download,
   Expand,
-  QrCode,
-  RefreshCw,
-  Trash2,
   TriangleAlert,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useSensitiveSession } from "@/app/providers"
-import { AnimatedQrFrames } from "@/components/animated-qr-frames"
-import { Fingerprint } from "@/components/fingerprint"
+import { IdentityDetails } from "@/components/key-detail/identity-details"
+import {
+  assertUsableIdentity,
+  isUsableIdentity,
+} from "@/components/key-detail/identity-policy"
+import { IdentityQrSession } from "@/components/key-detail/identity-qr-session"
+import { SymmetricDetails } from "@/components/key-detail/symmetric-details"
+import type { DetailView } from "@/components/key-detail/types"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrDisplay } from "@/components/qr-display"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -28,14 +30,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogDescription,
@@ -52,14 +48,8 @@ import {
   encodePublicIdentityBundleV2,
 } from "@/crypto/pq/canonical-cbor"
 import { buildPublicBundle, rotateIdentity } from "@/crypto/pq/identity"
-import { assertActiveProfile, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
-import {
-  formatDateTime,
-  formatFingerprint,
-  formatSuggestedDate,
-} from "@/features/presentation"
-import { useFrameSplit } from "@/hooks/use-frame-split"
+import { formatDateTime } from "@/features/presentation"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePreferences } from "@/hooks/use-preferences"
 import {
@@ -68,7 +58,6 @@ import {
   useLocalizedMessage,
   type LocalizedMessage,
 } from "@/i18n"
-import { selectedGeneratedDisplayPair } from "@/lib/generated-display"
 import { FRAME_BYTES_MAX, minimumFrameBytesForArtifact } from "@/lib/limits"
 import { ecLevelFor } from "@/qr/encode"
 import {
@@ -82,7 +71,6 @@ import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
   DEFAULT_GENERATED_DISPLAY_PAIR,
   type PostQuantumIdentity,
-  type Preferences,
   type StoredKeyRecord,
   type StorablePqArtifactKind,
 } from "@/schemas/domain"
@@ -99,24 +87,6 @@ import {
 
 export type KeySelection =
   { kind: "identity"; id: string } | { kind: "symmetric"; id: string }
-
-interface IdentityQrView {
-  kind: "identity-qr"
-  qrKind: "bundle" | "kem" | "signing"
-  targetName: string
-  generatedAt: number
-  artifactType: StorablePqArtifactKind
-  artifactBytes: Uint8Array
-  generation: number
-}
-
-interface SymmetricQrView {
-  kind: "symmetric-qr"
-  payload: string
-  acknowledged: boolean
-}
-
-type DetailView = { kind: "detail" } | IdentityQrView | SymmetricQrView
 
 interface PendingDelete {
   kind: "identity" | "symmetric"
@@ -154,19 +124,7 @@ export function resolveKeyDetailRecord(
   return undefined
 }
 
-function assertUsableIdentity(identity: PostQuantumIdentity): void {
-  assertActiveProfile(identity.profile)
-  assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
-}
-
-export function isUsableIdentity(identity: PostQuantumIdentity): boolean {
-  try {
-    assertUsableIdentity(identity)
-    return true
-  } catch {
-    return false
-  }
-}
+export { isUsableIdentity }
 
 export function KeyDetailDialog({
   onOpenChange,
@@ -820,364 +778,5 @@ export function KeyDetailContent({
         </AlertDialogContent>
       </AlertDialog>
     </>
-  )
-}
-
-function IdentityQrSession({
-  view,
-  title,
-  enabled,
-  fullscreenOpen,
-  showFullscreenTrigger,
-  preferences,
-  compatibilityDisabled,
-  onCompatibilityModeChange,
-  onFirstRendered,
-  onFullscreenOpenChange,
-}: {
-  view: IdentityQrView
-  title: string
-  enabled: boolean
-  fullscreenOpen: boolean
-  showFullscreenTrigger: boolean
-  preferences: Pick<Preferences, "frameBytes" | "frameIntervalMs">
-  compatibilityDisabled: boolean
-  onCompatibilityModeChange: (enabled: boolean) => void | Promise<void>
-  onFirstRendered: () => void
-  onFullscreenOpenChange: (open: boolean) => void
-}) {
-  const { t } = useI18n()
-  const selectedFramePair = selectedGeneratedDisplayPair(preferences)
-  const compatibilityEnabled =
-    selectedFramePair === COMPATIBLE_GENERATED_DISPLAY_PAIR
-  const effectiveFrameBytes = Math.max(
-    selectedFramePair.frameBytes,
-    minimumFrameBytesForArtifact(view.artifactBytes.byteLength),
-  )
-  const densityRaised =
-    compatibilityEnabled &&
-    effectiveFrameBytes > COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes
-  const split = useFrameSplit({
-    bytes: view.artifactBytes,
-    artifactType: view.artifactType,
-    frameBytes: effectiveFrameBytes,
-    enabled,
-    generation: `${view.generation}:${effectiveFrameBytes}`,
-  })
-  const localizedError = useLocalizedMessage(split.error)
-
-  return (
-    <>
-      {split.error && (
-        <Alert variant="destructive" role="alert">
-          <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>
-          <AlertDescription>{localizedError}</AlertDescription>
-        </Alert>
-      )}
-      {split.frames.length === 0 && split.splitting && (
-        <p aria-live="polite" className="text-sm text-muted-foreground">
-          {t("qrDisplay.generating")}
-        </p>
-      )}
-      {(split.frames.length > 0 || split.splitting) && (
-        <AnimatedQrFrames
-          frames={split.frames}
-          frameIntervalMs={selectedFramePair.frameIntervalMs}
-          densityRaised={densityRaised}
-          compatibilityControl={{
-            enabled: compatibilityEnabled,
-            disabled: compatibilityDisabled,
-            onEnabledChange: onCompatibilityModeChange,
-          }}
-          outputName={t("keyDetail.qr.outputName", {
-            title,
-            date: formatSuggestedDate(view.generatedAt),
-          })}
-          title={title}
-          splitting={split.splitting}
-          fullscreenOpen={fullscreenOpen}
-          showFullscreenTrigger={showFullscreenTrigger}
-          onFirstRendered={onFirstRendered}
-          onFullscreenOpenChange={onFullscreenOpenChange}
-        />
-      )}
-    </>
-  )
-}
-
-function IdentityDetails({
-  identity,
-  previous,
-  busy,
-  onShow,
-  onRotate,
-  onRevoke,
-  onDestroySuperseded,
-  onDelete,
-}: {
-  identity: PostQuantumIdentity
-  previous: PostQuantumIdentity[]
-  busy: boolean
-  onShow: (
-    identity: PostQuantumIdentity,
-    kind: "bundle" | "kem" | "signing",
-  ) => Promise<void>
-  onRotate: (identity: PostQuantumIdentity) => Promise<void>
-  onRevoke: (identity: PostQuantumIdentity) => Promise<void>
-  onDestroySuperseded: (generations: PostQuantumIdentity[]) => void
-  onDelete: (identity: PostQuantumIdentity) => void
-}) {
-  const { language, t } = useI18n()
-  const supported = isUsableIdentity(identity)
-  const old = identity.status !== "active"
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <p className="font-mono text-xs text-muted-foreground">{identity.id}</p>
-        <Badge variant={old || !supported ? "secondary" : "default"}>
-          {supported
-            ? t(`keyStatus.${identity.status}`)
-            : t("keyDetail.badge.legacyProfile")}
-        </Badge>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {!supported
-          ? t("keyDetail.identity.legacyNote")
-          : old
-            ? t("keyDetail.identity.oldNote")
-            : t("keyDetail.identity.activeNote")}
-      </p>
-      <Fingerprint
-        label={t("common.identityFingerprint")}
-        value={identity.identityFingerprint}
-      />
-      <Fingerprint
-        label={t("keyDetail.identity.kemFingerprintLabel", {
-          algorithm: identity.kem.algorithm,
-        })}
-        value={identity.kem.fingerprint}
-      />
-      <Fingerprint
-        label={t("keyDetail.identity.signingFingerprintLabel", {
-          algorithm: identity.signing.algorithm,
-        })}
-        value={identity.signing.fingerprint}
-      />
-      <p className="text-xs text-muted-foreground">
-        {t("common.created", {
-          datetime: formatDateTime(identity.createdAt, language),
-        })}
-      </p>
-      <div className="grid grid-cols-1 gap-2">
-        {supported && !old && (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11"
-              disabled={busy}
-              onClick={() => void onShow(identity, "bundle")}
-            >
-              <QrCode aria-hidden="true" />
-              {t("keyDetail.button.bundleQr")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11"
-              disabled={busy}
-              onClick={() => void onShow(identity, "kem")}
-            >
-              <QrCode aria-hidden="true" />
-              {t("keyDetail.button.kemQr")}
-            </Button>
-          </>
-        )}
-        {supported && (
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11"
-            disabled={busy}
-            onClick={() => void onShow(identity, "signing")}
-          >
-            <QrCode aria-hidden="true" />
-            {t("keyDetail.button.signingQr")}
-          </Button>
-        )}
-        {supported && identity.status === "active" && (
-          <>
-            <Button
-              type="button"
-              variant="secondary"
-              className="h-11"
-              disabled={busy}
-              onClick={() => void onRotate(identity)}
-            >
-              <RefreshCw aria-hidden="true" />
-              {t("keyDetail.button.rotate")}
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              className="h-11"
-              disabled={busy}
-              onClick={() => void onRevoke(identity)}
-            >
-              <Trash2 aria-hidden="true" />
-              {t("keyDetail.button.revoke")}
-            </Button>
-          </>
-        )}
-        <Button
-          type="button"
-          variant="destructive"
-          className="h-11"
-          disabled={busy}
-          aria-label={t("common.deleteAriaLabel", { name: identity.name })}
-          onClick={() => onDelete(identity)}
-        >
-          <Trash2 aria-hidden="true" />
-          {t("common.delete")}
-        </Button>
-      </div>
-      <p className="text-xs text-muted-foreground">{t("keyDetail.revokeNote")}</p>
-      {previous.length > 0 && (
-        <Button
-          type="button"
-          variant="destructive"
-          className="h-11 w-full"
-          disabled={busy}
-          onClick={() => onDestroySuperseded(previous)}
-        >
-          <Trash2 aria-hidden="true" />
-          {t("keyDetail.previous.destroyAll", { count: previous.length })}
-        </Button>
-      )}
-      {previous.length > 0 && (
-        <Collapsible>
-          <CollapsibleTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              className="group h-9 w-full justify-between px-2 text-xs text-muted-foreground"
-            >
-              {t("keyDetail.previous.toggle", { count: previous.length })}
-              <ChevronDown
-                aria-hidden="true"
-                className="size-4 transition-transform group-data-[state=open]:rotate-180"
-              />
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="space-y-2 pt-2">
-            {previous.map((generation) => {
-              const generationSupported = isUsableIdentity(generation)
-              return (
-                <div key={generation.id} className="space-y-2 rounded-md border p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-muted-foreground">
-                      {t("common.created", {
-                        datetime: formatDateTime(generation.createdAt, language),
-                      })}
-                    </p>
-                    <Badge variant="secondary">
-                      {generationSupported
-                        ? t(`keyStatus.${generation.status}`)
-                        : t("keyDetail.badge.legacyProfile")}
-                    </Badge>
-                  </div>
-                  <p className="font-mono text-sm">
-                    {t("common.fingerprintCompare", {
-                      value: formatFingerprint(generation.identityFingerprint),
-                    })}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {generationSupported && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void onShow(generation, "signing")}
-                      >
-                        <QrCode aria-hidden="true" />
-                        {t("keyDetail.button.signingQr")}
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      disabled={busy}
-                      aria-label={t("common.deleteAriaLabel", {
-                        name: generation.name,
-                      })}
-                      onClick={() => onDelete(generation)}
-                    >
-                      <Trash2 aria-hidden="true" />
-                      {t("common.delete")}
-                    </Button>
-                  </div>
-                </div>
-              )
-            })}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-    </div>
-  )
-}
-
-function SymmetricDetails({
-  record,
-  busy,
-  onShow,
-  onDelete,
-}: {
-  record: StoredKeyRecord
-  busy: boolean
-  onShow: () => void
-  onDelete: () => void
-}) {
-  const { language, t } = useI18n()
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <p className="break-all font-mono text-xs text-muted-foreground">{record.id}</p>
-        <Badge>AES-256-GCM</Badge>
-      </div>
-      <Fingerprint
-        label={t("keyDetail.symmetric.fingerprintLabel")}
-        value={record.fingerprint}
-      />
-      <p className="text-xs text-muted-foreground">
-        {t("common.created", {
-          datetime: formatDateTime(record.createdAt, language),
-        })}
-      </p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11"
-          disabled={busy}
-          onClick={onShow}
-        >
-          <QrCode aria-hidden="true" />
-          {t("keyDetail.button.showSecretQr")}
-        </Button>
-        <Button
-          type="button"
-          variant="destructive"
-          className="h-11"
-          disabled={busy}
-          aria-label={t("common.deleteAriaLabel", { name: record.name })}
-          onClick={onDelete}
-        >
-          <Trash2 aria-hidden="true" />
-          {t("common.delete")}
-        </Button>
-      </div>
-    </div>
   )
 }
