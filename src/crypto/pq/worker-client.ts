@@ -590,7 +590,10 @@ function validateWorkerResult<K extends PqWorkerOperation>(
           value["valid"] &&
           (!isBytes(value["plaintext"]) ||
             !isBytes(value["messageId"], MESSAGE_ID_BYTES) ||
-            !isSafeNonNegativeInteger(value["createdAt"]))
+            !isSafeNonNegativeInteger(value["createdAt"]) ||
+            "signedMessageBytes" in value ||
+            "senderSigningKeyId" in value ||
+            "signatureAlgorithm" in value)
         ) {
           throw new TypeError("worker result")
         }

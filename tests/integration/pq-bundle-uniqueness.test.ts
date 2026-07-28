@@ -105,6 +105,21 @@ describe("PQ public bundle key uniqueness", () => {
     expect(error).toMatchObject({ code: "DUPLICATE_KEY" })
   }, 30_000)
 
+  it("reports a revoked byte-identical re-import as a reserved key ID conflict", async () => {
+    const stored = await makeRecord("revoked duplicate key", NOW)
+    const duplicate: PqPublicBundleRecord = {
+      ...stored,
+      recordId: generateKeyId(),
+    }
+    await saveBundle(stored)
+    await revokeBundle(stored.recordId, NOW + 2)
+    expect(await listBundles()).toEqual([])
+
+    const error = await saveError(duplicate)
+
+    expect(error).toMatchObject({ code: "KEY_ID_CONFLICT" })
+  }, 30_000)
+
   it("refuses a partial collision on only the KEM key ID", async () => {
     const stored = await makeRecord("stored KEM key", NOW)
     const candidate = await makeRecord("partial KEM shadow", NOW + 10)

@@ -471,15 +471,14 @@ units:
   - id: external-links
     category: links
     cadence_days: 180
-    last_checked: 2026-07-25
+    last_checked: 2026-07-28
     files:
       - components.json # https://ui.shadcn.com/schema.json
       - design-system/PROVENANCE.md # plugin path/version provenance
       - src/lib/best-effort-zip.ts # fflate provenance/version claim in header
       - tests/pq-vectors/acvp-fixtures.ts # upstream repo URLs
-      # https://qr-crypt.pages.dev/ answered 522 on 2026-07-25 (no production
-      # deployment attached yet; qr-crypt-dev.pages.dev answered 200). The page
-      # links and the QR encode it deliberately — recheck once main deploys.
+      # The production app, About routes, and OG image all answered 200 on
+      # 2026-07-28. The page links and QR deliberately encode that origin.
       - public/about/index.html # production app URL, GitHub repo and releases/latest, og:url and og:image
       - public/about/install-qr.svg # encodes the production app URL; regenerate whenever that URL moves
     why: >

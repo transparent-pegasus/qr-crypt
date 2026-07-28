@@ -220,9 +220,17 @@ They do not close the external `release-approved` blocker.
   `INSTALL.txt` was the only self-contained copy that reaches the offline device;
   mandatory independent rebuild-and-compare was easy to understate.
 - **Shipped:** `docs/develop/install-route-a.md` holds the complete Route A
-  procedure with its mandatory set aligned to `INSTALL.txt`; both READMEs keep a
-  summary plus a link. High-assurance use must use Route A only.
-- **Deferred:** none for this finding.
+  procedure, including pre-extraction container validation and an independent
+  comparison that accounts for every archive member; both READMEs keep a summary
+  plus a link. High-assurance use must use Route A only.
+- **Open — `INSTALL.txt` source derivation:** the release workflow still generates
+  `INSTALL.txt` from an inline heredoc rather than from versioned source. An
+  independent verifier therefore cannot byte-reproduce that member today. Until
+  the release pipeline derives it from a versioned template, its instructions
+  must be compared against the independently authenticated
+  `docs/develop/install-route-a.md`, with any added, omitted, or changed
+  requirement treated as tampering. Moving the generator into versioned source
+  is outside this branch.
 
 ### F-02 — Replayed / re-presented ciphertext
 
@@ -230,16 +238,19 @@ They do not close the external `release-approved` blocker.
   been accepted, and nothing refused a reused authenticated message ID carrying
   different ciphertext.
 - **Shipped:** decryption returns the authenticated `messageId` and `createdAt`.
-  `src/features/receipt-cache.ts` keeps a session-memory receipt per authenticated
-  message (bounded at `MAX_SESSION_RECEIPTS`, oldest-first eviction). A
-  byte-identical re-presentation is flagged behind an explicit reveal; the same
-  authenticated message ID with different ciphertext is refused as
-  `MESSAGE_ID_REUSED`. `clearReceipts` runs from the wipe coordinator's buffer-drop
-  step and from the boot controller's transient-clear path. Nothing frame-derived
-  is persisted: the §1 / T11 / T19 / clean-origin boot-gate invariant is unchanged.
-  Residual, stated in the threat model: detection does not survive a reload or
-  restart; evicted entries become undetectable again; unsigned suites and v1 AES
-  bind only recipient key and ciphertext; `createdAt` remains sender-asserted.
+  `src/features/receipt-cache.ts` keeps one module-local receipt map in each
+  loaded app window's JavaScript realm (bounded at `MAX_SESSION_RECEIPTS`,
+  oldest-first eviction). A matching ciphertext hash is flagged behind an
+  explicit reveal; an authenticated message ID seen with different ciphertext
+  is refused as `MESSAGE_ID_REUSED`. The map is not shared with other tabs or
+  windows. Reload/restart resets it; `clearReceipts` also runs from the wipe
+  coordinator's buffer-drop step and the boot controller's transient-clear path.
+  Nothing frame-derived is persisted: the §1 / T11 / T19 / clean-origin boot-gate
+  invariant is unchanged. Unsigned PQ receipt identity is recipient KEM key ID
+  plus authenticated `messageId`, with ciphertext hash compared for the verdict.
+  Only v1 AES lacks a message ID and uses recipient key ID plus ciphertext hash as
+  its identity. Neither case authenticates a sender; `createdAt` remains
+  sender-asserted.
 - **Deferred / open security-design decision — persistent cross-session replay
   detection:** implementing it requires relaxing the no-frame-derived-persistence
   invariant, device-keyed opaque tags instead of a public ciphertext hash,
@@ -256,14 +267,19 @@ They do not close the external `release-approved` blocker.
   could displace the legitimate record because resolution took the newest import;
   a confirmed record could be shadowed by a later unverified import.
 - **Shipped:** unique indexes on `signing.keyId` and `kem.keyId`; `saveBundle`
-  refuses a byte-identical re-import with `DUPLICATE_KEY` and any other key-ID
-  collision with `KEY_ID_CONFLICT` (including partial collisions and collisions
-  with revoked rows); signing-key resolution is an exact index lookup that treats
-  revoked as unknown; the decrypt page resolves the sender from storage and
-  separates signature validity from identity (success colour only when
-  `fingerprint-confirmed`; unverified sender gets a destructive identity alert
-  above the plaintext). Revoke confirmation copy states that revoking reserves
-  the key IDs while deleting frees them.
+  refuses a re-import with equal KEM/signing algorithms and equal public-key bytes
+  with `DUPLICATE_KEY`, and refuses any other key-ID collision with
+  `KEY_ID_CONFLICT` (including partial collisions). If either indexed match is
+  revoked, every re-import reports `KEY_ID_CONFLICT`, including equal key
+  material; the error explains that a disabled bundle may hold the reservation.
+  Signing-key resolution is an exact index lookup that treats revoked as unknown;
+  the decrypt page resolves the sender from storage and separates signature
+  validity from identity (success colour only when `fingerprint-confirmed`;
+  unverified sender gets a destructive identity alert above the plaintext).
+  Revoke confirmation copy states that disabling hides the row, permanently
+  reserves both signing and KEM key IDs in this installation, cannot be undone or
+  deleted from the key screen afterwards, and can be cleared only by a full local
+  wipe. Deletion frees the IDs only when chosen before disabling.
 - **Deferred:** hiding an unverified signer's plaintext behind an explicit action,
   and binding the sender public key into the signing target.
 
@@ -301,11 +317,13 @@ guaranteed; JS memory erasure has limits
      oc-offline-ack-pending, oc-online-tab}`), IndexedDB values, console,
      `window.onerror` / unhandled rejections, visible error text,
      `document.title`, `location.href`, and history state.
-   - **Session receipts must never appear in IndexedDB, localStorage, or
-     CacheStorage.** Receipts are intentional session-memory residue only
-     (`src/features/receipt-cache.ts`). A change that persists them fails this
-     gate: it would store a frame-derived value, break the clean-origin boot
-     gate's "no frame-derived residue" premise, and contradict
+   - **Window-realm receipts must never appear in IndexedDB, localStorage, or
+     CacheStorage.** Receipts are intentional module-memory residue in one loaded
+     app window only (`src/features/receipt-cache.ts`), not shared with other tabs
+     or windows. Reload, transient clear, wipe, or oldest-first bounded eviction
+     removes detection coverage. A change that persists them fails this gate: it
+     would store a frame-derived value, break the clean-origin boot gate's "no
+     frame-derived residue" premise, and contradict
      `docs/security/threat-model.md` §1 / T11 / T19.
    - Errors use fixed i18n / `AppError` mappings — never interpolate raw
      input, frame metadata, `transferId`, hashes, or `caught.message`.

@@ -83,9 +83,9 @@ const en = {
   "errors.DUPLICATE_KEY": "A key with the same contents is already stored.",
   "errors.DUPLICATE_QR": "A QR code with the same contents is already stored.",
   "errors.KEY_ID_CONFLICT":
-    "One of these key IDs is already assigned to another stored bundle. The import was refused.",
+    "One of these key IDs is already reserved by a stored bundle, which may be disabled and hidden from the list. The import was refused.",
   "errors.MESSAGE_ID_REUSED":
-    "This message carries the identifier of a message this device already received in this session, but different ciphertext. The plaintext was not shown.",
+    "This message reuses an identifier already seen with different ciphertext in this app window since it was loaded. The plaintext was not shown. The check is not shared with other tabs or windows of this app; it also resets on a transient clear or full local wipe, and its bounded cache drops the oldest entries.",
   "errors.SIGNATURE_INVALID":
     "The signature could not be verified. The sender's signing key or the contents do not match.",
   "errors.SIGNING_KEY_NOT_FOUND":
@@ -326,7 +326,7 @@ const en = {
   "keyList.bundle.revoke": "Disable on this device",
   "keyList.bundle.revokeTitle": "Disable this public-key bundle?",
   "keyList.bundle.revokeBody":
-    "Revoking keeps this key ID reserved, so the same key cannot be re-imported; deleting instead removes the record and frees the ID.",
+    "Disabling hides this row and permanently reserves both its signing and KEM key IDs in this installation. It cannot be undone, and the bundle cannot be deleted from this screen afterwards. Only a full local wipe clears the reservation. Delete the bundle instead if you need to free both IDs.",
   "keyList.bundle.revokeConfirm": "Disable",
   "keyList.bundle.confirmOpen": "Compare and confirm the fingerprint",
   "keyList.bundle.confirmTitle": "Confirm this identity's fingerprint",
@@ -441,7 +441,7 @@ const en = {
     "A valid signature only proves this message was signed with this key. It does not prove who holds that key. Confirm the fingerprint in person before you act on this message.",
   "encrypt.result.replay.title": "Already received in this session",
   "encrypt.result.replay.body":
-    "This exact ciphertext was already decrypted here at {time}. A repeat can be an ordinary re-read, or someone replaying an old message to you. Treat any instruction inside it as unconfirmed. Detection covers this session only: it restarts when the app reloads.",
+    "This exact ciphertext was already decrypted in this app window at {time}. A repeat can be an ordinary re-read, or someone replaying an old message to you. Treat any instruction inside it as unconfirmed. The check covers only this app window since it was loaded, is not shared with other tabs or windows of this app, resets on a transient clear or full local wipe, and uses a bounded cache that drops the oldest entries.",
   "encrypt.result.replay.reveal": "Show the message anyway",
   "encrypt.result.senderCreatedAt":
     "Sender-reported time: {time} (asserted by the sending device, not verified)",
@@ -750,9 +750,9 @@ const ja = {
   "errors.DUPLICATE_KEY": "同じ内容の鍵がすでに保存されています。",
   "errors.DUPLICATE_QR": "同じ内容のQRコードがすでに保存されています。",
   "errors.KEY_ID_CONFLICT":
-    "この鍵IDのいずれかは、すでに別の保存済みバンドルに割り当てられています。取り込みを中止しました。",
+    "この鍵IDのいずれかは、保存済みバンドルによってすでに予約されています。そのバンドルは利用停止済みで一覧に表示されていない場合もあります。取り込みを中止しました。",
   "errors.MESSAGE_ID_REUSED":
-    "このメッセージは、このセッションで既に受け取ったメッセージと同じ識別子を持ちながら、暗号文が異なります。平文は表示していません。",
+    "このメッセージは、このアプリウィンドウを読み込んでから既に確認したメッセージと同じ識別子を持ちながら、暗号文が異なります。平文は表示していません。この確認は同じアプリの別のタブやウィンドウとは共有されず、一時消去またはローカルデータの全消去でもリセットされ、件数に上限があるため古い記録から削除されます。",
   "errors.SIGNATURE_INVALID":
     "署名を検証できませんでした。送信者の署名鍵、または内容が一致していません。",
   "errors.SIGNING_KEY_NOT_FOUND":
@@ -992,7 +992,7 @@ const ja = {
   "keyList.bundle.revoke": "利用停止",
   "keyList.bundle.revokeTitle": "この公開鍵セットを利用停止にしますか?",
   "keyList.bundle.revokeBody":
-    "利用停止するとこの鍵IDは予約されたままとなり、同じ鍵を再取り込みできませんが、代わりに削除すると記録が削除され、IDが解放されます。",
+    "利用停止にするとこの行は非表示になり、このインストールでは署名鍵IDとKEM鍵IDの両方が永久に予約されます。元に戻せず、その後この画面からバンドルを削除することもできません。予約を解除できるのはローカルデータの全消去だけです。両方のIDを解放する必要がある場合は、利用停止せずにバンドルを削除してください。",
   "keyList.bundle.revokeConfirm": "利用停止にする",
   "keyList.bundle.confirmOpen": "指紋を比較して確認する",
   "keyList.bundle.confirmTitle": "この識別子の指紋を確認しますか?",
@@ -1109,7 +1109,7 @@ const ja = {
     "署名が有効であることは、このメッセージがこの鍵で署名されたことだけを示します。その鍵を誰が持っているかは示しません。内容に従って行動する前に、対面でフィンガープリントを確認してください。",
   "encrypt.result.replay.title": "このセッションで受信済みです",
   "encrypt.result.replay.body":
-    "この暗号文は {time} にこの端末で復号済みです。単なる再読の場合もあれば、古いメッセージを再送されている場合もあります。中の指示は未確認として扱ってください。検知はこのセッション内のみで、アプリを再読み込みするとリセットされます。",
+    "この暗号文は {time} にこのアプリウィンドウで復号済みです。単なる再読の場合もあれば、古いメッセージを再送されている場合もあります。中の指示は未確認として扱ってください。この確認の範囲は、このアプリウィンドウを読み込んでからの記録だけです。同じアプリの別のタブやウィンドウとは共有されず、一時消去またはローカルデータの全消去でもリセットされ、件数に上限があるため古い記録から削除されます。",
   "encrypt.result.replay.reveal": "それでも表示する",
   "encrypt.result.senderCreatedAt":
     "送信端末の申告時刻: {time}(送信側の申告であり検証されていません)",

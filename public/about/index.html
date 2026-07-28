@@ -189,14 +189,16 @@
                 hashes against the release — Cosign attests which workflow published the
                 artifact, not source-to-binary correspondence. Move it to the offline
                 device, unzip it, and serve the folder from a static web server bound to
-                127.0.0.1 alone. As the bundled INSTALL.txt requires, use a server obtained
+                127.0.0.1 alone. As the bundled INSTALL.txt requires, use an audited static
+                server that was already preinstalled on the offline device and obtained
                 through an independent trusted process, and apply the headers and redirects
-                shipped with it. Opening index.html straight from a file path does not
-                work: storage isolation does not hold there, and another local HTML file
-                can end up able to read your keys. Whatever you carry it on, a USB stick
-                or an SD card, has to be trusted too: anything that can alter the storage
-                can alter the app. The complete procedure is documented in the repository
-                at docs/develop/install-route-a.md.
+                shipped with it. A server merely installed through a route called “trusted”
+                is not equivalent. Opening index.html straight from a file path does not
+                work: storage isolation does not hold there, and another local HTML file can
+                end up able to read your keys. Whatever you carry it on, a USB stick or an
+                SD card, has to be trusted too: anything that can alter the storage can alter
+                the app. The complete procedure is documented in the repository at
+                docs/develop/install-route-a.md.
               </p>
               <p class="route__link">
                 <a

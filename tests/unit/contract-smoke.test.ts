@@ -37,7 +37,7 @@ describe("contract smoke", () => {
     )
     expect(messageFor("QR_TOO_LARGE", "en")).toContain("QR code")
     expect(messageFor("KEY_ID_CONFLICT", "en")).toBe(
-      "One of these key IDs is already assigned to another stored bundle. The import was refused.",
+      "One of these key IDs is already reserved by a stored bundle, which may be disabled and hidden from the list. The import was refused.",
     )
     expect(toAppError(new Error("x"), "STORAGE_FAILED").code).toBe("STORAGE_FAILED")
     expect(toAppError(error, "STORAGE_FAILED")).toBe(error)

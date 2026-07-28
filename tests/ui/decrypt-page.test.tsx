@@ -29,19 +29,10 @@ import {
 import { renderApp, resetUi } from "./helpers/render-app"
 
 const defaultQrMaxFrames = env.qrMaxFrames
-const task7EnglishCopy = {
-  "errors.MESSAGE_ID_REUSED":
-    "This message carries the identifier of a message this device already received in this session, but different ciphertext. The plaintext was not shown.",
-  "encrypt.result.replay.title": "Already received in this session",
-  "encrypt.result.replay.body":
-    "This exact ciphertext was already decrypted here at {time}. A repeat can be an ordinary re-read, or someone replaying an old message to you. Treat any instruction inside it as unconfirmed. Detection covers this session only: it restarts when the app reloads.",
-  "encrypt.result.replay.reveal": "Show the message anyway",
-  "encrypt.result.senderCreatedAt":
-    "Sender-reported time: {time} (asserted by the sending device, not verified)",
-} as const
 const fakePqMessageIdHex = Array.from(fakePqMessageId, (byte) =>
   byte.toString(16).padStart(2, "0"),
 ).join("")
+let clearRealReceipts: (() => void) | undefined
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -81,6 +72,8 @@ async function preparePqPayload(signed: boolean): Promise<void> {
 describe("decrypt page v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
+    clearRealReceipts?.()
+    clearRealReceipts = undefined
     env.qrMaxFrames = defaultQrMaxFrames
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -134,21 +127,20 @@ describe("decrypt page v2", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Decryption complete",
     })
-    const replayTitle = task7EnglishCopy["encrypt.result.replay.title"]
+    const replayTitle = translate("en", "encrypt.result.replay.title")
     const replayAlert = within(dialog).getByRole("alert", {
       name: replayTitle,
     })
     expect(replayAlert).toHaveTextContent(
-      task7EnglishCopy["encrypt.result.replay.body"].replace(
-        "{time}",
-        formatDateTime(firstSeenAt, "en"),
-      ),
+      translate("en", "encrypt.result.replay.body", {
+        time: formatDateTime(firstSeenAt, "en"),
+      }),
     )
     expect(within(dialog).queryByText("復号済み平文")).not.toBeInTheDocument()
 
     await user.click(
       within(dialog).getByRole("button", {
-        name: task7EnglishCopy["encrypt.result.replay.reveal"],
+        name: translate("en", "encrypt.result.replay.reveal"),
       }),
     )
     expect(within(dialog).getByText("復号済み平文")).toBeInTheDocument()
@@ -187,8 +179,88 @@ describe("decrypt page v2", () => {
       "MESSAGE_ID_REUSED" as Parameters<typeof messageFor>[0],
       "en",
     )
-    expect(reusedMessage).toBe(task7EnglishCopy["errors.MESSAGE_ID_REUSED"])
     expect(await screen.findByText(reusedMessage)).toBeInTheDocument()
+  })
+
+  it("zeroizes the exact PQ plaintext buffer after a reused message-id refusal", async () => {
+    const user = userEvent.setup()
+    const plaintext = Uint8Array.of(91, 17, 203, 44, 5, 188)
+    await preparePqPayload(true)
+    decryptPqMessage.mockImplementationOnce(async ({ resolveSigningKey }) => {
+      const senderSigningKeyId = fakeBundles[0]!.signing.keyId
+      await resolveSigningKey(senderSigningKeyId)
+      return {
+        kind: "signed-valid",
+        plaintext,
+        messageId: fakePqMessageId.slice(),
+        createdAt: fakePqCreatedAt,
+        senderSigningKeyId,
+      }
+    })
+    recordReceipt.mockReturnValueOnce({
+      kind: "message-id-reused",
+      firstSeenAt: 1_724_000_000_000,
+    })
+    await renderApp("/decrypt")
+    await screen.findByRole("heading", { name: "Scan with the camera" })
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:zeroize-reused-id" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    expect(
+      await screen.findByText(messageFor("MESSAGE_ID_REUSED", "en")),
+    ).toBeInTheDocument()
+    expect(plaintext).toEqual(new Uint8Array(plaintext.byteLength))
+  })
+
+  it("uses the real receipt cache to gate a second decryption of the same payload", async () => {
+    const user = userEvent.setup()
+    const actualReceiptCache =
+      await vi.importActual<typeof import("@/features/receipt-cache")>(
+        "@/features/receipt-cache",
+      )
+    actualReceiptCache.clearReceipts()
+    clearRealReceipts = actualReceiptCache.clearReceipts
+    recordReceipt.mockImplementation(actualReceiptCache.recordReceipt)
+    await preparePqPayload(true)
+    await renderApp("/decrypt")
+    await screen.findByRole("heading", { name: "Scan with the camera" })
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:real-receipt-cache" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    let dialog = await screen.findByRole("dialog", {
+      name: "Decryption complete",
+    })
+    expect(within(dialog).getByText("署名済みPQ復号結果")).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Decryption complete" }),
+      ).not.toBeInTheDocument(),
+    )
+
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    dialog = await screen.findByRole("dialog", {
+      name: "Decryption complete",
+    })
+    expect(
+      within(dialog).getByRole("alert", {
+        name: translate("en", "encrypt.result.replay.title"),
+      }),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).queryByText("署名済みPQ復号結果"),
+    ).not.toBeInTheDocument()
+    expect(recordReceipt).toHaveBeenCalledTimes(2)
   })
 
   it("shows sender-reported time without a replay alert for first-seen PQ plaintext", async () => {
@@ -209,15 +281,14 @@ describe("decrypt page v2", () => {
     })
     expect(
       within(dialog).queryByRole("alert", {
-        name: task7EnglishCopy["encrypt.result.replay.title"],
+        name: translate("en", "encrypt.result.replay.title"),
       }),
     ).not.toBeInTheDocument()
     expect(
       within(dialog).getByText(
-        task7EnglishCopy["encrypt.result.senderCreatedAt"].replace(
-          "{time}",
-          formatDateTime(fakePqCreatedAt, "en"),
-        ),
+        translate("en", "encrypt.result.senderCreatedAt", {
+          time: formatDateTime(fakePqCreatedAt, "en"),
+        }),
       ),
     ).toBeInTheDocument()
   })
@@ -360,10 +431,22 @@ describe("decrypt page v2", () => {
           )}`,
       ),
     ).toBeInTheDocument()
+    const identityWarningTitle = translate(
+      "en",
+      "encrypt.result.identityUnconfirmed.title",
+    )
+    expect(
+      screen.getByText(identityWarningTitle, { exact: true }),
+    ).toBeInTheDocument()
     const warning = screen.getByRole("alert", {
-      name: "The sender's identity is not confirmed",
+      name: identityWarningTitle,
     })
-    expect(within(warning).getByText(/identity/i)).toBeInTheDocument()
+    expect(
+      within(warning).getByText(
+        translate("en", "encrypt.result.identityUnconfirmed.body"),
+        { exact: true },
+      ),
+    ).toBeInTheDocument()
 
     const dialog = screen.getByRole("dialog", { name: "Decryption complete" })
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
@@ -375,6 +458,36 @@ describe("decrypt page v2", () => {
     fakePqDecrypt.kind = "signed-key-unknown"
     await user.click(screen.getByRole("button", { name: "Decrypt" }))
     expect(await screen.findByText("SIGNING_KEY_NOT_FOUND")).toBeInTheDocument()
+    expect(screen.queryByText("署名済みPQ復号結果")).not.toBeInTheDocument()
+  })
+
+  it("keeps a revoked signer unknown to the resolver without exposing plaintext", async () => {
+    const user = userEvent.setup()
+    const revokedSender: PqPublicBundleRecord = {
+      ...fakeBundles[0]!,
+      revokedAt: 1_724_000_000_000,
+    }
+    fakeBundles.splice(0, fakeBundles.length, revokedSender)
+    await renderApp("/decrypt")
+    await screen.findByRole("heading", { name: "Scan with the camera" })
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:revoked-signer" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    expect(
+      await screen.findByText("SIGNING_KEY_NOT_FOUND"),
+    ).toBeInTheDocument()
+    expect(findBundleBySigningKeyId).toHaveBeenCalledWith(
+      revokedSender.signing.keyId,
+    )
+    expect(decryptPqMessage).toHaveBeenCalledOnce()
+    expect(recordReceipt).not.toHaveBeenCalled()
+    expect(
+      screen.queryByRole("dialog", { name: "Decryption complete" }),
+    ).not.toBeInTheDocument()
     expect(screen.queryByText("署名済みPQ復号結果")).not.toBeInTheDocument()
   })
 
