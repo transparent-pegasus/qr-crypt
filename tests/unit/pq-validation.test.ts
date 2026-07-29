@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
 import {
+  decodeQrFrameV2,
+  encodeCanonicalCbor,
+} from "@/crypto/pq/canonical-cbor"
+import {
   validateMlKemEnvelopeV2,
   validatePublicIdentityBundleV2,
   validateQrFrameV2,
@@ -12,7 +16,12 @@ import {
   MAX_PLAINTEXT_BYTES,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
-import type { PqPublicBundleRecord } from "@/schemas/domain"
+import {
+  V2_ARTIFACT_TYPES,
+  type PqPublicBundleRecord,
+  type QrFrameV2,
+  type V2ArtifactType,
+} from "@/schemas/domain"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 const confirmedBundleFixture: PqPublicBundleRecord = {
@@ -36,6 +45,28 @@ const confirmedBundleFixture: PqPublicBundleRecord = {
   trustConfirmedAt: 1_700_000_000_000,
   bundleCreatedAt: 1_699_999_999_999,
   importedAt: 1_700_000_000_000,
+}
+
+function validFrame(artifactType: V2ArtifactType = "pq-message"): QrFrameV2 {
+  return {
+    version: 2,
+    type: "qr-frame",
+    transferId: new Uint8Array(16),
+    artifactType,
+    frameIndex: 0,
+    frameCount: 1,
+    totalByteLength: 1,
+    chunk: Uint8Array.of(1),
+  }
+}
+
+function expectInvalidFrame(value: unknown): void {
+  try {
+    validateQrFrameV2(value)
+    throw new Error("expected validation to fail")
+  } catch (error) {
+    expect(error).toMatchObject({ code: "INVALID_QR_PAYLOAD" })
+  }
 }
 
 describe("PQ strict validation", () => {
@@ -126,6 +157,58 @@ describe("PQ strict validation", () => {
     ).toThrow("INVALID_QR_PAYLOAD")
   })
 
+  it.each(V2_ARTIFACT_TYPES)("accepts the strict %s frame shape", (artifactType) => {
+    expect(validateQrFrameV2(validFrame(artifactType))).toEqual(
+      validFrame(artifactType),
+    )
+  })
+
+  it("rejects unknown frame keys", () => {
+    expectInvalidFrame({ ...validFrame(), extra: 1 })
+  })
+
+  it.each([
+    ["short transferId", { transferId: new Uint8Array(15) }],
+    ["zero frameCount", { frameCount: 0 }],
+    ["index equal to count", { frameIndex: 1 }],
+    ["zero total length", { totalByteLength: 0 }],
+    ["empty chunk", { chunk: new Uint8Array() }],
+    ["chunk beyond total", { chunk: Uint8Array.of(1, 2), totalByteLength: 1 }],
+    ["fractional index", { frameIndex: 0.5 }],
+    ["unsafe total", { totalByteLength: Number.MAX_SAFE_INTEGER + 1 }],
+    ["unknown artifact type", { artifactType: "unknown" }],
+  ] satisfies ReadonlyArray<readonly [string, Readonly<Record<string, unknown>>]>)(
+    "rejects %s",
+    (_name, changes) => {
+      expectInvalidFrame({ ...validFrame(), ...changes })
+    },
+  )
+
+  it("rejects non-plain frame object instances", () => {
+    const value = Object.assign(
+      Object.create({ inherited: true }) as object,
+      validFrame(),
+    )
+    expectInvalidFrame(value)
+  })
+
+  it("rejects a legacy frame that still carries payloadSha256", () => {
+    const legacy = encodeCanonicalCbor({
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16),
+      artifactType: "pq-message",
+      frameIndex: 0,
+      frameCount: 1,
+      totalByteLength: 4,
+      payloadSha256: new Uint8Array(32),
+      chunk: new Uint8Array([1, 2, 3, 4]),
+    })
+    expect(() => decodeQrFrameV2(legacy)).toThrowError(
+      expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+    )
+  })
+
   it("enforces independent per-frame and whole-artifact receiver bounds", () => {
     const frame = {
       version: 2,
@@ -137,11 +220,6 @@ describe("PQ strict validation", () => {
       totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE,
       chunk: new Uint8Array(FRAME_CHUNK_MAX_BYTES),
     } as const
-    expect(PROTOCOL_MAX_FRAMES).toBe(128)
-    expect(FRAME_CHUNK_MAX_BYTES).toBe(1_000)
-    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(
-      PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES,
-    )
     expect(validateQrFrameV2(frame)).toEqual(frame)
 
     expect(() =>
@@ -176,5 +254,14 @@ describe("PQ strict validation", () => {
       chunk: Uint8Array.of(1),
     } as const
     expect(() => validateQrFrameV2(frame)).toThrow("INVALID_QR_PAYLOAD")
+  })
+
+  it("rejects a single frame whose chunk length differs from its total", () => {
+    expect(() =>
+      validateQrFrameV2({
+        ...validFrame(),
+        totalByteLength: 2,
+      }),
+    ).toThrow("INVALID_QR_PAYLOAD")
   })
 })

@@ -3,13 +3,14 @@ import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import type { V2ArtifactType } from "@/schemas/domain"
 import type { MessageKey, Translate } from "@/i18n"
 import type { InterpolationValues } from "@/i18n/messages"
+import { QR_PREFIX } from "@/qr/payload"
 
 export type ScannerTarget = "message" | "symmetric-key" | "public-key"
 
 export const TARGET_PREFIX: Record<ScannerTarget, string> = {
-  message: "OCM1:",
-  "symmetric-key": "OCK1:",
-  "public-key": "OCP1:",
+  message: QR_PREFIX.message,
+  "symmetric-key": QR_PREFIX["symmetric-key"],
+  "public-key": QR_PREFIX["public-key"],
 }
 
 export const TARGET_LABEL_KEY: Record<ScannerTarget, MessageKey> = {

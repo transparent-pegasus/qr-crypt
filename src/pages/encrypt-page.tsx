@@ -562,15 +562,7 @@ export function EncryptPage() {
               loading={pqLoading}
               items={recipients.map((record) => ({
                 value: record.recordId,
-                label: `${t(
-                  record.trust === "fingerprint-confirmed"
-                    ? "encrypt.recipient.confirmed"
-                    : "encrypt.recipient.unverified",
-                )}: ${
-                  record.trust === "fingerprint-confirmed"
-                    ? (record.name ?? record.kem.keyId)
-                    : record.kem.keyId
-                }`,
+                label: `${t("encrypt.recipient.confirmed")}: ${record.name ?? record.kem.keyId}`,
               }))}
             />
             {!pqLoading && recipients.length === 0 && (

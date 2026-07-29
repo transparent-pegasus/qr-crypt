@@ -113,9 +113,3 @@ export function prepareQrReaderModule(): Promise<void> {
   })
   return preparation
 }
-
-// Fetch and compile the reader ahead of any tap. The readiness gate awaits the returned
-// promise and presents a latched failure instead of starting another generation in-page.
-export function warmQrReaderModule(): Promise<void> {
-  return prepareQrReaderModule()
-}

@@ -19,15 +19,14 @@ import type { ErrorCode } from "@/crypto/errors"
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { decodeCanonicalCbor } from "@/crypto/pq/canonical-cbor"
+import { validateQrFrameV2 } from "@/crypto/pq/validation"
 import { bytesEqual } from "@/lib/bytes"
+import { TRANSFER_TIMEOUT_MINUTES_MAX, TRANSFER_TIMEOUT_MINUTES_MIN } from "@/lib/limits"
 import {
-  FRAME_CHUNK_MAX_BYTES,
-  MAX_ARTIFACT_BYTES_ABSOLUTE,
-  TRANSFER_TIMEOUT_MINUTES_MAX,
-  TRANSFER_TIMEOUT_MINUTES_MIN,
-} from "@/lib/limits"
-import { validateQrFrameV2Strict } from "@/qr/multipart/frame-schema"
-import type { TransferState } from "@/qr/multipart/transfer-state"
+  frameMatchesMetadata,
+  type FrameTransferMetadata,
+  type TransferState,
+} from "@/qr/multipart/transfer-state"
 import { decodeFramePayload } from "@/qr/payload-v2"
 import { V2_ARTIFACT_TYPES } from "@/schemas/domain"
 
@@ -36,29 +35,13 @@ export interface TransferAssemblerOptions {
   now?: () => number // Test seam; defaults to Date.now.
 }
 
-interface TransferMetadata {
-  transferId: Uint8Array
-  artifactType: V2ArtifactType
-  frameCount: number
-  totalByteLength: number
-}
-
 interface ActiveTransfer {
-  metadata: TransferMetadata
+  metadata: FrameTransferMetadata
   chunks: Map<number, Uint8Array>
   expiresAt: number
 }
 
 type TerminalTransferState = Extract<TransferState, { kind: "complete" | "error" }>
-
-function metadataMatches(metadata: TransferMetadata, frame: QrFrameV2): boolean {
-  return (
-    bytesEqual(metadata.transferId, frame.transferId) &&
-    metadata.artifactType === frame.artifactType &&
-    metadata.frameCount === frame.frameCount &&
-    metadata.totalByteLength === frame.totalByteLength
-  )
-}
 
 function artifactTypeFromBytes(artifactBytes: Uint8Array): V2ArtifactType {
   const artifact = decodeCanonicalCbor(artifactBytes)
@@ -107,19 +90,13 @@ export class TransferAssembler {
 
     let frame: QrFrameV2
     try {
-      frame = validateQrFrameV2Strict(decodeFramePayload(frameText))
+      frame = validateQrFrameV2(decodeFramePayload(frameText))
     } catch (error) {
       return this.#fail(error instanceof AppError ? error.code : "INVALID_QR_PAYLOAD")
     }
 
     if (frame.artifactType === "encrypted-seed-backup") {
       return this.#fail("UNSUPPORTED_ALGORITHM")
-    }
-    if (
-      frame.totalByteLength > MAX_ARTIFACT_BYTES_ABSOLUTE ||
-      frame.totalByteLength > frame.frameCount * FRAME_CHUNK_MAX_BYTES
-    ) {
-      return this.#fail("INVALID_QR_PAYLOAD")
     }
 
     if (this.#active === undefined) {
@@ -141,7 +118,7 @@ export class TransferAssembler {
         chunks: new Map(),
         expiresAt,
       }
-    } else if (!metadataMatches(this.#active.metadata, frame)) {
+    } else if (!frameMatchesMetadata(this.#active.metadata, frame)) {
       return this.#fail("FRAME_MISMATCH")
     }
 

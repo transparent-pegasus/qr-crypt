@@ -113,9 +113,7 @@ describe("encrypt page v2", () => {
       (option) => option.textContent ?? "",
     )
 
-    expect(
-      labels.some((label) => label.includes(confirmedBundle.kem.keyId)),
-    ).toBe(true)
+    expect(labels).toContain(`Verified: ${confirmedBundle.kem.keyId}`)
     expect(
       labels.some((label) => label.includes(unverifiedBundle.kem.keyId)),
     ).toBe(false)

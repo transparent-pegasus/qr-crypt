@@ -4,6 +4,10 @@ import {
   MAX_FRAME_PAYLOAD_CHARS,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
+import {
+  frameMatchesMetadata,
+  type FrameTransferMetadata,
+} from "@/qr/multipart/transfer-state"
 import { decodePayload, encodeEnvelopeToPayload, QR_PREFIX } from "@/qr/payload"
 import { decodeFramePayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
 import type { QrFrameV2 } from "@/schemas/domain"
@@ -23,11 +27,8 @@ export type RelayParseErrorCode =
   | "outer-type"
   | "prefix"
 
-interface RelayMetadata {
-  readonly transferId: Uint8Array
+type RelayMetadata = FrameTransferMetadata & {
   readonly artifactType: "pq-message"
-  readonly frameCount: number
-  readonly totalByteLength: number
 }
 
 export interface RelayFrameEntry {
@@ -67,30 +68,15 @@ export function emptyRelayFrameSet(): RelayFrameSet {
   }
 }
 
-function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
-  if (left.byteLength !== right.byteLength) return false
-  let difference = 0
-  for (let index = 0; index < left.byteLength; index += 1) {
-    difference |= left[index]! ^ right[index]!
-  }
-  return difference === 0
-}
-
-function metadataMatches(metadata: RelayMetadata, frame: QrFrameV2): boolean {
-  return (
-    bytesEqual(metadata.transferId, frame.transferId) &&
-    metadata.artifactType === frame.artifactType &&
-    metadata.frameCount === frame.frameCount &&
-    metadata.totalByteLength === frame.totalByteLength
-  )
-}
-
 function parserError(error: unknown): RelayParseErrorCode {
   return error instanceof AppError && error.code === "INVALID_QR_PREFIX"
     ? "prefix"
     : "invalid-frame"
 }
 
+// Deliberate re-statement of two cross-field rules owned by validation.ts's
+// qrFrameV2Schema: repeating them keeps the relay's distinct "length" error
+// code instead of collapsing it into invalid-frame.
 function validFrameLengths(frame: QrFrameV2): boolean {
   return (
     frame.totalByteLength <= frame.frameCount * FRAME_CHUNK_MAX_BYTES &&
@@ -139,7 +125,7 @@ export function parseRelayFrameSet(
         frameCount: frame.frameCount,
         totalByteLength: frame.totalByteLength,
       }
-    } else if (!metadataMatches(metadata, frame)) {
+    } else if (!frameMatchesMetadata(metadata, frame)) {
       return { ok: false, code: "mismatch" }
     }
 

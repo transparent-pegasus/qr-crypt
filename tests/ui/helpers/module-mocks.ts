@@ -74,12 +74,14 @@ vi.mock("@/crypto/vault/vault-key", async (importOriginal) => ({
   dropVaultKeyCache: vi.fn(),
 }))
 
-vi.mock("@/qr/payload", () => ({
+vi.mock("@/qr/payload", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/qr/payload")>()),
   encodeEnvelopeToPayload: fakes.encodeEnvelopeToPayload,
   decodePayload: fakes.decodePayload,
   payloadSha256Hex: fakes.payloadSha256Hex,
 }))
-vi.mock("@/qr/encode", () => ({
+vi.mock("@/qr/encode", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/qr/encode")>()),
   renderQrDataUrl: fakes.renderQrDataUrl,
   renderQrSvgString: fakes.renderQrSvgString,
   qrByteCapacity: fakes.qrByteCapacity,
@@ -99,7 +101,8 @@ vi.mock("@/qr/export-image", () => ({
 vi.mock("@/qr/export-frames", () => ({
   exportQrFramePayloads: fakes.exportQrFramePayloads,
 }))
-vi.mock("@/qr/decode", () => ({
+vi.mock("@/qr/decode", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/qr/decode")>()),
   CAMERA_READER_READY_TIMEOUT_MS: fakes.CAMERA_READER_READY_TIMEOUT_MS,
   readerModuleState: fakes.readerModuleState,
   startQrScan: fakes.startQrScan,
