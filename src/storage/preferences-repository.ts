@@ -42,7 +42,7 @@ const PQ_PROFILES_ALLOWED: readonly PqProfileId[] = ["maximum"]
 
 const EC_LEVELS: readonly QrEcLevel[] = ["L", "M", "Q", "H"]
 
-function defaults(): Preferences {
+export function defaultPreferences(): Preferences {
   return {
     ...PQ_PREFERENCE_DEFAULTS,
     defaultAlgorithm: env.defaultAlgorithm,
@@ -214,12 +214,12 @@ function validatePreferences(value: unknown): Preferences {
 export async function getPreferences(): Promise<Preferences> {
   try {
     const row = await (await getDb()).get(STORE_PREFERENCES, PREFERENCES_KEY)
-    if (row === undefined) return defaults()
+    if (row === undefined) return defaultPreferences()
     if (typeof row.value !== "object" || row.value === null) {
       throw new AppError("STORAGE_FAILED")
     }
     return validatePreferences({
-      ...defaults(),
+      ...defaultPreferences(),
       ...normalizeLegacyStoredPreferences(row.value as Record<string, unknown>),
     })
   } catch (error) {
@@ -236,10 +236,10 @@ export async function updatePreferences(
     const tx = database.transaction(STORE_PREFERENCES, "readwrite")
     const row = await tx.store.get(PREFERENCES_KEY)
     let current: Preferences
-    if (row === undefined) current = defaults()
+    if (row === undefined) current = defaultPreferences()
     else if (typeof row.value === "object" && row.value !== null) {
       current = validatePreferences({
-        ...defaults(),
+        ...defaultPreferences(),
         ...normalizeLegacyStoredPreferences(row.value as Record<string, unknown>),
       })
     } else {
