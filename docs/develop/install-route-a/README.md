@@ -23,8 +23,9 @@ tampered build can weaken the RNG, swap a loaded public key, or embed plaintext
 in data that looks like ciphertext and have the user carry it out as ordinary
 `OCF2:` frames. That covert-egress scenario is **T21** in
 [docs/security/threat-model.md](../../security/threat-model.md). **T19** covers only
-the relay mechanics (outer-header filter, no assembly or AEAD on the online hop,
-no frame-derived app persistence) — not installation integrity.
+the relay mechanics (OCF2 outer-header filter and OCM1 structural-canonicality
+check, no assembly or AEAD on the online hop, no frame- or OCM1-derived app
+persistence) — not installation integrity.
 
 ## 2. Independently authenticated inputs — mandatory
 

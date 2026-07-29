@@ -110,25 +110,34 @@ contact. High-assurance use must use Route A only.
 ### Sending a message through an online device
 
 The two offline devices do not have to be in the same room. A third, online device carries
-the QR frames as text through any messenger. Use an online device that has never held QR
-Crypt keys.
+the ciphertext QR payload as text through any messenger. Use an online device that has
+never held QR Crypt keys.
 
-1. **Sender's offline device** — encrypt as usual and display the QR frames.
-2. **Sender's online device** — open the **Relay** page, use **Scan → text**, collect every
-   frame, and copy the joined text. That clipboard copy can persist or sync outside the
-   app, and outside any wipe.
+For AES-256-GCM (`OCM1`), the relay path is one scan, one paste, and one re-displayed QR;
+there is no multi-frame assembly. The post-quantum (`OCF2`) path remains a multi-frame
+transfer.
+
+1. **Sender's offline device** — encrypt as usual and display one OCM1 QR for AES, or the
+   OCF2 frame sequence for a post-quantum message.
+2. **Sender's online device** — open the **Relay** page, use **Scan → text**, capture the
+   one OCM1 QR or collect every OCF2 frame, and copy the resulting text. That clipboard
+   copy can persist or sync outside the app, and outside any wipe.
 3. **Recipient's online device** — open the **Relay** page, paste the text into
-   **Text → QR**, and play the frames back for the recipient's camera.
-4. **Recipient's offline device** — scan the frames. Only this device assembles the
-   message and verifies it cryptographically.
+   **Text → QR**, and show the single OCM1 QR or play the OCF2 frames back for the
+   recipient's camera.
+4. **Recipient's offline device** — scan the QR or frames. Only this device assembles an
+   OCF2 message, and it is the only endpoint that authenticates either kind.
 
-Public keys and identities are still exchanged face to face. The relay forwards canonical
-QR frame strings whose **untrusted** outer header declares a message; it does not assemble
-them, does not verify the inner type, and decrypts nothing. It never interprets the bytes
-it carries — but it also cannot tell what they are: an artifact relabelled as a message,
-including one carrying key material, passes the filter and is rejected only after the
-offline device assembles it. The offline endpoint is the only place where an artifact is
-authenticated ([docs/security/threat-model.md](docs/security/threat-model.md) T19).
+Public keys and identities are still exchanged face to face. The relay accepts canonical
+OCF2 `pq-message` frames and one canonical OCM1 message. It rejects top-level key-artifact
+prefixes and OCF2 outer types other than `pq-message`, but those rejections do not prove
+that accepted opaque bytes are free of key material. It does not assemble OCF2 sets,
+verify AEAD or signatures, or decrypt anything; for OCM1 it decodes the complete envelope
+and checks structural canonicality only. Accepted OCF2 chunk bytes and the OCM1 ciphertext
+field remain untrusted and are authenticated only on the offline endpoint. An artifact
+relabelled as a message, including one carrying key material, passes the OCF2 outer filter
+and is rejected only after the offline device assembles it
+([docs/security/threat-model.md](docs/security/threat-model.md) T19).
 
 ## Encryption
 
