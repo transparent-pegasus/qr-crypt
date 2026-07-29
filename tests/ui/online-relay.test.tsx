@@ -50,11 +50,9 @@ vi.mock("@/hooks/use-register-sw", () => ({
 
 import { FeatureSupportProvider } from "@/app/providers"
 import { OnlineRelay } from "@/components/online-relay"
-import { buildAad } from "@/crypto/envelope"
 import { LanguageProvider } from "@/i18n"
 import { translate } from "@/i18n/messages"
 import { TRANSFER_TIMEOUT_MINUTES_DEFAULT } from "@/lib/limits"
-import { encodeEnvelopeToPayload } from "@/qr/payload"
 import { decodeFramePayload, encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2 } from "@/schemas/domain"
 
@@ -78,27 +76,14 @@ function payload(frameIndex: number, overrides: Partial<QrFrameV2> = {}): string
   return encodeFrameToPayload(frame(frameIndex, overrides))
 }
 
-const V1_KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
-
-function messagePayload(fill = 0x33): string {
-  const createdAt = 1_700_000_000_000
-  return encodeEnvelopeToPayload({
-    v: 1,
-    type: "message",
-    algorithm: "A256GCM",
-    keyId: V1_KEY_ID,
-    createdAt,
-    iv: new Uint8Array(12).fill(0x22),
-    ciphertext: new Uint8Array(48).fill(fill),
-    aad: buildAad({
-      v: 1,
-      type: "message",
-      algorithm: "A256GCM",
-      keyId: V1_KEY_ID,
-      createdAt,
-    }),
-  })
-}
+// These are literals because jsdom's cross-realm Uint8Arrays fail the schema's
+// instanceof check; do not helpfully convert them back into encoder calls.
+const OCM1_MESSAGE_33 =
+  "OCM1:uQAIYXYBZHR5cGVnbWVzc2FnZWlhbGdvcml0aG1nQTI1NkdDTWVrZXlJZHZBQUVDQXdRRkJnY0lDUW9MREEwT0R3aWNyZWF0ZWRBdPtCeLz-VoAAAGJpdkwiIiIiIiIiIiIiIiJqY2lwaGVydGV4dFgwMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzY2FhZFg9T0NBQUQxfDF8bWVzc2FnZXxBMjU2R0NNfEFBRUNBd1FGQmdjSUNRb0xEQTBPRHd8MTcwMDAwMDAwMDAwMA"
+const OCM1_MESSAGE_44 =
+  "OCM1:uQAIYXYBZHR5cGVnbWVzc2FnZWlhbGdvcml0aG1nQTI1NkdDTWVrZXlJZHZBQUVDQXdRRkJnY0lDUW9MREEwT0R3aWNyZWF0ZWRBdPtCeLz-VoAAAGJpdkwiIiIiIiIiIiIiIiJqY2lwaGVydGV4dFgwREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREY2FhZFg9T0NBQUQxfDF8bWVzc2FnZXxBMjU2R0NNfEFBRUNBd1FGQmdjSUNRb0xEQTBPRHd8MTcwMDAwMDAwMDAwMA"
+const OCK1_SYMMETRIC_KEY =
+  "OCK1:uQAGYXYBZHR5cGVtc3ltbWV0cmljLWtleWlhbGdvcml0aG1nQTI1NkdDTWVrZXlJZHZBQUVDQXdRRkJnY0lDUW9MREEwT0R3aWNyZWF0ZWRBdPtCeLz-VoAAAGNrZXlYIERERERERERERERERERERERERERERERERERERERERERERE"
 
 async function startCapture(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
@@ -422,7 +407,7 @@ describe("online relay UI", () => {
     renderRelay()
     await startCapture(user)
 
-    const message = messagePayload()
+    const message = OCM1_MESSAGE_33
     act(() => scanText?.(message))
 
     const output = await screen.findByLabelText(
@@ -446,7 +431,7 @@ describe("online relay UI", () => {
     renderRelay()
     await startCapture(user)
 
-    const message = messagePayload()
+    const message = OCM1_MESSAGE_33
     act(() => scanText?.(message))
     await screen.findByLabelText(translate("en", "relay.capture.output.label"))
     act(() => scanText?.(payload(0)))
@@ -468,7 +453,7 @@ describe("online relay UI", () => {
     await screen.findByText(
       translate("en", "relay.capture.progress", { collected: 1, total: 2 }),
     )
-    act(() => scanText?.(messagePayload()))
+    act(() => scanText?.(OCM1_MESSAGE_44))
 
     expect(
       await screen.findByText(translate("en", "relay.error.kindMismatch")),
@@ -501,7 +486,7 @@ describe("online relay UI", () => {
     renderRelay()
     await startCapture(user)
 
-    act(() => scanText?.(messagePayload()))
+    act(() => scanText?.(OCM1_MESSAGE_33))
     await screen.findByLabelText(translate("en", "relay.capture.output.label"))
 
     act(() => {
@@ -522,9 +507,10 @@ describe("online relay UI", () => {
     ["OCM2", "OCM2:AA", translate("en", "relay.error.prefix")],
     [
       "OCM1-after-frames",
-      "OCM1:AA",
+      OCM1_MESSAGE_44,
       translate("en", "relay.error.kindMismatch"),
     ],
+    ["OCK1", OCK1_SYMMETRIC_KEY, translate("en", "relay.error.prefix")],
     [
       "foreign",
       "https://example.invalid/",
