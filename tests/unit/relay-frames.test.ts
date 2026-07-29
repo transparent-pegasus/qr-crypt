@@ -546,7 +546,7 @@ describe("relay capture session kind", () => {
     })
   })
 
-  it("validates every pasted line before deciding whether valid kinds conflict", () => {
+  it("gives unknown prefixes precedence and decides allowed-prefix kind conflicts before decoding", () => {
     const message = messagePayload()
     expect(
       parseRelayText(`OCM1:AA\nhttps://example.invalid/`),
@@ -556,11 +556,11 @@ describe("relay capture session kind", () => {
     })
     expect(parseRelayText(`${message}\nOCF2:AA`)).toEqual({
       ok: false,
-      code: "invalid-frame",
+      code: "kind-mismatch",
     })
     expect(parseRelayText(`OCM1:AA\n${payload(0)}`)).toEqual({
       ok: false,
-      code: "invalid-message",
+      code: "kind-mismatch",
     })
     expect(
       parseRelayText(
@@ -568,7 +568,7 @@ describe("relay capture session kind", () => {
       ),
     ).toEqual({
       ok: false,
-      code: "outer-type",
+      code: "kind-mismatch",
     })
   })
 })
