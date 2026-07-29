@@ -205,6 +205,9 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
+    // Naming the steps that failed is the only actionable detail this terminal
+    // screen can offer; the settings-originated reset reports into it too.
+    expect(screen.getByText("database-verification")).toBeInTheDocument()
     expect(
       screen.queryByText(translate("en", "relay.card.title")),
     ).not.toBeInTheDocument()
