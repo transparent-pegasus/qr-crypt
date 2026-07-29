@@ -201,6 +201,8 @@ async function loadColdDecoder(): Promise<typeof import("@/qr/decode")> {
 async function loadDecoder(): Promise<typeof import("@/qr/decode")> {
   const decoder = await loadColdDecoder()
   await decoder.warmQrReader()
+  // The synthetic warm-up probe is not part of the frame pump's decode cadence.
+  zxing.readBarcodes.mockClear()
   return decoder
 }
 
@@ -237,6 +239,94 @@ afterEach(() => {
 describe("camera scanner lifecycle", () => {
   beforeEach(() => {
     vi.useFakeTimers()
+  })
+
+  it("reaches ready only after an empty reader probe returns", async () => {
+    const probe = deferred<Array<{ text: string }>>()
+    zxing.readBarcodes.mockReturnValueOnce(probe.promise)
+    const decoder = await loadColdDecoder()
+    const warm = decoder.warmQrReader()
+    const ready = vi.fn()
+    void warm.then(ready)
+
+    await flushMicrotasks()
+
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+    expect(decoder.readerModuleState()).toBe("preparing")
+    expect(ready).not.toHaveBeenCalled()
+
+    probe.resolve([])
+    await expect(warm).resolves.toBeUndefined()
+
+    expect(decoder.readerModuleState()).toBe("ready")
+    expect(ready).toHaveBeenCalledOnce()
+  })
+
+  it("accepts a reader probe hit as successful readiness", async () => {
+    zxing.readBarcodes.mockResolvedValueOnce(barcode("probe-control-hit"))
+    const decoder = await loadColdDecoder()
+
+    await expect(decoder.warmQrReader()).resolves.toBeUndefined()
+
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+    expect(decoder.readerModuleState()).toBe("ready")
+  })
+
+  it("latches a rejected reader probe for every later warm call", async () => {
+    const failure = new Error("reader probe failed")
+    zxing.readBarcodes.mockRejectedValueOnce(failure)
+    const decoder = await loadColdDecoder()
+
+    const firstWarm = decoder.warmQrReader()
+    await expect(firstWarm).rejects.toBe(failure)
+    expect(decoder.readerModuleState()).toBe("failed")
+    expect(zxing.purgeZXingModule).toHaveBeenCalledOnce()
+
+    const secondWarm = decoder.warmQrReader()
+    expect(secondWarm).toBe(firstWarm)
+    await expect(secondWarm).rejects.toBe(failure)
+
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+  })
+
+  it("does not probe when reader module preparation rejects", async () => {
+    const failure = new WebAssembly.CompileError("reader preparation failed")
+    zxing.prepareZXingModule.mockRejectedValueOnce(failure)
+    const decoder = await loadColdDecoder()
+
+    await expect(decoder.warmQrReader()).rejects.toBe(failure)
+
+    expect(decoder.readerModuleState()).toBe("failed")
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    expect(zxing.readBarcodes).not.toHaveBeenCalled()
+
+    // A fresh module instance is the positive control: only preparation success probes.
+    vi.resetModules()
+    const freshDecoder = await loadColdDecoder()
+    await expect(freshDecoder.warmQrReader()).resolves.toBeUndefined()
+
+    expect(zxing.prepareZXingModule).toHaveBeenCalledTimes(2)
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+    expect(freshDecoder.readerModuleState()).toBe("ready")
+  })
+
+  it("shares one reader probe across concurrent warm calls", async () => {
+    const probe = deferred<Array<{ text: string }>>()
+    zxing.readBarcodes.mockReturnValueOnce(probe.promise)
+    const decoder = await loadColdDecoder()
+
+    const firstWarm = decoder.warmQrReader()
+    const secondWarm = decoder.warmQrReader()
+
+    expect(secondWarm).toBe(firstWarm)
+    await flushMicrotasks()
+    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    expect(zxing.readBarcodes).toHaveBeenCalledOnce()
+
+    probe.resolve([])
+    await Promise.all([firstWarm, secondWarm])
+    expect(decoder.readerModuleState()).toBe("ready")
   })
 
   it("fails closed before camera acquisition while the reader is cold", async () => {
@@ -356,10 +446,10 @@ describe("camera scanner lifecycle", () => {
       videoFrameCallbacks: true,
     })
     getUserMedia.mockResolvedValue(mediaStream(track))
-    zxing.readBarcodes.mockResolvedValueOnce(barcode("OCK1:autoplay"))
     const onText = vi.fn()
     const onError = vi.fn()
     const decoder = await loadDecoder()
+    zxing.readBarcodes.mockResolvedValueOnce(barcode("OCK1:autoplay"))
     const scanPromise = decoder.startQrScan(
       asVideoElement(fakeVideo),
       onText,
@@ -511,12 +601,12 @@ describe("camera scanner lifecycle", () => {
     })
     getUserMedia.mockResolvedValue(mediaStream(track))
     const decodeStartedAt: number[] = []
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
     zxing.readBarcodes.mockImplementation(async () => {
       decodeStartedAt.push(Date.now())
       return []
     })
-    const onError = vi.fn()
-    const decoder = await loadDecoder()
     const handle = await decoder.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
@@ -550,6 +640,7 @@ describe("camera scanner lifecycle", () => {
     })
     const decodeStartedAt: number[] = []
     getUserMedia.mockResolvedValue(mediaStream(track))
+    const decoder = await loadDecoder()
     zxing.readBarcodes.mockImplementation(async () => {
       decodeStartedAt.push(Date.now())
       if (decodeStartedAt.length === 1) {
@@ -557,7 +648,6 @@ describe("camera scanner lifecycle", () => {
       }
       return []
     })
-    const decoder = await loadDecoder()
     const handle = await decoder.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
@@ -605,10 +695,10 @@ describe("camera scanner lifecycle", () => {
       const track = makeTrack()
       const fakeVideo = makeVideo()
       getUserMedia.mockResolvedValue(mediaStream(track))
-      zxing.readBarcodes.mockResolvedValueOnce(barcode("OCK1:recovered"))
       const onText = vi.fn()
       const onError = vi.fn()
       const decoder = await loadDecoder()
+      zxing.readBarcodes.mockResolvedValueOnce(barcode("OCK1:recovered"))
       const handle = await decoder.startQrScan(
         asVideoElement(fakeVideo),
         onText,
@@ -668,8 +758,8 @@ describe("camera scanner lifecycle", () => {
     const track = new FakeTrack()
     const fakeVideo = new FakeVideo(1920, 1080)
     getUserMedia.mockResolvedValue(mediaStream(track))
-    zxing.readBarcodes.mockResolvedValue([])
     const decoder = await loadDecoder()
+    zxing.readBarcodes.mockResolvedValue([])
     const handle = await decoder.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
@@ -715,10 +805,10 @@ describe("camera scanner lifecycle", () => {
     const pending = deferred<Array<{ text: string }>>()
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
-    zxing.readBarcodes.mockReturnValueOnce(pending.promise)
     const onText = vi.fn()
     const onError = vi.fn()
     const decoder = await loadDecoder()
+    zxing.readBarcodes.mockReturnValueOnce(pending.promise)
     const handle = await decoder.startQrScan(
       videoElement(),
       onText,
@@ -741,10 +831,10 @@ describe("camera scanner lifecycle", () => {
     const track = new FakeTrack()
     const controller = new AbortController()
     getUserMedia.mockResolvedValue(mediaStream(track))
-    zxing.readBarcodes.mockReturnValueOnce(pending.promise)
     const onText = vi.fn()
     const onError = vi.fn()
     const decoder = await loadDecoder()
+    zxing.readBarcodes.mockReturnValueOnce(pending.promise)
     const handle = await decoder.startQrScan(
       videoElement(),
       onText,
@@ -767,10 +857,10 @@ describe("camera scanner lifecycle", () => {
     const pending = deferred<Array<{ text: string }>>()
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
-    zxing.readBarcodes.mockReturnValueOnce(pending.promise)
     const onText = vi.fn()
     const onError = vi.fn()
     const decoder = await loadDecoder()
+    zxing.readBarcodes.mockReturnValueOnce(pending.promise)
     const handle = await decoder.startQrScan(
       videoElement(),
       onText,
@@ -802,12 +892,12 @@ describe("camera scanner lifecycle", () => {
     getUserMedia
       .mockResolvedValueOnce(mediaStream(oldTrack))
       .mockResolvedValueOnce(mediaStream(newTrack))
-    zxing.readBarcodes
-      .mockReturnValueOnce(oldDecode.promise)
-      .mockResolvedValueOnce([])
     const oldText = vi.fn()
     const newText = vi.fn()
     const decoder = await loadDecoder()
+    zxing.readBarcodes
+      .mockReturnValueOnce(oldDecode.promise)
+      .mockResolvedValueOnce([])
     const oldHandle = await decoder.startQrScan(
       asVideoElement(oldVideo),
       oldText,
@@ -844,12 +934,12 @@ describe("camera scanner lifecycle", () => {
     getUserMedia
       .mockResolvedValueOnce(mediaStream(oldTrack))
       .mockResolvedValueOnce(mediaStream(replacementTrack))
-    zxing.readBarcodes
-      .mockReturnValueOnce(oldDecode.promise)
-      .mockReturnValueOnce(replacementDecode.promise)
     const oldText = vi.fn()
     const replacementError = vi.fn()
     const decoder = await loadDecoder()
+    zxing.readBarcodes
+      .mockReturnValueOnce(oldDecode.promise)
+      .mockReturnValueOnce(replacementDecode.promise)
     const oldHandle = await decoder.startQrScan(
       videoElement(),
       oldText,
@@ -892,10 +982,10 @@ describe("camera scanner lifecycle", () => {
     getUserMedia
       .mockResolvedValueOnce(mediaStream(oldTrack))
       .mockReturnValueOnce(replacementAcquire.promise)
-    zxing.readBarcodes.mockReturnValueOnce(oldDecode.promise)
     const oldText = vi.fn()
     const replacementError = vi.fn()
     const decoder = await loadDecoder()
+    zxing.readBarcodes.mockReturnValueOnce(oldDecode.promise)
     const oldHandle = await decoder.startQrScan(
       videoElement(),
       oldText,
@@ -945,12 +1035,12 @@ describe("camera scanner lifecycle", () => {
     async ({ once, expectedTexts, expectedReads }) => {
       const track = new FakeTrack()
       getUserMedia.mockResolvedValue(mediaStream(track))
-      zxing.readBarcodes
-        .mockResolvedValueOnce(barcode("OCK1:first"))
-        .mockResolvedValueOnce(barcode("OCK1:second"))
       const onText = vi.fn()
       const onError = vi.fn()
       const decoder = await loadDecoder()
+      zxing.readBarcodes
+        .mockResolvedValueOnce(barcode("OCK1:first"))
+        .mockResolvedValueOnce(barcode("OCK1:second"))
       const handle = await decoder.startQrScan(
         videoElement(),
         onText,
@@ -976,10 +1066,10 @@ describe("camera scanner lifecycle", () => {
     const firstDecode = deferred<Array<{ text: string }>>()
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
+    const decoder = await loadDecoder()
     zxing.readBarcodes
       .mockReturnValueOnce(firstDecode.promise)
       .mockResolvedValueOnce([])
-    const decoder = await loadDecoder()
     const handle = await decoder.startQrScan(
       videoElement(),
       vi.fn(),
@@ -1003,6 +1093,7 @@ describe("camera scanner lifecycle", () => {
     const decodeStartedAt: number[] = []
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
+    const decoder = await loadDecoder()
     zxing.readBarcodes
       .mockImplementationOnce(() => {
         decodeStartedAt.push(Date.now())
@@ -1012,7 +1103,6 @@ describe("camera scanner lifecycle", () => {
         decodeStartedAt.push(Date.now())
         return []
       })
-    const decoder = await loadDecoder()
     const handle = await decoder.startQrScan(
       videoElement(),
       vi.fn(),
@@ -1081,8 +1171,8 @@ describe("camera scanner lifecycle", () => {
     const track = new FakeTrack()
     const onError = vi.fn()
     getUserMedia.mockResolvedValue(mediaStream(track))
-    zxing.readBarcodes.mockResolvedValue([])
     const decoder = await loadDecoder()
+    zxing.readBarcodes.mockResolvedValue([])
     expect(decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS).toBe(12_000)
     const handle = await decoder.startQrScan(
       videoElement(),
@@ -1106,12 +1196,12 @@ describe("camera scanner lifecycle", () => {
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
     const decodeStartedAt: number[] = []
+    const onError = vi.fn()
+    const decoder = await loadDecoder()
     zxing.readBarcodes.mockImplementation(async () => {
       decodeStartedAt.push(Date.now())
       return []
     })
-    const onError = vi.fn()
-    const decoder = await loadDecoder()
     const handle = await decoder.startQrScan(
       videoElement(),
       vi.fn(),
@@ -1155,9 +1245,9 @@ describe("camera scanner lifecycle", () => {
       getUserMedia.mockResolvedValue(mediaStream(track))
       const error = new Error("decoder failed")
       error.name = name
-      arrange(error)
       const onError = vi.fn()
       const decoder = await loadDecoder()
+      arrange(error)
       const handle = await decoder.startQrScan(
         videoElement(),
         vi.fn(),
@@ -1399,9 +1489,9 @@ describe("camera scanner lifecycle", () => {
 
   it("reports a scanned-payload callback failure as a camera error", async () => {
     getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
-    zxing.readBarcodes.mockResolvedValue(barcode("OCK1:SENTINEL-SECRET"))
     const onError = vi.fn()
     const decoder = await loadDecoder()
+    zxing.readBarcodes.mockResolvedValue(barcode("OCK1:SENTINEL-SECRET"))
 
     const handle = await decoder.startQrScan(
       videoElement(),
