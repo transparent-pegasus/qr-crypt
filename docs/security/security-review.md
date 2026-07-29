@@ -308,7 +308,7 @@ guaranteed; JS memory erasure has limits
    `tests/e2e/online-relay.spec.ts`) must assert:
    - **Allowlist (methods, paths, and query keys):** static/PWA resources;
      recurring `HEAD /manifest.webmanifest?reach=…` (display probe); boot
-     `GET /reachability-sentinel.txt` (destructive probe). No other
+     `GET /reachability-sentinel.txt?n=…` (destructive probe). No other
      runtime requests. Every allowed request must carry no query key beyond
      the two named above — checking method and path alone would let an allowed
      static GET carry a payload field in its query.

@@ -15,13 +15,15 @@ export interface PersistenceInspection {
   matches: PersistenceMatch[]
   indexedDbStores: string[]
   localStorageKeys: string[]
+  cookieKeys: string[]
   cacheKeys: string[]
 }
 
 /**
- * Recursively scans every IndexedDB plus CacheStorage metadata/body and local
- * storage. Text needles are also searched as UTF-8 bytes; explicit byte
- * needles catch typed arrays and other structured-clone binary values.
+ * Recursively scans every IndexedDB, CacheStorage metadata/body, local storage,
+ * and browser-context cookie (including HttpOnly). Text needles are also
+ * searched as UTF-8 bytes; explicit byte needles catch typed arrays and other
+ * structured-clone binary values.
  */
 export async function inspectPersistentSurfaces(
   page: Page,
@@ -32,7 +34,8 @@ export async function inspectPersistentSurfaces(
     text,
     bytes: bytes === undefined ? undefined : Array.from(bytes),
   }))
-  return page.evaluate(async (candidateNeedles) => {
+  const cookies = await page.context().cookies()
+  return page.evaluate(async ({ candidateNeedles, cookies }) => {
     interface Match {
       marker: string
       location: string
@@ -228,6 +231,18 @@ export async function inspectPersistentSurfaces(
       inspectString(localStorage.getItem(key) ?? "", `localStorage:${key}:value`)
     }
 
+    const cookieKeys: string[] = []
+    cookies.sort((left, right) =>
+      `${left.domain}:${left.path}:${left.name}`.localeCompare(
+        `${right.domain}:${right.path}:${right.name}`,
+      ),
+    )
+    for (const cookie of cookies) {
+      const cookieLocation = `cookies:${cookie.domain}${cookie.path}:${cookie.name}`
+      cookieKeys.push(`${cookie.domain}${cookie.path}:${cookie.name}`)
+      await inspectValue(cookie, cookieLocation, new WeakSet())
+    }
+
     const cacheKeys: string[] = []
     for (const cacheName of (await caches.keys()).sort()) {
       inspectString(cacheName, `CacheStorage:${cacheName}:name`)
@@ -268,7 +283,8 @@ export async function inspectPersistentSurfaces(
       ),
       indexedDbStores,
       localStorageKeys,
+      cookieKeys,
       cacheKeys: cacheKeys.sort(),
     }
-  }, serialized)
+  }, { candidateNeedles: serialized, cookies })
 }

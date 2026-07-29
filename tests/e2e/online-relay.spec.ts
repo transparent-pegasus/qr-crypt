@@ -26,18 +26,33 @@ import { OCK1_SYMMETRIC_KEY } from "../fixtures/relay-v1"
 
 interface ObservedRequest {
   body: string | null
-  headers: Record<string, string>
+  fromServiceWorker: boolean
+  headers: { name: string; value: string }[]
   method: string
   url: string
 }
 
-function requestObservation(request: Request): ObservedRequest {
+async function requestObservation(request: Request): Promise<ObservedRequest> {
   return {
     body: request.postData(),
-    headers: request.headers(),
+    fromServiceWorker: request.serviceWorker() !== null,
+    headers: await request.headersArray(),
     method: request.method(),
     url: request.url(),
   }
+}
+
+async function awaitRequestObservations(
+  pending: readonly Promise<ObservedRequest>[],
+): Promise<ObservedRequest[]> {
+  const requests: ObservedRequest[] = []
+  let next = 0
+  while (next < pending.length) {
+    const batch = pending.slice(next)
+    next += batch.length
+    requests.push(...(await Promise.all(batch)))
+  }
+  return requests
 }
 
 function expectAllowedRelayRequest(request: ObservedRequest): void {
@@ -61,7 +76,10 @@ function expectAllowedRelayRequest(request: ObservedRequest): void {
       url.pathname === "/sw.js" ||
       url.pathname === "/registerSW.js" ||
       /^\/workbox-[A-Za-z0-9_-]+\.js$/.test(url.pathname) ||
-      /^\/(?:assets|icons)\//.test(url.pathname),
+      /^\/(?:assets|icons)\//.test(url.pathname) ||
+      (request.fromServiceWorker &&
+        (url.pathname === "/index.html" || url.pathname === "/favicon.svg")),
+    `Unexpected relay request: ${request.method} ${request.url}`,
   ).toBe(true)
 }
 
@@ -160,6 +178,18 @@ function expectNoRelayPayloadText(
   }
 }
 
+function expectNoRelayPayloadHeaders(
+  headers: readonly { name: string; value: string }[],
+  markers: readonly RelayPayloadMarker[],
+): void {
+  for (const { text } of markers) {
+    for (const { name, value } of headers) {
+      expect(name.toLowerCase()).not.toContain(text.toLowerCase())
+      expect(value).not.toContain(text)
+    }
+  }
+}
+
 async function assertNoRelayPayloadPersistence(
   page: Page,
   markers: readonly RelayPayloadMarker[],
@@ -212,7 +242,7 @@ async function assertNoRelayPayloadPersistence(
   expectNoRelayPayloadText(inspected, markers)
 }
 
-test("the relay persistence oracle detects binary and schema-name markers", async ({
+test("the relay persistence oracle detects binary, schema-name, and cookie markers", async ({
   page,
 }) => {
   const databaseName = "relay-persistence-oracle-self-test"
@@ -220,7 +250,17 @@ test("the relay persistence oracle detects binary and schema-name markers", asyn
   const storeName = `markers-${schemaMarker}`
   const marker = "RELAY_TYPED_ARRAY_ORACLE_7B4D"
   const markerBytes = Array.from(new TextEncoder().encode(marker))
+  const cookieName = "relay-persistence-oracle-self-test"
+  const cookieMarker = "RELAY_HTTP_ONLY_COOKIE_ORACLE_4F8A"
   await loadOnlineGate(page)
+  await page.context().addCookies([
+    {
+      name: cookieName,
+      value: cookieMarker,
+      url: page.url(),
+      httpOnly: true,
+    },
+  ])
   await page.evaluate(
     ({ bytes, name, store }) =>
       new Promise<void>((resolve, reject) => {
@@ -250,8 +290,9 @@ test("the relay persistence oracle detects binary and schema-name markers", asyn
     const inspection = await inspectPersistentSurfaces(page, [
       { marker: "typed-array-self-test", bytes: markerBytes },
       { marker: "schema-name-self-test", text: schemaMarker },
+      { marker: "cookie-self-test", text: cookieMarker },
     ])
-    expect(inspection.matches).toHaveLength(2)
+    expect(inspection.matches).toHaveLength(3)
     expect(inspection.matches).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -266,20 +307,27 @@ test("the relay persistence oracle detects binary and schema-name markers", asyn
             `indexedDB:${databaseName}/${storeName}.values[0]`,
           ),
         }),
+        expect.objectContaining({
+          marker: "cookie-self-test",
+          location: expect.stringContaining(`:${cookieName}.value:text`),
+        }),
       ]),
     )
   } finally {
-    await page.evaluate(
-      (name) =>
-        new Promise<void>((resolve, reject) => {
-          const deletion = indexedDB.deleteDatabase(name)
-          deletion.onerror = () => reject(deletion.error)
-          deletion.onblocked = () =>
-            reject(new Error(`IndexedDB deletion was blocked: ${name}`))
-          deletion.onsuccess = () => resolve()
-        }),
-      databaseName,
-    )
+    await Promise.all([
+      page.context().clearCookies({ name: cookieName }),
+      page.evaluate(
+        (name) =>
+          new Promise<void>((resolve, reject) => {
+            const deletion = indexedDB.deleteDatabase(name)
+            deletion.onerror = () => reject(deletion.error)
+            deletion.onblocked = () =>
+              reject(new Error(`IndexedDB deletion was blocked: ${name}`))
+            deletion.onsuccess = () => resolve()
+          }),
+        databaseName,
+      ),
+    ])
   }
 })
 
@@ -324,9 +372,11 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
     bytesToHex(SYMMETRIC_KEY_BYTES.subarray(0, 8)),
     Array.from(SYMMETRIC_KEY_BYTES.subarray(0, 8)).join(","),
   ]
-  const requests: ObservedRequest[] = []
+  const pendingRequestObservations: Promise<ObservedRequest>[] = []
   const consoleValues: string[] = []
-  page.on("request", (request) => requests.push(requestObservation(request)))
+  context.on("request", (request) =>
+    pendingRequestObservations.push(requestObservation(request)),
+  )
   page.on("console", (message) => consoleValues.push(message.text()))
   page.on("pageerror", (error) => consoleValues.push(error.message))
   await page.addInitScript(() => {
@@ -546,22 +596,22 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
       bytes: SYMMETRIC_KEY_BYTES,
     },
   ]
+  for (const value of consoleValues) {
+    expectNoRelayPayloadText([value], relayPayloadMarkers)
+  }
+  await assertNoRelayPayloadPersistence(page, relayPayloadMarkers)
+  const requests = await awaitRequestObservations(pendingRequestObservations)
+  expect(requests.some(({ fromServiceWorker }) => fromServiceWorker)).toBe(true)
   for (const request of requests) {
     expectAllowedRelayRequest(request)
     expectNoRelayPayloadText(
       [
         request.url,
-        ...Object.entries(request.headers).flatMap(([name, value]) => [
-          name,
-          value,
-        ]),
+        ...[...new URL(request.url).searchParams.entries()].flat(),
         request.body ?? "",
       ],
       relayPayloadMarkers,
     )
+    expectNoRelayPayloadHeaders(request.headers, relayPayloadMarkers)
   }
-  for (const value of consoleValues) {
-    expectNoRelayPayloadText([value], relayPayloadMarkers)
-  }
-  await assertNoRelayPayloadPersistence(page, relayPayloadMarkers)
 })
