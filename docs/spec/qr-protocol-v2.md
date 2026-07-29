@@ -22,8 +22,9 @@ document. The v1 format remains specified in `docs/spec/qr-protocol.md`
   (frameCount≥1)**.
 - Import supports both (a) `OCF2` assembly → inner artifact, and
   (b) a bare `OC?2` single paste.
-- `OCB2` is rejected as `UNSUPPORTED_ALGORITHM` at classification time,
-  because `VITE_ENABLE_ENCRYPTED_SEED_BACKUP=false` is fixed.
+- `OCB2` is a reserved prefix, rejected unconditionally as
+  `UNSUPPORTED_ALGORITHM` at classification time. There is no feature flag: it
+  is never generated and never accepted.
 - Managed deviation: `pq-kem-public-key` / `pq-dsa-public-key` were added to
   the three artifactType values of the original draft specification
   (single keys are also always carried via framing; see
@@ -50,8 +51,10 @@ libraries).
 - Nesting depth limit: 8
 - Decoder input is limited to 1–128,000 bytes. Structural allocation has
   separate limits because a byte limit alone does not bound entry count or
-  retained heap: at most 9 entries in one map, 13 map entries across the
-  decoded value, 19 UTF-8 bytes per map key, and 300 UTF-8 bytes per text
+  retained heap: at most 8 entries in one map (the largest
+  active shape, shared by `QrFrameV2` and `MlKemMessageEnvelopeV2`), 13 map
+  entries across the decoded value, 18 UTF-8 bytes per map key
+  (`senderSigningKeyId`, the longest decoded key), and 300 UTF-8 bytes per text
   value. Length/count headers are rejected before their loops or strings are
   materialized
 - Decoded maps have null prototypes. Encoded attacker-supplied keys are not

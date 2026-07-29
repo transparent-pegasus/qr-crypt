@@ -121,10 +121,13 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    before the barrier. A peer broadcast performs this as its first action.
 1. Fail-close all new UI/crypto/storage operations (subsequent
    repository/worker calls error immediately).
-2. Cancel/terminate the Workers. Drop (zeroize) the app-owned
-   seed/plaintext/sharedSecret buffers, the Vault key cache, the session
-   receipt cache (`clearReceipts` in `src/features/receipt-cache.ts`), and the
-   promise references.
+2. Cancel/terminate the Workers by disposing every registered PQ crypto
+   client, then drop the Vault key cache, the session receipt cache
+   (`clearReceipts` in `src/features/receipt-cache.ts`), and the promise
+   references. Worker-owned seed/plaintext/sharedSecret buffers are zeroized
+   inside the Worker itself; the app keeps no registry of page-side byte
+   buffers, because page plaintext lives in JavaScript strings, which cannot
+   be zeroized.
 3. Hide and reset transient/SensitiveSession state.
 4. Request stop/close in all tabs via `navigator.locks` (with a fallback) +
    `BroadcastChannel("qr-crypt-wipe")`.
@@ -207,7 +210,7 @@ redundant re-acknowledgement is allowed but skipping acknowledgement is not.
 | no wipe                     | The Router is mounted only after the per-generation acknowledgement                                                                                                                      | Deletion attempted on acknowledgement                                                                                                                                              |
 | `wiped` (`online-detected`) | The result and the acknowledgement are shown in the same full-screen shell; the "reload to continue" action performs a full reload. The Router is not mounted in the current JS lifetime | Re-set after the `oc-*` deletion and before publishing `wiped`. Reloading without acknowledging shows the shell again; reloading after acknowledging is a marker-absent cold start |
 | `partial-failure`           | Shows only `RESET_FAILED` plus guidance to close the tab / fully format the device; no resume path is provided                                                                           | Kept re-set as evidence of online contact                                                                                                                                          |
-| `user-requested`            | Normal flow after a manual reset                                                                                                                                                         | Not re-set after the `oc-*` deletion                                                                                                                                               |
+| `user-requested`            | Settings runs the same coordinator sequence (barrier, crypto dispose, Vault-key cache drop, transient reset, cross-tab stop, the ordered deletion above, churn, absence check). On success the app performs a full reload; on partial failure it shows a terminal `RESET_FAILED` state with the failed steps and no resume path | Not re-set after the `oc-*` deletion                                                                                                                                               |
 
 A display offline commit issues no sentinel; only when boot is
 `network-confirmed` does it request the dedicated nudge, once. When the
