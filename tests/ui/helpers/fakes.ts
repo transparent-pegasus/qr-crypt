@@ -151,6 +151,7 @@ export const fakePreferences: Preferences = {
   autoClearPlaintextAfterEncrypt: true,
   backgroundClearEnabled: true,
 }
+const defaultPreferencesSnapshot: Preferences = { ...fakePreferences }
 export const fakeFeatures: FeatureSupport = {
   webCrypto: true,
   indexedDb: true,
@@ -185,7 +186,24 @@ export const FakeAppError = AppError
 export type FakeAppError = AppError
 
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
+let webAssemblyRuntimeSettled: boolean | undefined
+let webAssemblyProbeGeneration = 0
 export const probeWebAssemblyRuntime = vi.fn(async () => true)
+export const webAssemblyRuntimeSupport = vi.fn(
+  (): boolean | undefined => webAssemblyRuntimeSettled,
+)
+
+export function mockWebAssemblyProbe(result: boolean | Promise<boolean>): void {
+  const generation = ++webAssemblyProbeGeneration
+  webAssemblyRuntimeSettled = undefined
+  const promise = Promise.resolve(result)
+  probeWebAssemblyRuntime.mockReturnValue(promise)
+  void promise.then((value) => {
+    if (generation === webAssemblyProbeGeneration) {
+      webAssemblyRuntimeSettled = value
+    }
+  })
+}
 
 export const sha256 = vi.fn(async (value: Uint8Array) => {
   const result = new Uint8Array(32)
@@ -393,6 +411,9 @@ export const estimatePayloadChars = vi.fn((bytes: number) => bytes * 2 + 220)
 export const ecLevelFor = vi.fn(
   (kind: "message" | "stored-key" | "multipart-frame", prefs: Preferences) =>
     kind === "message" ? prefs.qrErrorCorrection : kind === "multipart-frame" ? "Q" : "H",
+)
+export const relayMessageEcLevel = vi.fn((payload: string) =>
+  payload.length <= 1_663 ? "Q" : payload.length <= 2_331 ? "M" : "L",
 )
 export const qrPngBlob = vi.fn<
   (payload: string, options: QrExportOptions) => Promise<Blob>
@@ -923,6 +944,11 @@ async function defaultFindBundleByKemKeyId(keyId: string) {
 export const findBundleBySigningKeyId = vi.fn(defaultFindBundleBySigningKeyId)
 export const findBundleByKemKeyId = vi.fn(defaultFindBundleByKemKeyId)
 
+function defaultFakePreferences(): Preferences {
+  return { ...defaultPreferencesSnapshot }
+}
+
+export const defaultPreferences = vi.fn(defaultFakePreferences)
 export const getPreferences = vi.fn(async () => ({ ...fakePreferences }))
 export const updatePreferences = vi.fn(async (patch: Partial<Preferences>) => {
   Object.assign(fakePreferences, patch)
@@ -989,8 +1015,12 @@ export function resetFakes(): void {
   findBundleBySigningKeyId.mockImplementation(defaultFindBundleBySigningKeyId)
   findBundleByKemKeyId.mockImplementation(defaultFindBundleByKemKeyId)
   recordReceipt.mockImplementation(() => ({ kind: "first-seen" }) as const)
+  webAssemblyProbeGeneration += 1
+  webAssemblyRuntimeSettled = undefined
   vi.clearAllMocks()
+  defaultPreferences.mockImplementation(defaultFakePreferences)
   probeWebAssemblyRuntime.mockImplementation(async () => true)
+  webAssemblyRuntimeSupport.mockImplementation(() => webAssemblyRuntimeSettled)
   readerModuleState.mockImplementation(() => "ready")
   warmQrReader.mockImplementation(() => Promise.resolve())
 }

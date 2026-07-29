@@ -2,7 +2,7 @@ import "./helpers/module-mocks"
 import { act, render } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { env } from "@/schemas/env-schema"
-import { probeWebAssemblyRuntime } from "./helpers/fakes"
+import { mockWebAssemblyProbe, probeWebAssemblyRuntime } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
 
 function setVisibility(value: DocumentVisibilityState): void {
@@ -23,7 +23,7 @@ function deferred<T>() {
 describe("useAutoClear fixed deadline semantics", () => {
   beforeEach(() => {
     resetUi()
-    probeWebAssemblyRuntime.mockResolvedValue(true)
+    mockWebAssemblyProbe(true)
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-07-21T00:00:00Z"))
     setVisibility("visible")
@@ -76,7 +76,7 @@ describe("useAutoClear fixed deadline semantics", () => {
   })
 
   it("uses env.autoClearSeconds when the WebAssembly runtime probe succeeds", async () => {
-    probeWebAssemblyRuntime.mockResolvedValue(true)
+    mockWebAssemblyProbe(true)
     const { useAutoClear } = await import("@/hooks/use-auto-clear")
     const onClear = vi.fn()
     function Harness() {
@@ -98,7 +98,7 @@ describe("useAutoClear fixed deadline semantics", () => {
   })
 
   it("uses env.autoClearFallbackSeconds when the WebAssembly runtime probe fails", async () => {
-    probeWebAssemblyRuntime.mockResolvedValue(false)
+    mockWebAssemblyProbe(false)
     const { useAutoClear } = await import("@/hooks/use-auto-clear")
     const onClear = vi.fn()
     function Harness() {
@@ -119,9 +119,35 @@ describe("useAutoClear fixed deadline semantics", () => {
     expect(onClear).toHaveBeenCalledTimes(1)
   })
 
+  it("uses the fallback delay for the first schedule when mounting hidden after the probe settled false", async () => {
+    const runtimeProbe = deferred<boolean>()
+    runtimeProbe.resolve(false)
+    await runtimeProbe.promise
+    mockWebAssemblyProbe(runtimeProbe.promise)
+    setVisibility("hidden")
+    const { useAutoClear } = await import("@/hooks/use-auto-clear")
+    const onClear = vi.fn()
+    function Harness() {
+      useAutoClear({ enabled: true, onClear })
+      return null
+    }
+    render(<Harness />)
+
+    act(() => vi.advanceTimersByTime(env.autoClearSeconds * 1000))
+    expect(onClear).not.toHaveBeenCalled()
+    act(() =>
+      vi.advanceTimersByTime(
+        (env.autoClearFallbackSeconds - env.autoClearSeconds) * 1000 - 1,
+      ),
+    )
+    expect(onClear).not.toHaveBeenCalled()
+    act(() => vi.advanceTimersByTime(1))
+    expect(onClear).toHaveBeenCalledTimes(1)
+  })
+
   it("keeps a fail-secure pending deadline and applies fallback only next time", async () => {
     const runtimeProbe = deferred<boolean>()
-    probeWebAssemblyRuntime.mockReturnValue(runtimeProbe.promise)
+    mockWebAssemblyProbe(runtimeProbe.promise)
     const { useAutoClear } = await import("@/hooks/use-auto-clear")
     const onClear = vi.fn()
     function Harness() {

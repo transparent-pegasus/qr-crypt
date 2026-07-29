@@ -12,6 +12,7 @@ import {
 import type { RelaySessionEndReason } from "@/app/boot/boot-controller"
 import { useFeatureSupport } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
+import { QrDisplay } from "@/components/qr-display"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,15 +34,15 @@ import {
 } from "@/lib/limits"
 import { startQrScan, type QrScanHandle } from "@/qr/decode"
 import { copyTextToClipboard } from "@/qr/export-image"
-import { renderQrDataUrl } from "@/qr/encode"
+import { relayMessageEcLevel, renderQrDataUrl } from "@/qr/encode"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import {
-  emptyRelayFrameSet,
+  acceptRelayCapture,
+  EMPTY_RELAY_CAPTURE,
   missingRelayIndexes,
   orderedRelayEntries,
-  parseRelayFrameSet,
   parseRelayText,
-  type RelayFrameSet,
+  type RelayCapture,
   type RelayParseErrorCode,
 } from "@/qr/relay-frames"
 import type { QrFrameV2 } from "@/schemas/domain"
@@ -55,7 +56,10 @@ const PARSE_ERROR_KEYS: Record<RelayParseErrorCode, MessageKey> = {
   "frame-count": "relay.error.incomplete",
   "input-size": "relay.error.inputSize",
   "invalid-frame": "relay.error.invalidFrame",
+  "invalid-message": "relay.error.invalidMessage",
+  "kind-mismatch": "relay.error.kindMismatch",
   length: "relay.error.length",
+  "message-count": "relay.error.messageCount",
   mismatch: "relay.error.mismatch",
   "outer-type": "relay.error.outerType",
   prefix: "relay.error.prefix",
@@ -92,12 +96,13 @@ export function OnlineRelay({
   // Only once the user asks for the camera: the online gate must not pull the
   // reader at runtime before that, which offline-pwa.spec.ts pins as a contract.
   const readerReadiness = useQrReaderReadiness(dialogMode === "capture")
-  const [captureSet, setCaptureSet] = useState<RelayFrameSet>(emptyRelayFrameSet)
+  const [capture, setCapture] = useState<RelayCapture>(EMPTY_RELAY_CAPTURE)
   const [joinedText, setJoinedText] = useState("")
   const [captureError, setCaptureError] = useState<MessageKey | null>(null)
   const [cameraActive, setCameraActive] = useState(false)
   const [playbackText, setPlaybackText] = useState("")
   const [playbackFrames, setPlaybackFrames] = useState<readonly QrFrameV2[]>([])
+  const [playbackMessage, setPlaybackMessage] = useState<string | null>(null)
   const [playbackAnimationSignal, setPlaybackAnimationSignal] = useState<
     AbortSignal | undefined
   >()
@@ -109,10 +114,11 @@ export function OnlineRelay({
 
   const mountedRef = useRef(true)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const captureSetRef = useRef<RelayFrameSet>(emptyRelayFrameSet())
+  const captureRef = useRef<RelayCapture>(EMPTY_RELAY_CAPTURE)
   const joinedTextRef = useRef("")
   const playbackTextRef = useRef("")
   const playbackFramesRef = useRef<readonly QrFrameV2[]>([])
+  const playbackMessageRef = useRef<string | null>(null)
   const startupAbortRef = useRef<AbortController | null>(null)
   const liveHandleRef = useRef<QrScanHandle | null>(null)
   const lifetimeTimeoutRef = useRef<number | null>(null)
@@ -152,17 +158,19 @@ export function OnlineRelay({
       }
       playbackAnimationAbortRef.current?.abort()
       playbackAnimationAbortRef.current = null
-      captureSetRef.current = emptyRelayFrameSet()
+      captureRef.current = EMPTY_RELAY_CAPTURE
       joinedTextRef.current = ""
       playbackTextRef.current = ""
       playbackFramesRef.current = []
+      playbackMessageRef.current = null
       if (!mountedRef.current) return
       setDialogMode(null)
-      setCaptureSet(emptyRelayFrameSet())
+      setCapture(EMPTY_RELAY_CAPTURE)
       setJoinedText("")
       setCaptureError(null)
       setPlaybackText("")
       setPlaybackFrames([])
+      setPlaybackMessage(null)
       setPlaybackAnimationSignal(undefined)
       setPlaybackError(null)
       setPlaybackMissingIndexes([])
@@ -269,26 +277,36 @@ export function OnlineRelay({
       if (generation !== sessionGenerationRef.current || !mountedRef.current) {
         return
       }
-      const previous = captureSetRef.current
-      const parsed = parseRelayFrameSet([original], previous)
-      if (!parsed.ok) {
-        setCaptureError(PARSE_ERROR_KEYS[parsed.code])
+      const previous = captureRef.current
+      const accepted = acceptRelayCapture(original, previous)
+      if (!accepted.ok) {
+        setCaptureError(PARSE_ERROR_KEYS[accepted.code])
         return
       }
 
-      captureSetRef.current = parsed.set
-      setCaptureSet(parsed.set)
+      const next = accepted.capture
+      captureRef.current = next
+      setCapture(next)
       setCaptureError(null)
-      if (previous.metadata === null && parsed.set.metadata !== null) {
-        beginLifetime()
+      if (previous.kind === null) beginLifetime()
+
+      // One OCM1 payload is the whole artifact. Nothing further can arrive, so
+      // release the camera instead of widening the ambient-capture window.
+      if (next.kind === "message") {
+        joinedTextRef.current = next.payload
+        setJoinedText(next.payload)
+        stopCameraOnly()
+        return
       }
-      const missing = missingRelayIndexes(parsed.set)
+      if (next.kind !== "frames") return
+
+      const missing = missingRelayIndexes(next.set)
       if (
-        parsed.set.metadata !== null &&
+        next.set.metadata !== null &&
         missing.length === 0 &&
-        parsed.set.receivedByteLength === parsed.set.metadata.totalByteLength
+        next.set.receivedByteLength === next.set.metadata.totalByteLength
       ) {
-        const joined = orderedRelayEntries(parsed.set)
+        const joined = orderedRelayEntries(next.set)
           .map(({ original: value }) => value)
           .join("\n")
         joinedTextRef.current = joined
@@ -391,6 +409,48 @@ export function OnlineRelay({
       setPlaybackMissingIndexes(parsed.missingIndexes ?? [])
       return
     }
+    if (parsed.kind === "message") {
+      const ecLevel = relayMessageEcLevel(parsed.payload)
+      try {
+        await renderQrDataUrl(parsed.payload, {
+          ecLevel,
+          size: env.qrRenderSize,
+        })
+      } catch {
+        if (
+          operation !== playbackOperationRef.current ||
+          generation !== sessionGenerationRef.current ||
+          !mountedRef.current
+        ) {
+          return
+        }
+        endSession("render-error")
+        if (mountedRef.current) {
+          setTerminalNotice(errorMessageKey("QR_TOO_LARGE"))
+        }
+        return
+      }
+      if (
+        operation !== playbackOperationRef.current ||
+        generation !== sessionGenerationRef.current ||
+        !mountedRef.current
+      ) {
+        return
+      }
+      // One payload never animates, so no animation controller is created and
+      // any controller from an earlier playback in this session is released.
+      playbackAnimationAbortRef.current?.abort()
+      playbackAnimationAbortRef.current = null
+      playbackFramesRef.current = []
+      setPlaybackFrames([])
+      setPlaybackAnimationSignal(undefined)
+      playbackMessageRef.current = parsed.payload
+      setPlaybackMessage(parsed.payload)
+      setPlaybackError(null)
+      setPlaybackMissingIndexes([])
+      beginLifetime()
+      return
+    }
     // Re-encoding is a canonical round-trip check; retain only the decoded
     // frame objects after every original string matches byte-for-byte.
     if (
@@ -437,6 +497,8 @@ export function OnlineRelay({
     playbackAnimationAbortRef.current = animationAbort
     playbackFramesRef.current = parsed.frames
     setPlaybackFrames(parsed.frames)
+    playbackMessageRef.current = null
+    setPlaybackMessage(null)
     setPlaybackAnimationSignal(animationAbort.signal)
     setPlaybackError(null)
     setPlaybackMissingIndexes([])
@@ -445,8 +507,10 @@ export function OnlineRelay({
 
   if (!eligible) return null
 
-  const captureMissing = missingRelayIndexes(captureSet)
-  const captureCount = captureSet.metadata?.frameCount ?? 0
+  const captureFrames = capture.kind === "frames" ? capture.set : null
+  const captureMissing =
+    captureFrames === null ? [] : missingRelayIndexes(captureFrames)
+  const captureCount = captureFrames?.metadata?.frameCount ?? 0
 
   return (
     <>
@@ -463,11 +527,6 @@ export function OnlineRelay({
           <p className="text-sm leading-relaxed text-muted-foreground">
             {t("relay.card.description")}
           </p>
-          <Alert>
-            <AlertTriangle aria-hidden="true" />
-            <AlertTitle>{t("relay.boundary.title")}</AlertTitle>
-            <AlertDescription>{t("relay.boundary.body")}</AlertDescription>
-          </Alert>
           <div className="grid gap-2 sm:grid-cols-2">
             <Button
               type="button"
@@ -489,6 +548,19 @@ export function OnlineRelay({
               {t("relay.playback.open")}
             </Button>
           </div>
+          {/* Icon and title share the first row so the body can use the full
+              width below them: at the boundary copy's length, keeping it in the
+              icon's right-hand column costs several lines on a phone and pushes
+              the two actions under the fold. */}
+          <Alert>
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle className="mb-0 self-center">
+              {t("relay.boundary.title")}
+            </AlertTitle>
+            <AlertDescription className="col-span-2 col-start-1 mt-2">
+              {t("relay.boundary.body")}
+            </AlertDescription>
+          </Alert>
           {!cameraAvailable && (
             <p className="flex items-start gap-2 text-sm text-muted-foreground">
               <CameraOff aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
@@ -580,11 +652,11 @@ export function OnlineRelay({
               </div>
             )}
 
-            {captureSet.metadata !== null && (
+            {captureFrames !== null && captureFrames.metadata !== null && (
               <div className="space-y-1" aria-live="polite">
                 <p className="font-mono text-sm tabular-nums">
                   {t("relay.capture.progress", {
-                    collected: captureSet.entries.size,
+                    collected: captureFrames.entries.size,
                     total: captureCount,
                   })}
                 </p>
@@ -679,6 +751,23 @@ export function OnlineRelay({
                   indexes: formatFramePositions(playbackMissingIndexes, language),
                 })}
               </p>
+            )}
+
+            {playbackMessage !== null && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.playback.screenCaptureWarning")}
+                </p>
+                <QrDisplay
+                  payload={playbackMessage}
+                  ecLevel={relayMessageEcLevel(playbackMessage)}
+                  size={env.qrRenderSize}
+                  title={t("relay.playback.messageQrTitle")}
+                />
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.playback.noDownloadControls")}
+                </p>
+              </div>
             )}
 
             {playbackFrames.length > 0 && (

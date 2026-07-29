@@ -91,6 +91,7 @@ Important:
 * Do not put encryption keys, private keys, Cloudflare API tokens, or decryption material in `.env`
 * Do not use feature flags as access control or secret protection
 * `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` are **reserved flags** (no UI or module branches are implemented; they are not shown as options)
+* `VITE_ENABLE_RSA` is **retired and rejected**. Its presence in the environment — including the `VITE_ENABLE_RSA=false` that `.env.example` and `.env.prod` used to carry — now fails environment validation at application startup, rather than being accepted and normalized away. Delete the line from any `.env.local` still holding it. The rejection is a startup check, not a build check: `aube build:prod` still succeeds with a stale value and embeds it, so a build that carries one fails for every user instead of failing in CI
 
 ## Pre-release checklist
 

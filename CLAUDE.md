@@ -8,3 +8,4 @@ Build fully offline encryption engineered against nation-state cryptanalysis and
 
 - No backward compatibility. Installs never update, so no legacy value, migration, or rollback path.
 - On task completion, follow `.claude/skills/freshness/SKILL.md`: add new time-decaying files to `targets.yaml`; for listed files touched or invalidated, refresh and verify affected units; stamp only passed units; verify, never stamp, invariants.
+- This project's core principles live in two skills: `.claude/skills/artful-simplicity/SKILL.md` for the simplicity bar and `.claude/skills/nation-state-security/SKILL.md` for the threat model.

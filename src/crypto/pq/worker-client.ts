@@ -31,6 +31,7 @@ import {
   suiteComponents,
 } from "@/crypto/pq/suites"
 import { keyIdRawBytes } from "@/crypto/pq/wire-bytes"
+import { isVaultKey } from "@/crypto/vault/is-vault-key"
 import { env } from "@/schemas/env-schema"
 import {
   DSA_SEED_BYTES,
@@ -245,21 +246,6 @@ function isKeyId(value: unknown): value is string {
   } catch {
     return false
   }
-}
-
-function isVaultKey(value: unknown): value is CryptoKey {
-  if (!isRecord(value)) return false
-  const key = value as unknown as Partial<CryptoKey>
-  const algorithm = key.algorithm as Partial<AesKeyAlgorithm> | undefined
-  return (
-    key.type === "secret" &&
-    key.extractable === false &&
-    algorithm?.name === "AES-GCM" &&
-    algorithm.length === 256 &&
-    Array.isArray(key.usages) &&
-    key.usages.includes("encrypt") &&
-    key.usages.includes("decrypt")
-  )
 }
 
 function isEncryptedSecret(value: unknown, seedBytes: number): boolean {

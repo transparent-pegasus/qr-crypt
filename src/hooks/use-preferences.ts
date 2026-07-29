@@ -1,24 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
 import type { MessageKey } from "@/i18n"
-import { env } from "@/schemas/env-schema"
 import type { Preferences } from "@/schemas/domain"
-import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
 import {
+  defaultPreferences,
   getPreferences,
   updatePreferences as savePreferences,
 } from "@/storage/preferences-repository"
-
-const DEFAULT_PREFERENCES: Preferences = {
-  ...PQ_PREFERENCE_DEFAULTS,
-  defaultAlgorithm: env.defaultAlgorithm,
-  defaultPqProfile: env.defaultPqProfile,
-  requireSignature: env.requireSignature,
-  qrErrorCorrection: env.qrErrorCorrection,
-  autoClearPlaintextAfterEncrypt: true,
-  backgroundClearEnabled: true,
-  frameBytes: env.qrFrameBytes,
-  frameIntervalMs: env.qrFrameIntervalMs,
-}
 
 export interface UsePreferencesResult {
   preferences: Preferences
@@ -28,7 +15,8 @@ export interface UsePreferencesResult {
 }
 
 export function usePreferences(): UsePreferencesResult {
-  const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES)
+  const [preferences, setPreferences] =
+    useState<Preferences>(defaultPreferences)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<MessageKey | null>(null)
 

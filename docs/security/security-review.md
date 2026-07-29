@@ -126,14 +126,14 @@ no close control, blocks Escape and outside dismissal, and requires one of its
 explicit save decisions because the security confirmation must not be
 dismissible.
 
-## 1. Facts About the Adopted Libraries (as of 2026-07-27)
+## 1. Facts About the Adopted Libraries (as of 2026-07-29)
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-27: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-29: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
 - Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-07-27): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
+- FIPS errata (§3 step 1, checked 2026-07-29): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
 - **Not independently audited.** The audit status as of 0.6.1 is self-audit only (scope: everything)
 - **Side channels: as a JS implementation, constant-time execution is not guaranteed.** In particular, for the ML-KEM decaps implicit-rejection path, constant-time behavior under JS/JIT is explicitly documented and not guaranteed
 - APIs used by the active policy (verified against the actual 0.6.1 source):
@@ -169,7 +169,7 @@ dismissible.
   detect. Trust also continues to include the lockfile pin, npm provenance
   attestation, and recorded zxing-wasm SHA-256 rather than a zxing-wasm
   from-source rebuild
-- **Not independently audited**; no advisories at the pinned version as of 2026-07-27
+- **Not independently audited**; no advisories at the pinned version as of 2026-07-29
 - Consequence for CSP: `WebAssembly.instantiate` is refused under a bare
   `script-src 'self'`, so `public/_headers` now ships
   `script-src 'self' 'wasm-unsafe-eval'`. That grants origin-wide permission to
@@ -186,7 +186,7 @@ dismissible.
 - Locked in `aube-lock.yaml` (must be committed). For the v1-era supply-chain
   decisions and the 2026-07-24 re-verification, see `docs/security/threat-model.md` §5.1
 - ZIP output is an in-house store-only implementation with no added dependency (`fflate` was rejected for lacking provenance)
-- **RESOLVED (dev chain, re-verified 2026-07-25)**: `sharp` — `GHSA-f88m-g3jw-g9cj`
+- **RESOLVED (dev chain, re-verified 2026-07-29)**: `sharp` — `GHSA-f88m-g3jw-g9cj`
   (CVE-2026-33327 / CVE-2026-33328 / CVE-2026-35590 / CVE-2026-35591,
   GHSA published 2026-07-21; affected versions below 0.35.0). Former path:
   `wrangler@4.113.0` → `miniflare@4.20260721.0` → `sharp@0.34.5` exact-pin.
@@ -207,7 +207,7 @@ dismissible.
   patterns). No fixed 2.x release exists, so both major lines are forced to
   `5.0.8` via `aube.overrides`; `aube run build:prod` and the full test suite were
   re-verified after the override. `aube audit` currently exits 0.
-- Supply-chain pins re-verified clean: `react-hook-form@7.82.0`, `eslint-config-prettier@10.1.8`
+- Supply-chain pins re-verified clean on 2026-07-29: `react-hook-form@7.82.0`, `eslint-config-prettier@10.1.8`
 
 ## 1.1 Findings F-01 / F-02 / F-03 (2026-07-28)
 
@@ -304,26 +304,36 @@ guaranteed; JS memory erasure has limits
 4. Confirm the bundle makes no external network references **and** that
    same-origin traffic stays on the no-payload allowlist. Same-origin alone
    is not sufficient: a regression that POSTed relay text to this origin
-   would still be same-origin. e2e (`tests/e2e/security.spec.ts`, including
-   the online-relay scenario) must assert:
-   - **Allowlist (methods + paths only):** static/PWA resources; recurring
-     `HEAD /manifest.webmanifest?reach=…` (display probe); boot
-     `GET /reachability-sentinel.txt` (destructive probe). No other
-     runtime requests.
+   would still be same-origin. e2e (`tests/e2e/security.spec.ts` and
+   `tests/e2e/online-relay.spec.ts`) must assert:
+   - **Allowlist (methods, paths, and query keys):** static/PWA resources;
+     recurring `HEAD /manifest.webmanifest?reach=…` (display probe); boot
+     `GET /reachability-sentinel.txt?n=…` (destructive probe). No other
+     runtime requests. Every allowed request must carry no query key beyond
+     the two named above — checking method and path alone would let an allowed
+     static GET carry a payload field in its query.
    - **Negative matrix after capture / copy / paste / playback / rejection /
-     close / `pagehide` / timeout:** a unique frame marker is absent from
-     request bodies and query values, CacheStorage keys/bodies (static shell
-     permitted), localStorage (only `{oc-theme, oc-lang,
-     oc-offline-ack-pending, oc-online-tab}`), IndexedDB values, console,
-     `window.onerror` / unhandled rejections, visible error text,
-     `document.title`, `location.href`, and history state.
+     close / `pagehide` / timeout:** a unique relay payload marker and a
+     marker from each sender-controlled OCM1 field plus the refused OCK1 key
+     bytes are absent from request URLs including query names and values,
+     request header names and values, request bodies, every IndexedDB
+     database's schema names — database, object-store and index names and key
+     paths — as well as its keys/values, CacheStorage metadata/bodies (static
+     shell permitted), localStorage (only `{oc-theme, oc-lang,
+     oc-offline-ack-pending, oc-online-tab}`), console, `window.onerror` /
+     unhandled rejections, visible error text, `document.title`,
+     `location.href`, and history state. **One marker set covers every sink**;
+     a request oracle that searches fewer markers than the storage oracle is
+     the hole this line exists to close. The byte-aware storage oracle's
+     self-test plants both a typed-array value marker and a marker that appears
+     only in an object-store name, and requires exactly those two matches.
    - **Window-realm receipts must never appear in IndexedDB, localStorage, or
      CacheStorage.** Receipts are intentional module-memory residue in one loaded
      app window only (`src/features/receipt-cache.ts`), not shared with other tabs
      or windows. Reload, transient clear, wipe, or oldest-first bounded eviction
      removes detection coverage. A change that persists them fails this gate: it
-     would store a frame-derived value, break the clean-origin boot gate's "no
-     frame-derived residue" premise, and contradict
+     would store a frame- or OCM1-derived value, break the clean-origin boot
+     gate's "no frame- or OCM1-derived residue" premise, and contradict
      `docs/security/threat-model.md` §1 / T11 / T19.
    - Errors use fixed i18n / `AppError` mappings — never interpolate raw
      input, frame metadata, `transferId`, hashes, or `caught.message`.
