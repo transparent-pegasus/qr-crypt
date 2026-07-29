@@ -4,7 +4,7 @@ import type { QrEcLevel } from "@/schemas/domain"
 import * as QRCode from "qrcode"
 import { AppError, toAppError } from "@/crypto/errors"
 import { shortId } from "@/crypto/random"
-import { renderQrSvgString } from "@/qr/encode"
+import { QR_RENDER_STYLE, renderQrSvgString } from "@/qr/encode"
 
 export interface QrExportOptions {
   ecLevel: QrEcLevel
@@ -19,9 +19,8 @@ export async function qrPngBlob(
     const canvas = document.createElement("canvas")
     await QRCode.toCanvas(canvas, payload, {
       errorCorrectionLevel: options.ecLevel,
-      margin: 4,
       width: options.size,
-      color: { dark: "#000000", light: "#FFFFFFFF" },
+      ...QR_RENDER_STYLE,
     })
     return await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((blob) => {
