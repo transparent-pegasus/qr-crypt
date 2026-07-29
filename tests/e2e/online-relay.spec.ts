@@ -26,16 +26,33 @@ import { OCK1_SYMMETRIC_KEY } from "../fixtures/relay-v1"
 
 interface ObservedRequest {
   body: string | null
+  fromServiceWorker: boolean
+  headers: { name: string; value: string }[]
   method: string
   url: string
 }
 
-function requestObservation(request: Request): ObservedRequest {
+async function requestObservation(request: Request): Promise<ObservedRequest> {
   return {
     body: request.postData(),
+    fromServiceWorker: request.serviceWorker() !== null,
+    headers: await request.headersArray(),
     method: request.method(),
     url: request.url(),
   }
+}
+
+async function awaitRequestObservations(
+  pending: readonly Promise<ObservedRequest>[],
+): Promise<ObservedRequest[]> {
+  const requests: ObservedRequest[] = []
+  let next = 0
+  while (next < pending.length) {
+    const batch = pending.slice(next)
+    next += batch.length
+    requests.push(...(await Promise.all(batch)))
+  }
+  return requests
 }
 
 function expectAllowedRelayRequest(request: ObservedRequest): void {
@@ -50,6 +67,7 @@ function expectAllowedRelayRequest(request: ObservedRequest): void {
     expect([...url.searchParams.keys()]).toEqual(["reach"])
     return
   }
+  expect([...url.searchParams.keys()]).toEqual([])
   expect(request.method).toBe("GET")
   expect(
     url.pathname === "/" ||
@@ -58,7 +76,10 @@ function expectAllowedRelayRequest(request: ObservedRequest): void {
       url.pathname === "/sw.js" ||
       url.pathname === "/registerSW.js" ||
       /^\/workbox-[A-Za-z0-9_-]+\.js$/.test(url.pathname) ||
-      /^\/(?:assets|icons)\//.test(url.pathname),
+      /^\/(?:assets|icons)\//.test(url.pathname) ||
+      (request.fromServiceWorker &&
+        (url.pathname === "/index.html" || url.pathname === "/favicon.svg")),
+    `Unexpected relay request: ${request.method} ${request.url}`,
   ).toBe(true)
 }
 
@@ -144,18 +165,36 @@ function symmetricKeyPayload(): string {
   return OCK1_SYMMETRIC_KEY
 }
 
+interface RelayPayloadMarker extends PersistenceNeedle {
+  text: string
+}
+
+function expectNoRelayPayloadText(
+  values: readonly string[],
+  markers: readonly RelayPayloadMarker[],
+): void {
+  for (const { text } of markers) {
+    for (const value of values) expect(value).not.toContain(text)
+  }
+}
+
+function expectNoRelayPayloadHeaders(
+  headers: readonly { name: string; value: string }[],
+  markers: readonly RelayPayloadMarker[],
+): void {
+  for (const { text } of markers) {
+    for (const { name, value } of headers) {
+      expect(name.toLowerCase()).not.toContain(text.toLowerCase())
+      expect(value).not.toContain(text)
+    }
+  }
+}
+
 async function assertNoRelayPayloadPersistence(
   page: Page,
-  textNeedles: readonly string[],
-  byteNeedles: readonly PersistenceNeedle[],
+  markers: readonly RelayPayloadMarker[],
 ): Promise<void> {
-  const persistence = await inspectPersistentSurfaces(page, [
-    ...textNeedles.map((text, index) => ({
-      marker: `relay-text-${index}`,
-      text,
-    })),
-    ...byteNeedles,
-  ])
+  const persistence = await inspectPersistentSurfaces(page, markers)
   expect(persistence.matches).toEqual([])
 
   const snapshot = await page.evaluate(() => {
@@ -200,29 +239,39 @@ async function assertNoRelayPayloadPersistence(
     snapshot.title,
     snapshot.visibleText,
   ]
-  for (const needle of textNeedles) {
-    for (const value of inspected) expect(value).not.toContain(needle)
-  }
+  expectNoRelayPayloadText(inspected, markers)
 }
 
-test("the relay persistence oracle detects a typed-array marker", async ({
+test("the relay persistence oracle detects binary, schema-name, and cookie markers", async ({
   page,
 }) => {
   const databaseName = "relay-persistence-oracle-self-test"
+  const schemaMarker = "RELAY_SCHEMA_ORACLE_9C2A"
+  const storeName = `markers-${schemaMarker}`
   const marker = "RELAY_TYPED_ARRAY_ORACLE_7B4D"
   const markerBytes = Array.from(new TextEncoder().encode(marker))
+  const cookieName = "relay-persistence-oracle-self-test"
+  const cookieMarker = "RELAY_HTTP_ONLY_COOKIE_ORACLE_4F8A"
   await loadOnlineGate(page)
+  await page.context().addCookies([
+    {
+      name: cookieName,
+      value: cookieMarker,
+      url: page.url(),
+      httpOnly: true,
+    },
+  ])
   await page.evaluate(
-    ({ bytes, name }) =>
+    ({ bytes, name, store }) =>
       new Promise<void>((resolve, reject) => {
         const opening = indexedDB.open(name, 1)
         opening.onerror = () => reject(opening.error)
         opening.onupgradeneeded = () => {
-          opening.result.createObjectStore("markers")
+          opening.result.createObjectStore(store)
         }
         opening.onsuccess = () => {
           const database = opening.result
-          const transaction = database.transaction("markers", "readwrite")
+          const transaction = database.transaction(store, "readwrite")
           transaction.onerror = () => reject(transaction.error)
           transaction.onabort = () => reject(transaction.error)
           transaction.oncomplete = () => {
@@ -230,37 +279,55 @@ test("the relay persistence oracle detects a typed-array marker", async ({
             resolve()
           }
           transaction
-            .objectStore("markers")
+            .objectStore(store)
             .put(Uint8Array.from(bytes), "typed-array")
         }
       }),
-    { bytes: markerBytes, name: databaseName },
+    { bytes: markerBytes, name: databaseName, store: storeName },
   )
 
   try {
     const inspection = await inspectPersistentSurfaces(page, [
       { marker: "typed-array-self-test", bytes: markerBytes },
+      { marker: "schema-name-self-test", text: schemaMarker },
+      { marker: "cookie-self-test", text: cookieMarker },
     ])
-    expect(inspection.matches).toEqual([
-      expect.objectContaining({
-        marker: "typed-array-self-test",
-        location: expect.stringContaining(
-          `indexedDB:${databaseName}/markers.values[0]`,
-        ),
-      }),
-    ])
-  } finally {
-    await page.evaluate(
-      (name) =>
-        new Promise<void>((resolve, reject) => {
-          const deletion = indexedDB.deleteDatabase(name)
-          deletion.onerror = () => reject(deletion.error)
-          deletion.onblocked = () =>
-            reject(new Error(`IndexedDB deletion was blocked: ${name}`))
-          deletion.onsuccess = () => resolve()
+    expect(inspection.matches).toHaveLength(3)
+    expect(inspection.matches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          marker: "schema-name-self-test",
+          location: expect.stringContaining(
+            `indexedDB:${databaseName}/${storeName}:store-name`,
+          ),
         }),
-      databaseName,
+        expect.objectContaining({
+          marker: "typed-array-self-test",
+          location: expect.stringContaining(
+            `indexedDB:${databaseName}/${storeName}.values[0]`,
+          ),
+        }),
+        expect.objectContaining({
+          marker: "cookie-self-test",
+          location: expect.stringContaining(`:${cookieName}.value:text`),
+        }),
+      ]),
     )
+  } finally {
+    await Promise.all([
+      page.context().clearCookies({ name: cookieName }),
+      page.evaluate(
+        (name) =>
+          new Promise<void>((resolve, reject) => {
+            const deletion = indexedDB.deleteDatabase(name)
+            deletion.onerror = () => reject(deletion.error)
+            deletion.onblocked = () =>
+              reject(new Error(`IndexedDB deletion was blocked: ${name}`))
+            deletion.onsuccess = () => resolve()
+          }),
+        databaseName,
+      ),
+    ])
   }
 })
 
@@ -305,9 +372,11 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
     bytesToHex(SYMMETRIC_KEY_BYTES.subarray(0, 8)),
     Array.from(SYMMETRIC_KEY_BYTES.subarray(0, 8)).join(","),
   ]
-  const requests: ObservedRequest[] = []
+  const pendingRequestObservations: Promise<ObservedRequest>[] = []
   const consoleValues: string[] = []
-  page.on("request", (request) => requests.push(requestObservation(request)))
+  context.on("request", (request) =>
+    pendingRequestObservations.push(requestObservation(request)),
+  )
   page.on("console", (message) => consoleValues.push(message.text()))
   page.on("pageerror", (error) => consoleValues.push(error.message))
   await page.addInitScript(() => {
@@ -481,18 +550,13 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
   ).toBeVisible()
   expect((await injectedScanSnapshot(page)).every(({ active }) => !active)).toBe(true)
 
-  const relayPayloadNeedles = [
-    relayPayloadMarker,
-    framePayloads[0]!,
-    relayText,
-    canonicalMessagePayload,
-    ...decodedMessageMarkers,
-    canonicalSymmetricKeyPayload,
-    ...rawKeyMarkers,
-  ]
   const createdAtBytes = new Uint8Array(8)
   new DataView(createdAtBytes.buffer).setFloat64(0, V1_CREATED_AT)
-  const relayPayloadByteNeedles: PersistenceNeedle[] = [
+  const relayPayloadMarkers: RelayPayloadMarker[] = [
+    { marker: "invalid-ocf2-marker", text: relayPayloadMarker },
+    { marker: "ocf2-first-frame", text: framePayloads[0]! },
+    { marker: "ocf2-frame-set", text: relayText },
+    { marker: "ocm1-payload", text: canonicalMessagePayload },
     {
       marker: "ocm1-keyId",
       text: V1_KEY_ID,
@@ -503,26 +567,51 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
       text: String(V1_CREATED_AT),
       bytes: createdAtBytes,
     },
-    { marker: "ocm1-iv", bytes: MESSAGE_IV_BYTES },
-    { marker: "ocm1-ciphertext", bytes: MESSAGE_CIPHERTEXT_BYTES },
-    { marker: "ocm1-aad", bytes: MESSAGE_AAD_BYTES },
-    { marker: "ock1-key", bytes: SYMMETRIC_KEY_BYTES },
+    {
+      marker: "ocm1-iv",
+      text: bytesToHex(MESSAGE_IV_BYTES),
+      bytes: MESSAGE_IV_BYTES,
+    },
+    {
+      marker: "ocm1-ciphertext-prefix",
+      text: decodedMessageMarkers[1]!,
+    },
+    {
+      marker: "ocm1-ciphertext",
+      text: bytesToHex(MESSAGE_CIPHERTEXT_BYTES),
+      bytes: MESSAGE_CIPHERTEXT_BYTES,
+    },
+    {
+      marker: "ocm1-aad",
+      text: bytesToHex(MESSAGE_AAD_BYTES),
+      bytes: MESSAGE_AAD_BYTES,
+    },
+    { marker: "ock1-payload", text: canonicalSymmetricKeyPayload },
+    { marker: "ock1-key-text", text: rawKeyMarkers[0]! },
+    { marker: "ock1-key-prefix-hex", text: rawKeyMarkers[1]! },
+    { marker: "ock1-key-prefix-decimal", text: rawKeyMarkers[2]! },
+    {
+      marker: "ock1-key",
+      text: bytesToHex(SYMMETRIC_KEY_BYTES),
+      bytes: SYMMETRIC_KEY_BYTES,
+    },
   ]
+  for (const value of consoleValues) {
+    expectNoRelayPayloadText([value], relayPayloadMarkers)
+  }
+  await assertNoRelayPayloadPersistence(page, relayPayloadMarkers)
+  const requests = await awaitRequestObservations(pendingRequestObservations)
+  expect(requests.some(({ fromServiceWorker }) => fromServiceWorker)).toBe(true)
   for (const request of requests) {
     expectAllowedRelayRequest(request)
-    for (const needle of relayPayloadNeedles) {
-      expect(request.url).not.toContain(needle)
-      expect(request.body ?? "").not.toContain(needle)
-    }
+    expectNoRelayPayloadText(
+      [
+        request.url,
+        ...[...new URL(request.url).searchParams.entries()].flat(),
+        request.body ?? "",
+      ],
+      relayPayloadMarkers,
+    )
+    expectNoRelayPayloadHeaders(request.headers, relayPayloadMarkers)
   }
-  for (const value of consoleValues) {
-    for (const needle of relayPayloadNeedles) {
-      expect(value).not.toContain(needle)
-    }
-  }
-  await assertNoRelayPayloadPersistence(
-    page,
-    relayPayloadNeedles,
-    relayPayloadByteNeedles,
-  )
 })

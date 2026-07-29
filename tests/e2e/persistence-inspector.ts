@@ -15,13 +15,15 @@ export interface PersistenceInspection {
   matches: PersistenceMatch[]
   indexedDbStores: string[]
   localStorageKeys: string[]
+  cookieKeys: string[]
   cacheKeys: string[]
 }
 
 /**
- * Recursively scans every IndexedDB plus CacheStorage metadata/body and local
- * storage. Text needles are also searched as UTF-8 bytes; explicit byte
- * needles catch typed arrays and other structured-clone binary values.
+ * Recursively scans every IndexedDB, CacheStorage metadata/body, local storage,
+ * and browser-context cookie (including HttpOnly). Text needles are also
+ * searched as UTF-8 bytes; explicit byte needles catch typed arrays and other
+ * structured-clone binary values.
  */
 export async function inspectPersistentSurfaces(
   page: Page,
@@ -32,7 +34,8 @@ export async function inspectPersistentSurfaces(
     text,
     bytes: bytes === undefined ? undefined : Array.from(bytes),
   }))
-  return page.evaluate(async (candidateNeedles) => {
+  const cookies = await page.context().cookies()
+  return page.evaluate(async ({ candidateNeedles, cookies }) => {
     interface Match {
       marker: string
       location: string
@@ -174,13 +177,30 @@ export async function inspectPersistentSurfaces(
       )
       .sort((left, right) => left.name.localeCompare(right.name))
     for (const entry of databaseEntries) {
+      inspectString(entry.name, `indexedDB:${entry.name}:database-name`)
       const database = await openDatabase(entry.name)
       try {
         for (const storeName of Array.from(database.objectStoreNames).sort()) {
           const storeLocation = `indexedDB:${entry.name}/${storeName}`
           indexedDbStores.push(`${entry.name}/${storeName}`)
+          inspectString(storeName, `${storeLocation}:store-name`)
           const transaction = database.transaction(storeName, "readonly")
           const store = transaction.objectStore(storeName)
+          await inspectValue(
+            store.keyPath,
+            `${storeLocation}:key-path`,
+            new WeakSet(),
+          )
+          for (const indexName of Array.from(store.indexNames).sort()) {
+            const index = store.index(indexName)
+            const indexLocation = `${storeLocation}.indexes[${indexName}]`
+            inspectString(indexName, `${indexLocation}:name`)
+            await inspectValue(
+              index.keyPath,
+              `${indexLocation}:key-path`,
+              new WeakSet(),
+            )
+          }
           const [keys, values] = await Promise.all([
             requestResult(store.getAllKeys()),
             requestResult(store.getAll()),
@@ -209,6 +229,18 @@ export async function inspectPersistentSurfaces(
     for (const key of localStorageKeys) {
       inspectString(key, `localStorage:${key}:key`)
       inspectString(localStorage.getItem(key) ?? "", `localStorage:${key}:value`)
+    }
+
+    const cookieKeys: string[] = []
+    cookies.sort((left, right) =>
+      `${left.domain}:${left.path}:${left.name}`.localeCompare(
+        `${right.domain}:${right.path}:${right.name}`,
+      ),
+    )
+    for (const cookie of cookies) {
+      const cookieLocation = `cookies:${cookie.domain}${cookie.path}:${cookie.name}`
+      cookieKeys.push(`${cookie.domain}${cookie.path}:${cookie.name}`)
+      await inspectValue(cookie, cookieLocation, new WeakSet())
     }
 
     const cacheKeys: string[] = []
@@ -251,7 +283,8 @@ export async function inspectPersistentSurfaces(
       ),
       indexedDbStores,
       localStorageKeys,
+      cookieKeys,
       cacheKeys: cacheKeys.sort(),
     }
-  }, serialized)
+  }, { candidateNeedles: serialized, cookies })
 }
