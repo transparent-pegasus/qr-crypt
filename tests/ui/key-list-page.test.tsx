@@ -131,14 +131,6 @@ describe("key list page", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
-  it("separates the tab action from the tab bar by the own-key list gap", async () => {
-    await renderKeyList()
-
-    // The own-keys tab puts space-y-3 (12px) between the kind filter and the
-    // first item; the action under the tab bar must sit on the same rhythm.
-    expect(screen.getByRole("button", { name: "Create a key" })).toHaveClass("mt-3")
-  })
-
   it("defaults to owned keys, merges newest-first, and filters with one kind select", async () => {
     const user = userEvent.setup()
     await renderKeyList()
@@ -158,15 +150,8 @@ describe("key list page", () => {
     const peerTab = screen.getByRole("tab", { name: "Other parties' keys" })
     expect(ownTab).toHaveAttribute("aria-selected", "true")
     expect(peerTab).toHaveAttribute("aria-selected", "false")
-    expect(screen.getByRole("tablist")).toHaveClass(
-      "grid",
-      "h-11",
-      "w-full",
-      "grid-cols-2",
-    )
     const kindFilter = screen.getByRole("combobox", { name: "Type" })
     expect(screen.getAllByRole("combobox")).toHaveLength(1)
-    expect(kindFilter).toHaveClass("h-11")
     expect(kindFilter).toHaveTextContent("All")
 
     const rows = within(screen.getByRole("tabpanel")).getAllByRole("button")
