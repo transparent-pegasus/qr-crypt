@@ -24,12 +24,9 @@ export interface AppEnv {
   qrRenderSize: number
   // Post-quantum multipart plaintext ceiling.
   maxPlaintextBytes: number
-  enableEcdh: boolean
   enableMlKem: boolean
   enableMlDsa: boolean
   requireSignature: boolean
-  enablePrivateKeyExport: boolean
-  enableEncryptedSeedBackup: boolean
   qrFrameBytes: number
   qrFrameIntervalMs: number
   qrMaxFrames: number
@@ -123,12 +120,9 @@ const rawSchema = z.object({
   VITE_MAX_PLAINTEXT_BYTES: intFromString(120_000, 1, 120_000),
   // RSA is retired; reject stale configuration instead of silently ignoring it.
   VITE_ENABLE_RSA: z.never().optional(),
-  VITE_ENABLE_ECDH: boolFromString("false"),
   VITE_ENABLE_ML_KEM: boolFromString("true"),
   VITE_ENABLE_ML_DSA: boolFromString("true"),
   VITE_REQUIRE_SIGNATURE: boolFromString("false"),
-  VITE_ENABLE_PRIVATE_KEY_EXPORT: boolFromString("false"),
-  VITE_ENABLE_ENCRYPTED_SEED_BACKUP: boolFromString("false"),
   VITE_QR_FRAME_BYTES: frameBytesFromString,
   VITE_QR_FRAME_INTERVAL_MS: frameIntervalMsFromString,
   VITE_QR_MAX_FRAMES: intFromString(128, 1, 128),
@@ -192,12 +186,9 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     qrErrorCorrection: v.VITE_QR_ERROR_CORRECTION,
     qrRenderSize: v.VITE_QR_RENDER_SIZE,
     maxPlaintextBytes: v.VITE_MAX_PLAINTEXT_BYTES,
-    enableEcdh: v.VITE_ENABLE_ECDH,
     enableMlKem: v.VITE_ENABLE_ML_KEM,
     enableMlDsa: v.VITE_ENABLE_ML_DSA,
     requireSignature: v.VITE_REQUIRE_SIGNATURE,
-    enablePrivateKeyExport: v.VITE_ENABLE_PRIVATE_KEY_EXPORT,
-    enableEncryptedSeedBackup: v.VITE_ENABLE_ENCRYPTED_SEED_BACKUP,
     qrFrameBytes: v.VITE_QR_FRAME_BYTES,
     qrFrameIntervalMs: v.VITE_QR_FRAME_INTERVAL_MS,
     qrMaxFrames: v.VITE_QR_MAX_FRAMES,
