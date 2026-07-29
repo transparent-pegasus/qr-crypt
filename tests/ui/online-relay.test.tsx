@@ -520,7 +520,11 @@ describe("online relay UI", () => {
     ["OCS2", "OCS2:AA", translate("en", "relay.error.prefix")],
     ["OCI2", "OCI2:AA", translate("en", "relay.error.prefix")],
     ["OCM2", "OCM2:AA", translate("en", "relay.error.prefix")],
-    ["v1", "OCM1:AA", translate("en", "relay.error.prefix")],
+    [
+      "OCM1-after-frames",
+      "OCM1:AA",
+      translate("en", "relay.error.kindMismatch"),
+    ],
     [
       "foreign",
       "https://example.invalid/",
