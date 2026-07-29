@@ -8,6 +8,11 @@ import {
 } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  OCK1_SYMMETRIC_KEY,
+  OCM1_MESSAGE_33,
+  OCM1_MESSAGE_44,
+} from "../fixtures/relay-v1"
 
 const scanStart = vi.hoisted(() => vi.fn())
 const scanStop = vi.hoisted(() => vi.fn())
@@ -74,6 +79,18 @@ function frame(frameIndex: number, overrides: Partial<QrFrameV2> = {}): QrFrameV
 
 function payload(frameIndex: number, overrides: Partial<QrFrameV2> = {}): string {
   return encodeFrameToPayload(frame(frameIndex, overrides))
+}
+
+async function startCapture(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByRole("button", { name: translate("en", "relay.capture.open") }),
+  )
+  await user.click(
+    await screen.findByRole("button", {
+      name: translate("en", "relay.capture.startCamera"),
+    }),
+  )
+  await waitFor(() => expect(scanText).not.toBeNull())
 }
 
 interface Deferred<T> {
@@ -258,8 +275,8 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
 
     for (const [triggerName, dialogName] of [
-      ["QR → text", "QR frames to text"],
-      ["Text → QR", "Turn relay text into QR frames"],
+      ["QR → text", translate("en", "relay.capture.title")],
+      ["Text → QR", translate("en", "relay.playback.title")],
     ] as const) {
       await user.click(screen.getByRole("button", { name: triggerName }))
       const dialog = await screen.findByRole("dialog", { name: dialogName })
@@ -295,7 +312,11 @@ describe("online relay UI", () => {
       screen.getByLabelText("Relay text"),
       `${payload(0)}\n${payload(1)}`,
     )
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     await screen.findByRole("img")
     await waitFor(() =>
@@ -304,6 +325,108 @@ describe("online relay UI", () => {
     expect(
       screen.queryByRole("switch", { name: "Compatibility mode" }),
     ).toBeNull()
+  })
+
+  it("renders exactly one QR for a pasted OCM1 message, with no transport controls", async () => {
+    const user = userEvent.setup()
+    renderQr.mockResolvedValue(dataUrl("ocm1"))
+    renderRelay()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    )
+
+    const message = OCM1_MESSAGE_33
+    await enterRelayText(
+      user,
+      await screen.findByLabelText(translate("en", "relay.playback.input.label")),
+      message,
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.show") }),
+    )
+
+    await waitFor(() =>
+      expect(renderQr).toHaveBeenCalledWith(
+        message,
+        expect.objectContaining({ ecLevel: "Q" }),
+      ),
+    )
+    const images = await screen.findAllByRole("img")
+    expect(images).toHaveLength(1)
+    for (const control of ["animatedQr.prev", "animatedQr.next", "animatedQr.pause", "animatedQr.play"] as const) {
+      expect(
+        screen.queryByRole("button", { name: translate("en", control) }),
+      ).toBeNull()
+    }
+    expect(
+      screen.getByText(translate("en", "relay.playback.noDownloadControls")),
+    ).toBeInTheDocument()
+  })
+
+  it("refuses relay text that mixes an OCM1 message with a frame", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    )
+
+    await enterRelayText(
+      user,
+      await screen.findByLabelText(translate("en", "relay.playback.input.label")),
+      `${OCM1_MESSAGE_44}\n${payload(0)}`,
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.show") }),
+    )
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.kindMismatch")),
+    ).toBeInTheDocument()
+    expect(renderQr).not.toHaveBeenCalled()
+  })
+
+  it("reports a second OCM1 message as a cardinality error", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    )
+
+    await enterRelayText(
+      user,
+      await screen.findByLabelText(translate("en", "relay.playback.input.label")),
+      `${OCM1_MESSAGE_33}\n${OCM1_MESSAGE_44}`,
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.show") }),
+    )
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.messageCount")),
+    ).toBeInTheDocument()
+    expect(renderQr).not.toHaveBeenCalled()
+  })
+
+  it("refuses a canonical OCK1 at playback and renders nothing", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    )
+
+    await enterRelayText(
+      user,
+      await screen.findByLabelText(translate("en", "relay.playback.input.label")),
+      OCK1_SYMMETRIC_KEY,
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.show") }),
+    )
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.prefix")),
+    ).toBeInTheDocument()
+    expect(renderQr).not.toHaveBeenCalled()
   })
 
   it("is absent when ineligible and requests no camera on mount or dialog open", async () => {
@@ -321,7 +444,9 @@ describe("online relay UI", () => {
         </FeatureSupportProvider>
       </LanguageProvider>,
     )
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     expect(scanStart).not.toHaveBeenCalled()
 
     rerender(
@@ -342,7 +467,7 @@ describe("online relay UI", () => {
     await user.click(screen.getByRole("button", { name: "QR → text" }))
     expect(await screen.findByRole("dialog")).toBeInTheDocument()
     expect(
-      screen.getByLabelText("OCF2 message-header relay camera preview"),
+      screen.getByLabelText(translate("en", "relay.capture.video.ariaLabel")),
     ).toHaveAttribute("autoplay")
     expect(scanStart).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "Start camera" }))
@@ -364,7 +489,7 @@ describe("online relay UI", () => {
     act(() => scanText?.(second))
     act(() => scanText?.(hostile))
     expect(
-      screen.getByText("The frame does not belong to the accepted frame set."),
+      screen.getByText(translate("en", "relay.error.mismatch")),
     ).toBeInTheDocument()
     act(() => scanText?.(first))
 
@@ -375,16 +500,124 @@ describe("online relay UI", () => {
     expect(copyText).toHaveBeenCalledWith(`${first}\n${second}`)
   })
 
+  it("completes capture from one OCM1 scan, stops the camera, and copies exactly that text", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    const message = OCM1_MESSAGE_33
+    act(() => scanText?.(message))
+
+    const output = await screen.findByLabelText(
+      translate("en", "relay.capture.output.label"),
+    )
+    expect(output).toHaveValue(message)
+    expect(scanStop).toHaveBeenCalled()
+    // Frame progress belongs to the frames kind only.
+    expect(
+      screen.queryByText(/frames collected/),
+    ).toBeNull()
+
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.capture.copy") }),
+    )
+    expect(copyText).toHaveBeenCalledWith(message)
+  })
+
+  it("refuses a frame after an OCM1 without discarding the message", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    const message = OCM1_MESSAGE_33
+    act(() => scanText?.(message))
+    await screen.findByLabelText(translate("en", "relay.capture.output.label"))
+    act(() => scanText?.(payload(0)))
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.kindMismatch")),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByLabelText(translate("en", "relay.capture.output.label")),
+    ).toHaveValue(message)
+  })
+
+  it("refuses an OCM1 once a frame has been accepted", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    act(() => scanText?.(payload(0)))
+    await screen.findByText(
+      translate("en", "relay.capture.progress", { collected: 1, total: 2 }),
+    )
+    act(() => scanText?.(OCM1_MESSAGE_44))
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.kindMismatch")),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        translate("en", "relay.capture.progress", { collected: 1, total: 2 }),
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it("refuses a malformed OCM1 with the message error and offers no output", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    act(() => scanText?.("OCM1:AAAA"))
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.invalidMessage")),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByLabelText(translate("en", "relay.capture.output.label")),
+    ).toBeNull()
+    expect(copyText).not.toHaveBeenCalled()
+  })
+
+  it("clears captured message state when the session ends", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    act(() => scanText?.(OCM1_MESSAGE_33))
+    await screen.findByLabelText(translate("en", "relay.capture.output.label"))
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent("pagehide"))
+    })
+
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText(translate("en", "relay.capture.output.label")),
+      ).toBeNull(),
+    )
+  })
+
   it.each([
-    ["OCP2", "OCP2:AA", "Only canonical OCF2 frame strings are accepted."],
-    ["OCS2", "OCS2:AA", "Only canonical OCF2 frame strings are accepted."],
-    ["OCI2", "OCI2:AA", "Only canonical OCF2 frame strings are accepted."],
-    ["OCM2", "OCM2:AA", "Only canonical OCF2 frame strings are accepted."],
-    ["v1", "OCM1:AA", "Only canonical OCF2 frame strings are accepted."],
+    ["OCP2", "OCP2:AA", translate("en", "relay.error.prefix")],
+    ["OCS2", "OCS2:AA", translate("en", "relay.error.prefix")],
+    ["OCI2", "OCI2:AA", translate("en", "relay.error.prefix")],
+    ["OCM2", "OCM2:AA", translate("en", "relay.error.prefix")],
+    [
+      "OCM1-after-frames",
+      OCM1_MESSAGE_44,
+      translate("en", "relay.error.kindMismatch"),
+    ],
+    [
+      "malformed-OCM1-after-frames",
+      "OCM1:AA",
+      translate("en", "relay.error.invalidMessage"),
+    ],
+    ["OCK1", OCK1_SYMMETRIC_KEY, translate("en", "relay.error.prefix")],
     [
       "foreign",
       "https://example.invalid/",
-      "Only canonical OCF2 frame strings are accepted.",
+      translate("en", "relay.error.prefix"),
     ],
     [
       "pq-kem-public-key",
@@ -690,9 +923,7 @@ describe("online relay UI", () => {
     })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(
-      screen.getByText(
-        "The relay session timed out and its app-held frame references were cleared.",
-      ),
+      screen.getByText(translate("en", "relay.error.timeout")),
     ).toBeInTheDocument()
     expect(scanStop).toHaveBeenCalled()
   })
@@ -710,11 +941,19 @@ describe("online relay UI", () => {
     const input = screen.getByLabelText("Relay text")
 
     await enterRelayText(user, input, `${olderFirst}\n${olderSecond}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     expect(renderQr).toHaveBeenCalledTimes(2)
     await user.clear(input)
     await enterRelayText(user, input, `${newerFirst}\n${newerSecond}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     expect(renderQr).toHaveBeenCalledTimes(4)
 
     await act(async () => {
@@ -744,10 +983,18 @@ describe("online relay UI", () => {
     const input = screen.getByLabelText("Relay text")
 
     await enterRelayText(user, input, `${olderFirst}\n${olderSecond}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     await user.clear(input)
     await enterRelayText(user, input, `${newerFirst}\n${newerSecond}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     await act(async () => {
       newerRender.resolve("newer-preflight")
@@ -779,7 +1026,11 @@ describe("online relay UI", () => {
     const input = screen.getByLabelText("Relay text")
 
     await enterRelayText(user, input, `${first}\n${second}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     await user.clear(input)
     await enterRelayText(user, input, `${replacementFirst}\n${replacementSecond}`)
     await act(async () => {
@@ -808,7 +1059,11 @@ describe("online relay UI", () => {
       screen.getByLabelText("Relay text"),
       `${closingFirst}\n${closingSecond}`,
     )
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     await user.click(screen.getByRole("button", { name: "Close" }))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
 
@@ -817,7 +1072,11 @@ describe("online relay UI", () => {
       screen.getByLabelText("Relay text"),
       `${reopenedFirst}\n${reopenedSecond}`,
     )
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     await act(async () => {
       reopenedRender.resolve("reopened-preflight")
       await reopenedRender.promise
@@ -845,7 +1104,11 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     await enterRelayText(user, screen.getByLabelText("Relay text"), `${first}\n${second}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     act(() => window.dispatchEvent(new Event("pagehide")))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
@@ -859,7 +1122,9 @@ describe("online relay UI", () => {
         "There is too much data to generate a QR code at this error-correction level.",
       ),
     ).not.toBeInTheDocument()
-    expect(screen.getByText("OCF2 message-header QR relay")).toBeInTheDocument()
+    expect(
+      screen.getByText(translate("en", "relay.card.title")),
+    ).toBeInTheDocument()
   })
 
   it("ignores a deferred render rejection after eligibility loss", async () => {
@@ -870,17 +1135,25 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     await enterRelayText(user, screen.getByLabelText("Relay text"), `${first}\n${second}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     rendered.rerender(relayElement({ eligible: false }))
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     await act(async () => {
       pendingRender.reject(new Error("ineligible render failure"))
       await pendingRender.promise.catch(() => undefined)
     })
     rendered.rerender(relayElement({ eligible: true }))
 
-    expect(screen.getByText("OCF2 message-header QR relay")).toBeInTheDocument()
+    expect(
+      screen.getByText(translate("en", "relay.card.title")),
+    ).toBeInTheDocument()
     expect(
       screen.queryByText(
         "There is too much data to generate a QR code at this error-correction level.",
@@ -895,7 +1168,11 @@ describe("online relay UI", () => {
     const first = payload(0)
     const second = payload(1)
     await enterRelayText(user, screen.getByLabelText("Relay text"), `${second}\r\n${first}\r\n`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     expect(
       await screen.findByText("This relay provides no app file-download controls."),
     ).toBeInTheDocument()
@@ -909,7 +1186,11 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     await enterRelayText(user, screen.getByLabelText("Relay text"), payload(1))
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     expect(
       screen.getByText(
@@ -925,7 +1206,11 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     await enterRelayText(user, screen.getByLabelText("Relay text"), `${payload(0)}\n${payload(1)}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(
       screen.getByText(

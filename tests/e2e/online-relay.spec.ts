@@ -1,5 +1,12 @@
 import { expect, test, type Page, type Request } from "@playwright/test"
 import {
+  buildAad,
+  type AesMessageEnvelopeV1,
+  type SymmetricKeyEnvelopeV1,
+} from "@/crypto/envelope"
+import { toBase64Url } from "@/lib/base64url"
+import { Encoder } from "cbor-x"
+import {
   collectAnimatedFramePayloads,
   createPqIdentity,
   emitInjectedQr,
@@ -11,6 +18,11 @@ import {
   openOfflineApp,
   seedSelfPublicBundle,
 } from "./helpers"
+import {
+  inspectPersistentSurfaces,
+  type PersistenceNeedle,
+} from "./persistence-inspector"
+import { OCK1_SYMMETRIC_KEY } from "../fixtures/relay-v1"
 
 interface ObservedRequest {
   body: string | null
@@ -50,54 +62,103 @@ function expectAllowedRelayRequest(request: ObservedRequest): void {
   ).toBe(true)
 }
 
-async function assertNoRelayPersistence(
+const V1_KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
+const V1_CREATED_AT = 1_700_000_000_000
+const MESSAGE_CIPHERTEXT_FILL = 0x5a
+const MESSAGE_IV_BYTES = new Uint8Array(12).fill(0x22)
+const MESSAGE_CIPHERTEXT_BYTES = new Uint8Array(48).fill(
+  MESSAGE_CIPHERTEXT_FILL,
+)
+const MESSAGE_AAD_BYTES = buildAad({
+  v: 1,
+  type: "message",
+  algorithm: "A256GCM",
+  keyId: V1_KEY_ID,
+  createdAt: V1_CREATED_AT,
+})
+const SYMMETRIC_KEY_BYTES = new Uint8Array(32).fill(0x44)
+const fixtureEncoder = new Encoder({ useRecords: false, tagUint8Array: false })
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
+}
+
+// Importing @/qr/payload in Playwright's Node worker eagerly evaluates the
+// browser-only import.meta.env schema through @/lib/limits. Keep this fixture
+// encoder narrow and mirror the production field order. Accepted OCM1 reaches
+// the production decoder/re-encode boundary. OCK1 is refused by prefix before
+// decode, so its local output is anchored below to the production-generated
+// shared fixture instead of being treated as self-authenticating.
+function encodeEnvelopeToPayload(
+  envelope: AesMessageEnvelopeV1 | SymmetricKeyEnvelopeV1,
+): string {
+  const ordered =
+    envelope.type === "message"
+      ? {
+          v: envelope.v,
+          type: envelope.type,
+          algorithm: envelope.algorithm,
+          keyId: envelope.keyId,
+          createdAt: envelope.createdAt,
+          iv: envelope.iv,
+          ciphertext: envelope.ciphertext,
+          aad: envelope.aad,
+        }
+      : {
+          v: envelope.v,
+          type: envelope.type,
+          algorithm: envelope.algorithm,
+          keyId: envelope.keyId,
+          createdAt: envelope.createdAt,
+          key: envelope.key,
+        }
+  const prefix = envelope.type === "message" ? "OCM1:" : "OCK1:"
+  return `${prefix}${toBase64Url(fixtureEncoder.encode(ordered))}`
+}
+
+function messagePayload(): string {
+  return encodeEnvelopeToPayload({
+    v: 1,
+    type: "message",
+    algorithm: "A256GCM",
+    keyId: V1_KEY_ID,
+    createdAt: V1_CREATED_AT,
+    iv: MESSAGE_IV_BYTES,
+    ciphertext: MESSAGE_CIPHERTEXT_BYTES,
+    aad: MESSAGE_AAD_BYTES,
+  })
+}
+
+function symmetricKeyPayload(): string {
+  const encoded = encodeEnvelopeToPayload({
+    v: 1,
+    type: "symmetric-key",
+    algorithm: "A256GCM",
+    keyId: V1_KEY_ID,
+    createdAt: V1_CREATED_AT,
+    key: SYMMETRIC_KEY_BYTES,
+  })
+  if (encoded !== OCK1_SYMMETRIC_KEY) {
+    throw new Error("The local OCK1 encoder drifted from the production fixture")
+  }
+  return OCK1_SYMMETRIC_KEY
+}
+
+async function assertNoRelayPayloadPersistence(
   page: Page,
-  needles: readonly string[],
+  textNeedles: readonly string[],
+  byteNeedles: readonly PersistenceNeedle[],
 ): Promise<void> {
-  const snapshot = await page.evaluate(async () => {
-    const cacheValues: string[] = []
-    for (const cacheName of await caches.keys()) {
-      const cache = await caches.open(cacheName)
-      for (const request of await cache.keys()) {
-        cacheValues.push(request.url)
-        try {
-          const response = await cache.match(request)
-          if (response) cacheValues.push(await response.clone().text())
-        } catch {
-          // Opaque/binary cache entries remain covered by their keys.
-        }
-      }
-    }
+  const persistence = await inspectPersistentSurfaces(page, [
+    ...textNeedles.map((text, index) => ({
+      marker: `relay-text-${index}`,
+      text,
+    })),
+    ...byteNeedles,
+  ])
+  expect(persistence.matches).toEqual([])
 
-    const databaseValues: string[] = []
-    await new Promise<void>((resolve, reject) => {
-      const opening = indexedDB.open("qr-crypt")
-      opening.onerror = () => reject(opening.error)
-      opening.onsuccess = () => {
-        const database = opening.result
-        const names = Array.from(database.objectStoreNames)
-        if (names.length === 0) {
-          database.close()
-          resolve()
-          return
-        }
-        const transaction = database.transaction(names, "readonly")
-        transaction.onerror = () => reject(transaction.error)
-        transaction.onabort = () => reject(transaction.error)
-        transaction.oncomplete = () => {
-          database.close()
-          resolve()
-        }
-        for (const name of names) {
-          const request = transaction.objectStore(name).getAll()
-          request.onerror = () => reject(request.error)
-          request.onsuccess = () => {
-            databaseValues.push(JSON.stringify(request.result))
-          }
-        }
-      }
-    })
-
+  const snapshot = await page.evaluate(() => {
     const errors =
       (
         window as Window & {
@@ -105,8 +166,6 @@ async function assertNoRelayPersistence(
         }
       ).__relayE2eErrors ?? []
     return {
-      cacheValues,
-      databaseValues,
       errors,
       historyState: JSON.stringify(history.state),
       href: location.href,
@@ -134,8 +193,6 @@ async function assertNoRelayPersistence(
     /^(?:top|relay)$/,
   )
   const inspected = [
-    ...snapshot.cacheValues,
-    ...snapshot.databaseValues,
     ...snapshot.errors,
     ...snapshot.localStorageEntries.flat(),
     snapshot.historyState,
@@ -143,12 +200,71 @@ async function assertNoRelayPersistence(
     snapshot.title,
     snapshot.visibleText,
   ]
-  for (const needle of needles) {
+  for (const needle of textNeedles) {
     for (const value of inspected) expect(value).not.toContain(needle)
   }
 }
 
-test("relays verbatim header-declared message frames without frame-bearing persistence or requests", async ({
+test("the relay persistence oracle detects a typed-array marker", async ({
+  page,
+}) => {
+  const databaseName = "relay-persistence-oracle-self-test"
+  const marker = "RELAY_TYPED_ARRAY_ORACLE_7B4D"
+  const markerBytes = Array.from(new TextEncoder().encode(marker))
+  await loadOnlineGate(page)
+  await page.evaluate(
+    ({ bytes, name }) =>
+      new Promise<void>((resolve, reject) => {
+        const opening = indexedDB.open(name, 1)
+        opening.onerror = () => reject(opening.error)
+        opening.onupgradeneeded = () => {
+          opening.result.createObjectStore("markers")
+        }
+        opening.onsuccess = () => {
+          const database = opening.result
+          const transaction = database.transaction("markers", "readwrite")
+          transaction.onerror = () => reject(transaction.error)
+          transaction.onabort = () => reject(transaction.error)
+          transaction.oncomplete = () => {
+            database.close()
+            resolve()
+          }
+          transaction
+            .objectStore("markers")
+            .put(Uint8Array.from(bytes), "typed-array")
+        }
+      }),
+    { bytes: markerBytes, name: databaseName },
+  )
+
+  try {
+    const inspection = await inspectPersistentSurfaces(page, [
+      { marker: "typed-array-self-test", bytes: markerBytes },
+    ])
+    expect(inspection.matches).toEqual([
+      expect.objectContaining({
+        marker: "typed-array-self-test",
+        location: expect.stringContaining(
+          `indexedDB:${databaseName}/markers.values[0]`,
+        ),
+      }),
+    ])
+  } finally {
+    await page.evaluate(
+      (name) =>
+        new Promise<void>((resolve, reject) => {
+          const deletion = indexedDB.deleteDatabase(name)
+          deletion.onerror = () => reject(deletion.error)
+          deletion.onblocked = () =>
+            reject(new Error(`IndexedDB deletion was blocked: ${name}`))
+          deletion.onsuccess = () => resolve()
+        }),
+      databaseName,
+    )
+  }
+})
+
+test("relays canonical OCM1 messages and OCF2 frames without relay-payload persistence or requests", async ({
   baseURL,
   browser,
   context,
@@ -177,7 +293,18 @@ test("relays verbatim header-declared message frames without frame-bearing persi
     await sourceContext.close()
   }
 
-  const marker = "RELAY_E2E_MARKER_7f9c2a"
+  const relayPayloadMarker = "RELAY_E2E_PAYLOAD_MARKER_7f9c2a"
+  const canonicalMessagePayload = messagePayload()
+  const canonicalSymmetricKeyPayload = symmetricKeyPayload()
+  const decodedMessageMarkers = [
+    V1_KEY_ID,
+    bytesToHex(new Uint8Array(8).fill(MESSAGE_CIPHERTEXT_FILL)),
+  ]
+  const rawKeyMarkers = [
+    new TextDecoder().decode(SYMMETRIC_KEY_BYTES),
+    bytesToHex(SYMMETRIC_KEY_BYTES.subarray(0, 8)),
+    Array.from(SYMMETRIC_KEY_BYTES.subarray(0, 8)).join(","),
+  ]
   const requests: ObservedRequest[] = []
   const consoleValues: string[] = []
   page.on("request", (request) => requests.push(requestObservation(request)))
@@ -209,7 +336,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   const scanButton = page.getByRole("button", { name: "QR → text" })
   await scanButton.click()
   const capture = page.getByRole("dialog", {
-    name: "QR frames to text",
+    name: "QR to text",
   })
   await expect(capture).toBeVisible()
   await expectStableTrailingDialogClose(capture, "Close")
@@ -221,10 +348,24 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await capture.getByRole("button", { name: "Start camera" }).click()
   await expect.poll(async () => (await injectedScanSnapshot(page)).length).toBe(1)
 
-  await emitInjectedQr(page, `OCF2:${marker}`)
+  await emitInjectedQr(page, canonicalSymmetricKeyPayload)
+  const keyCaptureRejection = capture.getByText(
+    "Only canonical OCM1 message strings and canonical OCF2 frame strings are accepted.",
+  )
+  await expect(keyCaptureRejection).toBeVisible()
+  await expect(keyCaptureRejection).not.toContainText(canonicalSymmetricKeyPayload)
+  for (const rawKeyMarker of rawKeyMarkers) {
+    await expect(keyCaptureRejection).not.toContainText(rawKeyMarker)
+  }
+  await expect(capture.getByLabel("Relay text")).toHaveCount(0)
+  await expect(
+    capture.getByRole("button", { name: "Copy relay text" }),
+  ).toHaveCount(0)
+
+  await emitInjectedQr(page, `OCF2:${relayPayloadMarker}`)
   const fixedRejection = capture.getByText("The frame is not a canonical OCF2 frame.")
   await expect(fixedRejection).toBeVisible()
-  await expect(fixedRejection).not.toContainText(marker)
+  await expect(fixedRejection).not.toContainText(relayPayloadMarker)
 
   const shuffled = [
     framePayloads.at(-1)!,
@@ -240,11 +381,29 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await capture.getByRole("button", { name: "Copy relay text" }).click()
   await capture.getByRole("button", { name: "Close" }).click()
 
+  await scanButton.click()
+  await expect(capture).toBeVisible()
+  await capture.getByRole("button", { name: "Start camera" }).click()
+  await expect.poll(async () => (await injectedScanSnapshot(page)).length).toBe(2)
+  await emitInjectedQr(page, canonicalMessagePayload)
+  await expect(capture.getByLabel("Relay text")).toHaveValue(
+    canonicalMessagePayload,
+  )
+  const messageCopyButton = capture.getByRole("button", {
+    name: "Copy relay text",
+  })
+  await expect(messageCopyButton).toBeEnabled()
+  await messageCopyButton.click()
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(canonicalMessagePayload)
+  await capture.getByRole("button", { name: "Close" }).click()
+
   await relayNavigationButton.click()
   const playbackButton = page.getByRole("button", { name: "Text → QR" })
   await playbackButton.click()
   const playback = page.getByRole("dialog", {
-    name: "Turn relay text into QR frames",
+    name: "Turn relay text into QR",
   })
   await expectStableTrailingDialogClose(playback, "Close")
   await page.keyboard.press("Escape")
@@ -254,7 +413,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await playback
     .getByLabel("Relay text")
     .fill(`${framePayloads.slice().reverse().join("\r\n")}\r\n`)
-  await playback.getByRole("button", { name: "Show QR frames" }).click()
+  await playback.getByRole("button", { name: "Show QR" }).click()
   await expect(
     playback.getByText("This relay provides no app file-download controls."),
   ).toBeVisible()
@@ -262,11 +421,38 @@ test("relays verbatim header-declared message frames without frame-bearing persi
     await expect(playback.getByRole("button", { name })).toHaveCount(0)
   }
 
-  await playback.getByLabel("Relay text").fill(`OCF2:${marker}`)
-  await playback.getByRole("button", { name: "Show QR frames" }).click()
+  const playbackInput = playback.getByLabel("Relay text")
+  await playbackInput.fill("")
+  await playbackInput.focus()
+  await page.keyboard.press("Control+V")
+  await expect(playbackInput).toHaveValue(canonicalMessagePayload)
+  await playback.getByRole("button", { name: "Show QR" }).click()
+  await expect(
+    playback.getByRole("img", { name: "Relayed OCM1 message image" }),
+  ).toHaveCount(1)
+  await expect(playback.getByRole("img")).toHaveCount(1)
+  await playback.getByRole("button", { name: "Close" }).click()
+
+  await playbackButton.click()
+  await expect(playback).toBeVisible()
+  await playback.getByLabel("Relay text").fill(`OCF2:${relayPayloadMarker}`)
+  await playback.getByRole("button", { name: "Show QR" }).click()
   const playbackRejection = playback.getByText("The frame is not a canonical OCF2 frame.")
   await expect(playbackRejection).toBeVisible()
-  await expect(playbackRejection).not.toContainText(marker)
+  await expect(playbackRejection).not.toContainText(relayPayloadMarker)
+  await playback.getByLabel("Relay text").fill(canonicalSymmetricKeyPayload)
+  await playback.getByRole("button", { name: "Show QR" }).click()
+  const keyPlaybackRejection = playback.getByText(
+    "Only canonical OCM1 message strings and canonical OCF2 frame strings are accepted.",
+  )
+  await expect(keyPlaybackRejection).toBeVisible()
+  await expect(keyPlaybackRejection).not.toContainText(
+    canonicalSymmetricKeyPayload,
+  )
+  for (const rawKeyMarker of rawKeyMarkers) {
+    await expect(keyPlaybackRejection).not.toContainText(rawKeyMarker)
+  }
+  await expect(playback.getByRole("img")).toHaveCount(0)
   await page.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent("pagehide"))
   })
@@ -284,27 +470,59 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await relayNavigationButton.click()
   await scanButton.click()
   await page
-    .getByRole("dialog", { name: "QR frames to text" })
+    .getByRole("dialog", { name: "QR to text" })
     .getByRole("button", { name: "Start camera" })
     .click()
-  await emitInjectedQr(page, framePayloads[0]!)
+  await emitInjectedQr(page, canonicalMessagePayload)
   await expect(
     page.getByText(
-      "The relay session timed out and its app-held frame references were cleared.",
+      "The relay session timed out and its app-held payload references were cleared.",
     ),
   ).toBeVisible()
   expect((await injectedScanSnapshot(page)).every(({ active }) => !active)).toBe(true)
 
+  const relayPayloadNeedles = [
+    relayPayloadMarker,
+    framePayloads[0]!,
+    relayText,
+    canonicalMessagePayload,
+    ...decodedMessageMarkers,
+    canonicalSymmetricKeyPayload,
+    ...rawKeyMarkers,
+  ]
+  const createdAtBytes = new Uint8Array(8)
+  new DataView(createdAtBytes.buffer).setFloat64(0, V1_CREATED_AT)
+  const relayPayloadByteNeedles: PersistenceNeedle[] = [
+    {
+      marker: "ocm1-keyId",
+      text: V1_KEY_ID,
+      bytes: new TextEncoder().encode(V1_KEY_ID),
+    },
+    {
+      marker: "ocm1-createdAt",
+      text: String(V1_CREATED_AT),
+      bytes: createdAtBytes,
+    },
+    { marker: "ocm1-iv", bytes: MESSAGE_IV_BYTES },
+    { marker: "ocm1-ciphertext", bytes: MESSAGE_CIPHERTEXT_BYTES },
+    { marker: "ocm1-aad", bytes: MESSAGE_AAD_BYTES },
+    { marker: "ock1-key", bytes: SYMMETRIC_KEY_BYTES },
+  ]
   for (const request of requests) {
     expectAllowedRelayRequest(request)
-    expect(request.url).not.toContain(marker)
-    expect(request.url).not.toContain(framePayloads[0]!)
-    expect(request.body ?? "").not.toContain(marker)
-    expect(request.body ?? "").not.toContain(framePayloads[0]!)
+    for (const needle of relayPayloadNeedles) {
+      expect(request.url).not.toContain(needle)
+      expect(request.body ?? "").not.toContain(needle)
+    }
   }
   for (const value of consoleValues) {
-    expect(value).not.toContain(marker)
-    expect(value).not.toContain(framePayloads[0]!)
+    for (const needle of relayPayloadNeedles) {
+      expect(value).not.toContain(needle)
+    }
   }
-  await assertNoRelayPersistence(page, [marker, framePayloads[0]!, relayText])
+  await assertNoRelayPayloadPersistence(
+    page,
+    relayPayloadNeedles,
+    relayPayloadByteNeedles,
+  )
 })

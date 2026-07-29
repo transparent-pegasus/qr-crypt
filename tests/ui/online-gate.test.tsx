@@ -6,6 +6,7 @@ import { fakeFeatures, fakePwa, useFakeRegisterSW } from "./helpers/fakes"
 import { setTestOnlineStatus } from "./helpers/network"
 import { renderApp, resetUi } from "./helpers/render-app"
 import { createBootController } from "@/app/boot/boot-controller"
+import { translate } from "@/i18n/messages"
 
 describe("OnlineGate", () => {
   beforeEach(resetUi)
@@ -53,7 +54,7 @@ describe("OnlineGate", () => {
     )
 
     expect(
-      await screen.findByText("Online installation and OCF2 message-header relay"),
+      await screen.findByText(translate("en", "gate.mode.label")),
     ).toBeVisible()
     expect(
       screen.getByText(
@@ -61,7 +62,9 @@ describe("OnlineGate", () => {
       ),
     ).toBeVisible()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
   })
 
   it("persists relay and home selections from the online navigation", async () => {
@@ -93,9 +96,11 @@ describe("OnlineGate", () => {
       </AppProviders>,
     )
 
-    expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
     expect(
-      screen.getByText("Install the PWA or relay OCF2 message-header QR frames"),
+      await screen.findByText(translate("en", "relay.card.title")),
+    ).toBeVisible()
+    expect(
+      screen.getByText(translate("en", "gate.heading")),
     ).not.toBeVisible()
   })
 
@@ -110,9 +115,11 @@ describe("OnlineGate", () => {
     )
 
     expect(
-      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+      await screen.findByText(translate("en", "gate.heading")),
     ).toBeVisible()
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
   })
 
@@ -127,7 +134,7 @@ describe("OnlineGate", () => {
     )
 
     expect(
-      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+      await screen.findByText(translate("en", "gate.heading")),
     ).toBeVisible()
 
     rerender(
@@ -136,9 +143,11 @@ describe("OnlineGate", () => {
       </AppProviders>,
     )
 
-    expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
     expect(
-      screen.getByText("Install the PWA or relay OCF2 message-header QR frames"),
+      await screen.findByText(translate("en", "relay.card.title")),
+    ).toBeVisible()
+    expect(
+      screen.getByText(translate("en", "gate.heading")),
     ).not.toBeVisible()
   })
 
@@ -158,9 +167,11 @@ describe("OnlineGate", () => {
       )
 
       expect(
-        await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+        await screen.findByText(translate("en", "gate.heading")),
       ).toBeVisible()
-      expect(screen.getByText("OCF2 message-header QR relay")).not.toBeVisible()
+      expect(
+        screen.getByText(translate("en", "relay.card.title")),
+      ).not.toBeVisible()
       view.unmount()
     }
   })
@@ -177,7 +188,7 @@ describe("OnlineGate", () => {
       )
 
       expect(
-        await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+        await screen.findByText(translate("en", "gate.heading")),
       ).toBeVisible()
       expect(setItem.mock.calls.some(([key]) => key === "oc-online-tab")).toBe(false)
       expect(window.localStorage.getItem("oc-online-tab")).toBeNull()
@@ -206,21 +217,21 @@ describe("OnlineGate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+      await screen.findByText(translate("en", "gate.heading")),
     ).toBeVisible()
     expect(
-      screen.getByText("Online installation and OCF2 message-header relay"),
+      screen.getByText(translate("en", "gate.mode.label")),
     ).toBeVisible()
     expect(
-      screen.getByText(
-        "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, without using local keys.",
-      ),
+      screen.getByText(translate("en", "gate.description")),
     ).toBeVisible()
     const onlineNavigation = await screen.findByRole("navigation", {
       name: "Online navigation",
     })
     expect(onlineNavigation).toBeVisible()
-    expect(screen.getByText("OCF2 message-header QR relay")).not.toBeVisible()
+    expect(
+      screen.getByText(translate("en", "relay.card.title")),
+    ).not.toBeVisible()
     expect(screen.getByRole("img", { name: /app icon/ })).toBeVisible()
     expect(screen.getByText("PWA installation status").parentElement).toHaveTextContent(
       "Not installed",
@@ -259,9 +270,9 @@ describe("OnlineGate", () => {
       ),
     )
     await user.click(screen.getByRole("button", { name: "Relay" }))
-    expect(screen.getByText("OCF2 message-header QR relay")).toBeVisible()
+    expect(screen.getByText(translate("en", "relay.card.title"))).toBeVisible()
     expect(
-      screen.getByText("Install the PWA or relay OCF2 message-header QR frames"),
+      screen.getByText(translate("en", "gate.heading")),
     ).not.toBeVisible()
     controller.stop()
   })
@@ -286,14 +297,14 @@ describe("OnlineGate", () => {
 
     act(() => setTestOnlineStatus(true, { emit: true }))
     expect(
-      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+      await screen.findByText(translate("en", "gate.heading")),
     ).toBeInTheDocument()
     expect(screen.queryByText(/Regular feature nonce=/)).not.toBeInTheDocument()
 
     act(() => setTestOnlineStatus(false, { emit: true }))
     expect(await screen.findByText("Regular feature nonce=1")).toBeInTheDocument()
     expect(
-      screen.queryByText("Install the PWA or relay OCF2 message-header QR frames"),
+      screen.queryByText(translate("en", "gate.heading")),
     ).not.toBeInTheDocument()
   })
 })
