@@ -8,6 +8,7 @@
 //   - Never overwrite the key, because doing so creates unrecoverable identities.
 import type { EncryptedSecret } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
+import { isVaultKey } from "@/crypto/vault/is-vault-key"
 import { getDb, STORE_APP_METADATA, type KeyValueRow } from "@/storage/database"
 
 export const VAULT_KEY_METADATA_KEY = "vault-key"
@@ -15,21 +16,6 @@ export const VAULT_KEY_METADATA_KEY = "vault-key"
 const VAULT_LOCK_NAME = "qr-crypt-vault-key"
 
 let vaultKeyPromise: Promise<CryptoKey> | undefined
-
-function isVaultKey(value: unknown): value is CryptoKey {
-  if (typeof value !== "object" || value === null) return false
-  const key = value as Partial<CryptoKey>
-  const algorithm = key.algorithm as Partial<AesKeyAlgorithm> | undefined
-  return (
-    key.type === "secret" &&
-    key.extractable === false &&
-    algorithm?.name === "AES-GCM" &&
-    algorithm.length === 256 &&
-    Array.isArray(key.usages) &&
-    key.usages.includes("encrypt") &&
-    key.usages.includes("decrypt")
-  )
-}
 
 async function generateVaultKey(): Promise<CryptoKey> {
   const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
