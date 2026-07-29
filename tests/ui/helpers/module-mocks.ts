@@ -4,6 +4,7 @@ import * as fakes from "./fakes"
 vi.mock("@/lib/feature-detect", () => ({
   detectFeatures: fakes.detectFeatures,
   probeWebAssemblyRuntime: fakes.probeWebAssemblyRuntime,
+  webAssemblyRuntimeSupport: fakes.webAssemblyRuntimeSupport,
 }))
 
 // Pure synchronous helpers run for real; only the WebCrypto digests are faked, because
@@ -143,6 +144,7 @@ vi.mock("@/storage/pq-bundle-repository", () => ({
   findBundleByKemKeyId: fakes.findBundleByKemKeyId,
 }))
 vi.mock("@/storage/preferences-repository", () => ({
+  defaultPreferences: fakes.defaultPreferences,
   getPreferences: fakes.getPreferences,
   updatePreferences: fakes.updatePreferences,
 }))
