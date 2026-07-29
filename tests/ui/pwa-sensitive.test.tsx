@@ -17,18 +17,30 @@ describe("PWA offline readiness", () => {
   afterEach(resetUi)
 
   it("notifies when offline assets are ready without rendering update controls", async () => {
-    const { AppProviders } = await import("@/app/providers")
+    const original = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")
+    const container = Object.assign(new EventTarget(), {
+      ready: Promise.resolve(),
+      controller: {},
+    })
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: container,
+    })
+    try {
+      const { AppProviders } = await import("@/app/providers")
 
-    render(
-      <AppProviders features={{ ...fakeFeatures }} pwaHook={useOfflineReadyAfterMount}>
-        <p>アプリ本体</p>
-      </AppProviders>,
-    )
+      render(
+        <AppProviders features={{ ...fakeFeatures }} pwaHook={useOfflineReadyAfterMount}>
+          <p>アプリ本体</p>
+        </AppProviders>,
+      )
 
-    expect(
-      await screen.findByText("Offline use is ready"),
-    ).toBeInTheDocument()
-    expect(screen.queryByLabelText("アプリ更新通知")).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "更新する" })).not.toBeInTheDocument()
+      expect(await screen.findByText("Offline use is ready")).toBeInTheDocument()
+      expect(screen.queryByLabelText("アプリ更新通知")).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "更新する" })).not.toBeInTheDocument()
+    } finally {
+      if (original) Object.defineProperty(navigator, "serviceWorker", original)
+      else Reflect.deleteProperty(navigator, "serviceWorker")
+    }
   })
 })

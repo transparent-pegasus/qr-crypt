@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type BrowserContext, type Page } from "@playwright/test"
 import {
   createSymmetricKey,
   expectOnlineGate,
@@ -14,19 +14,57 @@ interface SentinelControl {
   hits: number
 }
 
-async function controlSentinel(page: Page, control: SentinelControl): Promise<void> {
-  await page.route("**/reachability-sentinel.txt*", async (route) => {
+async function routeSentinelThroughNetwork(
+  context: BrowserContext,
+  control: SentinelControl,
+): Promise<void> {
+  await context.route(/\/reachability-sentinel\.txt(?:\?.*)?$/, async (route) => {
     control.hits += 1
     if (!control.reachable) {
-      await route.abort("internetdisconnected")
+      await route.abort("failed")
       return
     }
-    await route.fulfill({
-      status: 200,
-      contentType: "text/plain; charset=utf-8",
-      headers: { "cache-control": "no-store" },
-      body: "QR-CRYPT-REACHABLE",
-    })
+    await route.continue()
+  })
+}
+
+/**
+ * The two-tab race needs independent sentinel reachability for clients in one
+ * browser context. Its page-level shim provides that per-tab control; the
+ * single-tab tests instead observe the worker's real NetworkOnly network hop.
+ */
+async function controlPageSentinel(page: Page, control: SentinelControl): Promise<void> {
+  await page.exposeFunction("__e2eSentinelProbe", () => {
+    control.hits += 1
+    return control.reachable
+  })
+  await page.addInitScript(() => {
+    const probe = (window as Window & {
+      __e2eSentinelProbe?: () => Promise<boolean>
+    }).__e2eSentinelProbe
+    const nativeFetch = window.fetch.bind(window)
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const href =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url
+      if (
+        probe !== undefined &&
+        new URL(href, location.href).pathname === "/reachability-sentinel.txt"
+      ) {
+        if (!(await probe())) throw new TypeError("Failed to fetch")
+        return new Response("QR-CRYPT-REACHABLE", {
+          status: 200,
+          headers: {
+            "content-type": "text/plain; charset=utf-8",
+            "cache-control": "no-store",
+          },
+        })
+      }
+      return nativeFetch(input, init)
+    }
   })
 }
 
@@ -52,11 +90,12 @@ async function databaseDeleteCalls(page: Page): Promise<string[]> {
 }
 
 test("the install path stays on installation without resetting when the sentinel succeeds but no data exists", async ({
+  context,
   page,
 }) => {
   const sentinel: SentinelControl = { reachable: true, hits: 0 }
   await installDatabaseDeleteProbe(page)
-  await controlSentinel(page, sentinel)
+  await routeSentinelThroughNetwork(context, sentinel)
   await loadOnlineGate(page, "/encrypt")
   await expect.poll(() => sentinel.hits).toBeGreaterThan(0)
   await expectOnlineGate(page)
@@ -75,7 +114,7 @@ test("returning online to a reachable sentinel after key creation resets data an
   test.setTimeout(120_000)
   const sentinel: SentinelControl = { reachable: true, hits: 0 }
   await installDatabaseDeleteProbe(page)
-  await controlSentinel(page, sentinel)
+  await routeSentinelThroughNetwork(context, sentinel)
   await loadOnlineGate(page, "/keys")
 
   sentinel.reachable = false
@@ -156,8 +195,8 @@ test("preserves pending when a two-tab reset broadcast races a peer online-marke
       }
     })
     await Promise.all([
-      controlSentinel(page, senderSentinel),
-      controlSentinel(peer, peerSentinel),
+      controlPageSentinel(page, senderSentinel),
+      controlPageSentinel(peer, peerSentinel),
     ])
     await Promise.all([loadOnlineGate(page, "/keys"), loadOnlineGate(peer)])
 

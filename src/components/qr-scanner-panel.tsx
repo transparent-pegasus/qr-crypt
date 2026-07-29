@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   Camera,
   CameraOff,
@@ -6,77 +6,33 @@ import {
   ScanLine,
   Trash2,
 } from "lucide-react"
-import { AppError, errorMessageKey, type ErrorCode } from "@/crypto/errors"
+import { AppError } from "@/crypto/errors"
 import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import { formatFramePositions } from "@/features/presentation"
+import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
 import {
   startQrScan,
-  warmQrReader,
-  type CameraDiagnostic,
-  type CameraPipelineDiagnostic,
+  type CameraFailureState,
   type CameraScanState,
   type QrScanHandle,
 } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
-import type { V2ArtifactType } from "@/schemas/domain"
+import {
+  acceptedPayloadLabel,
+  actualPayloadLabel,
+  deliveryError,
+  localized,
+  localizedErrorCode,
+  targetForPayload,
+  type LocalizedText,
+  type QrScannerPanelProps,
+  type ScannerTarget,
+} from "@/components/qr-scanner-shared"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { Progress } from "@/components/ui/progress"
-import { useI18n, type MessageKey, type Translate } from "@/i18n"
-import type { InterpolationValues } from "@/i18n/messages"
-import { cn } from "@/lib/utils"
-
-export type ScannerTarget = "message" | "symmetric-key" | "public-key"
-
-const TARGET_PREFIX: Record<ScannerTarget, string> = {
-  message: "OCM1:",
-  "symmetric-key": "OCK1:",
-  "public-key": "OCP1:",
-}
-
-const TARGET_LABEL_KEY: Record<ScannerTarget, MessageKey> = {
-  message: "scanner.targetLabel.message",
-  "symmetric-key": "scanner.targetLabel.symmetricKey",
-  "public-key": "scanner.targetLabel.publicKey",
-}
-
-export interface MultipartScanCompletion {
-  artifactType: V2ArtifactType
-  artifactBytes: Uint8Array
-}
-
-interface QrScannerPanelBaseProps {
-  singleTargets: ScannerTarget[]
-  onSingleScan: (
-    target: ScannerTarget,
-    payload: string,
-  ) => void | Promise<void>
-  cameraAvailable?: boolean
-  title?: string
-  autoStart?: boolean
-  stopHint?: string
-}
-
-type QrScannerPanelMultipartProps =
-  | {
-      multipart: {
-        session: MultipartScanSession
-        onComplete: (
-          completion: MultipartScanCompletion,
-        ) => void | Promise<void>
-      }
-    }
-  | { multipart?: never }
-
-export type QrScannerPanelProps = QrScannerPanelBaseProps &
-  QrScannerPanelMultipartProps
+import { useI18n } from "@/i18n"
 
 type ScannerMode = "idle" | "running" | "delivering" | "stopped"
 
@@ -93,55 +49,11 @@ interface ScannerRun {
 
 const IDLE_TRANSFER_STATE: TransferState = { kind: "idle" }
 
-interface LocalizedText {
-  key: MessageKey
-  values?: InterpolationValues
-}
-
-function localized(
-  key: MessageKey,
-  values?: InterpolationValues,
-): LocalizedText {
-  return values === undefined ? { key } : { key, values }
-}
-
-function localizedErrorCode(code: ErrorCode): LocalizedText {
-  return localized(errorMessageKey(code))
-}
-
-function targetForPayload(payload: string): ScannerTarget | null {
-  for (const target of Object.keys(TARGET_PREFIX) as ScannerTarget[]) {
-    if (payload.startsWith(TARGET_PREFIX[target])) return target
-  }
-  return null
-}
-
-function actualPayloadLabel(payload: string, t: Translate): string {
-  const target = targetForPayload(payload)
-  return target === null
-    ? t("scanner.payloadLabel.foreign")
-    : t(TARGET_LABEL_KEY[target])
-}
-
-function acceptedPayloadLabel(
-  singleTargets: ScannerTarget[],
-  acceptsMultipart: boolean,
-  t: Translate,
-): string {
-  const labels = singleTargets.map((target) => t(TARGET_LABEL_KEY[target]))
-  if (acceptsMultipart) labels.push(t("scanner.acceptedLabel.multipart"))
-  return (
-    labels.join(t("scanner.acceptedLabel.separator")) ||
-    t("scanner.acceptedLabel.fallback")
-  )
-}
-
-function deliveryError(error: unknown): AppError {
-  return error instanceof AppError ? error : new AppError("INVALID_QR_PAYLOAD")
-}
-
 export function QrScannerPanel(props: QrScannerPanelProps) {
   const { language, t } = useI18n()
+  const readiness = useQrReaderReadiness()
+  const readinessRef = useRef(readiness)
+  const readyAtMountRef = useRef(readiness === "ready")
   const {
     singleTargets,
     onSingleScan,
@@ -186,25 +98,13 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   )
   const localizedError =
     error === null ? null : t(error.key, error.values)
-  const [diagnostic, setDiagnostic] = useState<CameraDiagnostic | null>(null)
-  const [pipelineDiagnostic, setPipelineDiagnostic] =
-    useState<CameraPipelineDiagnostic | null>(null)
-  const readerStillLoading =
-    cameraMode === "running" &&
-    pipelineDiagnostic !== null &&
-    pipelineDiagnostic.videoFramesDrawn > 0 &&
-    pipelineDiagnostic.decodeAttemptsCompleted === 0 &&
-    (pipelineDiagnostic.readerModuleState === "preparing" ||
-      pipelineDiagnostic.readerModuleState === "idle")
   const [integrityConfirmed, setIntegrityConfirmed] = useState(
     transferState.kind === "complete",
   )
 
-  // Take the one-megabyte reader fetch off the acquisition path: warming here means the
-  // binary is normally compiled before the user ever taps start.
-  useEffect(() => {
-    warmQrReader()
-  }, [])
+  useLayoutEffect(() => {
+    readinessRef.current = readiness
+  }, [readiness])
 
   useEffect(() => {
     cameraAvailableRef.current = cameraAvailable
@@ -274,6 +174,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       startLockedRef.current ||
       cameraModeRef.current === "running" ||
       cameraModeRef.current === "delivering" ||
+      readinessRef.current !== "ready" ||
       !cameraAvailableRef.current
     ) {
       return
@@ -308,8 +209,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       cancelRun(run, "idle")
       publishCameraMode("delivering")
       setError(null)
-      setDiagnostic(null)
-      setPipelineDiagnostic(null)
       setCameraStatus(localized("scanner.status.delivering"))
       void (async () => {
         try {
@@ -349,8 +248,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       cameraStateRef.current = "failed"
       publishCameraMode("stopped")
       setError(localized("scanner.error.videoNotReady"))
-      setDiagnostic(null)
-      setPipelineDiagnostic(null)
       setCameraStatus(localized("scanner.status.videoNotReady"))
       return
     }
@@ -360,8 +257,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     cameraStateRef.current = "acquiring"
     publishCameraMode("running")
     setError(null)
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.preparing"))
 
     const finishSingleScan = (target: ScannerTarget, payload: string) => {
@@ -487,31 +382,14 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
 
     const onCameraError = (
       scanError: AppError,
-      cameraDiagnostic: CameraDiagnostic,
+      failedState: CameraFailureState,
     ) => {
       if (run.cancelled || activeRunRef.current !== run) return
       run.errorReported = true
-      const failedState: CameraScanState =
-        cameraDiagnostic.phase === "track-ended" ? "track-ended" : "failed"
       cancelRun(run, failedState)
       publishCameraMode("stopped")
       setError(localizedErrorCode(scanError.code))
-      setDiagnostic(
-        scanError.code === "CAMERA_PERMISSION_DENIED" ||
-          scanError.code === "CAMERA_NOT_AVAILABLE" ||
-          scanError.code === "QR_READER_PREPARATION_TIMEOUT" ||
-          scanError.code === "QR_DECODE_PROGRESS_TIMEOUT"
-          ? cameraDiagnostic
-          : null,
-      )
       setCameraStatus(localized("scanner.status.cameraError"))
-    }
-
-    const onPipelineDiagnostic = (
-      nextDiagnostic: CameraPipelineDiagnostic,
-    ) => {
-      if (run.cancelled || activeRunRef.current !== run) return
-      setPipelineDiagnostic(nextDiagnostic)
     }
 
     let startPromise: Promise<QrScanHandle>
@@ -521,7 +399,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       startPromise = startQrScan(video, onText, onCameraError, {
         once: false,
         signal: run.abortController.signal,
-        onDiagnostic: onPipelineDiagnostic,
       })
     } catch (caught) {
       const appError = deliveryError(caught)
@@ -529,8 +406,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       cancelRun(run, "failed")
       publishCameraMode("stopped")
       setError(localizedErrorCode(appError.code))
-      setDiagnostic(null)
-      setPipelineDiagnostic(null)
       setCameraStatus(localized("scanner.status.startFailed"))
       return
     }
@@ -569,8 +444,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         cancelRun(run, "failed")
         publishCameraMode("stopped")
         setError(localizedErrorCode(appError.code))
-        setDiagnostic(null)
-        setPipelineDiagnostic(null)
         setCameraStatus(localized("scanner.status.startFailed"))
       })
   }, [
@@ -587,8 +460,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     cancelRun(run, "idle")
     publishCameraMode("stopped")
     setError(localized("scanner.error.stopped"))
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.stopped"))
   }, [cancelRun, publishCameraMode])
 
@@ -602,8 +473,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     publishCameraMode("idle")
     setIntegrityConfirmed(false)
     setError(null)
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.discardedCanStart"))
   }, [cancelRun, publishCameraMode, publishTransferState])
 
@@ -618,7 +487,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   }, [cancelRun])
 
   useEffect(() => {
-    if (autoStart) startCamera()
+    if (autoStart && readyAtMountRef.current) startCamera()
   }, [autoStart, startCamera])
 
   useEffect(() => {
@@ -629,8 +498,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         cancelRun(run, "track-ended")
         publishCameraMode("stopped")
         setError(localized("scanner.error.hiddenStopped"))
-        setDiagnostic(null)
-        setPipelineDiagnostic(null)
         setCameraStatus(localized("scanner.status.leftScreenStopped"))
         return
       }
@@ -655,8 +522,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     cancelRun(activeRunRef.current, "failed")
     publishCameraMode("stopped")
     setError(localized("scanner.error.cameraUnavailable"))
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.cameraUnavailable"))
   }, [cameraAvailable, cancelRun, publishCameraMode])
 
@@ -674,8 +539,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     setError(
       next.kind === "error" ? localizedErrorCode(next.code) : null,
     )
-    setDiagnostic(null)
-    setPipelineDiagnostic(null)
     setCameraStatus(localized("scanner.status.idlePrompt"))
   }, [
     cancelRun,
@@ -700,8 +563,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       if (run !== null) cancelRun(run, "idle")
       publishCameraMode("idle")
       setIntegrityConfirmed(false)
-      setDiagnostic(null)
-      setPipelineDiagnostic(null)
       setError(
         previousKind === "collecting"
           ? localized("scanner.error.expiredDiscarded")
@@ -721,6 +582,18 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const received = collecting?.receivedIndexes.size ?? 0
   const frameCount = collecting?.frameCount ?? 0
   const restartBlocked = transferState.kind === "error"
+  const announcedStatus = (() => {
+    switch (readiness) {
+      case "preparing":
+        return t("scanner.status.readerLoading")
+      case "blocked":
+        return t("errors.QR_READER_BLOCKED")
+      case "failed":
+        return t("scanner.reader.reloadHint")
+      case "ready":
+        return t(cameraStatus.key, cameraStatus.values)
+    }
+  })()
 
   return (
     <Card aria-busy={cameraMode === "running" || cameraMode === "delivering"}>
@@ -752,21 +625,47 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           </div>
           {cameraMode !== "running" && cameraMode !== "delivering" && (
             <div className="absolute inset-0 flex items-center justify-center bg-slate-950/65 p-4">
-              <Button
-                type="button"
-                className="h-11 cursor-pointer focus-visible:ring-2"
-                disabled={!cameraAvailable || restartBlocked}
-                onClick={startCamera}
-              >
-                {cameraMode === "stopped" ? (
-                  <RefreshCw aria-hidden="true" />
-                ) : (
-                  <Camera aria-hidden="true" />
-                )}
-                {cameraMode === "stopped"
-                  ? t("scanner.button.restart")
-                  : t("scanner.button.start")}
-              </Button>
+              {readiness === "failed" || readiness === "blocked" ? (
+                <div className="flex flex-col items-center gap-3 text-center">
+                  <p className="text-sm text-white">
+                    {t(
+                      readiness === "blocked"
+                        ? "errors.QR_READER_BLOCKED"
+                        : "scanner.reader.reloadHint",
+                    )}
+                  </p>
+                  {readiness === "failed" && (
+                    <Button
+                      type="button"
+                      className="h-11 cursor-pointer focus-visible:ring-2"
+                      onClick={() => window.location.reload()}
+                    >
+                      <RefreshCw aria-hidden="true" />
+                      {t("scanner.button.reload")}
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  className="h-11 cursor-pointer focus-visible:ring-2"
+                  disabled={
+                    !cameraAvailable ||
+                    restartBlocked ||
+                    readiness !== "ready"
+                  }
+                  onClick={startCamera}
+                >
+                  {cameraMode === "stopped" ? (
+                    <RefreshCw aria-hidden="true" />
+                  ) : (
+                    <Camera aria-hidden="true" />
+                  )}
+                  {cameraMode === "stopped"
+                    ? t("scanner.button.restart")
+                    : t("scanner.button.start")}
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -778,12 +677,11 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         )}
 
         <p
+          role="status"
           aria-live="polite"
           className="text-center text-sm text-muted-foreground"
         >
-          {readerStillLoading
-            ? t("scanner.status.readerLoading")
-            : t(cameraStatus.key, cameraStatus.values)}
+          {announcedStatus}
         </p>
 
         {collecting && (
@@ -837,41 +735,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             <AlertDescription>{localizedError}</AlertDescription>
           </Alert>
         )}
-        {diagnostic && (
-          <p
-            aria-label={t("scanner.diagnostic.ariaLabel")}
-            className="font-mono text-xs text-muted-foreground"
-          >
-            {diagnostic.message === null
-              ? t("scanner.diagnostic", {
-                  name: diagnostic.name ?? "unknown",
-                  phase: diagnostic.phase,
-                  detail: diagnostic.detail,
-                })
-              : t("scanner.diagnostic.withMessage", {
-                  name: diagnostic.name ?? "unknown",
-                  phase: diagnostic.phase,
-                  detail: diagnostic.detail,
-                  message: diagnostic.message,
-                })}
-          </p>
-        )}
-        {pipelineDiagnostic && (
-          <p
-            aria-label={t("scanner.pipelineDiagnostic.ariaLabel")}
-            className="font-mono text-[11px] leading-relaxed text-muted-foreground"
-          >
-            {t("scanner.pipelineDiagnostic", {
-              moduleState: pipelineDiagnostic.readerModuleState,
-              frames: pipelineDiagnostic.videoFramesDrawn,
-              attempts: pipelineDiagnostic.decodeAttemptsCompleted,
-              results: pipelineDiagnostic.decodeResultsSeen,
-              lastError:
-                pipelineDiagnostic.lastErrorName ??
-                t("scanner.pipelineDiagnostic.noError"),
-            })}
-          </p>
-        )}
 
         {multipart !== undefined ? (
           <Button
@@ -899,301 +762,5 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         )}
       </CardContent>
     </Card>
-  )
-}
-
-export type QrScannerModalProps = QrScannerPanelProps & {
-  triggerLabel: string
-  triggerDisabled?: boolean
-  onClosed?: () => void
-  className?: string
-}
-
-export function QrScannerModal(props: QrScannerModalProps) {
-  const { t } = useI18n()
-  const {
-    triggerLabel,
-    triggerDisabled = false,
-    onClosed,
-    cameraAvailable = true,
-    title: titleProp,
-    stopHint: stopHintProp,
-    className,
-  } = props
-  const title = titleProp ?? t("scanner.defaultTitle")
-  const stopHint = stopHintProp ?? t("scanner.stopHint.modal")
-  const multipartSession = props.multipart?.session
-  const multipartRef = useRef(props.multipart)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const mountedRef = useRef(true)
-  const openRef = useRef(false)
-  const openGenerationRef = useRef(0)
-  const deliveryBusyRef = useRef(false)
-  const automaticCloseRef = useRef(false)
-  const previousClosedKindRef = useRef<TransferState["kind"]>(
-    multipartSession?.state().kind ?? "idle",
-  )
-  const [open, setOpen] = useState(false)
-  const [deliveryBusy, setDeliveryBusy] = useState(false)
-  const [closedNotice, setClosedNotice] = useState<LocalizedText | null>(null)
-  const localizedClosedNotice =
-    closedNotice === null
-      ? null
-      : t(closedNotice.key, closedNotice.values)
-
-  // Take the one-megabyte reader fetch off the acquisition path: warming here means the
-  // binary is normally compiled before the user ever taps start.
-  useEffect(() => {
-    warmQrReader()
-  }, [])
-
-  const beginDelivery = useCallback((): boolean => {
-    if (deliveryBusyRef.current) return false
-    deliveryBusyRef.current = true
-    if (mountedRef.current) setDeliveryBusy(true)
-    return true
-  }, [])
-
-  const endDelivery = useCallback(() => {
-    deliveryBusyRef.current = false
-    if (mountedRef.current) setDeliveryBusy(false)
-  }, [])
-
-  useEffect(() => {
-    multipartRef.current = props.multipart
-  }, [props.multipart])
-
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-      openGenerationRef.current += 1
-    }
-  }, [])
-
-  useEffect(() => {
-    previousClosedKindRef.current = multipartSession?.state().kind ?? "idle"
-  }, [multipartSession])
-
-  useEffect(() => {
-    if (open || multipartSession === undefined) return
-    let polling = true
-
-    const inspectClosedSession = async () => {
-      if (
-        !polling ||
-        openRef.current ||
-        deliveryBusyRef.current
-      ) {
-        return
-      }
-      const generation = openGenerationRef.current
-      const canPublish = () =>
-        polling &&
-        mountedRef.current &&
-        !openRef.current &&
-        openGenerationRef.current === generation
-      const previousKind = previousClosedKindRef.current
-      const next = multipartSession.state()
-      previousClosedKindRef.current = next.kind
-
-      if (next.kind === "collecting") {
-        if (canPublish()) {
-          setClosedNotice(
-            localized("scanner.closed.multipartProgress", {
-              received: next.receivedIndexes.size,
-              total: next.frameCount,
-            }),
-          )
-        }
-        return
-      }
-      if (next.kind === "idle") {
-        if (previousKind === "collecting" && canPublish()) {
-          setClosedNotice(localized("scanner.error.expiredDiscarded"))
-        }
-        return
-      }
-      if (next.kind === "error") {
-        if (canPublish()) setClosedNotice(localizedErrorCode(next.code))
-        return
-      }
-      if (!beginDelivery()) return
-      try {
-        if (!multipartSession.claimCompletion()) return
-        const onComplete = multipartRef.current?.onComplete
-        if (onComplete === undefined) return
-        await onComplete({
-          artifactType: next.artifactType,
-          artifactBytes: next.artifactBytes,
-        })
-        if (canPublish()) {
-          setClosedNotice(
-            localized("scanner.closed.integrityImported"),
-          )
-          onClosed?.()
-        }
-      } catch (caught) {
-        if (canPublish()) {
-          setClosedNotice(localizedErrorCode(deliveryError(caught).code))
-        }
-      } finally {
-        endDelivery()
-      }
-    }
-
-    void inspectClosedSession()
-    const timer = window.setInterval(() => {
-      void inspectClosedSession()
-    }, 1_000)
-    return () => {
-      polling = false
-      window.clearInterval(timer)
-    }
-  }, [beginDelivery, endDelivery, multipartSession, onClosed, open])
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (nextOpen && deliveryBusyRef.current) return
-    openRef.current = nextOpen
-    if (nextOpen) {
-      openGenerationRef.current += 1
-      automaticCloseRef.current = false
-      previousClosedKindRef.current =
-        multipartSession?.state().kind ?? "idle"
-      setClosedNotice(null)
-    }
-    setOpen(nextOpen)
-  }
-
-  const panelGeneration = openGenerationRef.current
-  const deliverFromPanel = async (
-    generation: number,
-    operation: () => void | Promise<void>,
-    successNotice?: LocalizedText,
-  ) => {
-    if (!beginDelivery()) throw new AppError("INVALID_QR_PAYLOAD")
-    try {
-      await operation()
-      const sameGeneration =
-        mountedRef.current && openGenerationRef.current === generation
-      if (sameGeneration && successNotice !== undefined) {
-        setClosedNotice(successNotice)
-      }
-      if (openRef.current && sameGeneration) {
-        automaticCloseRef.current = true
-        openRef.current = false
-        setOpen(false)
-      }
-    } catch (caught) {
-      if (
-        openRef.current &&
-        mountedRef.current &&
-        openGenerationRef.current === generation
-      ) {
-        throw caught
-      }
-      if (
-        mountedRef.current &&
-        openGenerationRef.current === generation
-      ) {
-        setClosedNotice(localizedErrorCode(deliveryError(caught).code))
-      }
-    } finally {
-      endDelivery()
-    }
-  }
-
-  const panel =
-    props.multipart === undefined ? (
-      <QrScannerPanel
-        singleTargets={props.singleTargets}
-        onSingleScan={(target, payload) =>
-          deliverFromPanel(panelGeneration, () =>
-            props.onSingleScan(target, payload),
-          )
-        }
-        cameraAvailable={cameraAvailable}
-        title={title}
-        autoStart
-        stopHint={stopHint}
-      />
-    ) : (
-      <QrScannerPanel
-        singleTargets={props.singleTargets}
-        onSingleScan={(target, payload) =>
-          deliverFromPanel(panelGeneration, () =>
-            props.onSingleScan(target, payload),
-          )
-        }
-        cameraAvailable={cameraAvailable}
-        title={title}
-        autoStart
-        stopHint={stopHint}
-        multipart={{
-          session: props.multipart.session,
-          onComplete: (completion) =>
-            deliverFromPanel(
-              panelGeneration,
-              () => props.multipart?.onComplete(completion),
-              localized("scanner.closed.integrityImported"),
-            ),
-        }}
-      />
-    )
-
-  return (
-    <div
-      className={cn("space-y-2", className)}
-      aria-busy={deliveryBusy}
-    >
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogTrigger asChild>
-          <Button
-            type="button"
-            className="h-11 w-full"
-            disabled={!cameraAvailable || triggerDisabled || deliveryBusy}
-          >
-            <ScanLine aria-hidden="true" />
-            {triggerLabel}
-          </Button>
-        </DialogTrigger>
-        <DialogContent
-          ref={contentRef}
-          tabIndex={-1}
-          className="grid max-h-[95dvh] max-w-lg grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-4"
-          onOpenAutoFocus={(event) => {
-            event.preventDefault()
-            contentRef.current?.focus()
-          }}
-          onCloseAutoFocus={(event) => {
-            if (automaticCloseRef.current) event.preventDefault()
-            automaticCloseRef.current = false
-            if (!openRef.current) onClosed?.()
-          }}
-        >
-          <DialogTitle className="sr-only">{title}</DialogTitle>
-          {/* 4rem prior chrome + ~44px close row + 1rem grid gap */}
-          <div
-            data-qr-scanner-scroll-region
-            className="min-h-0 max-h-[calc(95dvh-4rem)] overflow-y-auto pb-14"
-          >
-            {open && panel}
-          </div>
-        </DialogContent>
-      </Dialog>
-      {!cameraAvailable && (
-        <p className="text-sm text-muted-foreground">
-          {t("scanner.error.cameraUnavailable")}
-        </p>
-      )}
-      {closedNotice && (
-        <p
-          aria-live="polite"
-          className="whitespace-pre-line text-sm text-muted-foreground"
-        >
-          {localizedClosedNotice}
-        </p>
-      )}
-    </div>
   )
 }

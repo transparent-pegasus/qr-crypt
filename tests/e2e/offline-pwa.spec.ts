@@ -15,13 +15,19 @@ import {
   workerObservations,
 } from "./helpers"
 
-test("initializes the precached same-origin reader WASM on its first offline camera use", async ({
+test("warms the precached same-origin reader WASM before offline camera capture", async ({
   context,
   page,
 }) => {
   test.setTimeout(120_000)
   await loadOnlineGate(page, "/keys")
-  await waitForServiceWorkerControl(page)
+  // No reload: this is the owner's first access. waitForServiceWorkerControl()
+  // reloads when the page is uncontrolled, which is the workaround being removed.
+  await expect
+    .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), {
+      timeout: 30_000,
+    })
+    .toBe(true)
 
   const appOrigin = new URL(page.url()).origin
   const cached = await precachedUrls(page)
@@ -51,11 +57,10 @@ test("initializes the precached same-origin reader WASM on its first offline cam
     readerWasm.pathname),
   ).toBe(false)
 
-  await context.setOffline(true)
-  await expectOfflineAcknowledgement(page)
-  await acknowledgeOfflineRisk(page)
-  await expect(mainNavigation(page)).toBeVisible()
-
+  // Registered before the offline transition: the reader is now warmed when the
+  // offline application mounts, which is earlier than the scan screen, so a
+  // listener attached afterwards would miss the one precache resolution this
+  // test exists to observe.
   const runtimeRequests: string[] = []
   const externalRequests: string[] = []
   const readerRequestFailures: string[] = []
@@ -76,6 +81,11 @@ test("initializes the precached same-origin reader WASM on its first offline cam
       `${request.url()} ${request.failure()?.errorText ?? "unknown"}`,
     )
   })
+
+  await context.setOffline(true)
+  await expectOfflineAcknowledgement(page)
+  await acknowledgeOfflineRisk(page)
+  await expect(mainNavigation(page)).toBeVisible()
 
   await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
   await page.getByRole("button", { name: "Scan a key QR", exact: true }).click()

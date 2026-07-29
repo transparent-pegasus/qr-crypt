@@ -7,6 +7,8 @@ import type {
   PublicKeyEnvelopeV1,
   SymmetricKeyEnvelopeV1,
 } from "@/crypto/envelope"
+import type { DecryptPqMessageArgs } from "@/crypto/pq/decrypt-orchestrator"
+import type { ReceiptSubject, ReceiptVerdict } from "@/features/receipt-cache"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
 import type { FeatureSupport } from "@/lib/feature-detect"
 import type { QrExportOptions } from "@/qr/export-image"
@@ -16,6 +18,7 @@ import type {
   KemPublicKeyEnvelopeV2,
   MlKemMessageEnvelopeV2,
   PostQuantumIdentity,
+  PqDecryptResult,
   PqPublicBundleRecord,
   Preferences,
   PublicIdentityBundleV2,
@@ -27,7 +30,6 @@ import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
 import { MAX_ARTIFACT_BYTES_ABSOLUTE } from "@/lib/limits"
 
 const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 
 function cryptoKey(type: KeyType): CryptoKey {
   return {
@@ -185,27 +187,6 @@ export type FakeAppError = AppError
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
 export const probeWebAssemblyRuntime = vi.fn(async () => true)
 
-export const utf8ToBytes = vi.fn((value: string) => encoder.encode(value))
-export const bytesToUtf8 = vi.fn((value: Uint8Array) => decoder.decode(value))
-export const utf8ByteLength = vi.fn((value: string) => encoder.encode(value).byteLength)
-export const bytesToHex = vi.fn((value: Uint8Array) =>
-  Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join(""),
-)
-export const concatBytes = vi.fn((...parts: Uint8Array[]) => {
-  const length = parts.reduce((total, part) => total + part.byteLength, 0)
-  const result = new Uint8Array(length)
-  let offset = 0
-  for (const part of parts) {
-    result.set(part, offset)
-    offset += part.byteLength
-  }
-  return result
-})
-export const bytesEqual = vi.fn(
-  (a: Uint8Array, b: Uint8Array) =>
-    a.length === b.length && a.every((byte, index) => byte === b[index]),
-)
-export const toOwnedArrayBuffer = vi.fn((value: Uint8Array) => value.slice().buffer)
 export const sha256 = vi.fn(async (value: Uint8Array) => {
   const result = new Uint8Array(32)
   result[0] = value.byteLength % 256
@@ -394,6 +375,9 @@ export const decodePayload = vi.fn((payload: string) => {
 export const payloadSha256Hex = vi.fn(async (payload: string) =>
   encoder.encode(payload).byteLength.toString(16).padStart(64, "0"),
 )
+export const recordReceipt = vi.fn<
+  (subject: ReceiptSubject, now: number) => ReceiptVerdict
+>(() => ({ kind: "first-seen" }) as const)
 export const renderQrDataUrl = vi.fn(
   async (payload: string) => `data:image/png;base64,${btoa(payload)}`,
 )
@@ -460,39 +444,26 @@ export const exportQrFramePayloads = vi.fn(
 )
 export const copyTextToClipboard = vi.fn(async () => undefined)
 
-interface FakeCameraDiagnostic {
-  phase: "acquiring" | "acquired" | "playing" | "track-ended"
-  name: string | null
-  detail: string
-  message: string | null
-}
-
-interface FakeCameraPipelineDiagnostic {
-  readerModuleState: "idle" | "preparing" | "ready" | "failed" | "timed-out"
-  videoFramesDrawn: number
-  decodeAttemptsCompleted: number
-  decodeResultsSeen: number
-  lastErrorName: string | null
-}
+type FakeCameraFailureState = "failed" | "track-ended"
 
 export const scannerStop = vi.fn()
-export const warmQrReader = vi.fn(() => undefined)
+export const CAMERA_READER_READY_TIMEOUT_MS = 30_000
+export const readerModuleState = vi.fn<
+  () => "idle" | "preparing" | "ready" | "failed"
+>(() => "ready")
+export const warmQrReader = vi.fn<() => Promise<void>>(() => Promise.resolve())
 let scanTextCallback: ((payload: string) => void) | null = null
 let scanErrorCallback:
-  | ((error: FakeAppError, diagnostic: FakeCameraDiagnostic) => void)
+  | ((error: FakeAppError, failureState: FakeCameraFailureState) => void)
   | null = null
 export const startQrScan = vi.fn(
   async (
     _video: HTMLVideoElement,
     onText: (payload: string) => void,
-    onError: (
-      error: FakeAppError,
-      diagnostic: FakeCameraDiagnostic,
-    ) => void,
+    onError: (error: FakeAppError, failureState: FakeCameraFailureState) => void,
     _options?: {
       once?: boolean
       signal?: AbortSignal
-      onDiagnostic?: (diagnostic: FakeCameraPipelineDiagnostic) => void
     },
   ): Promise<{ stop: () => void }> => {
     void _options
@@ -506,14 +477,9 @@ export function emitScannedPayload(payload: string): void {
 }
 export function emitScanError(
   code: ErrorCode,
-  diagnostic: FakeCameraDiagnostic = {
-    phase: "acquiring",
-    name: null,
-    detail: "0x0 rs=0 track=none",
-    message: null,
-  },
+  failureState: FakeCameraFailureState = "failed",
 ): void {
-  scanErrorCallback?.(new FakeAppError(code), diagnostic)
+  scanErrorCallback?.(new FakeAppError(code), failureState)
 }
 
 export const disposePqClient = vi.fn()
@@ -656,32 +622,6 @@ export const splitIntoFrames = vi.fn(
   },
 )
 
-const V2_PREFIX: Record<V2ArtifactType, string> = {
-  "pq-message": "OCM2:",
-  "pq-public-identity": "OCI2:",
-  "pq-kem-public-key": "OCP2:",
-  "pq-dsa-public-key": "OCS2:",
-  "encrypted-seed-backup": "OCB2:",
-}
-export const buildV2Payload = vi.fn((kind: V2ArtifactType) => `${V2_PREFIX[kind]}fake`)
-export const splitV2Payload = vi.fn((payload: string) => {
-  const match = (Object.entries(V2_PREFIX) as [V2ArtifactType, string][]).find(
-    ([, prefix]) => payload.startsWith(prefix),
-  )
-  if (!match || match[0] === "encrypted-seed-backup") {
-    throw new FakeAppError("INVALID_QR_PAYLOAD")
-  }
-  const [kind] = match
-  return {
-    kind,
-    bytes: new Uint8Array(kind === "pq-public-identity" ? 650 : 350),
-  }
-})
-export const encodeFrameToPayload = vi.fn(
-  (frame: QrFrameV2) =>
-    `OCF2:${Array.from(frame.transferId).join("")}:${frame.frameIndex}:${frame.frameCount}:${frame.artifactType}`,
-)
-
 export function multipartPayload(
   transfer: string,
   index: number,
@@ -789,7 +729,7 @@ export const encryptPq = vi.fn(
   }: {
     recipient: PqPublicBundleRecord
     plaintext: Uint8Array
-    sign?: { identity: PostQuantumIdentity }
+    sign?: { identity: PostQuantumIdentity } | undefined
     now: number
   }) => {
     void now
@@ -813,19 +753,43 @@ export const encryptPq = vi.fn(
 export const fakePqDecrypt = {
   kind: "signed-valid" as "unsigned" | "signed-valid" | "signed-key-unknown",
 }
-export const decryptPqMessage = vi.fn(async () => {
-  if (fakePqDecrypt.kind === "signed-key-unknown") {
-    return { kind: "signed-key-unknown" as const, senderSigningKeyId: "T".repeat(22) }
-  }
+export const fakePqMessageId = Uint8Array.from(
+  { length: 16 },
+  (_, index) => index,
+)
+export const fakePqCreatedAt = 1_723_000_000_000
+
+async function defaultDecryptPqMessage(
+  args: DecryptPqMessageArgs,
+): Promise<PqDecryptResult> {
   if (fakePqDecrypt.kind === "unsigned") {
-    return { kind: "unsigned" as const, plaintext: encoder.encode("PQ復号済み平文") }
+    return {
+      kind: "unsigned",
+      plaintext: encoder.encode("PQ復号済み平文"),
+      messageId: fakePqMessageId.slice(),
+      createdAt: fakePqCreatedAt,
+    }
+  }
+
+  const senderSigningKeyId = "T".repeat(22)
+  const resolvedSigningKey = await args.resolveSigningKey(senderSigningKeyId)
+  if (
+    fakePqDecrypt.kind === "signed-key-unknown" ||
+    resolvedSigningKey === undefined ||
+    resolvedSigningKey.revoked
+  ) {
+    return { kind: "signed-key-unknown" as const, senderSigningKeyId }
   }
   return {
-    kind: "signed-valid" as const,
+    kind: "signed-valid",
     plaintext: encoder.encode("署名済みPQ復号結果"),
-    senderSigningKeyId: "T".repeat(22),
+    messageId: fakePqMessageId.slice(),
+    createdAt: fakePqCreatedAt,
+    senderSigningKeyId,
   }
-})
+}
+
+export const decryptPqMessage = vi.fn(defaultDecryptPqMessage)
 
 export const armMaintenanceToken = vi.fn(async () => undefined)
 
@@ -943,12 +907,21 @@ export const deleteBundle = vi.fn(async (recordId: string) => {
   if (index >= 0) fakeBundles.splice(index, 1)
 })
 export const markBundleUsed = vi.fn(async () => undefined)
-export const findBundleBySigningKeyId = vi.fn(async (keyId: string) =>
-  fakeBundles.find((record) => record.signing.keyId === keyId),
-)
-export const findBundleByKemKeyId = vi.fn(async (keyId: string) =>
-  fakeBundles.find((record) => record.kem.keyId === keyId),
-)
+
+async function defaultFindBundleBySigningKeyId(keyId: string) {
+  return fakeBundles.find(
+    (record) => record.signing.keyId === keyId && record.revokedAt === undefined,
+  )
+}
+
+async function defaultFindBundleByKemKeyId(keyId: string) {
+  return fakeBundles.find(
+    (record) => record.kem.keyId === keyId && record.revokedAt === undefined,
+  )
+}
+
+export const findBundleBySigningKeyId = vi.fn(defaultFindBundleBySigningKeyId)
+export const findBundleByKemKeyId = vi.fn(defaultFindBundleByKemKeyId)
 
 export const getPreferences = vi.fn(async () => ({ ...fakePreferences }))
 export const updatePreferences = vi.fn(async (patch: Partial<Preferences>) => {
@@ -1012,5 +985,12 @@ export function resetFakes(): void {
   scanTextCallback = null
   scanErrorCallback = null
   nextMultipartAddGate = null
+  decryptPqMessage.mockImplementation(defaultDecryptPqMessage)
+  findBundleBySigningKeyId.mockImplementation(defaultFindBundleBySigningKeyId)
+  findBundleByKemKeyId.mockImplementation(defaultFindBundleByKemKeyId)
+  recordReceipt.mockImplementation(() => ({ kind: "first-seen" }) as const)
   vi.clearAllMocks()
+  probeWebAssemblyRuntime.mockImplementation(async () => true)
+  readerModuleState.mockImplementation(() => "ready")
+  warmQrReader.mockImplementation(() => Promise.resolve())
 }

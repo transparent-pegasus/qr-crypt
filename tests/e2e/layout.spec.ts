@@ -6,6 +6,7 @@ import {
   expectStableTrailingDialogClose,
   goToOfflinePage,
   openOfflineApp,
+  seedSelfPublicBundle,
 } from "./helpers"
 
 async function expectInsideViewport(
@@ -150,6 +151,36 @@ async function expectAnimatedFullscreenLayout(
   await expect(detail).toBeVisible()
 }
 
+test("keeps ordinary modals clear of both screen edges at 320px", async ({
+  context,
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 780 })
+  await openOfflineApp(page, context, "/keys")
+  await page.getByRole("button", { name: "Create a key" }).click()
+  const dialog = page.getByRole("dialog")
+  await expect(dialog).toBeVisible()
+  await dialog.evaluate(async (element) => {
+    await Promise.all(
+      element
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => undefined)),
+    )
+  })
+
+  // A modal flush with the layout viewport reads as wider than the screen on
+  // iOS, where the visual viewport and the safe area are both narrower.
+  const box = await dialog.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x, "modal left inset").toBeGreaterThanOrEqual(8)
+  expect(box!.x + box!.width, "modal right edge").toBeLessThanOrEqual(320 - 8)
+  const overflow = await dialog.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }))
+  expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
+})
+
 test("splits key tabs evenly without horizontal overflow at 320px", async ({
   context,
   page,
@@ -170,6 +201,77 @@ test("splits key tabs evenly without horizontal overflow at 320px", async ({
 
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
   expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1)
+})
+
+test("keeps peer-bundle actions clear and contained at 320px", async ({
+  context,
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const identityName = "Peer bundle layout identity"
+  await page.setViewportSize({ width: 320, height: 780 })
+  await openOfflineApp(page, context, "/keys")
+  await createPqIdentity(page, identityName)
+  await seedSelfPublicBundle(page, identityName)
+  await page.reload({ waitUntil: "domcontentloaded" })
+  await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
+  await page.getByRole("button", { name: new RegExp(identityName) }).click()
+
+  const dialog = page.getByRole("dialog", { name: identityName })
+  await expect(dialog).toBeVisible()
+  await dialog.evaluate(async (element) => {
+    await Promise.all(
+      element
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => undefined)),
+    )
+  })
+
+  const close = dialog.getByRole("button", { name: "Close", exact: true })
+  const deleteButton = dialog.getByRole("button", {
+    name: "Delete",
+    exact: true,
+  })
+  const disableButton = dialog.getByRole("button", {
+    name: "Disable on this device",
+    exact: true,
+  })
+  await deleteButton.scrollIntoViewIfNeeded()
+
+  const [closeBox, deleteBox, disableBox] = await Promise.all([
+    close.boundingBox(),
+    deleteButton.boundingBox(),
+    disableButton.boundingBox(),
+  ])
+  expect(closeBox, "Close has a box").not.toBeNull()
+  expect(deleteBox, "Delete has a box").not.toBeNull()
+  expect(disableBox, "Disable has a box").not.toBeNull()
+  for (const [label, actionBox] of [
+    ["Delete", deleteBox!],
+    ["Disable", disableBox!],
+  ] as const) {
+    const intersects =
+      closeBox!.x < actionBox.x + actionBox.width &&
+      closeBox!.x + closeBox!.width > actionBox.x &&
+      closeBox!.y < actionBox.y + actionBox.height &&
+      closeBox!.y + closeBox!.height > actionBox.y
+    expect(intersects, `Close/${label} overlap`).toBe(false)
+    expect(actionBox.height, `${label} touch height`).toBeGreaterThanOrEqual(44)
+  }
+
+  const buttonMetrics = await dialog.locator("button").evaluateAll((buttons) =>
+    buttons.map((button) => ({
+      clientWidth: button.clientWidth,
+      name: button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "",
+      scrollWidth: button.scrollWidth,
+    })),
+  )
+  for (const metric of buttonMetrics) {
+    expect(
+      metric.scrollWidth,
+      `${metric.name || "unnamed button"} horizontal overflow`,
+    ).toBeLessThanOrEqual(metric.clientWidth)
+  }
 })
 
 test("keeps shared closes bottom-right, last in tab order, and outside every scroll body", async ({

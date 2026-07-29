@@ -66,6 +66,7 @@ import {
   type LocalizedMessage,
 } from "@/i18n"
 import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
+import { selectedGeneratedDisplayPair } from "@/lib/generated-display"
 import {
   FRAME_BYTES_MAX,
   maximumSymmetricPlaintextBytesForPayloadCapacity,
@@ -84,11 +85,9 @@ import { encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
   DEFAULT_GENERATED_DISPLAY_PAIR,
-  type GeneratedDisplayPair,
   type MlKemMessageEnvelopeV2,
   type PostQuantumIdentity,
   type PqPublicBundleRecord,
-  type Preferences,
   type StoredKeyRecord,
   type UiAlgorithm,
   type WireSuite,
@@ -124,16 +123,6 @@ type EncryptionResult =
     }
 
 const EMPTY_ARTIFACT_BYTES = new Uint8Array()
-
-function selectedGeneratedDisplayPair(
-  preferences: Pick<Preferences, "frameBytes" | "frameIntervalMs">,
-): GeneratedDisplayPair {
-  return preferences.frameBytes === COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes &&
-    preferences.frameIntervalMs ===
-      COMPATIBLE_GENERATED_DISPLAY_PAIR.frameIntervalMs
-    ? COMPATIBLE_GENERATED_DISPLAY_PAIR
-    : DEFAULT_GENERATED_DISPLAY_PAIR
-}
 
 function algorithmOptions(requireSignature: boolean): UiAlgorithm[] {
   const options: UiAlgorithm[] = ["A256GCM"]

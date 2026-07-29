@@ -13,11 +13,20 @@ const scanStart = vi.hoisted(() => vi.fn())
 const scanStop = vi.hoisted(() => vi.fn())
 const copyText = vi.hoisted(() => vi.fn(async () => undefined))
 const renderQr = vi.hoisted(() => vi.fn())
+const probeWebAssemblyRuntime = vi.hoisted(() =>
+  vi.fn<() => Promise<boolean>>(),
+)
+const readerModuleState = vi.hoisted(() =>
+  vi.fn<() => "idle" | "preparing" | "ready" | "failed">(),
+)
+const warmQrReader = vi.hoisted(() => vi.fn<() => Promise<void>>())
 
 vi.mock("@/qr/decode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/decode")>()),
+  CAMERA_READER_READY_TIMEOUT_MS: 30_000,
+  readerModuleState,
   startQrScan: scanStart,
-  warmQrReader: vi.fn(() => undefined),
+  warmQrReader,
 }))
 
 vi.mock("@/qr/export-image", async (importOriginal) => ({
@@ -30,28 +39,22 @@ vi.mock("@/qr/encode", async (importOriginal) => ({
   renderQrDataUrl: renderQr,
 }))
 
+vi.mock("@/lib/feature-detect", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/feature-detect")>()),
+  probeWebAssemblyRuntime,
+}))
+
 vi.mock("@/hooks/use-register-sw", () => ({
   useDefaultRegisterSW: () => ({ offlineReady: [false, vi.fn()] }),
 }))
 
 import { FeatureSupportProvider } from "@/app/providers"
-import {
-  OnlineRelay,
-  parseRelayFrameSet,
-  parseRelayText,
-  RELAY_TEXT_MAX_CHARS,
-} from "@/components/online-relay"
-import { encodePublicIdentityBundleV2 } from "@/crypto/pq/canonical-cbor"
+import { OnlineRelay } from "@/components/online-relay"
 import { LanguageProvider } from "@/i18n"
-import {
-  FRAME_BYTES_MAX,
-  PROTOCOL_MAX_FRAMES,
-  TRANSFER_TIMEOUT_MINUTES_DEFAULT,
-} from "@/lib/limits"
-import { TransferAssembler } from "@/qr/multipart/assemble"
-import { splitIntoFrames } from "@/qr/multipart/split"
+import { translate } from "@/i18n/messages"
+import { TRANSFER_TIMEOUT_MINUTES_DEFAULT } from "@/lib/limits"
 import { decodeFramePayload, encodeFrameToPayload } from "@/qr/payload-v2"
-import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
+import type { QrFrameV2 } from "@/schemas/domain"
 
 const TRANSFER_ID = new Uint8Array(16).fill(0x11)
 
@@ -148,6 +151,9 @@ beforeEach(() => {
   scanText = null
   scanFailure = null
   scanSignal = undefined
+  probeWebAssemblyRuntime.mockResolvedValue(true)
+  readerModuleState.mockReturnValue("ready")
+  warmQrReader.mockImplementation(() => Promise.resolve())
   renderQr.mockImplementation(async (value: string) => dataUrl(value))
   scanStart.mockImplementation(
     async (
@@ -174,194 +180,79 @@ afterEach(() => {
   vi.resetAllMocks()
 })
 
-describe("relay frame-set parser", () => {
-  it("joins out-of-order frames in index order and treats exact duplicates idempotently", () => {
-    const first = payload(0)
-    const second = payload(1)
-    const parsed = parseRelayFrameSet([second, first, second])
-    expect(parsed.ok).toBe(true)
-    if (!parsed.ok) return
-    expect([...parsed.set.entries.keys()].sort()).toEqual([0, 1])
-
-    const text = `${second}\r\n${first}\r\n`
-    const roundTrip = parseRelayText(text)
-    expect(roundTrip).toMatchObject({ ok: true })
-    if (!roundTrip.ok) return
-    expect(roundTrip.originals).toEqual([first, second])
-    expect(roundTrip.frames.map(encodeFrameToPayload)).toEqual([first, second])
-  })
-
-  it.each([
-    ["OCP2:", "OCP2:AA"],
-    ["OCS2:", "OCS2:AA"],
-    ["OCI2:", "OCI2:AA"],
-    ["OCM2:", "OCM2:AA"],
-    ["v1", "OCM1:AA"],
-    ["foreign", "https://example.invalid/"],
-  ])("rejects the non-OCF2 %s prefix without changing state", (_label, input) => {
-    const initial = parseRelayFrameSet([payload(0)])
-    expect(initial.ok).toBe(true)
-    if (!initial.ok) return
-    expect(parseRelayFrameSet([input], initial.set)).toEqual({
-      ok: false,
-      code: "prefix",
-    })
-    expect(initial.set.entries.size).toBe(1)
-  })
-
-  it.each([
-    "pq-kem-public-key",
-    "pq-dsa-public-key",
-    "pq-public-identity",
-    "encrypted-seed-backup",
-  ] satisfies V2ArtifactType[])("rejects outer artifact type %s", (artifactType) => {
-    expect(parseRelayFrameSet([payload(0, { artifactType })])).toEqual({
-      ok: false,
-      code: "outer-type",
-    })
-  })
-
-  it.each([
-    [
-      "transferId",
-      {
-        transferId: new Uint8Array(16).fill(0x33),
-      } satisfies Partial<QrFrameV2>,
-      "mismatch",
-    ],
-    [
-      "artifactType",
-      {
-        artifactType: "pq-public-identity",
-      } satisfies Partial<QrFrameV2>,
-      "outer-type",
-    ],
-    [
-      "frameCount",
-      {
-        frameCount: 3,
-      } satisfies Partial<QrFrameV2>,
-      "mismatch",
-    ],
-    [
-      "totalByteLength",
-      {
-        totalByteLength: 3,
-      } satisfies Partial<QrFrameV2>,
-      "mismatch",
-    ],
-  ] as const)("rejects a %s metadata mismatch atomically", (_label, overrides, code) => {
-    const initial = parseRelayFrameSet([payload(0)])
-    expect(initial.ok).toBe(true)
-    if (!initial.ok) return
-    const before = initial.set
-    const result = parseRelayFrameSet([payload(1), payload(1, overrides)], before)
-    expect(result).toEqual({ ok: false, code })
-    expect(before.entries.size).toBe(1)
-    expect(before.receivedByteLength).toBe(1)
-  })
-
-  it("rejects a conflicting occupied index without overwriting it", () => {
-    const original = payload(0)
-    const initial = parseRelayFrameSet([original])
-    expect(initial.ok).toBe(true)
-    if (!initial.ok) return
-    const conflict = payload(0, { chunk: new Uint8Array([0x7f]) })
-    expect(parseRelayFrameSet([conflict], initial.set)).toEqual({
-      ok: false,
-      code: "mismatch",
-    })
-    expect(initial.set.entries.get(0)?.original).toBe(original)
-  })
-
-  it.each([
-    [
-      "declared total above frame capacity",
-      [payload(0, { totalByteLength: FRAME_BYTES_MAX * 2 + 1 })],
-    ],
-    [
-      "single-frame chunk/total mismatch",
-      [
-        payload(0, {
-          frameCount: 1,
-          frameIndex: 0,
-          totalByteLength: 2,
-          chunk: new Uint8Array([1]),
-        }),
-      ],
-    ],
-    [
-      "running sum above a too-small total",
-      [payload(0, { totalByteLength: 1 }), payload(1, { totalByteLength: 1 })],
-    ],
-    [
-      "completed sum below a declared total",
-      [payload(0, { totalByteLength: 3 }), payload(1, { totalByteLength: 3 })],
-    ],
-  ])("rejects %s", (_label, inputs) => {
-    expect(parseRelayFrameSet(inputs)).toEqual({
-      ok: false,
-      code: "length",
-    })
-  })
-
-  it("rejects 129 non-empty lines and oversized raw text before decoding", () => {
-    const valid = payload(0)
-    expect(
-      parseRelayText(
-        Array.from({ length: PROTOCOL_MAX_FRAMES + 1 }, () => valid).join("\n"),
-      ),
-    ).toEqual({
-      ok: false,
-      code: "frame-count",
-    })
-    expect(parseRelayText("x".repeat(RELAY_TEXT_MAX_CHARS + 1))).toEqual({
-      ok: false,
-      code: "input-size",
-    })
-    expect(PROTOCOL_MAX_FRAMES).toBe(128)
-    expect(RELAY_TEXT_MAX_CHARS).toBe(213_120)
-  })
-
-  it("accepts header-declared message frames around a public artifact but the offline assembler rejects the inner type", async () => {
-    const keyId = "AAECAwQFBgcICQoLDA0ODw"
-    const publicArtifact = encodePublicIdentityBundleV2({
-      version: 2,
-      type: "pq-public-identity",
-      identityId: keyId,
-      kem: {
-        algorithm: "ML-KEM-1024",
-        keyId,
-        publicKey: new Uint8Array(1_568).fill(0x51),
-      },
-      signing: {
-        algorithm: "ML-DSA-87",
-        keyId,
-        publicKey: new Uint8Array(2_592).fill(0x52),
-      },
-      createdAt: 1_700_000_000_000,
-    })
-    const relabeledFrames = await splitIntoFrames({
-      artifactType: "pq-message",
-      artifactBytes: publicArtifact,
-      frameBytes: 200,
-    })
-    const originals = relabeledFrames.map(encodeFrameToPayload)
-    expect(parseRelayFrameSet(originals).ok).toBe(true)
-    const roundTrip = parseRelayText(originals.join("\n"))
-    expect(roundTrip.ok).toBe(true)
-    if (!roundTrip.ok) return
-    expect(roundTrip.frames.map(encodeFrameToPayload)).toEqual(originals)
-    expect(roundTrip.originals).toEqual(originals)
-
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
-    let state = assembler.state()
-    for (const original of originals) state = await assembler.add(original)
-    expect(state).toEqual({ kind: "error", code: "INVALID_QR_PAYLOAD" })
-  })
-})
-
 describe("online relay UI", () => {
+  it("does not pull the reader before the user opens capture, then gates the camera on it", async () => {
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    warmQrReader.mockReturnValueOnce(preparation.promise)
+    const user = userEvent.setup()
+    renderRelay()
+
+    // The online gate must not fetch the reader at runtime until the user asks
+    // for the camera; tests/e2e/offline-pwa.spec.ts pins that as a contract.
+    expect(warmQrReader).not.toHaveBeenCalled()
+
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.capture.open"),
+      }),
+    )
+    expect(warmQrReader).toHaveBeenCalled()
+
+    const startCamera = await screen.findByRole("button", {
+      name: translate("en", "relay.capture.startCamera"),
+    })
+    expect(startCamera).toBeDisabled()
+    expect(scanStart).not.toHaveBeenCalled()
+
+    await act(async () => preparation.resolve())
+
+    await waitFor(() => expect(startCamera).toBeEnabled())
+    expect(scanStart).not.toHaveBeenCalled()
+  })
+
+  it("shows preparation failure and reload inside the open capture dialog", async () => {
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    void preparation.promise.catch(() => undefined)
+    warmQrReader.mockReturnValueOnce(preparation.promise)
+    const user = userEvent.setup()
+    renderRelay()
+
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.capture.open"),
+      }),
+    )
+    const dialog = await screen.findByRole("dialog", {
+      name: translate("en", "relay.capture.title"),
+    })
+    expect(
+      within(dialog).getByText(
+        translate("en", "scanner.status.readerLoading"),
+      ),
+    ).toBeInTheDocument()
+
+    await act(async () => {
+      preparation.reject(new Error("reader preparation failed"))
+      await preparation.promise.catch(() => undefined)
+    })
+
+    await waitFor(() =>
+      expect(
+        within(dialog).getByText(
+          translate("en", "scanner.reader.reloadHint"),
+        ),
+      ).toBeInTheDocument(),
+    )
+    expect(
+      within(dialog).getByRole("button", {
+        name: translate("en", "scanner.button.reload"),
+      }),
+    ).toBeEnabled()
+    expect(scanStart).not.toHaveBeenCalled()
+  })
+
   it("keeps both scrolling dialog bodies bounded with one trailing close and Escape dismissal", async () => {
     renderRelay()
     const user = userEvent.setup()

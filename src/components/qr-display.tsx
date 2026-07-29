@@ -283,7 +283,9 @@ export function QrDisplay({
           <DialogContent
             hideCloseButton
             className={cn(
-              "grid h-dvh min-w-0 max-w-none grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden border-0 bg-white text-slate-950 [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))] sm:rounded-none",
+              // w-full: this surface is deliberately full-bleed, overriding the
+              // inset default DialogContent gives ordinary modals.
+              "grid h-dvh w-full min-w-0 max-w-none grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden border-0 bg-white text-slate-950 [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))] sm:rounded-none",
               hasArbitraryFullscreenControls
                 ? "grid-rows-[minmax(0,1fr)_auto_auto]"
                 : "grid-rows-[minmax(0,1fr)_auto]",

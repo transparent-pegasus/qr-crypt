@@ -6,14 +6,10 @@ vi.mock("@/lib/feature-detect", () => ({
   probeWebAssemblyRuntime: fakes.probeWebAssemblyRuntime,
 }))
 
-vi.mock("@/lib/bytes", () => ({
-  utf8ToBytes: fakes.utf8ToBytes,
-  bytesToUtf8: fakes.bytesToUtf8,
-  utf8ByteLength: fakes.utf8ByteLength,
-  bytesToHex: fakes.bytesToHex,
-  concatBytes: fakes.concatBytes,
-  bytesEqual: fakes.bytesEqual,
-  toOwnedArrayBuffer: fakes.toOwnedArrayBuffer,
+// Pure synchronous helpers run for real; only the WebCrypto digests are faked, because
+// UI assertions depend on the fake's deterministic fingerprint values.
+vi.mock("@/lib/bytes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bytes")>()),
   sha256: fakes.sha256,
   sha256Hex: fakes.sha256Hex,
 }))
@@ -54,7 +50,8 @@ vi.mock("@/crypto/pq/wire-bytes", () => ({
   pqKeyFingerprint: fakes.pqKeyFingerprint,
   pqIdentityFingerprint: fakes.pqIdentityFingerprint,
 }))
-vi.mock("@/crypto/pq/canonical-cbor", () => ({
+vi.mock("@/crypto/pq/canonical-cbor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/crypto/pq/canonical-cbor")>()),
   encodeUnsignedMessageBodyV2: fakes.encodeUnsignedMessageBodyV2,
   encodeSignedMessageV2: fakes.encodeSignedMessageV2,
   encodeMlKemEnvelopeV2: fakes.encodeMlKemEnvelopeV2,
@@ -96,6 +93,8 @@ vi.mock("@/qr/export-frames", () => ({
   exportQrFramePayloads: fakes.exportQrFramePayloads,
 }))
 vi.mock("@/qr/decode", () => ({
+  CAMERA_READER_READY_TIMEOUT_MS: fakes.CAMERA_READER_READY_TIMEOUT_MS,
+  readerModuleState: fakes.readerModuleState,
   startQrScan: fakes.startQrScan,
   warmQrReader: fakes.warmQrReader,
 }))
@@ -105,10 +104,10 @@ vi.mock("@/qr/multipart/split", () => ({
 vi.mock("@/qr/multipart/assemble", () => ({
   TransferAssembler: fakes.FakeTransferAssembler,
 }))
-vi.mock("@/qr/payload-v2", () => ({
-  buildV2Payload: fakes.buildV2Payload,
-  splitV2Payload: fakes.splitV2Payload,
-  encodeFrameToPayload: fakes.encodeFrameToPayload,
+
+vi.mock("@/features/receipt-cache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/receipt-cache")>()),
+  recordReceipt: fakes.recordReceipt,
 }))
 
 vi.mock("@/storage/key-repository", () => ({

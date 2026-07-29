@@ -7,8 +7,9 @@ import {
   type KeyDetailContentProps,
   type KeySelection,
 } from "@/components/key-detail-dialog"
+import { Fingerprint } from "@/components/fingerprint"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
-import { QrScannerModal } from "@/components/qr-scanner-panel"
+import { QrScannerModal } from "@/components/qr-scanner-modal"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -49,7 +50,6 @@ import { generateKeyId } from "@/crypto/random"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
 import {
   ALGORITHM_LABELS,
-  formatFingerprint,
   formatSuggestedDate,
 } from "@/features/presentation"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
@@ -737,7 +737,9 @@ function CreateField({
             role="note"
             className={cn(
               buttonVariants({ variant: "outline" }),
-              "h-11 w-full cursor-default select-text touch-auto text-muted-foreground hover:bg-background hover:text-muted-foreground",
+              // buttonVariants carries whitespace-nowrap, which pushed this note
+              // past the modal's content box on a narrow screen.
+              "min-h-11 w-full cursor-default select-text touch-auto whitespace-normal py-2 text-center text-muted-foreground hover:bg-background hover:text-muted-foreground",
             )}
           >
             <ShieldCheck aria-hidden="true" />
@@ -759,18 +761,5 @@ function CreateField({
         </Button>
       </CardContent>
     </Card>
-  )
-}
-
-function Fingerprint({ label, value }: { label: string; value: string }) {
-  const { t } = useI18n()
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="break-all font-mono text-xs">{value}</p>
-      <p className="font-mono text-sm">
-        {t("common.fingerprintCompare", { value: formatFingerprint(value) })}
-      </p>
-    </div>
   )
 }

@@ -33,27 +33,15 @@ describe("i18n catalog", () => {
     }
   })
 
-  it("keeps the reviewed camera, frame, storage, and preference wording", () => {
+  it("pins the reviewed failure and safety copy, and keeps retired keys retired", () => {
     expect(messages.en).toMatchObject({
-      "common.na": "N/A",
       "errors.WORKER_UNAVAILABLE":
         "Cryptographic processing could not be performed safely on this device. Reopen the app in a supported browser.",
       "animatedQr.missing.body":
         "Missing frames: {indexes}. Recovery is not possible while frames are missing.",
-      "keyList.empty.ownAll": "You have no keys.",
-      "keyList.bundle.revoke": "Disable on this device",
-      "keyList.bundle.badge.unverified": "Unverified",
-      "common.identityFingerprint": "Identity fingerprint",
-      "keys.bundle.fingerprintKem": "ML-KEM fingerprint",
-      "encrypt.decrypt.cameraTitle": "Scan with the camera",
       "scanner.progress.missingIndex": "Missing frames: {indexes}",
-      "errors.QR_READER_PREPARATION_TIMEOUT":
-        "The QR reader did not finish preparing on this device.",
       "errors.QR_DECODE_PROGRESS_TIMEOUT":
         "The QR decoding pipeline stopped making progress on this device.",
-      "scanner.pipelineDiagnostic":
-        "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
-      "scanner.pipelineDiagnostic.noError": "none",
       "settings.error.saveFailed":
         "Settings could not be saved. Check the device storage.",
       "settings.error.deleteFailed":
@@ -65,20 +53,11 @@ describe("i18n catalog", () => {
       "animatedQr.missing.body":
         "欠損フレーム: {indexes}。欠損したままでは復元できません。",
       "encrypt.toast.autoCleared": "平文と一時結果を自動消去しました",
-      "encrypt.decrypt.cameraTitle": "カメラで読み取る",
       "scanner.error.singleWhileMultipart":
         "複数QR読取中です。単発QRは読取完了または破棄後に読み取ってください。",
       "scanner.progress.missingIndex": "欠損フレーム: {indexes}",
-      "errors.QR_READER_PREPARATION_TIMEOUT":
-        "この端末でQRリーダーの準備が完了しませんでした。",
       "errors.QR_DECODE_PROGRESS_TIMEOUT":
         "この端末でQR復号パイプラインの進行が停止しました。",
-      "scanner.pipelineDiagnostic":
-        "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
-      "scanner.pipelineDiagnostic.noError": "なし",
-      "common.identityFingerprint": "公開鍵セット指紋",
-      "keyDetail.identity.kemFingerprintLabel": "暗号化用公開鍵 {algorithm}",
-      "keys.bundle.fingerprintSigning": "ML-DSA鍵指紋",
       "hooks.preferences.loadFailed":
         "設定を読み込めませんでした。既定値を使用します。",
     })

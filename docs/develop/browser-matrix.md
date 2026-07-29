@@ -12,7 +12,7 @@ This table maps the target browser environments to the primary verification item
 | Encryption | automated (e2e) | automated (e2e) | automated (e2e) | automated (e2e) | manual-pending |
 | QR display | automated (e2e) | automated (e2e) | automated (e2e) | automated (e2e) | manual-pending |
 | QR scanning | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| Camera decoder WebAssembly instantiation **while offline** (zxing-wasm reader, precached same-origin): warmed on scanner mount rather than on the start tap, plus one in-attempt preparation retry covering both a rejected and a stalled preparation, bounded to two preparation windows | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Camera decoder WebAssembly instantiation **while offline** (zxing-wasm reader, precached same-origin): compiled before any camera starts — both scan surfaces keep their scan control disabled until the reader is ready, the wait is bounded at that gate, and a failed preparation offers a page reload rather than an in-page retry | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | User-selected QR compatibility preferences: sustained full transfers with the shipped default (switch off, 1,000B / 200ms minimum dwell) and compatible preference (switch on, 100B / 2,000ms minimum dwell, per-artifact effective density clamped upward when required), including poor light and refocus recovery | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
 | QR range-extension telemetry: actual decode cadence/duration, long tasks, sustained CPU/thermal behaviour, teardown latency, sender v40 render time, and post-downscale decoder dimensions | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
 | Non-extractable CryptoKey persistence in IndexedDB (generate → close tab → restore → decrypt) | automated (e2e) | manual-pending | automated (e2e) | automated (e2e) | manual-pending |
@@ -29,6 +29,24 @@ This table maps the target browser environments to the primary verification item
   persistence of non-extractable `CryptoKey`s (generate → close tab → restore → decrypt)
   is a mandatory manual on-device item. Success on `fake-indexeddb` is not treated as a
   sufficient condition.
+* **First-session camera decoder (added 2026-07-29)**: the router only mounts once the
+  device is offline-confirmed, so the camera reader never gets an online *runtime* fetch —
+  its first runtime load must be satisfied from the precache the service worker populated
+  while installing online. That requires the worker to control the page *before* the
+  device goes offline, which since 2026-07-29 is what `workbox.clientsClaim` and the
+  install screen's **Offline-use readiness: Ready** row guarantee. The manual case to run
+  on device is therefore: one online load, **no reload**, wait for readiness Ready, go
+  offline, then open the camera for the first time. Ephemeral private sessions (observed
+  on Brave iOS Private tabs, where the worker registration appears not to survive the
+  session) make every session that first session, so run the case there too. Both stay
+  `manual-pending` until verified on device.
+* **Reader-before-camera (added 2026-07-29)**: the first compile of the ~1 MB reader is
+  slow on a phone and used to run while a 1080p capture was starting, which is how an
+  already-permitted iPhone still reported
+  `module=timed-out frames=1 attempts=0`. Preparation now finishes before any capture
+  begins, so the on-device case to check is that the scan control is briefly disabled on a
+  cold page and then works on the first tap — not that it fails and recovers after a
+  reload. `manual-pending`.
 * **Offline launch / camera scanning**: partial automation via chromium e2e is planned. Real devices on Android / Windows, as well as Safari / Edge, are manual.
 * **Online relay (camera / display / clipboard / BFCache)**: chromium e2e may cover synthetic paths; real-device rows above stay `manual-pending` until measured. Clipboard sync targets and OS QR capture are outside app control.
 * **Edge**: manual on-device row. Screen-reader verification is also manual.

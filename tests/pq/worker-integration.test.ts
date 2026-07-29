@@ -158,13 +158,15 @@ describe("in-process PQ Worker handler", () => {
     const pq = client()
     const generated = await identity(pq, 31)
     const plaintext = new TextEncoder().encode("unsigned worker round trip")
+    const messageId = new Uint8Array(16).fill(0x41)
+    const createdAt = 1_700_000_000_001
     const envelope = await pq.encryptPqMessage({
       suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
       recipientKemKeyId: generated.identity.kem.keyId,
       recipientKemPublicKey: generated.identity.kem.publicKey,
       plaintext,
-      messageId: new Uint8Array(16).fill(0x41),
-      createdAt: 1_700_000_000_001,
+      messageId,
+      createdAt,
     })
     const opened = await pq.openPqEnvelope({
       envelope,
@@ -177,20 +179,27 @@ describe("in-process PQ Worker handler", () => {
         vaultKey: generated.vaultKey,
       },
     })
-    expect(opened).toEqual({ kind: "unsigned", plaintext })
+    expect(opened).toEqual({
+      kind: "unsigned",
+      plaintext,
+      messageId,
+      createdAt,
+    })
   })
 
   it("runs sign-then-encrypt and releases plaintext only after verification", async () => {
     const pq = client()
     const generated = await identity(pq, 41)
     const plaintext = new TextEncoder().encode("signed worker round trip")
+    const messageId = new Uint8Array(16).fill(0x42)
+    const createdAt = 1_700_000_000_002
     const envelope = await pq.encryptPqMessage({
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: generated.identity.kem.keyId,
       recipientKemPublicKey: generated.identity.kem.publicKey,
       plaintext,
-      messageId: new Uint8Array(16).fill(0x42),
-      createdAt: 1_700_000_000_002,
+      messageId,
+      createdAt,
       sign: {
         senderSigningKeyId: generated.identity.signing.keyId,
         algorithm: generated.identity.signing.algorithm,
@@ -219,7 +228,12 @@ describe("in-process PQ Worker handler", () => {
       senderPublicKey: generated.identity.signing.publicKey,
       algorithm: generated.identity.signing.algorithm,
     })
-    expect(verified).toEqual({ valid: true, plaintext })
+    expect(verified).toEqual({
+      valid: true,
+      plaintext,
+      messageId,
+      createdAt,
+    })
 
     const result = await decryptPqMessage({
       client: pq,
@@ -238,6 +252,8 @@ describe("in-process PQ Worker handler", () => {
     expect(result).toEqual({
       kind: "signed-valid",
       plaintext,
+      messageId,
+      createdAt,
       senderSigningKeyId: generated.identity.signing.keyId,
     })
   })

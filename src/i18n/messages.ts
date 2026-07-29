@@ -74,14 +74,16 @@ const en = {
   "errors.CAMERA_PERMISSION_DENIED":
     "Camera access is not permitted. Allow it in the browser settings.",
   "errors.CAMERA_NOT_AVAILABLE": "The camera is unavailable.",
-  "errors.QR_READER_PREPARATION_TIMEOUT":
-    "The QR reader did not finish preparing on this device.",
   "errors.QR_DECODE_PROGRESS_TIMEOUT":
     "The QR decoding pipeline stopped making progress on this device.",
   "errors.QR_READER_BLOCKED":
     "This browser blocks the QR reader. On iPhone, use Safari 16 or newer.",
   "errors.DUPLICATE_KEY": "A key with the same contents is already stored.",
   "errors.DUPLICATE_QR": "A QR code with the same contents is already stored.",
+  "errors.KEY_ID_CONFLICT":
+    "One of these key IDs is already reserved by a stored bundle, which may be disabled and hidden from the list. The import was refused.",
+  "errors.MESSAGE_ID_REUSED":
+    "This message reuses an identifier already seen with different ciphertext in this app window since it was loaded. The plaintext was not shown. The check is not shared with other tabs or windows of this app; it also resets on a transient clear or full local wipe, and its bounded cache drops the oldest entries.",
   "errors.SIGNATURE_INVALID":
     "The signature could not be verified. The sender's signing key or the contents do not match.",
   "errors.SIGNING_KEY_NOT_FOUND":
@@ -311,6 +313,7 @@ const en = {
   "keyList.empty.ownAll": "You have no keys.",
   "keyList.empty.ownFiltered": "There are no keys of the selected type.",
   "keyList.bundle.empty": "There are no imported public-key bundles.",
+  "keyList.bundle.itemMeta": "Imported {datetime}",
   "keyList.bundle.nameConfirmed": "Verified public key",
   "keyList.bundle.nameUnverified": "Unverified public key",
   "keyList.bundle.badge.confirmed": "Identity verified",
@@ -320,6 +323,10 @@ const en = {
   "keyList.bundle.legacyNote":
     "This legacy profile is unsupported, so only deletion is available.",
   "keyList.bundle.revoke": "Disable on this device",
+  "keyList.bundle.revokeTitle": "Disable this public-key bundle?",
+  "keyList.bundle.revokeBody":
+    "Disabling hides this row and permanently reserves both its signing and KEM key IDs in this installation. It cannot be undone, and the bundle cannot be deleted from this screen afterwards. Only a full local wipe clears the reservation. Delete the bundle instead if you need to free both IDs.",
+  "keyList.bundle.revokeConfirm": "Disable",
   "keyList.bundle.confirmOpen": "Compare and confirm the fingerprint",
   "keyList.bundle.confirmTitle": "Confirm this identity's fingerprint",
   "keyList.bundle.confirmBody":
@@ -427,6 +434,16 @@ const en = {
   "encrypt.result.identityCheck.confirmed": "Identity verified",
   "encrypt.result.identityCheck.unverified":
     "Unverified. Key validity and identity verification are separate.",
+  "encrypt.result.identityUnconfirmed.title":
+    "The sender's identity is not confirmed",
+  "encrypt.result.identityUnconfirmed.body":
+    "A valid signature only proves this message was signed with this key. It does not prove who holds that key. Confirm the fingerprint in person before you act on this message.",
+  "encrypt.result.replay.title": "Already received in this session",
+  "encrypt.result.replay.body":
+    "This exact ciphertext was already decrypted in this app window at {time}. A repeat can be an ordinary re-read, or someone replaying an old message to you. Treat any instruction inside it as unconfirmed. The check covers only this app window since it was loaded, is not shared with other tabs or windows of this app, resets on a transient clear or full local wipe, and uses a bounded cache that drops the oldest entries.",
+  "encrypt.result.replay.reveal": "Show the message anyway",
+  "encrypt.result.senderCreatedAt":
+    "Sender-reported time: {time} (asserted by the sending device, not verified)",
   "encrypt.result.memoryOnly":
     "The decrypted result is held only in memory and is not stored.",
   "encrypt.result.modalTitle": "Encryption complete",
@@ -476,6 +493,8 @@ const en = {
   "scanner.status.videoNotReady": "The camera view could not be prepared",
   "scanner.status.preparing": "Preparing the camera…",
   "scanner.status.readerLoading": "Still loading the QR reader…",
+  "scanner.reader.reloadHint":
+    "The QR reader could not be prepared. Reload the page and try again.",
   "scanner.status.qrRead": "The QR code was read",
   "scanner.error.multipartNotAccepted":
     "This screen does not accept multi-frame QR codes.",
@@ -513,6 +532,7 @@ const en = {
   "scanner.video.ariaLabel": "Camera video for QR scanning",
   "scanner.button.restart": "Restart camera",
   "scanner.button.start": "Start camera",
+  "scanner.button.reload": "Reload",
   "scanner.progress.ariaLabel": "Multi-frame QR scan progress",
   "scanner.progress.received": "Received {received} / {total}",
   "scanner.progress.missingIndex": "Missing frames: {indexes}",
@@ -522,14 +542,6 @@ const en = {
   "scanner.sha256Notice":
     "SHA-256 detects missing or mixed frames during transfer; it does not prove the sender's authenticity.",
   "scanner.error.title": "The scan could not be completed",
-  "scanner.diagnostic.ariaLabel": "Camera diagnostic",
-  "scanner.diagnostic": "Diagnostic: {name} @{phase} [{detail}]",
-  "scanner.diagnostic.withMessage":
-    "Diagnostic: {name} @{phase} [{detail}] {message}",
-  "scanner.pipelineDiagnostic.ariaLabel": "QR decode pipeline diagnostic",
-  "scanner.pipelineDiagnostic":
-    "Pipeline: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
-  "scanner.pipelineDiagnostic.noError": "none",
   "scanner.button.discard": "Discard scan state",
   "scanner.button.stopCamera": "Stop camera",
   "scanner.closed.multipartProgress":
@@ -601,7 +613,7 @@ const en = {
   "settings.info.version": "Version",
   "settings.info.build": "Build",
   "settings.pwa.offlineReadyNote":
-    "Offline-use readiness describes whether assets are stored. It does not indicate security.",
+    "Offline-use readiness means this page is controlled by the installed service worker. It does not indicate security.",
   "settings.card.featureDetect": "Feature detection",
   "settings.featureDetect.note":
     "If Web Crypto or IndexedDB is unavailable, the UNSUPPORTED_BROWSER screen stops all features.",
@@ -723,14 +735,16 @@ const ja = {
   "errors.CAMERA_PERMISSION_DENIED":
     "カメラの使用が許可されていません。ブラウザーの設定で許可してください。",
   "errors.CAMERA_NOT_AVAILABLE": "カメラを利用できません。",
-  "errors.QR_READER_PREPARATION_TIMEOUT":
-    "この端末でQRリーダーの準備が完了しませんでした。",
   "errors.QR_DECODE_PROGRESS_TIMEOUT":
     "この端末でQR復号パイプラインの進行が停止しました。",
   "errors.QR_READER_BLOCKED":
     "このブラウザーではQRコードリーダーがブロックされています。iPhoneではSafari 16以降を使用してください。",
   "errors.DUPLICATE_KEY": "同じ内容の鍵がすでに保存されています。",
   "errors.DUPLICATE_QR": "同じ内容のQRコードがすでに保存されています。",
+  "errors.KEY_ID_CONFLICT":
+    "この鍵IDのいずれかは、保存済みバンドルによってすでに予約されています。そのバンドルは利用停止済みで一覧に表示されていない場合もあります。取り込みを中止しました。",
+  "errors.MESSAGE_ID_REUSED":
+    "このメッセージは、このアプリウィンドウを読み込んでから既に確認したメッセージと同じ識別子を持ちながら、暗号文が異なります。平文は表示していません。この確認は同じアプリの別のタブやウィンドウとは共有されず、一時消去またはローカルデータの全消去でもリセットされ、件数に上限があるため古い記録から削除されます。",
   "errors.SIGNATURE_INVALID":
     "署名を検証できませんでした。送信者の署名鍵、または内容が一致していません。",
   "errors.SIGNING_KEY_NOT_FOUND":
@@ -959,6 +973,7 @@ const ja = {
   "keyList.empty.ownAll": "自分の鍵がありません。",
   "keyList.empty.ownFiltered": "選択した種別の鍵がありません。",
   "keyList.bundle.empty": "取り込んだ公開鍵セットがありません。",
+  "keyList.bundle.itemMeta": "取り込み {datetime}",
   "keyList.bundle.nameConfirmed": "確認済み公開鍵",
   "keyList.bundle.nameUnverified": "未確認の公開鍵",
   "keyList.bundle.badge.confirmed": "人物確認済み",
@@ -968,6 +983,10 @@ const ja = {
   "keyList.bundle.legacyNote":
     "非対応（旧プロファイル）のため、削除以外の操作はできません。",
   "keyList.bundle.revoke": "利用停止",
+  "keyList.bundle.revokeTitle": "この公開鍵セットを利用停止にしますか?",
+  "keyList.bundle.revokeBody":
+    "利用停止にするとこの行は非表示になり、このインストールでは署名鍵IDとKEM鍵IDの両方が永久に予約されます。元に戻せず、その後この画面からバンドルを削除することもできません。予約を解除できるのはローカルデータの全消去だけです。両方のIDを解放する必要がある場合は、利用停止せずにバンドルを削除してください。",
+  "keyList.bundle.revokeConfirm": "利用停止にする",
   "keyList.bundle.confirmOpen": "指紋を比較して確認する",
   "keyList.bundle.confirmTitle": "この識別子の指紋を確認しますか?",
   "keyList.bundle.confirmBody":
@@ -1078,6 +1097,15 @@ const ja = {
   "encrypt.result.identityCheck.confirmed": "人物確認済み",
   "encrypt.result.identityCheck.unverified":
     "未確認。鍵の有効性と人物確認は別です。",
+  "encrypt.result.identityUnconfirmed.title": "送信者の本人確認が取れていません",
+  "encrypt.result.identityUnconfirmed.body":
+    "署名が有効であることは、このメッセージがこの鍵で署名されたことだけを示します。その鍵を誰が持っているかは示しません。内容に従って行動する前に、対面でフィンガープリントを確認してください。",
+  "encrypt.result.replay.title": "このセッションで受信済みです",
+  "encrypt.result.replay.body":
+    "この暗号文は {time} にこのアプリウィンドウで復号済みです。単なる再読の場合もあれば、古いメッセージを再送されている場合もあります。中の指示は未確認として扱ってください。この確認の範囲は、このアプリウィンドウを読み込んでからの記録だけです。同じアプリの別のタブやウィンドウとは共有されず、一時消去またはローカルデータの全消去でもリセットされ、件数に上限があるため古い記録から削除されます。",
+  "encrypt.result.replay.reveal": "それでも表示する",
+  "encrypt.result.senderCreatedAt":
+    "送信端末の申告時刻: {time}(送信側の申告であり検証されていません)",
   "encrypt.result.memoryOnly":
     "復号結果はメモリー内だけに保持し、保存しません。",
   "encrypt.result.modalTitle": "暗号化が完了しました",
@@ -1127,6 +1155,8 @@ const ja = {
   "scanner.status.videoNotReady": "カメラ画面を準備できませんでした",
   "scanner.status.preparing": "カメラを準備しています…",
   "scanner.status.readerLoading": "QRリーダーを読み込んでいます…",
+  "scanner.reader.reloadHint":
+    "QRリーダーを準備できませんでした。ページを再読み込みしてからやり直してください。",
   "scanner.status.qrRead": "QRコードを読み取りました",
   "scanner.error.multipartNotAccepted":
     "この画面では複数QRを受理しません。",
@@ -1164,6 +1194,7 @@ const ja = {
   "scanner.video.ariaLabel": "QRコード読取用カメラ映像",
   "scanner.button.restart": "カメラを再起動",
   "scanner.button.start": "カメラを起動",
+  "scanner.button.reload": "再読み込み",
   "scanner.progress.ariaLabel": "複数QR読取進捗",
   "scanner.progress.received": "受信 {received} / {total}",
   "scanner.progress.missingIndex": "欠損フレーム: {indexes}",
@@ -1173,13 +1204,6 @@ const ja = {
   "scanner.sha256Notice":
     "SHA-256は転送中の欠損・混在検出用であり、送信者の真正性を証明しません。",
   "scanner.error.title": "読み取りを完了できません",
-  "scanner.diagnostic.ariaLabel": "カメラ診断",
-  "scanner.diagnostic": "診断: {name} @{phase} [{detail}]",
-  "scanner.diagnostic.withMessage": "診断: {name} @{phase} [{detail}] {message}",
-  "scanner.pipelineDiagnostic.ariaLabel": "QR復号パイプライン診断",
-  "scanner.pipelineDiagnostic":
-    "パイプライン: module={moduleState} frames={frames} attempts={attempts} results={results} last={lastError}",
-  "scanner.pipelineDiagnostic.noError": "なし",
   "scanner.button.discard": "読取状態を破棄",
   "scanner.button.stopCamera": "カメラを停止",
   "scanner.closed.multipartProgress":
@@ -1253,7 +1277,7 @@ const ja = {
   "settings.info.version": "バージョン",
   "settings.info.build": "ビルド",
   "settings.pwa.offlineReadyNote":
-    "オフライン利用準備状態は資産の保存状態を示します。安全性を示すものではありません。",
+    "オフライン利用準備状態は、このページがインストール済みの Service Worker によって制御されていることを示します。安全性を示すものではありません。",
   "settings.card.featureDetect": "機能検出",
   "settings.featureDetect.note":
     "Web CryptoまたはIndexedDBが利用できない場合はUNSUPPORTED_BROWSER画面で全機能を停止します。",

@@ -11,7 +11,7 @@ import type {
 } from "@/schemas/domain"
 
 export const DB_NAME = "qr-crypt"
-export const DB_VERSION = 3
+export const DB_VERSION = 4
 
 export const STORE_KEYS = "keys"
 export const STORE_PREFERENCES = "preferences"
@@ -44,7 +44,11 @@ export interface OfflineCipherDb extends DBSchema {
   pqPublicBundles: {
     key: string
     value: PqPublicBundleRecord
-    indexes: { "by-identityId": string }
+    indexes: {
+      "by-identityId": string
+      "by-signingKeyId": string
+      "by-kemKeyId": string
+    }
   }
 }
 
@@ -131,6 +135,8 @@ function openApplicationDatabase(
           keyPath: "recordId",
         })
         bundles.createIndex("by-identityId", "identityId")
+        bundles.createIndex("by-signingKeyId", "signing.keyId", { unique: true })
+        bundles.createIndex("by-kemKeyId", "kem.keyId", { unique: true })
       },
       blocked() {
         try {

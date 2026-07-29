@@ -108,7 +108,13 @@ A self-hosted install (route A) still needs a separately trusted static server
 that reproduces the bundled response-header and routing behavior: the security
 headers, correct MIME types, SPA fallback, and `no-store` on the reachability
 sentinel. In particular, a server that relies only on the injected meta tag does
-not enforce `frame-ancestors`.
+not enforce `frame-ancestors`. The authoritative full Route A procedure —
+independently authenticated Cosign inputs, `cosign verify-blob`, checksum
+verification, mandatory independent rebuild-and-compare, deploy to the offline
+device, and the host:port origin boundary — is
+[install-route-a/README.md](install-route-a/README.md). Its mandatory set matches the
+archive's `INSTALL.txt`; do not treat this page as a second incomplete copy of
+that procedure.
 
 The exact `http://HOST:PORT` is a security and storage boundary: serving another
 page from the same host and port later gives it same-origin access to the stored
@@ -124,3 +130,4 @@ retains that live origin: on reconnection its same-origin reachability probe is 
 beacon, and wipe cannot fire until after the sentinel response confirms
 reachability. Route A instead points at `127.0.0.1`; after its dedicated server
 is stopped and its reserved port is not reused, the probe has no peer.
+High-assurance use must use Route A only.

@@ -6,6 +6,7 @@ import { decryptWithAesKey } from "@/crypto/aes-gcm"
 import { AppError, toAppError } from "@/crypto/errors"
 import { decodeMlKemEnvelopeV2, encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
+import { zeroize } from "@/crypto/pq/zeroize"
 import {
   assertActiveProfile,
   assertActiveSuite,
@@ -19,7 +20,7 @@ import {
 } from "@/app/providers"
 import { DetailRow } from "@/components/detail-row"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
-import { QrScannerModal } from "@/components/qr-scanner-panel"
+import { QrScannerModal } from "@/components/qr-scanner-modal"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -27,36 +28,50 @@ import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
+import { formatDateTime } from "@/features/presentation"
+import { recordReceipt, type ReceiptVerdict } from "@/features/receipt-cache"
 import { useAutoClear } from "@/hooks/use-auto-clear"
 import { useKeys } from "@/hooks/use-keys"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
 import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
-import { bytesToUtf8 } from "@/lib/bytes"
+import { bytesToHex, bytesToUtf8 } from "@/lib/bytes"
 import { buildV2Payload } from "@/qr/payload-v2"
-import { decodePayload } from "@/qr/payload"
+import {
+  decodePayload,
+  encodeEnvelopeToPayload,
+  payloadSha256Hex,
+} from "@/qr/payload"
 import type {
   PostQuantumIdentity,
   PqPublicBundleRecord,
   WireSuite,
 } from "@/schemas/domain"
 import { markKeyUsed } from "@/storage/key-repository"
+import { findBundleBySigningKeyId } from "@/storage/pq-bundle-repository"
 import {
   findIdentityByKemKeyId,
   markIdentityUsed,
 } from "@/storage/pq-identity-repository"
 
 type DecryptionResult =
-  | { kind: "unsigned"; text: string }
+  | {
+      kind: "unsigned"
+      text: string
+      replay: ReceiptVerdict
+      senderCreatedAt: number
+    }
   | {
       kind: "signed-valid"
       text: string
+      replay: ReceiptVerdict
+      senderCreatedAt: number
       senderSigningKeyId: string
       sender: PqPublicBundleRecord | undefined
     }
   | { kind: "signed-key-unknown"; senderSigningKeyId: string }
-  | { kind: "aes"; text: string }
+  | { kind: "aes"; text: string; replay: ReceiptVerdict }
 
 function isActiveBundle(record: PqPublicBundleRecord): boolean {
   try {
@@ -87,9 +102,9 @@ function isActiveWireSuite(suite: WireSuite): boolean {
 }
 
 export function DecryptPage() {
-  const { t } = useI18n()
+  const { language, t } = useI18n()
   const { keys, error: keysError } = useKeys()
-  const { identities, bundles, error: pqError } = usePqRecords()
+  const { identities, error: pqError } = usePqRecords()
   const { preferences, error: preferencesError } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const { camera } = useFeatureSupport()
@@ -102,8 +117,14 @@ export function DecryptPage() {
   )
   const [decryptInput, setDecryptInput] = useState("")
   const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
+  const [replayAcknowledged, setReplayAcknowledged] = useState(false)
   const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
   const pendingDecryptRef = useRef<string | null>(null)
+
+  const clearDecrypted = useCallback(() => {
+    setDecrypted(null)
+    setReplayAcknowledged(false)
+  }, [])
 
   const symmetricKeys = useMemo(
     () =>
@@ -176,12 +197,12 @@ export function DecryptPage() {
   const clearTransient = useCallback(() => {
     pendingDecryptRef.current = null
     setDecryptInput("")
-    setDecrypted(null)
+    clearDecrypted()
     setError(null)
     multipartSession.discard()
     setClearStatus("encrypt.toast.autoCleared")
     toast.info(t("encrypt.toast.autoCleared"))
-  }, [multipartSession, t])
+  }, [clearDecrypted, multipartSession, t])
 
   useAutoClear({
     enabled: preferences.backgroundClearEnabled,
@@ -217,19 +238,39 @@ export function DecryptPage() {
 
     setBusy(true)
     setError(null)
-    setDecrypted(null)
+    clearDecrypted()
     try {
       if (parsed.kind === "message" && aesKey?.symmetricKey) {
-        const plaintextResult = await decryptWithAesKey({
+        const decryptedBytes = await decryptWithAesKey({
           key: aesKey.symmetricKey,
           envelope: parsed.envelope,
         })
-        const outcome: DecryptionResult = {
-          kind: "aes",
-          text: bytesToUtf8(plaintextResult),
+        try {
+          const verdict = recordReceipt(
+            {
+              kind: "aes",
+              recipientKeyId: aesKey.id,
+              envelopeHash: await payloadSha256Hex(
+                encodeEnvelopeToPayload(parsed.envelope),
+              ),
+            },
+            Date.now(),
+          )
+          // Unreachable for AES — its receipt identity already includes the
+          // ciphertext hash — but the refusal is shared with the PQ path.
+          if (verdict.kind === "message-id-reused") {
+            throw new AppError("MESSAGE_ID_REUSED")
+          }
+          const outcome: DecryptionResult = {
+            kind: "aes",
+            text: bytesToUtf8(decryptedBytes),
+            replay: verdict,
+          }
+          await markKeyUsed(aesKey.id, Date.now()).catch(() => undefined)
+          setDecrypted(outcome)
+        } finally {
+          zeroize(decryptedBytes)
         }
-        await markKeyUsed(aesKey.id, Date.now()).catch(() => undefined)
-        setDecrypted(outcome)
       } else if (parsed.kind === "pq-message" && identity) {
         // The cached list only gates the button. Re-resolve from storage at action
         // time so a generation discarded elsewhere cannot be decrypted from a stale
@@ -241,46 +282,86 @@ export function DecryptPage() {
         if (recipient === undefined || !isActiveIdentity(recipient)) {
           throw new AppError("KEY_NOT_FOUND")
         }
+        // Key ids are attacker-assertable, so the record that verifies the signature is
+        // also the record shown as the sender: one exact lookup, no list ordering.
+        let resolvedSender: PqPublicBundleRecord | undefined
         const pqResult = await decryptPqMessage({
           client: getPqClient(),
           envelope: parsed.envelope,
           recipient,
           vaultKey: await getOrCreateVaultKey(),
           resolveSigningKey: async (keyId) => {
-            const record = bundles.find(
-              (bundle) => bundle.signing.keyId === keyId && isActiveBundle(bundle),
-            )
-            return record === undefined
-              ? undefined
-              : {
-                  algorithm: record.signing.algorithm,
-                  publicKey: record.signing.publicKey,
-                  revoked: record.revokedAt !== undefined,
-                }
+            const record = await findBundleBySigningKeyId(keyId)
+            if (record === undefined || !isActiveBundle(record)) return undefined
+            resolvedSender = record
+            return {
+              algorithm: record.signing.algorithm,
+              publicKey: record.signing.publicKey,
+              revoked: record.revokedAt !== undefined,
+            }
           },
         })
-        let outcome: DecryptionResult
         if (pqResult.kind === "signed-key-unknown") {
-          outcome = pqResult
-        } else if (pqResult.kind === "unsigned") {
-          outcome = { kind: "unsigned", text: bytesToUtf8(pqResult.plaintext) }
+          await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
+          setDecrypted(pqResult)
         } else {
-          outcome = {
-            kind: "signed-valid",
-            text: bytesToUtf8(pqResult.plaintext),
-            senderSigningKeyId: pqResult.senderSigningKeyId,
-            sender: bundles.find(
-              (bundle) =>
-                bundle.signing.keyId === pqResult.senderSigningKeyId &&
-                isActiveBundle(bundle),
-            ),
+          const decryptedBytes = pqResult.plaintext
+          try {
+            // The inner message must be decrypted, and for signed suites verified,
+            // before its message id is known. The guarantee is that refused plaintext
+            // is never displayed or persisted, not that it is never constructed.
+            const envelopeHash = await payloadSha256Hex(
+              buildV2Payload(
+                "pq-message",
+                encodeMlKemEnvelopeV2(parsed.envelope),
+              ),
+            )
+            const messageIdHex = bytesToHex(pqResult.messageId)
+            const verdict = recordReceipt(
+              pqResult.kind === "signed-valid" && resolvedSender !== undefined
+                ? {
+                    kind: "pq-signed",
+                    senderFingerprint: resolvedSender.signing.fingerprint,
+                    recipientKemKeyId: parsed.envelope.recipientKemKeyId,
+                    messageIdHex,
+                    envelopeHash,
+                  }
+                : {
+                    kind: "pq-unsigned",
+                    recipientKemKeyId: parsed.envelope.recipientKemKeyId,
+                    messageIdHex,
+                    envelopeHash,
+                  },
+              Date.now(),
+            )
+            if (verdict.kind === "message-id-reused") {
+              throw new AppError("MESSAGE_ID_REUSED")
+            }
+            const outcome: DecryptionResult =
+              pqResult.kind === "unsigned"
+                ? {
+                    kind: "unsigned",
+                    text: bytesToUtf8(decryptedBytes),
+                    replay: verdict,
+                    senderCreatedAt: pqResult.createdAt,
+                  }
+                : {
+                    kind: "signed-valid",
+                    text: bytesToUtf8(decryptedBytes),
+                    replay: verdict,
+                    senderCreatedAt: pqResult.createdAt,
+                    senderSigningKeyId: pqResult.senderSigningKeyId,
+                    sender: resolvedSender,
+                  }
+            await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
+            setDecrypted(outcome)
+          } finally {
+            zeroize(decryptedBytes)
           }
         }
-        await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
-        setDecrypted(outcome)
       }
     } catch (caught) {
-      setDecrypted(null)
+      clearDecrypted()
       setError(toAppError(caught, "DECRYPTION_FAILED").code)
     } finally {
       setBusy(false)
@@ -310,7 +391,7 @@ export function DecryptPage() {
             title={t("encrypt.decrypt.scanTrigger")}
             onSingleScan={(_target, payload) => {
               setDecryptInput(payload)
-              setDecrypted(null)
+              clearDecrypted()
               setError(null)
               pendingDecryptRef.current = payload
             }}
@@ -328,7 +409,7 @@ export function DecryptPage() {
                     encodeMlKemEnvelopeV2(envelope),
                   )
                   setDecryptInput(payload)
-                  setDecrypted(null)
+                  clearDecrypted()
                   setError(null)
                   pendingDecryptRef.current = payload
                 } finally {
@@ -364,7 +445,7 @@ export function DecryptPage() {
               value={decryptInput}
               onChange={(event) => {
                 setDecryptInput(event.target.value)
-                setDecrypted(null)
+                clearDecrypted()
                 setError(null)
               }}
               className="min-h-28 break-all font-mono text-base focus-visible:ring-2"
@@ -375,8 +456,14 @@ export function DecryptPage() {
             />
           </div>
           {decryptInputInvalid && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>{t("encrypt.decrypt.invalidTitle")}</AlertTitle>
+            <Alert
+              variant="destructive"
+              role="alert"
+              aria-labelledby="decrypt-invalid-title"
+            >
+              <AlertTitle id="decrypt-invalid-title">
+                {t("encrypt.decrypt.invalidTitle")}
+              </AlertTitle>
               <AlertDescription>{t("encrypt.decrypt.invalidBody")}</AlertDescription>
             </Alert>
           )}
@@ -402,14 +489,24 @@ export function DecryptPage() {
             </div>
           )}
           {parsedPqUnsupported && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>{t("keyDetail.badge.legacyProfile")}</AlertTitle>
+            <Alert
+              variant="destructive"
+              role="alert"
+              aria-labelledby="decrypt-pq-unsupported-title"
+            >
+              <AlertTitle id="decrypt-pq-unsupported-title">
+                {t("keyDetail.badge.legacyProfile")}
+              </AlertTitle>
               <AlertDescription>{t("encrypt.pqUnsupported.body")}</AlertDescription>
             </Alert>
           )}
           {decryptKeyMissing && (
-            <Alert variant="destructive" role="alert">
-              <AlertTitle>KEY_NOT_FOUND</AlertTitle>
+            <Alert
+              variant="destructive"
+              role="alert"
+              aria-labelledby="decrypt-key-missing-title"
+            >
+              <AlertTitle id="decrypt-key-missing-title">KEY_NOT_FOUND</AlertTitle>
               <AlertDescription>{t("errors.KEY_NOT_FOUND")}</AlertDescription>
             </Alert>
           )}
@@ -430,8 +527,14 @@ export function DecryptPage() {
       </Card>
 
       {decrypted?.kind === "signed-key-unknown" && (
-        <Alert variant="destructive" role="alert">
-          <AlertTitle>SIGNING_KEY_NOT_FOUND</AlertTitle>
+        <Alert
+          variant="destructive"
+          role="alert"
+          aria-labelledby="decrypt-signing-key-missing-title"
+        >
+          <AlertTitle id="decrypt-signing-key-missing-title">
+            SIGNING_KEY_NOT_FOUND
+          </AlertTitle>
           <AlertDescription>
             {t("errors.SIGNING_KEY_NOT_FOUND")}
             {t("encrypt.signingKeyId", {
@@ -446,9 +549,15 @@ export function DecryptPage() {
       )}
 
       {(keysError || pqError || preferencesError || error) && (
-        <Alert variant="destructive" role="alert">
+        <Alert
+          variant="destructive"
+          role="alert"
+          aria-labelledby="decrypt-operation-failed-title"
+        >
           <AlertCircle aria-hidden="true" className="size-4" />
-          <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+          <AlertTitle id="decrypt-operation-failed-title">
+            {t("common.operationFailed")}
+          </AlertTitle>
           <AlertDescription>{localizedError}</AlertDescription>
         </Alert>
       )}
@@ -459,7 +568,7 @@ export function DecryptPage() {
       <Dialog
         open={decrypted !== null && decrypted.kind !== "signed-key-unknown"}
         onOpenChange={(open) => {
-          if (!open) setDecrypted(null)
+          if (!open) clearDecrypted()
         }}
       >
         <NoAutofocusDialogContent className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden">
@@ -479,26 +588,95 @@ export function DecryptPage() {
                   <p className="text-sm font-medium">{t("encrypt.result.aesUnsigned")}</p>
                 )}
                 {decrypted.kind === "signed-valid" && (
-                  <div className="space-y-1 text-sm">
-                    <p className="font-medium text-success">
-                      {t("encrypt.result.signatureValid")}
-                    </p>
-                    <p className="font-mono text-xs break-all">
-                      {t("encrypt.result.senderSigningKeyId", {
-                        id: decrypted.senderSigningKeyId,
-                      })}
-                    </p>
-                    <p>
-                      {t("encrypt.result.identityCheck.label")}{" "}
-                      {decrypted.sender?.trust === "fingerprint-confirmed"
-                        ? t("encrypt.result.identityCheck.confirmed")
-                        : t("encrypt.result.identityCheck.unverified")}
-                    </p>
-                  </div>
+                  <>
+                    <div className="space-y-1 text-sm">
+                      <p
+                        className={
+                          decrypted.sender?.trust === "fingerprint-confirmed"
+                            ? "font-medium text-success"
+                            : "font-medium"
+                        }
+                      >
+                        {t("encrypt.result.signatureValid")}
+                      </p>
+                      <p className="font-mono text-xs break-all">
+                        {t("encrypt.result.senderSigningKeyId", {
+                          id: decrypted.senderSigningKeyId,
+                        })}
+                      </p>
+                      {decrypted.sender?.trust === "fingerprint-confirmed" && (
+                        <p className="font-medium text-success">
+                          {t("encrypt.result.identityCheck.label")}{" "}
+                          {t("encrypt.result.identityCheck.confirmed")}
+                        </p>
+                      )}
+                    </div>
+                    {decrypted.sender?.trust !== "fingerprint-confirmed" && (
+                      <Alert
+                        variant="destructive"
+                        role="group"
+                        aria-labelledby="decrypt-identity-unconfirmed-title"
+                      >
+                        <AlertTitle id="decrypt-identity-unconfirmed-title">
+                          {t("encrypt.result.identityUnconfirmed.title")}
+                        </AlertTitle>
+                        <AlertDescription
+                          role="alert"
+                          aria-labelledby="decrypt-identity-unconfirmed-title"
+                        >
+                          <p>{t("encrypt.result.identityUnconfirmed.body")}</p>
+                          <p className="mt-2">
+                            {t("encrypt.result.identityCheck.label")}{" "}
+                            {t("encrypt.result.identityCheck.unverified")}
+                          </p>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </>
                 )}
-                <p className="select-text whitespace-pre-wrap break-words rounded-md border p-3 text-sm">
-                  {decrypted.text}
-                </p>
+                {(decrypted.kind === "unsigned" ||
+                  decrypted.kind === "signed-valid") && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("encrypt.result.senderCreatedAt", {
+                      time: formatDateTime(decrypted.senderCreatedAt, language),
+                    })}
+                  </p>
+                )}
+                {decrypted.replay.kind === "already-received" && (
+                  <Alert
+                    variant="destructive"
+                    role="alert"
+                    aria-labelledby="decrypt-replay-title"
+                  >
+                    <AlertTitle id="decrypt-replay-title">
+                      {t("encrypt.result.replay.title")}
+                    </AlertTitle>
+                    <AlertDescription>
+                      <p>
+                        {t("encrypt.result.replay.body", {
+                          time: formatDateTime(
+                            decrypted.replay.firstSeenAt,
+                            language,
+                          ),
+                        })}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-3"
+                        onClick={() => setReplayAcknowledged(true)}
+                      >
+                        {t("encrypt.result.replay.reveal")}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {(decrypted.replay.kind !== "already-received" ||
+                  replayAcknowledged) && (
+                  <p className="select-text whitespace-pre-wrap break-words rounded-md border p-3 text-sm">
+                    {decrypted.text}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   {t("encrypt.result.memoryOnly")}
                 </p>

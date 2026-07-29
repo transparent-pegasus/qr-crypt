@@ -561,14 +561,19 @@ export async function installInjectedDecoderStream(page: Page): Promise<void> {
       scans.map(({ active, once, emissions }) => ({ active, once, emissions }))
   })
 
-  await page.route("**/assets/index-*.js", async (route) => {
+  // A regex, not a glob: the precache-priming refetch below appends a query so
+  // the service worker cannot answer it, and a glob ending in .js stops matching
+  // once that query is present.
+  await page.route(/\/assets\/index-[A-Za-z0-9_-]+\.js/, async (route) => {
     const response = await route.fetch()
     const source = await response.text()
     const startQrScanPattern =
-      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=[\s\S]{0,1000}?video:\1,onError:\3,onDiagnostic:\4\?\.onDiagnostic,stoppedPromise:[$\w]+,resolveStopped:[$\w]+,phase:[`"']acquiring[`"'],stopped:!1,emitted:!1,errorReported:!1)/g
+      /async function [$\w]+\(([$\w]+),([$\w]+),([$\w]+),([$\w]+)\)\{(?=if\([$\w]+\(\)!==[`"']ready[`"']\)throw new [$\w]+\([`"']QR_READER_BLOCKED[`"']\);)/g
     const matches = [...source.matchAll(startQrScanPattern)]
     if (matches.length !== 1) {
-      throw new Error("Production scanner bundle marker was not found")
+      throw new Error(
+        `Expected exactly one production scanner bundle marker, found ${matches.length}`,
+      )
     }
     const [marker, video, onText, onError, options] = matches[0]!
     const injected = `${marker}if(globalThis.__qrCryptE2eDecoder){return await globalThis.__qrCryptE2eDecoder(${video},${onText},${onError},${options})}`
@@ -586,7 +591,13 @@ export async function primeInjectedDecoderPrecache(page: Page): Promise<void> {
         if (!/\/assets\/index-[A-Za-z0-9_-]+\.js$/.test(new URL(request.url).pathname)) {
           continue
         }
-        const response = await fetch(request.url, { cache: "reload" })
+        // The page is controlled, so a plain refetch is answered by the worker
+        // from precache — the uninjected bundle. A query string the precache
+        // cannot match falls through to the network, where this suite's route
+        // interception injects the decoder hook.
+        const response = await fetch(`${request.url}?e2e-inject=1`, {
+          cache: "reload",
+        })
         if (!response.ok)
           throw new Error(`Injected bundle fetch failed: ${response.status}`)
         const source = await response.clone().text()
