@@ -527,11 +527,6 @@ export function OnlineRelay({
           <p className="text-sm leading-relaxed text-muted-foreground">
             {t("relay.card.description")}
           </p>
-          <Alert>
-            <AlertTriangle aria-hidden="true" />
-            <AlertTitle>{t("relay.boundary.title")}</AlertTitle>
-            <AlertDescription>{t("relay.boundary.body")}</AlertDescription>
-          </Alert>
           <div className="grid gap-2 sm:grid-cols-2">
             <Button
               type="button"
@@ -553,6 +548,19 @@ export function OnlineRelay({
               {t("relay.playback.open")}
             </Button>
           </div>
+          {/* Icon and title share the first row so the body can use the full
+              width below them: at the boundary copy's length, keeping it in the
+              icon's right-hand column costs several lines on a phone and pushes
+              the two actions under the fold. */}
+          <Alert>
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle className="mb-0 self-center">
+              {t("relay.boundary.title")}
+            </AlertTitle>
+            <AlertDescription className="col-span-2 col-start-1 mt-2">
+              {t("relay.boundary.body")}
+            </AlertDescription>
+          </Alert>
           {!cameraAvailable && (
             <p className="flex items-start gap-2 text-sm text-muted-foreground">
               <CameraOff aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
