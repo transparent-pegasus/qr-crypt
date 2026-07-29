@@ -15,19 +15,21 @@ import {
   TRANSFER_TIMEOUT_MINUTES_MAX,
   TRANSFER_TIMEOUT_MINUTES_MIN,
 } from "@/lib/limits"
-import { getDb } from "@/storage/database"
+import { probeNonce } from "@/lib/reachability"
+import { VAULT_KEY_METADATA_KEY } from "@/crypto/vault/vault-key"
+import {
+  getDb,
+  STORE_APP_METADATA,
+  STORE_KEYS,
+  STORE_PQ_IDENTITIES,
+  STORE_PREFERENCES,
+} from "@/storage/database"
+import { PREFERENCES_KEY } from "@/storage/preferences-repository"
 import { setAckPending } from "@/app/offline-ack-marker"
 import { clearReceipts } from "@/features/receipt-cache"
 
 export const BOOT_PROBE_TIMEOUT_MS = 3_000
 export const MAINTENANCE_TOKEN_METADATA_KEY = "maintenance-token"
-
-const PREFERENCES_KEY = "preferences"
-const VAULT_KEY_METADATA_KEY = "vault-key"
-const STORE_KEYS = "keys"
-const STORE_PREFERENCES = "preferences"
-const STORE_APP_METADATA = "appMetadata"
-const STORE_PQ_IDENTITIES = "pqIdentities"
 
 // Minimal early-boot storage ports. These are NOT a re-declaration of idb's types for
 // their own sake: readBootDecision accepts an injected getDatabase() and casts to
@@ -130,17 +132,6 @@ const FALLBACK_DECISION: BootDecisionSnapshot = {
   preferencesReadFailed: true,
 }
 
-let fallbackNonce = 0
-
-function sentinelNonce(): string {
-  if (globalThis.crypto?.getRandomValues) {
-    const values = globalThis.crypto.getRandomValues(new Uint32Array(2))
-    return Array.from(values, (value) => value.toString(36)).join("")
-  }
-  fallbackNonce += 1
-  return `${Date.now().toString(36)}-${fallbackNonce.toString(36)}`
-}
-
 function abortError(): DOMException {
   return new DOMException("Boot reachability probe aborted", "AbortError")
 }
@@ -170,7 +161,7 @@ export async function probeNetworkSentinel(
   const timeoutId = setTimeout(abort, timeoutMs)
 
   try {
-    const nonce = options.nonce ?? sentinelNonce()
+    const nonce = options.nonce ?? probeNonce()
     const response = await Promise.race([
       fetchImpl(`${REACHABILITY_SENTINEL_PATH}?n=${encodeURIComponent(nonce)}`, {
         method: "GET",
@@ -262,8 +253,7 @@ function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
     optionalBoolean(value.autoClearPlaintextAfterEncrypt) &&
     optionalBoolean(value.backgroundClearEnabled) &&
     isBootReadableFrameBytes(value.frameBytes) &&
-    (value.frameIntervalMs === undefined ||
-      isBootReadableFrameIntervalMs(value.frameIntervalMs)) &&
+    isBootReadableFrameIntervalMs(value.frameIntervalMs) &&
     optionalIntegerInRange(
       value.transferTimeoutMinutes,
       TRANSFER_TIMEOUT_MINUTES_MIN,

@@ -1,10 +1,10 @@
-interface AbortableReachabilityProbe extends Promise<boolean> {
+export interface AbortableReachabilityProbe extends Promise<boolean> {
   abort: () => void
 }
 
 let fallbackNonce = 0
 
-function reachabilityNonce(): string {
+export function probeNonce(): string {
   if (globalThis.crypto?.getRandomValues) {
     const values = globalThis.crypto.getRandomValues(new Uint32Array(2))
     return Array.from(values, (value) => value.toString(36)).join("")
@@ -13,7 +13,7 @@ function reachabilityNonce(): string {
   return `${Date.now().toString(36)}-${fallbackNonce.toString(36)}`
 }
 
-export function probeReachability(timeoutMs = 3000): Promise<boolean> {
+export function probeReachability(timeoutMs = 3000): AbortableReachabilityProbe {
   const controller = new AbortController()
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   let rejectAbort: ((reason: DOMException) => void) | undefined
@@ -29,7 +29,7 @@ export function probeReachability(timeoutMs = 3000): Promise<boolean> {
     timeoutId = setTimeout(() => controller.abort(), Math.max(0, timeoutMs))
     try {
       await Promise.race([
-        fetch(`/manifest.webmanifest?reach=${reachabilityNonce()}`, {
+        fetch(`/manifest.webmanifest?reach=${probeNonce()}`, {
           method: "HEAD",
           cache: "no-store",
           signal: controller.signal,

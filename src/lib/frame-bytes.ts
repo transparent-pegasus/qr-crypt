@@ -40,7 +40,7 @@ export function isBootReadableFrameBytes(
 }
 
 export function normalizeLegacyFrameBytes(value: number): FrameBytes {
-  if (!isBootReadableFrameBytes(value)) {
+  if (typeof value !== "number" || !isBootReadableFrameBytes(value)) {
     throw new RangeError("frameBytes is not boot-readable")
   }
   const clamped = Math.min(FRAME_BYTES_MAX, Math.max(FRAME_BYTES_MIN, value))

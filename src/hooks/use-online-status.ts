@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react"
-import { probeReachability } from "@/lib/reachability"
+import {
+  probeReachability,
+  type AbortableReachabilityProbe,
+} from "@/lib/reachability"
 
 const ONLINE_PROBE_INTERVAL_MS = 4000
 const OFFLINE_PROBE_INTERVAL_MS = 15_000
-
-interface AbortableProbe extends Promise<boolean> {
-  abort?: () => void
-}
 
 export function useOnlineStatus(): boolean {
   // navigator.onLine is only a startup hint. Expose `true` after the
@@ -18,7 +17,7 @@ export function useOnlineStatus(): boolean {
     let active = true
     let currentOnline = false
     let intervalId: ReturnType<typeof setInterval> | undefined
-    let activeProbe: AbortableProbe | null = null
+    let activeProbe: AbortableReachabilityProbe | null = null
 
     function scheduleInterval(): void {
       if (intervalId !== undefined) clearInterval(intervalId)
@@ -35,7 +34,10 @@ export function useOnlineStatus(): boolean {
       scheduleInterval()
     }
 
-    function finishProbe(probe: AbortableProbe, reachable: boolean): void {
+    function finishProbe(
+      probe: AbortableReachabilityProbe,
+      reachable: boolean,
+    ): void {
       if (!active || activeProbe !== probe) return
       activeProbe = null
       commitStatus(reachable)
@@ -43,7 +45,7 @@ export function useOnlineStatus(): boolean {
 
     function runProbe(): void {
       if (!active || activeProbe !== null) return
-      const probe = probeReachability() as AbortableProbe
+      const probe = probeReachability()
       activeProbe = probe
       void probe.then(
         (reachable) => finishProbe(probe, reachable),
@@ -54,7 +56,7 @@ export function useOnlineStatus(): boolean {
     function handleOffline(): void {
       const probe = activeProbe
       activeProbe = null
-      probe?.abort?.()
+      probe?.abort()
       commitStatus(false)
     }
 
@@ -78,7 +80,7 @@ export function useOnlineStatus(): boolean {
       window.removeEventListener("offline", handleOffline)
       document.removeEventListener("visibilitychange", handleVisibility)
       if (intervalId !== undefined) clearInterval(intervalId)
-      activeProbe?.abort?.()
+      activeProbe?.abort()
       activeProbe = null
     }
   }, [])
