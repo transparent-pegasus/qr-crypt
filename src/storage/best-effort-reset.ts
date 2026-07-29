@@ -5,8 +5,7 @@
 //
 // Order (owned solely by WipeCoordinator; frozen):
 //   1. Fail closed for new UI/crypto/storage operations.
-//   2. Cancel/terminate Workers and drop application-owned secret buffers and the
-//      Vault-key cache.
+//   2. Cancel/terminate Workers and drop the Vault-key cache.
 //   3. Hide and reset transient state/SensitiveSession.
 //   4. Use navigator.locks (with a fallback) plus BroadcastChannel("qr-crypt-wipe")
 //      to request that all tabs stop and close.
@@ -24,13 +23,17 @@
 // tolerate QuotaExceeded and continue.
 import { deleteDB, openDB } from "idb"
 import type { DBSchema, IDBPDatabase } from "idb"
+import { VAULT_KEY_METADATA_KEY } from "@/crypto/vault/vault-key"
 import { RESET_CHURN_MB_MAX, RESET_CHURN_MB_MIN } from "@/lib/limits"
-import { DB_NAME, databaseExists, deleteEntireDatabase } from "@/storage/database"
+import {
+  DB_NAME,
+  databaseExists,
+  deleteEntireDatabase,
+  STORE_APP_METADATA,
+} from "@/storage/database"
 import { setAckPending } from "@/app/offline-ack-marker"
 import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
 
-const VAULT_KEY_METADATA_KEY = "vault-key"
-const STORE_APP_METADATA = "appMetadata"
 const VAULT_ENCRYPTED_SECRET_STORES = ["pqIdentities"] as const
 
 export const RESET_CHURN_DATABASE_NAME = "qr-crypt-reset-churn"
