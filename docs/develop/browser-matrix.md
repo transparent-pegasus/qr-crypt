@@ -17,7 +17,9 @@ This table maps the target browser environments to the primary verification item
 | QR range-extension telemetry: actual decode cadence/duration, long tasks, sustained CPU/thermal behaviour, teardown latency, sender v40 render time, and post-downscale decoder dimensions | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
 | Non-extractable CryptoKey persistence in IndexedDB (generate → close tab → restore → decrypt) | automated (e2e) | manual-pending | automated (e2e) | automated (e2e) | manual-pending |
 | Online relay: camera scan → text (getUserMedia start on explicit action only) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| Online relay: text → QR playback (verbatim OCF2 re-display) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: single-scan canonical OCM1 capture | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: text → QR playback (verbatim OCF2 frame re-display, or one canonical OCM1 QR at EC Q/M/L) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: canonical OCM1 playback at EC Q, M, and L fallback levels | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: clipboard copy/paste (incl. CRLF intermediaries) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: session teardown on `pagehide` / BFCache restore (`pageshow` persisted) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: camera stop on close / background / eligibility loss | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |

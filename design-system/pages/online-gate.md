@@ -1,6 +1,6 @@
-# OnlineGate — オンライン導入・OCF2 フレーム中継タブ
+# OnlineGate — オンライン導入・暗号文QRリレー
 
-機能検出ゲートの次、通常ルーターの前に配置する全画面ゲート。オンライン中は `/encrypt`・`/decrypt`・`/keys`・`/settings` を一切表示せず、PWA の導入情報と、鍵・PQ 身元・Vault 鍵の各ストアが読めた上で 1 行も無いと確認できた場合（読み取り失敗は不許可側に倒す fail-closed）だけ OCF2 フレーム中継を表示する。オンラインシェル自体の固定 localStorage 書き込み（`oc-theme` / `oc-lang` / ack マーカー / 最後に開いたタブ `oc-online-tab`）は従来どおり行われるため「保存領域が空」ではない。鍵を保持する端末をオンラインにしない運用は変わらない。
+機能検出ゲートの次、通常ルーターの前に配置する全画面ゲート。オンライン中は `/encrypt`・`/decrypt`・`/keys`・`/settings` を一切表示せず、PWA の導入情報と、鍵・PQ 身元・Vault 鍵の各ストアが読めた上で 1 行も無いと確認できた場合（読み取り失敗は不許可側に倒す fail-closed）だけ、正規 OCM1 メッセージ 1 件または OCF2 フレーム一式を扱う暗号文 QR リレーを表示する。オンラインシェル自体の固定 localStorage 書き込み（`oc-theme` / `oc-lang` / ack マーカー / 最後に開いたタブ `oc-online-tab`）は従来どおり行われるため「保存領域が空」ではない。鍵を保持する端末をオンラインにしない運用は変わらない。
 
 ## 表示内容
 
@@ -12,9 +12,9 @@
   - Service Worker の offlineReady（準備完了 / 準備中）
   - 「オフライン（機内モード）に切り替えると暗号化・復号・鍵管理・設定が利用できます」という主案内（オフライン表示は安全性の証明として表現しない）
 - リレーページ:
-  - boot の破壊判断完了後に限る「OCF2 メッセージヘッダー QR 中継」カード（外側ヘッダの申告のみ確認するため、中身が暗号文だとは表示しない）
-  - 「スキャン → テキスト」: ボタンでダイアログを開き、さらに明示操作した時だけカメラを取得する
-  - 「テキスト → QR」: 改行区切りの OCF2 フレーム一式を貼り付け、既存の animated QR で再表示する
+  - boot の破壊判断完了後に限る「暗号文QRリレー」カード。正規 OCM1 メッセージ 1 件または、信頼できない外側ヘッダが `pq-message` と表明する正規 OCF2 フレーム一式を受け入れる
+  - 「スキャン → テキスト」: ボタンでダイアログを開き、さらに明示操作した時だけカメラを取得する。OCM1 は 1 回のスキャンで取り込みを完了し、OCF2 は一式を収集する
+  - 「テキスト → QR」: OCM1 文字列 1 件または改行区切りの OCF2 フレーム一式を貼り付ける。OCF2 は既存の animated QR で再生し、OCM1 は単一 QR として表示する
   - ダイアログ自身に上端・下端の safe-area padding を持たせる
   - 44 px 操作、`focus-visible:ring-2`、lucide のアイコン＋テキストを使う
 - relay eligible の時だけ、共通下部シェルにアイコンのみの「トップ」「リレー」2 項目を表示する。選択したリレータブの eligibility が一時的に pending になった間もナビを消さないため、表示条件 `navVisible` は `relayEligible || tab === "relay"` とする。固定ナビ表示中は本文に `pb-content-safe` を付ける。
@@ -37,7 +37,7 @@
 
 ## リレー境界の表現
 
-- 受け入れるのは「信頼できない外側ヘッダーが `pq-message` と表明する正規 OCF2 フレーム」。inner type、全体 hash、AEAD、署名、送信者、真正性、安全性をリレーは検証しない。受信側オフライン端末を authority とし、鍵交換は対面を推奨運用として示す。
-- フレーム文字列は検証後も verbatim で保持し、順序だけ index 昇順にして LF で結合する。再組立・再分割・density control は行わない。
+- 受け入れるのは「信頼できない外側ヘッダーが `pq-message` と表明する正規 OCF2 フレーム」または「エンベロープ全体の decode と canonical re-encode が入力と byte-for-byte で一致する正規 OCM1 メッセージ 1 件」。OCM1 の確認は構造的正規性だけを示す。リレーは OCF2 を再組立せず、全体 hash、AEAD、署名、送信者、真正性、安全性を検証せず、何も復号しない。トップレベルの鍵アーティファクトのプレフィックスと不許可の OCF2 外部タイプを拒否しても、受け入れた不透明なバイト列に鍵素材が含まれないことは保証できない。受信側オフライン端末を authority とし、鍵交換は対面を推奨運用として示す。
+- OCF2 フレーム文字列は検証後も verbatim で保持し、順序だけ index 昇順にして LF で結合する。再組立・再分割・density control は行わない。OCM1 は正規性確認後に単一 QR として再表示し、animation control は表示しない。
 - Copy は clipboard への意図的 export であり、アプリ外に残存・同期し得る警告を表示する。QR は長押し保存、印刷、screenshot、画面録画を防げない。
-- enforceable な UI 制約は「アプリ提供のファイル download control がないこと」。frame-derived 値を app-managed IndexedDB/localStorage/CacheStorage/URL/history/log や frame-bearing network request に意図的に書き込まない。shell 固有の固定 storage/network 動作は別に存在する。
+- enforceable な UI 制約は「アプリ提供のファイル download control がないこと」。frame-derived 値と OCM1-derived 値を app-managed IndexedDB/localStorage/CacheStorage/URL/history/log や relay-payload-bearing network request に意図的に書き込まない。shell 固有の固定 storage/network 動作は別に存在する。

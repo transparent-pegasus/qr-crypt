@@ -412,6 +412,9 @@ export const ecLevelFor = vi.fn(
   (kind: "message" | "stored-key" | "multipart-frame", prefs: Preferences) =>
     kind === "message" ? prefs.qrErrorCorrection : kind === "multipart-frame" ? "Q" : "H",
 )
+export const relayMessageEcLevel = vi.fn((payload: string) =>
+  payload.length <= 1_663 ? "Q" : payload.length <= 2_331 ? "M" : "L",
+)
 export const qrPngBlob = vi.fn<
   (payload: string, options: QrExportOptions) => Promise<Blob>
 >(async () => new Blob(["png"]))

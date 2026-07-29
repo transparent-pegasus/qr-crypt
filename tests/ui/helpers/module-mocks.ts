@@ -81,6 +81,7 @@ vi.mock("@/qr/encode", () => ({
   payloadFits: fakes.payloadFits,
   estimatePayloadChars: fakes.estimatePayloadChars,
   ecLevelFor: fakes.ecLevelFor,
+  relayMessageEcLevel: fakes.relayMessageEcLevel,
 }))
 vi.mock("@/qr/export-image", () => ({
   qrPngBlob: fakes.qrPngBlob,

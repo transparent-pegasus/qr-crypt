@@ -39,6 +39,16 @@ export function ecLevelFor(
   return kind === "multipart-frame" ? "Q" : "H"
 }
 
+// The relay cannot know which EC level the sender chose: an OCM1 payload carries
+// no EC field. Start at the app's own default (Q, which OCF2 frames also fix) so
+// nothing under the Q capacity pins to a v40 symbol and loses module size on the
+// screen-to-camera hop, and degrade only when the payload does not fit. H is
+// never selected — it would raise the QR version for no benefit on a clean screen.
+export function relayMessageEcLevel(payload: string): QrEcLevel {
+  if (payloadFits(payload, "Q")) return "Q"
+  return payloadFits(payload, "M") ? "M" : "L"
+}
+
 export interface QrRenderOptions {
   ecLevel: QrEcLevel
   size: number
