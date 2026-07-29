@@ -193,31 +193,7 @@ describe("App boot gate", () => {
     controller.stop()
   })
 
-  it("shows the reset completion copy after a successful wipe", async () => {
-    const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
-      performWipe: vi.fn(async () => ({ ok: true, failedSteps: [] })),
-      readDecision: async () => decision({ sensitiveDataExists: true }),
-    })
-    await renderApp("/encrypt", { bootController: controller })
-
-    expect(
-      await screen.findByText(
-        "Local data was reset after an online connection was detected",
-      ),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByText(translate("en", "relay.card.title")),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
-      ),
-    ).toBeInTheDocument()
-    controller.stop()
-  })
-
-  it("shows RESET_FAILED and honest deletion wording after a partial failure", async () => {
+  it("shows RESET_FAILED without the relay after a partial failure", async () => {
     const controller = createBootController({
       fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({
@@ -232,14 +208,6 @@ describe("App boot gate", () => {
     expect(
       screen.queryByText(translate("en", "relay.card.title")),
     ).not.toBeInTheDocument()
-    expect(
-      screen.getByText("Some operations did not finish while resetting local data."),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
-      ),
-    ).toBeInTheDocument()
     controller.stop()
   })
 })

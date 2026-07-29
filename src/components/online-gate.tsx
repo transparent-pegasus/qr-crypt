@@ -20,19 +20,13 @@ import { OnlineRelay, type OnlineRelayProps } from "@/components/online-relay"
 import { usePwaOfflineReady } from "@/components/pwa-offline-ready"
 import { Button } from "@/components/ui/button"
 import { LanguageSelect, useI18n, type MessageKey } from "@/i18n"
+import { isStandalone } from "@/lib/feature-detect"
 import { cn } from "@/lib/utils"
 import { env } from "@/schemas/env-schema"
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>
-}
-
-function isStandalone(): boolean {
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
-  )
 }
 
 function isIosSafari(): boolean {

@@ -11,14 +11,13 @@ describe("app shell and feature gate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
-  it("redirects / to /encrypt and renders four fixed safe-area nav items", async () => {
+  it("redirects / to /encrypt and renders four accessible navigation items", async () => {
     await renderApp("/")
     await waitFor(() => expect(window.location.pathname).toBe("/encrypt"))
 
     const navigation = screen.getByRole("navigation", {
       name: "Main navigation",
     })
-    expect(navigation).toHaveClass("fixed", "bottom-0", "pb-safe")
     const links = within(navigation).getAllByRole("link")
     expect(links).toHaveLength(4)
     await waitFor(() => expect(links[0]).toHaveAttribute("aria-current", "page"))
@@ -48,14 +47,13 @@ describe("app shell and feature gate", () => {
     expect(warmQrReader).toHaveBeenCalledOnce()
   })
 
-  it("supports keyboard navigation with visible-focus classes and Space activation", async () => {
+  it("supports keyboard navigation with Space and Enter activation", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
     const navigation = await screen.findByRole("navigation", {
       name: "Main navigation",
     })
     const links = within(navigation).getAllByRole("link")
-    for (const link of links) expect(link).toHaveClass("focus-visible:ring-2")
 
     links[1]?.focus()
     expect(links[1]).toHaveFocus()

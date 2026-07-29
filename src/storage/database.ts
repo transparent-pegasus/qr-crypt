@@ -75,10 +75,6 @@ export function engageDatabaseAccessBarrier(): void {
   databaseAccessBarrier = true
 }
 
-export function isDatabaseAccessBarrierEngaged(): boolean {
-  return databaseAccessBarrier
-}
-
 export function assertDatabaseAccessAllowed(): void {
   if (databaseAccessBarrier) throw new AppError("RESET_FAILED")
 }

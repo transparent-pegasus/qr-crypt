@@ -30,7 +30,7 @@ import {
 import { env } from "@/schemas/env-schema"
 import { getDb, STORE_PREFERENCES, type KeyValueRow } from "@/storage/database"
 
-const PREFERENCES_KEY = "preferences"
+export const PREFERENCES_KEY = "preferences"
 
 const UI_ALGORITHMS: readonly UiAlgorithm[] = [
   "A256GCM",
@@ -96,9 +96,9 @@ function normalizeLegacyStoredPreferences(
     normalized.defaultPqProfile = "maximum"
   }
   const frameBytesBootReadable = isBootReadableFrameBytes(normalized.frameBytes)
-  const frameIntervalMsBootReadable =
-    normalized.frameIntervalMs === undefined ||
-    isBootReadableFrameIntervalMs(normalized.frameIntervalMs)
+  const frameIntervalMsBootReadable = isBootReadableFrameIntervalMs(
+    normalized.frameIntervalMs,
+  )
   // Check the raw stored combination before per-field legacy normalization. A
   // historical/off-grid combination must not round into the compatible pair.
   if (
@@ -121,20 +121,13 @@ function normalizeLegacyStoredPreferences(
     normalized.frameBytes = normalizeLegacyFrameBytes(normalized.frameBytes)
   }
   if (
+    typeof normalized.frameIntervalMs === "number" &&
     isBootReadableFrameIntervalMs(normalized.frameIntervalMs) &&
     !isFrameIntervalMs(normalized.frameIntervalMs)
   ) {
     normalized.frameIntervalMs = normalizeLegacyFrameIntervalMs(
       normalized.frameIntervalMs,
     )
-  }
-  if (
-    (normalized.requireSignature === true || env.requireSignature) &&
-    normalized.defaultAlgorithm === "MLKEM1024_A256GCM"
-  ) {
-    normalized.defaultAlgorithm = env.enableMlDsa
-      ? "MLKEM1024_MLDSA87_A256GCM"
-      : "A256GCM"
   }
   return normalized
 }

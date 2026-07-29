@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { armMaintenanceToken } from "@/app/boot/boot-controller"
+import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
 import {
   useFeatureSupport,
   useTheme,
@@ -65,7 +66,8 @@ import {
   TRANSFER_TIMEOUT_MINUTES_MAX,
   TRANSFER_TIMEOUT_MINUTES_MIN,
 } from "@/lib/limits"
-import { deleteEntireDatabase } from "@/storage/database"
+import { isStandalone } from "@/lib/feature-detect"
+import { reloadApplication } from "@/lib/reload"
 import { clearAllKeys } from "@/storage/key-repository"
 import { clearAllIdentities } from "@/storage/pq-identity-repository"
 
@@ -87,6 +89,7 @@ export function SettingsPage() {
   const [error, setError] = useState<MessageKey | null>(null)
   const [typedAction, setTypedAction] = useState<TypedDeleteAction | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
+  const [resetFailure, setResetFailure] = useState<readonly string[] | null>(null)
   const [securityOpen, setSecurityOpen] = useState(true)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [working, setWorking] = useState(false)
@@ -130,16 +133,18 @@ export function SettingsPage() {
         await refreshKeys()
         toast.success(t("settings.toast.keysCleared"))
       } else {
-        await deleteEntireDatabase()
-        const keysToRemove: string[] = []
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          const key = window.localStorage.key(index)
-          if (key?.startsWith("oc-")) keysToRemove.push(key)
+        const report = await performUserRequestedReset({
+          resetChurnMb: preferences.resetChurnMb,
+          resetTransient: clearTransient,
+        })
+        if (report.ok) {
+          reloadApplication()
+          return
         }
-        for (const key of keysToRemove) window.localStorage.removeItem(key)
-        clearTransient()
-        await refreshKeys()
-        toast.success(t("boot.wiped.body"))
+        setTypedAction(null)
+        setDeleteConfirmation("")
+        setResetFailure(report.failedSteps)
+        return
       }
       setTypedAction(null)
       setDeleteConfirmation("")
@@ -189,9 +194,23 @@ export function SettingsPage() {
     }
   }
 
-  const standalone =
-    window.matchMedia("(display-mode: standalone)").matches ||
-    Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+  const standalone = isStandalone()
+
+  if (resetFailure !== null) {
+    return (
+      <section className="mx-auto w-full max-w-md space-y-4 px-4 py-6">
+        <p className="font-mono text-xs text-destructive">RESET_FAILED</p>
+        <h2 className="text-xl font-bold">{t("errors.RESET_FAILED")}</h2>
+        <p className="text-sm text-muted-foreground">
+          {t("boot.partialFailure.retryHint")}
+        </p>
+        <p className="font-mono text-xs">{resetFailure.join(", ")}</p>
+        <Button type="button" className="h-11 w-full" onClick={reloadApplication}>
+          {t("offlineAck.reload")}
+        </Button>
+      </section>
+    )
+  }
 
   return (
     <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={working}>

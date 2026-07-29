@@ -6,6 +6,7 @@ import {
   readBootDecision,
   readMaintenanceToken,
 } from "@/app/boot/boot-controller"
+import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
 import {
   RESET_CHURN_DATABASE_NAME,
   bestEffortLocalReset,
@@ -297,5 +298,48 @@ describe("boot storage APIs and barrier", () => {
     } finally {
       blocker.close()
     }
+  })
+})
+
+describe("performUserRequestedReset", () => {
+  const quietDeps = (bestEffortReset: ReturnType<typeof vi.fn>) => ({
+    bestEffortReset,
+    coordinateTabs: () => {},
+    disposeCrypto: () => {},
+    dropVaultKeyCache: async () => {},
+    engageBarrier: () => {},
+    withExclusiveLock: <T>(operation: () => Promise<T>) => operation(),
+  })
+
+  it("runs a coordinator wipe with reason user-requested and the given churn", async () => {
+    const bestEffortReset = vi.fn().mockResolvedValue({ ok: true, failedSteps: [] })
+    const report = await performUserRequestedReset(
+      { resetChurnMb: 64, resetTransient: () => {} },
+      quietDeps(bestEffortReset),
+    )
+    expect(bestEffortReset).toHaveBeenCalledWith({
+      reason: "user-requested",
+      resetChurnMb: 64,
+    })
+    expect(report).toEqual({ ok: true, failedSteps: [] })
+  })
+
+  it("supports retry after a partially failed reset (no cross-call latch)", async () => {
+    const bestEffortReset = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, failedSteps: ["database"] })
+      .mockResolvedValueOnce({ ok: true, failedSteps: [] })
+    const deps = quietDeps(bestEffortReset)
+    const first = await performUserRequestedReset(
+      { resetChurnMb: 0, resetTransient: () => {} },
+      deps,
+    )
+    const second = await performUserRequestedReset(
+      { resetChurnMb: 0, resetTransient: () => {} },
+      deps,
+    )
+    expect(first).toEqual({ ok: false, failedSteps: ["database"] })
+    expect(second.ok).toBe(true)
+    expect(bestEffortReset).toHaveBeenCalledTimes(2)
   })
 })

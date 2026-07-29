@@ -29,8 +29,11 @@ export function isFrameIntervalMs(value: unknown): value is FrameIntervalMs {
   )
 }
 
-export function isBootReadableFrameIntervalMs(value: unknown): value is number {
+export function isBootReadableFrameIntervalMs(
+  value: unknown,
+): value is number | undefined {
   return (
+    value === undefined ||
     (typeof value === "number" &&
       Number.isSafeInteger(value) &&
       value >= LEGACY_FRAME_INTERVAL_MS_MIN &&
@@ -40,7 +43,7 @@ export function isBootReadableFrameIntervalMs(value: unknown): value is number {
 }
 
 export function normalizeLegacyFrameIntervalMs(value: number): FrameIntervalMs {
-  if (!isBootReadableFrameIntervalMs(value)) {
+  if (typeof value !== "number" || !isBootReadableFrameIntervalMs(value)) {
     throw new RangeError("frameIntervalMs is not boot-readable")
   }
 
