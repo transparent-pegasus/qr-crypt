@@ -12,6 +12,7 @@ import type {
   PqPublicBundleRecord,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
+import { deferred } from "../helpers/deferred"
 import {
   deferNextMultipartAdd,
   decryptWithAesKey,
@@ -38,16 +39,6 @@ const fakePqMessageIdHex = Array.from(fakePqMessageId, (byte) =>
   byte.toString(16).padStart(2, "0"),
 ).join("")
 let clearRealReceipts: (() => void) | undefined
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, reject, resolve }
-}
 
 function expectedFakePayloadHash(payload: string): string {
   return new TextEncoder()

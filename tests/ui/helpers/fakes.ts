@@ -474,14 +474,11 @@ export const readerModuleState = vi.fn<
 >(() => "ready")
 export const warmQrReader = vi.fn<() => Promise<void>>(() => Promise.resolve())
 let scanTextCallback: ((payload: string) => void) | null = null
-let scanErrorCallback:
-  | ((error: FakeAppError, failureState: FakeCameraFailureState) => void)
-  | null = null
 export const startQrScan = vi.fn(
   async (
     _video: HTMLVideoElement,
     onText: (payload: string) => void,
-    onError: (error: FakeAppError, failureState: FakeCameraFailureState) => void,
+    _onError: (error: FakeAppError, failureState: FakeCameraFailureState) => void,
     _options?: {
       once?: boolean
       signal?: AbortSignal
@@ -489,18 +486,11 @@ export const startQrScan = vi.fn(
   ): Promise<{ stop: () => void }> => {
     void _options
     scanTextCallback = onText
-    scanErrorCallback = onError
     return { stop: scannerStop }
   },
 )
 export function emitScannedPayload(payload: string): void {
   scanTextCallback?.(payload)
-}
-export function emitScanError(
-  code: ErrorCode,
-  failureState: FakeCameraFailureState = "failed",
-): void {
-  scanErrorCallback?.(new FakeAppError(code), failureState)
 }
 
 export const disposePqClient = vi.fn()
@@ -1009,7 +999,6 @@ export function resetFakes(): void {
   lastDsaEnvelope = null
   fakePqDecrypt.kind = "signed-valid"
   scanTextCallback = null
-  scanErrorCallback = null
   nextMultipartAddGate = null
   decryptPqMessage.mockImplementation(defaultDecryptPqMessage)
   findBundleBySigningKeyId.mockImplementation(defaultFindBundleBySigningKeyId)
