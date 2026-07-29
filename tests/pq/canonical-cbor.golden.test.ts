@@ -391,7 +391,7 @@ describe("canonical-cbor rejections", () => {
   it("retains no attacker-selected key encoding across repeated decodes", () => {
     const attackerKeys = Array.from(
       { length: 24 },
-      (_, index) => `k${String(index).padStart(18, "0")}`,
+      (_, index) => `k${String(index).padStart(17, "0")}`,
     )
     const submissions = attackerKeys.map((key, index) =>
       encodeCanonicalCbor({ [key]: index }),
