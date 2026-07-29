@@ -36,12 +36,12 @@ import { copyTextToClipboard } from "@/qr/export-image"
 import { renderQrDataUrl } from "@/qr/encode"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import {
-  emptyRelayFrameSet,
+  acceptRelayCapture,
+  EMPTY_RELAY_CAPTURE,
   missingRelayIndexes,
   orderedRelayEntries,
-  parseRelayFrameSet,
   parseRelayText,
-  type RelayFrameSet,
+  type RelayCapture,
   type RelayParseErrorCode,
 } from "@/qr/relay-frames"
 import type { QrFrameV2 } from "@/schemas/domain"
@@ -94,7 +94,7 @@ export function OnlineRelay({
   // Only once the user asks for the camera: the online gate must not pull the
   // reader at runtime before that, which offline-pwa.spec.ts pins as a contract.
   const readerReadiness = useQrReaderReadiness(dialogMode === "capture")
-  const [captureSet, setCaptureSet] = useState<RelayFrameSet>(emptyRelayFrameSet)
+  const [capture, setCapture] = useState<RelayCapture>(EMPTY_RELAY_CAPTURE)
   const [joinedText, setJoinedText] = useState("")
   const [captureError, setCaptureError] = useState<MessageKey | null>(null)
   const [cameraActive, setCameraActive] = useState(false)
@@ -111,7 +111,7 @@ export function OnlineRelay({
 
   const mountedRef = useRef(true)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const captureSetRef = useRef<RelayFrameSet>(emptyRelayFrameSet())
+  const captureRef = useRef<RelayCapture>(EMPTY_RELAY_CAPTURE)
   const joinedTextRef = useRef("")
   const playbackTextRef = useRef("")
   const playbackFramesRef = useRef<readonly QrFrameV2[]>([])
@@ -154,13 +154,13 @@ export function OnlineRelay({
       }
       playbackAnimationAbortRef.current?.abort()
       playbackAnimationAbortRef.current = null
-      captureSetRef.current = emptyRelayFrameSet()
+      captureRef.current = EMPTY_RELAY_CAPTURE
       joinedTextRef.current = ""
       playbackTextRef.current = ""
       playbackFramesRef.current = []
       if (!mountedRef.current) return
       setDialogMode(null)
-      setCaptureSet(emptyRelayFrameSet())
+      setCapture(EMPTY_RELAY_CAPTURE)
       setJoinedText("")
       setCaptureError(null)
       setPlaybackText("")
@@ -271,26 +271,36 @@ export function OnlineRelay({
       if (generation !== sessionGenerationRef.current || !mountedRef.current) {
         return
       }
-      const previous = captureSetRef.current
-      const parsed = parseRelayFrameSet([original], previous)
-      if (!parsed.ok) {
-        setCaptureError(PARSE_ERROR_KEYS[parsed.code])
+      const previous = captureRef.current
+      const accepted = acceptRelayCapture(original, previous)
+      if (!accepted.ok) {
+        setCaptureError(PARSE_ERROR_KEYS[accepted.code])
         return
       }
 
-      captureSetRef.current = parsed.set
-      setCaptureSet(parsed.set)
+      const next = accepted.capture
+      captureRef.current = next
+      setCapture(next)
       setCaptureError(null)
-      if (previous.metadata === null && parsed.set.metadata !== null) {
-        beginLifetime()
+      if (previous.kind === null) beginLifetime()
+
+      // One OCM1 payload is the whole artifact. Nothing further can arrive, so
+      // release the camera instead of widening the ambient-capture window.
+      if (next.kind === "message") {
+        joinedTextRef.current = next.payload
+        setJoinedText(next.payload)
+        stopCameraOnly()
+        return
       }
-      const missing = missingRelayIndexes(parsed.set)
+      if (next.kind !== "frames") return
+
+      const missing = missingRelayIndexes(next.set)
       if (
-        parsed.set.metadata !== null &&
+        next.set.metadata !== null &&
         missing.length === 0 &&
-        parsed.set.receivedByteLength === parsed.set.metadata.totalByteLength
+        next.set.receivedByteLength === next.set.metadata.totalByteLength
       ) {
-        const joined = orderedRelayEntries(parsed.set)
+        const joined = orderedRelayEntries(next.set)
           .map(({ original: value }) => value)
           .join("\n")
         joinedTextRef.current = joined
@@ -453,8 +463,10 @@ export function OnlineRelay({
 
   if (!eligible) return null
 
-  const captureMissing = missingRelayIndexes(captureSet)
-  const captureCount = captureSet.metadata?.frameCount ?? 0
+  const captureFrames = capture.kind === "frames" ? capture.set : null
+  const captureMissing =
+    captureFrames === null ? [] : missingRelayIndexes(captureFrames)
+  const captureCount = captureFrames?.metadata?.frameCount ?? 0
 
   return (
     <>
@@ -588,11 +600,11 @@ export function OnlineRelay({
               </div>
             )}
 
-            {captureSet.metadata !== null && (
+            {captureFrames !== null && captureFrames.metadata !== null && (
               <div className="space-y-1" aria-live="polite">
                 <p className="font-mono text-sm tabular-nums">
                   {t("relay.capture.progress", {
-                    collected: captureSet.entries.size,
+                    collected: captureFrames.entries.size,
                     total: captureCount,
                   })}
                 </p>
