@@ -55,6 +55,8 @@ const PARSE_ERROR_KEYS: Record<RelayParseErrorCode, MessageKey> = {
   "frame-count": "relay.error.incomplete",
   "input-size": "relay.error.inputSize",
   "invalid-frame": "relay.error.invalidFrame",
+  "invalid-message": "relay.error.invalidMessage",
+  "kind-mismatch": "relay.error.kindMismatch",
   length: "relay.error.length",
   mismatch: "relay.error.mismatch",
   "outer-type": "relay.error.outerType",
@@ -389,6 +391,12 @@ export function OnlineRelay({
     if (!parsed.ok) {
       setPlaybackError(PARSE_ERROR_KEYS[parsed.code])
       setPlaybackMissingIndexes(parsed.missingIndexes ?? [])
+      return
+    }
+    // Temporary: Task 5 replaces this with the single-payload playback branch.
+    if (parsed.kind !== "frames") {
+      setPlaybackError("relay.error.prefix")
+      setPlaybackMissingIndexes([])
       return
     }
     // Re-encoding is a canonical round-trip check; retain only the decoded
