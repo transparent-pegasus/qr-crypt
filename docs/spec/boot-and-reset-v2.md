@@ -136,8 +136,9 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    non-extractable `CryptoKey` is impossible and is not claimed).
 6. Delete all DBs (including `pqIdentities`/`pqPublicBundles`) + all `oc-*`
    localStorage keys. This includes the UI language preference (`oc-lang`) and
-   the last online tab (`oc-online-tab`); after a wipe or full reset the app
-   reverts to the English default and to the install screen.
+   the last online tab (`oc-online-tab`); after a wipe or full reset the UI
+   language reverts to the English default and the online gate's tab preference
+   reverts to the install screen.
    Only in the `online-detected` case, re-set `oc-offline-ack-pending="1"`
    after the deletion and before publishing `wiped`. In the `user-requested`
    case it is not re-set.
