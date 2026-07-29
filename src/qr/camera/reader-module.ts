@@ -1,6 +1,7 @@
 import {
   prepareZXingModule,
   purgeZXingModule,
+  readBarcodes,
   type ReaderOptions,
   type ZXingModuleOverrides,
 } from "zxing-wasm/reader"
@@ -33,6 +34,13 @@ export const zxingReaderOptions: ReaderOptions = {
   tryRotate: true,
   tryHarder: true,
   tryDownscale: true,
+}
+
+const zxingReaderProbeImage = {
+  data: new Uint8ClampedArray(4),
+  width: 1,
+  height: 1,
+  colorSpace: "srgb" as const,
 }
 
 let zxingModulePromise: Promise<void> | undefined
@@ -89,7 +97,8 @@ export function prepareQrReaderModule(): Promise<void> {
     return rejected
   }
 
-  const preparation = started.then(() => {
+  const preparation = started.then(async () => {
+    await readBarcodes(zxingReaderProbeImage, zxingReaderOptions)
     zxingModuleState = "ready"
   })
   zxingModulePromise = preparation
