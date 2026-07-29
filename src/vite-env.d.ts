@@ -11,12 +11,9 @@ interface ImportMetaEnv {
   readonly VITE_QR_ERROR_CORRECTION?: string
   readonly VITE_QR_RENDER_SIZE?: string
   readonly VITE_MAX_PLAINTEXT_BYTES?: string
-  readonly VITE_ENABLE_ECDH?: string
   readonly VITE_ENABLE_ML_KEM?: string
   readonly VITE_ENABLE_ML_DSA?: string
   readonly VITE_REQUIRE_SIGNATURE?: string
-  readonly VITE_ENABLE_PRIVATE_KEY_EXPORT?: string
-  readonly VITE_ENABLE_ENCRYPTED_SEED_BACKUP?: string
   readonly VITE_QR_FRAME_BYTES?: string
   readonly VITE_QR_FRAME_INTERVAL_MS?: string
   readonly VITE_QR_MAX_FRAMES?: string

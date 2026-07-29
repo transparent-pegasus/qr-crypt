@@ -7,8 +7,8 @@
 //     and the logical type.
 //   - Display always uses OCF2 (frameCount≥1). Frame chunks split raw artifact-CBOR
 //     bytes directly; re-encoding an inner string as base64url is prohibited.
-//   - OCB2 is reserved only (VITE_ENABLE_ENCRYPTED_SEED_BACKUP=false; neither generate
-//     nor accept it).
+//   - OCB2 is reserved only: unconditionally rejected everywhere (never generate,
+//     never accept).
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { decodeQrFrameV2, encodeQrFrameV2 } from "@/crypto/pq/canonical-cbor"
@@ -60,7 +60,7 @@ export function splitV2Payload(text: string): { kind: V2ArtifactType; bytes: Uin
   if (classified === null) throw new AppError("INVALID_QR_PREFIX")
   if (classified.kind === "frame") throw new AppError("INVALID_QR_PAYLOAD")
   if (classified.kind === "encrypted-seed-backup") {
-    // Reserved prefix with its feature flag defaulting to OFF. Do not accept it.
+    // Reserved prefix: unconditionally rejected.
     throw new AppError("UNSUPPORTED_ALGORITHM")
   }
   if (text.length > MAX_V2_PAYLOAD_CHARS) throw new AppError("INVALID_QR_PAYLOAD")
