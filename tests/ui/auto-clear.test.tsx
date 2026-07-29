@@ -119,6 +119,32 @@ describe("useAutoClear fixed deadline semantics", () => {
     expect(onClear).toHaveBeenCalledTimes(1)
   })
 
+  it("uses the fallback delay for the first schedule when mounting hidden after the probe settled false", async () => {
+    const runtimeProbe = deferred<boolean>()
+    runtimeProbe.resolve(false)
+    await runtimeProbe.promise
+    probeWebAssemblyRuntime.mockReturnValue(runtimeProbe.promise)
+    setVisibility("hidden")
+    const { useAutoClear } = await import("@/hooks/use-auto-clear")
+    const onClear = vi.fn()
+    function Harness() {
+      useAutoClear({ enabled: true, onClear })
+      return null
+    }
+    render(<Harness />)
+
+    act(() => vi.advanceTimersByTime(env.autoClearSeconds * 1000))
+    expect(onClear).not.toHaveBeenCalled()
+    act(() =>
+      vi.advanceTimersByTime(
+        (env.autoClearFallbackSeconds - env.autoClearSeconds) * 1000 - 1,
+      ),
+    )
+    expect(onClear).not.toHaveBeenCalled()
+    act(() => vi.advanceTimersByTime(1))
+    expect(onClear).toHaveBeenCalledTimes(1)
+  })
+
   it("keeps a fail-secure pending deadline and applies fallback only next time", async () => {
     const runtimeProbe = deferred<boolean>()
     probeWebAssemblyRuntime.mockReturnValue(runtimeProbe.promise)
