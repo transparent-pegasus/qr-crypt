@@ -179,7 +179,7 @@ confirmation is the documented non-dismissible exception).
   patterns). No fixed 2.x release exists, so both major lines are forced to
   `5.0.8` via `aube.overrides`; `aube run build:prod` and the full test suite were
   re-verified after the override. `aube audit` currently exits 0.
-- Supply-chain pins re-verified clean on 2026-07-29: `react-hook-form@7.82.0`, `eslint-config-prettier@10.1.8`
+- Supply-chain pins re-verified clean on 2026-07-29: `eslint-config-prettier@10.1.8` and the rollup OMT `aube.overrides` entry. `react-hook-form@7.82.0` was also pinned here until 2026-07-30, when it was removed from the dependency graph entirely: it was never imported by the application, so the pin guarded nothing.
 
 ## 1.1 Findings F-01 / F-02 / F-03 (2026-07-28)
 

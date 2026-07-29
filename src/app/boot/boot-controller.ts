@@ -106,6 +106,11 @@ export interface BootController {
   nudgeDisplayOffline(): boolean
   probe(): Promise<void>
   refreshRelayEligibility(): Promise<boolean>
+  // A user-requested reset engages the same one-way barrier as the
+  // online-detected wipe, so its partial failure is terminal for the whole
+  // application, not for the surface that started it. The controller owns that
+  // state: publishing it here unmounts the Router the same way a wipe does.
+  reportResetFailure(failedSteps: readonly string[]): void
   registerRelaySessionEndHandler(
     handler: (reason: RelaySessionEndReason) => void,
   ): () => void
@@ -730,6 +735,10 @@ export function createBootController(
     nudgeDisplayOffline,
     probe,
     refreshRelayEligibility,
+    reportResetFailure(failedSteps) {
+      invalidateRelay("local-wipe")
+      emit({ kind: "partial-failure", failedSteps: [...failedSteps] })
+    },
     registerRelaySessionEndHandler(handler) {
       if (relaySessionEndHandler && relaySessionEndHandler !== handler) {
         endRelaySession("eligibility-loss")

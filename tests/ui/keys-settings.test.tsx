@@ -10,6 +10,7 @@ vi.mock("@/lib/reload", () => ({ reloadApplication: vi.fn() }))
 import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
 import { translate } from "@/i18n/messages"
 import { reloadApplication } from "@/lib/reload"
+import { resetDefaultBootControllerForTesting } from "@/app/boot/boot-controller"
 import type {
   DsaPublicKeyEnvelopeV2,
   KemPublicKeyEnvelopeV2,
@@ -79,6 +80,9 @@ describe("key management v2", () => {
   afterEach(() => {
     env.requireSignature = false
     resetUi()
+    // The terminal boot state is a module singleton; leaving it engaged would
+    // make every later test in this file start from a dead application.
+    resetDefaultBootControllerForTesting()
   })
 
   it("puts key import in one modal with separated camera and paste cards", async () => {
@@ -424,6 +428,9 @@ describe("settings v2", () => {
   afterEach(() => {
     env.requireSignature = false
     resetUi()
+    // The terminal boot state is a module singleton; leaving it engaged would
+    // make every later test in this file start from a dead application.
+    resetDefaultBootControllerForTesting()
   })
 
   it("shows both environment-selected background auto-clear delays", async () => {
@@ -616,7 +623,7 @@ describe("settings v2", () => {
     expect(reloadApplication).toHaveBeenCalledTimes(1)
   })
 
-  it("renders the terminal RESET_FAILED card with failed steps and no automatic reload on partial failure", async () => {
+  it("publishes a durable terminal RESET_FAILED gate on partial failure", async () => {
     const user = userEvent.setup()
     vi.mocked(performUserRequestedReset).mockResolvedValue({
       ok: false,
@@ -626,22 +633,18 @@ describe("settings v2", () => {
 
     await runResetAllLocalData(user)
 
+    // The terminal state belongs to the boot controller, not to this page: the
+    // coordinator already engaged the one-way barrier, so the Router and its
+    // navigation must be gone, not merely covered.
     expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
     expect(screen.getByText(en("errors.RESET_FAILED"))).toBeInTheDocument()
     expect(screen.getByText(en("boot.partialFailure.retryHint"))).toBeInTheDocument()
     expect(screen.getByText("database, database-verification")).toBeInTheDocument()
-    const reload = screen.getByRole("button", {
-      name: en("offlineAck.reload"),
-    })
     expect(
-      screen.queryByRole("button", {
-        name: en("settings.resetAllData"),
-      }),
+      screen.queryByRole("button", { name: en("settings.resetAllData") }),
     ).not.toBeInTheDocument()
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(reloadApplication).not.toHaveBeenCalled()
-
-    await user.click(reload)
-    expect(reloadApplication).toHaveBeenCalledTimes(1)
   })
 
   it("no longer clears oc-* localStorage inline (the coordinator owns it)", async () => {

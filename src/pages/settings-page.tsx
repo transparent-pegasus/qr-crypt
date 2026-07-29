@@ -11,7 +11,10 @@ import {
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
-import { armMaintenanceToken } from "@/app/boot/boot-controller"
+import {
+  armMaintenanceToken,
+  getDefaultBootController,
+} from "@/app/boot/boot-controller"
 import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
 import {
   useFeatureSupport,
@@ -89,7 +92,6 @@ export function SettingsPage() {
   const [error, setError] = useState<MessageKey | null>(null)
   const [typedAction, setTypedAction] = useState<TypedDeleteAction | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState("")
-  const [resetFailure, setResetFailure] = useState<readonly string[] | null>(null)
   const [securityOpen, setSecurityOpen] = useState(true)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [working, setWorking] = useState(false)
@@ -141,14 +143,21 @@ export function SettingsPage() {
           reloadApplication()
           return
         }
-        setTypedAction(null)
-        setDeleteConfirmation("")
-        setResetFailure(report.failedSteps)
+        // The coordinator engaged the one-way barrier before failing, so every
+        // storage-backed surface is dead. Publish the terminal state instead of
+        // returning to a settings page whose controls would all throw.
+        getDefaultBootController().reportResetFailure(report.failedSteps)
         return
       }
       setTypedAction(null)
       setDeleteConfirmation("")
     } catch {
+      // A throw from the full reset happens after the barrier is engaged, so it
+      // is terminal too; only the keys-only arm can recover into the page.
+      if (typedAction === "reset") {
+        getDefaultBootController().reportResetFailure(["reset"])
+        return
+      }
       setError("settings.error.deleteFailed")
     } finally {
       setWorking(false)
@@ -195,22 +204,6 @@ export function SettingsPage() {
   }
 
   const standalone = isStandalone()
-
-  if (resetFailure !== null) {
-    return (
-      <section className="mx-auto w-full max-w-md space-y-4 px-4 py-6">
-        <p className="font-mono text-xs text-destructive">RESET_FAILED</p>
-        <h2 className="text-xl font-bold">{t("errors.RESET_FAILED")}</h2>
-        <p className="text-sm text-muted-foreground">
-          {t("boot.partialFailure.retryHint")}
-        </p>
-        <p className="font-mono text-xs">{resetFailure.join(", ")}</p>
-        <Button type="button" className="h-11 w-full" onClick={reloadApplication}>
-          {t("offlineAck.reload")}
-        </Button>
-      </section>
-    )
-  }
 
   return (
     <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={working}>
