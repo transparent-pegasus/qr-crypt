@@ -254,7 +254,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await playback
     .getByLabel("Relay text")
     .fill(`${framePayloads.slice().reverse().join("\r\n")}\r\n`)
-  await playback.getByRole("button", { name: "Show QR frames" }).click()
+  await playback.getByRole("button", { name: "Show QR" }).click()
   await expect(
     playback.getByText("This relay provides no app file-download controls."),
   ).toBeVisible()
@@ -263,7 +263,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   }
 
   await playback.getByLabel("Relay text").fill(`OCF2:${marker}`)
-  await playback.getByRole("button", { name: "Show QR frames" }).click()
+  await playback.getByRole("button", { name: "Show QR" }).click()
   const playbackRejection = playback.getByText("The frame is not a canonical OCF2 frame.")
   await expect(playbackRejection).toBeVisible()
   await expect(playbackRejection).not.toContainText(marker)
@@ -290,7 +290,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await emitInjectedQr(page, framePayloads[0]!)
   await expect(
     page.getByText(
-      "The relay session timed out and its app-held frame references were cleared.",
+      "The relay session timed out and its app-held payload references were cleared.",
     ),
   ).toBeVisible()
   expect((await injectedScanSnapshot(page)).every(({ active }) => !active)).toBe(true)

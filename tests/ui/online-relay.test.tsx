@@ -295,7 +295,11 @@ describe("online relay UI", () => {
       screen.getByLabelText("Relay text"),
       `${payload(0)}\n${payload(1)}`,
     )
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     await screen.findByRole("img")
     await waitFor(() =>
@@ -366,7 +370,7 @@ describe("online relay UI", () => {
     act(() => scanText?.(second))
     act(() => scanText?.(hostile))
     expect(
-      screen.getByText("The frame does not belong to the accepted frame set."),
+      screen.getByText(translate("en", "relay.error.mismatch")),
     ).toBeInTheDocument()
     act(() => scanText?.(first))
 
@@ -692,9 +696,7 @@ describe("online relay UI", () => {
     })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(
-      screen.getByText(
-        "The relay session timed out and its app-held frame references were cleared.",
-      ),
+      screen.getByText(translate("en", "relay.error.timeout")),
     ).toBeInTheDocument()
     expect(scanStop).toHaveBeenCalled()
   })
@@ -712,11 +714,19 @@ describe("online relay UI", () => {
     const input = screen.getByLabelText("Relay text")
 
     await enterRelayText(user, input, `${olderFirst}\n${olderSecond}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     expect(renderQr).toHaveBeenCalledTimes(2)
     await user.clear(input)
     await enterRelayText(user, input, `${newerFirst}\n${newerSecond}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     expect(renderQr).toHaveBeenCalledTimes(4)
 
     await act(async () => {
@@ -746,10 +756,18 @@ describe("online relay UI", () => {
     const input = screen.getByLabelText("Relay text")
 
     await enterRelayText(user, input, `${olderFirst}\n${olderSecond}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     await user.clear(input)
     await enterRelayText(user, input, `${newerFirst}\n${newerSecond}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     await act(async () => {
       newerRender.resolve("newer-preflight")
@@ -781,7 +799,11 @@ describe("online relay UI", () => {
     const input = screen.getByLabelText("Relay text")
 
     await enterRelayText(user, input, `${first}\n${second}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     await user.clear(input)
     await enterRelayText(user, input, `${replacementFirst}\n${replacementSecond}`)
     await act(async () => {
@@ -810,7 +832,11 @@ describe("online relay UI", () => {
       screen.getByLabelText("Relay text"),
       `${closingFirst}\n${closingSecond}`,
     )
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     await user.click(screen.getByRole("button", { name: "Close" }))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
 
@@ -819,7 +845,11 @@ describe("online relay UI", () => {
       screen.getByLabelText("Relay text"),
       `${reopenedFirst}\n${reopenedSecond}`,
     )
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     await act(async () => {
       reopenedRender.resolve("reopened-preflight")
       await reopenedRender.promise
@@ -847,7 +877,11 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     await enterRelayText(user, screen.getByLabelText("Relay text"), `${first}\n${second}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     act(() => window.dispatchEvent(new Event("pagehide")))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
@@ -874,7 +908,11 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     await enterRelayText(user, screen.getByLabelText("Relay text"), `${first}\n${second}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     rendered.rerender(relayElement({ eligible: false }))
     expect(
@@ -903,7 +941,11 @@ describe("online relay UI", () => {
     const first = payload(0)
     const second = payload(1)
     await enterRelayText(user, screen.getByLabelText("Relay text"), `${second}\r\n${first}\r\n`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     expect(
       await screen.findByText("This relay provides no app file-download controls."),
     ).toBeInTheDocument()
@@ -917,7 +959,11 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     await enterRelayText(user, screen.getByLabelText("Relay text"), payload(1))
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
 
     expect(
       screen.getByText(
@@ -933,7 +979,11 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     await enterRelayText(user, screen.getByLabelText("Relay text"), `${payload(0)}\n${payload(1)}`)
-    await user.click(screen.getByRole("button", { name: "Show QR frames" }))
+    await user.click(
+      screen.getByRole("button", {
+        name: translate("en", "relay.playback.show"),
+      }),
+    )
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(
       screen.getByText(
