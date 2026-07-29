@@ -42,16 +42,16 @@ jobs:
         run: aube run lint
 
       - name: Unit tests
-        run: aube run test
+        run: aube run test -- --maxWorkers=2
 
       - name: Post-quantum known-answer tests
-        run: aube run test:pq-vectors
+        run: aube run test:pq-vectors -- --maxWorkers=2
 
       - name: Post-quantum integration tests
-        run: aube run test:pq
+        run: aube run test:pq -- --maxWorkers=2
 
       - name: Multipart QR tests
-        run: aube run test:qr-multipart
+        run: aube run test:qr-multipart -- --maxWorkers=2
 
       - name: Build production PWA
         run: aube run build:prod
