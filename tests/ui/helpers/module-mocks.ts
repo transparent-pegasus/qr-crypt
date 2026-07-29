@@ -1,7 +1,11 @@
 import { vi } from "vitest"
 import * as fakes from "./fakes"
 
-vi.mock("@/lib/feature-detect", () => ({
+// Spread the original so newly-canonical exports (isStandalone) stay real:
+// before it moved here each caller read window.matchMedia directly, and these
+// suites depend on that real read.
+vi.mock("@/lib/feature-detect", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/feature-detect")>()),
   detectFeatures: fakes.detectFeatures,
   probeWebAssemblyRuntime: fakes.probeWebAssemblyRuntime,
   webAssemblyRuntimeSupport: fakes.webAssemblyRuntimeSupport,
@@ -64,7 +68,8 @@ vi.mock("@/crypto/pq/canonical-cbor", async (importOriginal) => ({
   encodeDsaPublicKeyEnvelopeV2: fakes.encodeDsaPublicKeyEnvelopeV2,
   decodeDsaPublicKeyEnvelopeV2: fakes.decodeDsaPublicKeyEnvelopeV2,
 }))
-vi.mock("@/crypto/vault/vault-key", () => ({
+vi.mock("@/crypto/vault/vault-key", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/crypto/vault/vault-key")>()),
   getOrCreateVaultKey: fakes.getOrCreateVaultKey,
   dropVaultKeyCache: vi.fn(),
 }))
@@ -144,12 +149,14 @@ vi.mock("@/storage/pq-bundle-repository", () => ({
   findBundleBySigningKeyId: fakes.findBundleBySigningKeyId,
   findBundleByKemKeyId: fakes.findBundleByKemKeyId,
 }))
-vi.mock("@/storage/preferences-repository", () => ({
+vi.mock("@/storage/preferences-repository", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/storage/preferences-repository")>()),
   defaultPreferences: fakes.defaultPreferences,
   getPreferences: fakes.getPreferences,
   updatePreferences: fakes.updatePreferences,
 }))
-vi.mock("@/storage/database", () => ({
+vi.mock("@/storage/database", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/storage/database")>()),
   getDb: fakes.getDb,
   closeDb: fakes.closeDb,
   deleteEntireDatabase: fakes.deleteEntireDatabase,
