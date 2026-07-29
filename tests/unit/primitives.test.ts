@@ -67,22 +67,19 @@ describe("random ids, feature detection, and env parsing", () => {
     expect(typeof support.serviceWorker).toBe("boolean")
   })
 
-  it("strictly parses booleans and integers while ignoring retired RSA enablement", () => {
+  it("strictly parses active booleans and integers", () => {
     const parsed = parseAppEnv({
-      VITE_ENABLE_RSA: "true",
       VITE_DEFAULT_ALGORITHM: "MLKEM1024_A256GCM",
       VITE_ENABLE_ECDH: "true",
       VITE_QR_RENDER_SIZE: "640",
       VITE_AUTO_CLEAR_SECONDS: "0",
     })
     expect(parsed.defaultAlgorithm).toBe("MLKEM1024_A256GCM")
-    expect(parsed.enableRsa).toBe(false)
     expect(parsed.enableEcdh).toBe(true)
     expect(parsed.qrRenderSize).toBe(640)
     expect(parsed.autoClearSeconds).toBe(0)
     expect(parsed.buildSha).toBe("development")
     for (const raw of [
-      { VITE_ENABLE_RSA: "TRUE" },
       { VITE_MAX_PLAINTEXT_BYTES: "0" },
       { VITE_AUTO_CLEAR_SECONDS: "1.5" },
       { VITE_QR_RENDER_SIZE: "Infinity" },
@@ -90,6 +87,15 @@ describe("random ids, feature detection, and env parsing", () => {
       expect(() => parseAppEnv(raw)).toThrow("Invalid environment variables")
     }
   })
+
+  it.each(["true", "TRUE"] as const)(
+    "rejects retired VITE_ENABLE_RSA=%s",
+    (value) => {
+      expect(() => parseAppEnv({ VITE_ENABLE_RSA: value })).toThrow(
+        /^Invalid environment variables: VITE_ENABLE_RSA$/u,
+      )
+    },
+  )
 
   it("defaults and validates both background auto-clear delays", () => {
     expect(parseAppEnv({})).toMatchObject({
