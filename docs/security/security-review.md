@@ -57,17 +57,10 @@ pre-encryption ceiling from the v1 8,192-character payload ceiling and the
 selected version 40 error-correction capacity: L 2,010B, M 1,543B, Q 1,042B,
 or H 750B.
 
-The single labelled compatibility switch selects an atomic preference pair.
-Off is the shipped default, 1,000B with a 200ms minimum dwell; on is the
-user-selected compatible preference, 100B with a 2,000ms minimum dwell. `*`
-marks maximum fixtures whose per-artifact effective density is clamped to
-1,000B so the artifact fits within 128 frames. That effective value is never
-persisted. If the clamp is already 1,000B, the switch still changes only the
-dwell from 200ms to 2,000ms. The clamp uses the 100B generated-density grid
-and fails closed as `QR_TOO_LARGE` if the required value exceeds 1,000B.
-
-The automatic reader-based selector was removed; the display contract is
-specified in [docs/spec/qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6.
+Verified 2026-07-30: the labelled compatibility-switch contract (exact pairs,
+atomic write, per-artifact clamp, dwell-not-cadence) matches
+[qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6. The automatic reader-based
+selector was removed; that same section owns the display contract.
 
 The receiver allocation ceiling now equals the complete wire budget:
 `MAX_ARTIFACT_BYTES_ABSOLUTE =

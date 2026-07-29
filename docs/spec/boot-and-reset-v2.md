@@ -92,12 +92,11 @@ offline-confirmed -- display online re-commit --> probing (at most once)
   though the compatibility switch has only two positions. Thus no historical
   stored preference becomes unreadable, `preferencesReadFailed` remains false,
   and this field alone cannot force `wipeOnOnline=true`.
-- The compatibility switch writes both preference members together. Off is
-  the shipped 1,000B/200ms default; on is 100B/2,000ms. A current preference
-  patch with one member or any other pair is rejected. Per-artifact effective
-  density clamps may raise a generated chunk size so an artifact fits, but
-  that raised value is never persisted. Environment values remain strict
-  admitted-set inputs.
+- The compatibility switch itself — exact pairs, atomic write, per-artifact
+  clamp, and dwell-not-cadence — is owned by
+  [qr-protocol-v2.md](qr-protocol-v2.md) §6. Boot only applies the
+  canonicalization rule above; environment values remain strict admitted-set
+  inputs.
 - Once the sentinel body matches, the destructive decision is latched. A
   subsequent offline request does not cancel maintenance-token consumption, a
   transient reset, or a wipe whose conditions are met. Generation numbers and

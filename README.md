@@ -63,10 +63,11 @@ The algorithms themselves are the standard ones. The claim is about where they a
     measured on real devices ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)).
   * QR display does not follow the local decoder signal: the displaying device cannot know
     what the peer camera can read. One labelled compatibility switch lets you choose.
-    Off is the shipped default (1,000 B every 200 ms); on is the compatible preference
-    (100 B every 2,000 ms). If an artifact cannot fit at 100 B, its effective density is
-    clamped upward for that artifact only and is not saved. At the 1,000 B clamp, the
-    switch still keeps the longer 2,000 ms dwell.
+    Off is the shipped default (1,000 B at a 200 ms minimum dwell); on is the compatible
+    preference (100 B at a 2,000 ms minimum dwell). If an artifact cannot fit at 100 B, its
+    effective density is clamped upward for that artifact only and is not saved. At the
+    1,000 B clamp, the switch still keeps the longer 2,000 ms dwell. Contract:
+    [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) §6.
   * The only remaining input path is then typing or pasting the payload text by hand, and
     that field accepts a complete payload string — not the individual QR frames. A
     post-quantum message is split across many frames, and post-quantum public keys and
