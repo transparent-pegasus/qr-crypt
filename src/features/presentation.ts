@@ -1,5 +1,12 @@
 import { translate, type Language } from "@/i18n/messages"
+import { QR_PREFIX } from "@/qr/payload"
+import { QR_PREFIX_V2 } from "@/qr/payload-v2"
 import type { UiAlgorithm } from "@/schemas/domain"
+
+const QR_CRYPT_PREFIXES = [
+  ...Object.values(QR_PREFIX),
+  ...Object.values(QR_PREFIX_V2),
+]
 
 export const ALGORITHM_LABELS: Record<
   Language,
@@ -85,5 +92,5 @@ export function shortTechnicalId(value: string | undefined): string {
 }
 
 export function isQrCryptPayload(payload: string): boolean {
-  return /^OC(?:M1|K1|P1|B1|M2|P2|S2|I2|B2|F2):/.test(payload)
+  return QR_CRYPT_PREFIXES.some((prefix) => payload.startsWith(prefix))
 }
