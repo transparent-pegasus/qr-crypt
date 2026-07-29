@@ -86,11 +86,6 @@ export function formatFramePositions(
         .join(translate(language, "presentation.frameSeparator"))
 }
 
-export function shortTechnicalId(value: string | undefined): string {
-  if (!value) return "—"
-  return value.length > 8 ? `${value.slice(0, 8)}…` : value
-}
-
 export function isQrCryptPayload(payload: string): boolean {
   return QR_CRYPT_PREFIXES.some((prefix) => payload.startsWith(prefix))
 }
