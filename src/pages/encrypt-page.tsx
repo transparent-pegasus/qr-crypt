@@ -54,6 +54,7 @@ import {
   formatSuggestedDate,
 } from "@/features/presentation"
 import { useAutoClear } from "@/hooks/use-auto-clear"
+import { useCompatibilityMode } from "@/hooks/use-compatibility-mode"
 import { useKeys } from "@/hooks/use-keys"
 import { useFrameSplit } from "@/hooks/use-frame-split"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
@@ -84,7 +85,6 @@ import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
 import { encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
-  DEFAULT_GENERATED_DISPLAY_PAIR,
   type MlKemMessageEnvelopeV2,
   type PostQuantumIdentity,
   type PqPublicBundleRecord,
@@ -172,6 +172,12 @@ export function EncryptPage() {
     error: preferencesError,
     updatePreferences,
   } = usePreferences()
+  const {
+    updating: compatibilityUpdating,
+    error: compatibilityError,
+    change: changeCompatibilityMode,
+    reset: resetCompatibilityMode,
+  } = useCompatibilityMode({ updatePreferences, active: true })
   const getPqClient = usePqCryptoClient()
   const { nonce } = useTransientClear()
   const { setSensitiveSession, resetSensitiveSession } = useSensitiveSession()
@@ -182,10 +188,10 @@ export function EncryptPage() {
   const [plaintext, setPlaintext] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
-  const [compatibilityUpdating, setCompatibilityUpdating] = useState(false)
   const localizedError = useLocalizedMessage(
     error ?? keysError ?? pqError ?? preferencesError,
   )
+  const localizedCompatibilityError = useLocalizedMessage(compatibilityError)
   const [result, setResult] = useState<EncryptionResult | null>(null)
   const [resultExporting, setResultExporting] = useState(false)
   const [resultError, setResultError] = useState<LocalizedMessage | null>(null)
@@ -233,32 +239,6 @@ export function EncryptPage() {
     result?.kind === "aes" ||
     (pqFrames.length > 0 && !frameSplit.splitting && frameSplit.error === null)
   const localizedFrameError = useLocalizedMessage(frameSplit.error)
-  const changeCompatibilityMode = useCallback(
-    async (enabled: boolean) => {
-      const controller = resultAbortRef.current ?? new AbortController()
-      resultAbortRef.current = controller
-      const signal = resultAbortRef.current?.signal
-      setCompatibilityUpdating(true)
-      setResultError(null)
-      const pair = enabled
-        ? COMPATIBLE_GENERATED_DISPLAY_PAIR
-        : DEFAULT_GENERATED_DISPLAY_PAIR
-      try {
-        await updatePreferences({
-          frameBytes: pair.frameBytes,
-          frameIntervalMs: pair.frameIntervalMs,
-        })
-      } catch (caught) {
-        if (signal?.aborted) return
-        setResultError(toAppError(caught, "STORAGE_FAILED").code)
-      } finally {
-        if (!signal?.aborted) {
-          setCompatibilityUpdating(false)
-        }
-      }
-    },
-    [updatePreferences],
-  )
 
   const algorithms = useMemo(
     () => algorithmOptions(preferences.requireSignature),
@@ -344,16 +324,16 @@ export function EncryptPage() {
     () => () => {
       resultAbortRef.current?.abort()
       resultAbortRef.current = null
-      setCompatibilityUpdating(false)
+      resetCompatibilityMode()
       resetSensitiveSession()
     },
-    [resetSensitiveSession],
+    [resetCompatibilityMode, resetSensitiveSession],
   )
 
   const clearTransient = useCallback(() => {
     resultAbortRef.current?.abort()
     resultAbortRef.current = null
-    setCompatibilityUpdating(false)
+    resetCompatibilityMode()
     setResultExporting(false)
     setPlaintext("")
     setResult(null)
@@ -362,7 +342,7 @@ export function EncryptPage() {
     setResultError(null)
     setClearStatus("encrypt.toast.autoCleared")
     toast.info(t("encrypt.toast.autoCleared"))
-  }, [t])
+  }, [resetCompatibilityMode, t])
 
   useAutoClear({
     enabled: preferences.backgroundClearEnabled,
@@ -374,7 +354,7 @@ export function EncryptPage() {
     if (!canEncrypt) return
     resultAbortRef.current?.abort()
     resultAbortRef.current = null
-    setCompatibilityUpdating(false)
+    resetCompatibilityMode()
     setResultExporting(false)
     setResultError(null)
     setBusy(true)
@@ -690,7 +670,7 @@ export function EncryptPage() {
           if (open) return
           resultAbortRef.current?.abort()
           resultAbortRef.current = null
-          setCompatibilityUpdating(false)
+          resetCompatibilityMode()
           setResultExporting(false)
           setResult(null)
           setOutputName("")
@@ -723,6 +703,14 @@ export function EncryptPage() {
                     />
                   ) : (
                     <>
+                      {compatibilityError && (
+                        <Alert variant="destructive" role="alert">
+                          <AlertTitle>{t("common.operationFailed")}</AlertTitle>
+                          <AlertDescription>
+                            {localizedCompatibilityError}
+                          </AlertDescription>
+                        </Alert>
+                      )}
                       {frameSplit.error && (
                         <Alert variant="destructive" role="alert">
                           <AlertTitle>{t("qrDisplay.error.title")}</AlertTitle>

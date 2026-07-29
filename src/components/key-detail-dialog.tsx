@@ -50,6 +50,7 @@ import {
 import { buildPublicBundle, rotateIdentity } from "@/crypto/pq/identity"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { formatDateTime } from "@/features/presentation"
+import { useCompatibilityMode } from "@/hooks/use-compatibility-mode"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePreferences } from "@/hooks/use-preferences"
 import {
@@ -68,8 +69,6 @@ import {
 } from "@/qr/export-image"
 import { encodeEnvelopeToPayload } from "@/qr/payload"
 import {
-  COMPATIBLE_GENERATED_DISPLAY_PAIR,
-  DEFAULT_GENERATED_DISPLAY_PAIR,
   type PostQuantumIdentity,
   type StoredKeyRecord,
   type StorablePqArtifactKind,
@@ -168,6 +167,12 @@ export function KeyDetailContent({
     error: preferencesError,
     updatePreferences,
   } = usePreferences()
+  const {
+    updating: compatibilityUpdating,
+    error: compatibilityError,
+    change: changeCompatibilityMode,
+    reset: resetCompatibilityMode,
+  } = useCompatibilityMode({ updatePreferences, active: open })
   const getPqClient = usePqCryptoClient()
   const { setSensitiveSession } = useSensitiveSession()
   const [view, setView] = useState<DetailView>({ kind: "detail" })
@@ -182,9 +187,6 @@ export function KeyDetailContent({
   >(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
-  const [compatibilityUpdating, setCompatibilityUpdating] = useState(false)
-  const [compatibilityError, setCompatibilityError] =
-    useState<LocalizedMessage | null>(null)
   const [qrReady, setQrReady] = useState(false)
   const [qrHost, setQrHost] = useState<HTMLDivElement | null>(null)
   const qrGenerationRef = useRef(0)
@@ -227,27 +229,6 @@ export function KeyDetailContent({
       setBusy(false)
     }
   }
-  const changeCompatibilityMode = useCallback(
-    async (enabled: boolean) => {
-      setCompatibilityUpdating(true)
-      setCompatibilityError(null)
-      const pair = enabled
-        ? COMPATIBLE_GENERATED_DISPLAY_PAIR
-        : DEFAULT_GENERATED_DISPLAY_PAIR
-      try {
-        await updatePreferences({
-          frameBytes: pair.frameBytes,
-          frameIntervalMs: pair.frameIntervalMs,
-        })
-      } catch (caught) {
-        setCompatibilityError(toAppError(caught, "STORAGE_FAILED").code)
-      } finally {
-        setCompatibilityUpdating(false)
-      }
-    },
-    [updatePreferences],
-  )
-
   useEffect(() => {
     // A closed instance must stay silent: the keys page mounts this alongside the
     // add modal, and a patch from the idle one would clear the flags the open one
@@ -278,12 +259,19 @@ export function KeyDetailContent({
     setPendingDelete(null)
     setPendingDestroy(null)
     setBusy(false)
+    resetCompatibilityMode()
     setError(null)
     setRenameDraft(record?.name ?? "")
     setSensitiveSession({ cryptoBusy: false, secretVisible: false })
     // Closing (selection -> null) and switching records both land here, so this
     // is also the reset the dismissed dialog relies on.
-  }, [record, selection, setFullscreenOpen, setSensitiveSession])
+  }, [
+    record,
+    resetCompatibilityMode,
+    selection,
+    setFullscreenOpen,
+    setSensitiveSession,
+  ])
 
   const leaveQrView = () => {
     qrGenerationRef.current += 1
