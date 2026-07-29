@@ -20,6 +20,11 @@ import {
   RELAY_TEXT_MAX_CHARS,
 } from "@/qr/relay-frames"
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
+import {
+  OCK1_SYMMETRIC_KEY,
+  OCM1_MESSAGE_33,
+  OCM1_MESSAGE_44,
+} from "../fixtures/relay-v1"
 
 const TRANSFER_ID = new Uint8Array(16).fill(0x11)
 
@@ -254,17 +259,9 @@ function messagePayload(plaintextBytes = 32): string {
   return encodeEnvelopeToPayload(messageEnvelope(plaintextBytes))
 }
 
-// A canonical OCK1 and OCP1, not a malformed stand-in: the point is that a real
-// key artifact the app itself can produce is still refused at both boundaries.
+// Production-generated and parser-pinned in this node environment.
 function symmetricKeyPayload(): string {
-  return encodeEnvelopeToPayload({
-    v: 1,
-    type: "symmetric-key",
-    algorithm: "A256GCM",
-    keyId: V1_KEY_ID,
-    createdAt: V1_CREATED_AT,
-    key: new Uint8Array(32).fill(0x44),
-  })
+  return OCK1_SYMMETRIC_KEY
 }
 
 const relayEncoder = new Encoder({ useRecords: false, tagUint8Array: false })
@@ -289,6 +286,25 @@ function nonCanonicalMessagePayload(): string {
 }
 
 describe("relay message acceptance", () => {
+  it("pins the production-generated relay fixtures shared with UI and e2e", () => {
+    expect([
+      OCM1_MESSAGE_33.length,
+      OCM1_MESSAGE_44.length,
+      OCK1_SYMMETRIC_KEY.length,
+    ]).toEqual([311, 311, 177])
+    for (const original of [OCM1_MESSAGE_33, OCM1_MESSAGE_44]) {
+      expect(parseRelayMessage(original)).toEqual({
+        ok: true,
+        payload: original,
+      })
+    }
+    expect(decodePayload(OCK1_SYMMETRIC_KEY).kind).toBe("symmetric-key")
+    expect(parseRelayMessage(OCK1_SYMMETRIC_KEY)).toEqual({
+      ok: false,
+      code: "prefix",
+    })
+  })
+
   it("accepts a canonical OCM1 payload and returns it verbatim", () => {
     const original = messagePayload()
     expect(parseRelayMessage(original)).toEqual({ ok: true, payload: original })
@@ -361,6 +377,20 @@ describe("relay acceptance boundary", () => {
   )
 
   it.each(forbidden())(
+    "refuses %s at the capture boundary during a frame session",
+    (_label, input) => {
+      const started = acceptRelayCapture(payload(0), EMPTY_RELAY_CAPTURE)
+      expect(started).toMatchObject({ ok: true })
+      if (!started.ok) return
+      expect(acceptRelayCapture(input, started.capture)).toEqual({
+        ok: false,
+        code: "prefix",
+      })
+      expect(started.capture).toMatchObject({ kind: "frames" })
+    },
+  )
+
+  it.each(forbidden())(
     "refuses %s at the playback boundary",
     (_label, input) => {
       expect(parseRelayText(input)).toEqual({ ok: false, code: "prefix" })
@@ -405,6 +435,33 @@ describe("relay capture session kind", () => {
     expect(frames.capture.set.entries.size).toBe(1)
   })
 
+  it("validates an other-kind candidate before reporting a session mismatch", () => {
+    const frames = acceptRelayCapture(payload(0), EMPTY_RELAY_CAPTURE)
+    expect(frames).toMatchObject({ ok: true })
+    if (!frames.ok) return
+    expect(acceptRelayCapture("OCM1:AA", frames.capture)).toEqual({
+      ok: false,
+      code: "invalid-message",
+    })
+
+    const message = acceptRelayCapture(messagePayload(), EMPTY_RELAY_CAPTURE)
+    expect(message).toMatchObject({ ok: true })
+    if (!message.ok) return
+    expect(acceptRelayCapture("OCF2:AA", message.capture)).toEqual({
+      ok: false,
+      code: "invalid-frame",
+    })
+    expect(
+      acceptRelayCapture(
+        payload(0, { artifactType: "pq-public-identity" }),
+        message.capture,
+      ),
+    ).toEqual({
+      ok: false,
+      code: "outer-type",
+    })
+  })
+
   it("re-accepts the identical OCM1 idempotently but refuses a different one", () => {
     const message = messagePayload()
     const first = acceptRelayCapture(message, EMPTY_RELAY_CAPTURE)
@@ -442,7 +499,33 @@ describe("relay capture session kind", () => {
     })
     expect(parseRelayText(`${message}\n${message}`)).toEqual({
       ok: false,
-      code: "kind-mismatch",
+      code: "message-count",
+    })
+  })
+
+  it("validates every pasted line before deciding whether valid kinds conflict", () => {
+    const message = messagePayload()
+    expect(
+      parseRelayText(`OCM1:AA\nhttps://example.invalid/`),
+    ).toEqual({
+      ok: false,
+      code: "prefix",
+    })
+    expect(parseRelayText(`${message}\nOCF2:AA`)).toEqual({
+      ok: false,
+      code: "invalid-frame",
+    })
+    expect(parseRelayText(`OCM1:AA\n${payload(0)}`)).toEqual({
+      ok: false,
+      code: "invalid-message",
+    })
+    expect(
+      parseRelayText(
+        `${message}\n${payload(0, { artifactType: "pq-public-identity" })}`,
+      ),
+    ).toEqual({
+      ok: false,
+      code: "outer-type",
     })
   })
 })

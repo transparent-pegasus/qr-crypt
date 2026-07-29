@@ -18,6 +18,7 @@ export type RelayParseErrorCode =
   | "invalid-message"
   | "kind-mismatch"
   | "length"
+  | "message-count"
   | "mismatch"
   | "outer-type"
   | "prefix"
@@ -115,7 +116,9 @@ export function parseRelayFrameSet(
   const entries = new Map(initial.entries)
 
   for (const original of originals) {
-    if (!original.startsWith("OCF2:")) return { ok: false, code: "prefix" }
+    if (!original.startsWith(QR_PREFIX_V2.frame)) {
+      return { ok: false, code: "prefix" }
+    }
 
     let frame: QrFrameV2
     try {
@@ -192,8 +195,9 @@ export function orderedRelayEntries(set: RelayFrameSet): RelayFrameEntry[] {
  * The relay's entire allowlist, in one place. Exactly two prefixes reach a
  * parser; every other prefix stops here, including the OCK1 symmetric key and
  * the OCP1 public key. Rejecting those prefixes is not a guarantee that no key
- * material crosses the relay — an accepted OCF2 chunk or OCM1 ciphertext field
- * is opaque and is authenticated only on the offline endpoint (threat-model T21).
+ * material crosses the relay. Accepted OCF2 chunks and every sender-controlled
+ * OCM1 field (`keyId`, `createdAt`, `iv`, `ciphertext`, and `aad`) are untrusted;
+ * the offline endpoint is the only authentication boundary (threat-model T21).
  */
 function classifyRelayLine(text: string): "message" | "frames" | null {
   if (text.startsWith(QR_PREFIX.message)) return "message"
@@ -229,6 +233,24 @@ export function parseRelayMessage(text: string): RelayMessageParseResult {
   }
 }
 
+type ValidatedRelayLine =
+  | { ok: true; kind: "message"; payload: string }
+  | { ok: true; kind: "frames"; set: RelayFrameSet }
+  | { ok: false; code: RelayParseErrorCode }
+
+function validateRelayLine(original: string): ValidatedRelayLine {
+  const kind = classifyRelayLine(original)
+  if (kind === null) return { ok: false, code: "prefix" }
+  if (kind === "message") {
+    const parsed = parseRelayMessage(original)
+    return parsed.ok
+      ? { ok: true, kind: "message", payload: parsed.payload }
+      : parsed
+  }
+  const parsed = parseRelayFrameSet([original])
+  return parsed.ok ? { ok: true, kind: "frames", set: parsed.set } : parsed
+}
+
 export type RelayCapture =
   | { kind: null }
   | { kind: "frames"; set: RelayFrameSet }
@@ -250,22 +272,29 @@ export function acceptRelayCapture(
   original: string,
   current: RelayCapture,
 ): RelayCaptureResult {
-  const kind = classifyRelayLine(original)
-  if (kind === null) return { ok: false, code: "prefix" }
-  if (current.kind !== null && current.kind !== kind) {
+  const candidate = validateRelayLine(original)
+  if (!candidate.ok) return candidate
+  if (current.kind !== null && current.kind !== candidate.kind) {
     return { ok: false, code: "kind-mismatch" }
   }
 
-  if (kind === "message") {
-    const parsed = parseRelayMessage(original)
-    if (!parsed.ok) return parsed
-    if (current.kind === "message" && current.payload !== parsed.payload) {
+  if (candidate.kind === "message") {
+    if (current.kind === "message" && current.payload !== candidate.payload) {
       return { ok: false, code: "mismatch" }
     }
-    return { ok: true, capture: { kind: "message", payload: parsed.payload } }
+    return {
+      ok: true,
+      capture: { kind: "message", payload: candidate.payload },
+    }
   }
 
-  const previous = current.kind === "frames" ? current.set : emptyRelayFrameSet()
+  if (current.kind === null) {
+    return { ok: true, capture: { kind: "frames", set: candidate.set } }
+  }
+  if (current.kind !== "frames") {
+    return { ok: false, code: "kind-mismatch" }
+  }
+  const previous = current.set
   const parsed = parseRelayFrameSet([original], previous)
   if (!parsed.ok) return parsed
   return { ok: true, capture: { kind: "frames", set: parsed.set } }
@@ -280,21 +309,32 @@ export function parseRelayText(text: string): RelayTextParseResult {
     .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
     .filter((line) => line.length > 0)
   if (originals.length === 0) return { ok: false, code: "empty" }
-
-  const kinds = originals.map(classifyRelayLine)
-  if (kinds.some((kind) => kind === null)) {
+  if (originals.some((original) => classifyRelayLine(original) === null)) {
     return { ok: false, code: "prefix" }
   }
-  // One transfer is one kind. An OCM1 transfer is exactly one payload by
-  // construction, so a second line of any allowed kind is a kind conflict.
-  if (kinds.includes("message") && originals.length > 1) {
+
+  const validated: ValidatedRelayLine[] = []
+  for (const original of originals) {
+    const candidate = validateRelayLine(original)
+    if (!candidate.ok) return candidate
+    validated.push(candidate)
+  }
+
+  const messages = validated.filter(
+    (candidate): candidate is Extract<ValidatedRelayLine, { kind: "message" }> =>
+      candidate.ok && candidate.kind === "message",
+  )
+  if (messages.length > 1) {
+    return { ok: false, code: "message-count" }
+  }
+  if (
+    messages.length === 1 &&
+    validated.some((candidate) => candidate.ok && candidate.kind === "frames")
+  ) {
     return { ok: false, code: "kind-mismatch" }
   }
-  if (kinds[0] === "message") {
-    const parsed = parseRelayMessage(originals[0]!)
-    return parsed.ok
-      ? { ok: true, kind: "message", payload: parsed.payload }
-      : parsed
+  if (messages[0] !== undefined) {
+    return { ok: true, kind: "message", payload: messages[0].payload }
   }
 
   if (originals.length > PROTOCOL_MAX_FRAMES) {

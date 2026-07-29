@@ -59,6 +59,7 @@ const PARSE_ERROR_KEYS: Record<RelayParseErrorCode, MessageKey> = {
   "invalid-message": "relay.error.invalidMessage",
   "kind-mismatch": "relay.error.kindMismatch",
   length: "relay.error.length",
+  "message-count": "relay.error.messageCount",
   mismatch: "relay.error.mismatch",
   "outer-type": "relay.error.outerType",
   prefix: "relay.error.prefix",

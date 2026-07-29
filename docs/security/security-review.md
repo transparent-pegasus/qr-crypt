@@ -304,20 +304,22 @@ guaranteed; JS memory erasure has limits
 4. Confirm the bundle makes no external network references **and** that
    same-origin traffic stays on the no-payload allowlist. Same-origin alone
    is not sufficient: a regression that POSTed relay text to this origin
-   would still be same-origin. e2e (`tests/e2e/security.spec.ts`, including
-   the online-relay scenario) must assert:
+   would still be same-origin. e2e (`tests/e2e/security.spec.ts` and
+   `tests/e2e/online-relay.spec.ts`) must assert:
    - **Allowlist (methods + paths only):** static/PWA resources; recurring
      `HEAD /manifest.webmanifest?reach=…` (display probe); boot
      `GET /reachability-sentinel.txt` (destructive probe). No other
      runtime requests.
    - **Negative matrix after capture / copy / paste / playback / rejection /
      close / `pagehide` / timeout:** a unique relay payload marker and a
-     marker derived from a decoded OCM1 field are absent from request bodies
-     and query values, CacheStorage keys/bodies (static shell
+     marker from each sender-controlled OCM1 field plus the refused OCK1 key
+     bytes are absent from request bodies and query values, every IndexedDB
+     database's keys/values, CacheStorage metadata/bodies (static shell
      permitted), localStorage (only `{oc-theme, oc-lang,
-     oc-offline-ack-pending, oc-online-tab}`), IndexedDB values, console,
-     `window.onerror` / unhandled rejections, visible error text,
-     `document.title`, `location.href`, and history state.
+     oc-offline-ack-pending, oc-online-tab}`), console, `window.onerror` /
+     unhandled rejections, visible error text, `document.title`,
+     `location.href`, and history state. The byte-aware storage oracle has a
+     self-test that plants a typed-array marker and requires it to be found.
    - **Window-realm receipts must never appear in IndexedDB, localStorage, or
      CacheStorage.** Receipts are intentional module-memory residue in one loaded
      app window only (`src/features/receipt-cache.ts`), not shared with other tabs

@@ -218,6 +218,9 @@ units:
       - scripts/csp-from-headers.mjs # derives the meta CSP injected into index.html
       - scripts/csp-from-headers.d.mts # declaration companion for the above
       - tests/e2e/security.spec.ts # executable half of the CSP claims
+      - tests/e2e/online-relay.spec.ts # relay request/persistence leakage matrix and byte-oracle self-test
+      - tests/e2e/persistence-inspector.ts # recursive byte-aware IndexedDB/CacheStorage oracle
+      - tests/e2e/receipt-non-persistence.spec.ts # receipt-specific consumer of the same persistence oracle
       - tests/unit/csp-meta.test.ts # executable header-to-meta derivation contract
       - tests/unit/serve-dist.test.ts # executable header-aware server contract
       - src/lib/limits.ts # artifact ceiling, algorithm-specific bounds, and cycle budget
@@ -242,7 +245,7 @@ units:
       aube run test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
       aube run test -- tests/unit/csp-meta.test.ts tests/unit/serve-dist.test.ts
       aube run build:prod
-      aube run test:e2e -- tests/e2e/security.spec.ts
+      aube run test:e2e -- tests/e2e/security.spec.ts tests/e2e/online-relay.spec.ts tests/e2e/receipt-non-persistence.spec.ts
     sync: [threat-model, ui-security-copy]
 
   - id: browser-support
@@ -317,6 +320,10 @@ units:
       - src/components/key-detail/identity-qr-session.tsx # the identity display surface that consumes the pair
       - src/components/animated-qr-frames.tsx # labelled compatibility switch, commit-gated dwell, and one-button export
       - src/components/online-relay.tsx # independent replay cadence and deliberately absent switch
+      - src/qr/relay-frames.ts # two-kind validation, session binding, and canonical relay boundary
+      - tests/fixtures/relay-v1.ts # production-generated canonical v1 relay literals
+      - tests/unit/relay-frames.test.ts # parser contract and node-environment fixture pins
+      - tests/ui/online-relay.test.tsx # jsdom relay behavior using the pinned literals
       - tests/pq/wire-bytes.golden.test.ts # frozen hex must match the docs
       - tests/pq/canonical-cbor.golden.test.ts
       - tests/pq/composition-golden.test.ts

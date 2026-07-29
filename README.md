@@ -107,11 +107,12 @@ leaves before wipe. By contrast, route A's origin is `127.0.0.1`; after its dedi
 server is stopped and its reserved port is not reused, there is no peer for the probe to
 contact. High-assurance use must use Route A only.
 
-### Sending a message through an online device
+### Sending a message payload through an online device
 
 The two offline devices do not have to be in the same room. A third, online device carries
-the ciphertext QR payload as text through any messenger. Use an online device that has
-never held QR Crypt keys.
+the message-payload QR text through any messenger. Ciphertext is the intended workflow,
+not a property the relay can authenticate. Use an online device that has never held QR
+Crypt keys.
 
 For AES-256-GCM (`OCM1`), the relay path is one scan, one paste, and one re-displayed QR;
 there is no multi-frame assembly. The post-quantum (`OCF2`) path remains a multi-frame
@@ -133,8 +134,9 @@ OCF2 `pq-message` frames and one canonical OCM1 message. It rejects top-level ke
 prefixes and OCF2 outer types other than `pq-message`, but those rejections do not prove
 that accepted opaque bytes are free of key material. It does not assemble OCF2 sets,
 verify AEAD or signatures, or decrypt anything; for OCM1 it decodes the complete envelope
-and checks structural canonicality only. Accepted OCF2 chunk bytes and the OCM1 ciphertext
-field remain untrusted and are authenticated only on the offline endpoint. An artifact
+and checks structural canonicality only. Accepted OCF2 chunk bytes and every
+sender-controlled OCM1 field—`keyId`, `createdAt`, `iv`, `ciphertext`, and `aad`—remain
+unauthenticated at the relay and can carry key material or plaintext. An artifact
 relabelled as a message, including one carrying key material, passes the OCF2 outer filter
 and is rejected only after the offline device assembles it
 ([docs/security/threat-model.md](docs/security/threat-model.md) T19).

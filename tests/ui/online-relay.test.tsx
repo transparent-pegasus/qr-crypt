@@ -8,6 +8,11 @@ import {
 } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import {
+  OCK1_SYMMETRIC_KEY,
+  OCM1_MESSAGE_33,
+  OCM1_MESSAGE_44,
+} from "../fixtures/relay-v1"
 
 const scanStart = vi.hoisted(() => vi.fn())
 const scanStop = vi.hoisted(() => vi.fn())
@@ -75,15 +80,6 @@ function frame(frameIndex: number, overrides: Partial<QrFrameV2> = {}): QrFrameV
 function payload(frameIndex: number, overrides: Partial<QrFrameV2> = {}): string {
   return encodeFrameToPayload(frame(frameIndex, overrides))
 }
-
-// These are literals because jsdom's cross-realm Uint8Arrays fail the schema's
-// instanceof check; do not helpfully convert them back into encoder calls.
-const OCM1_MESSAGE_33 =
-  "OCM1:uQAIYXYBZHR5cGVnbWVzc2FnZWlhbGdvcml0aG1nQTI1NkdDTWVrZXlJZHZBQUVDQXdRRkJnY0lDUW9MREEwT0R3aWNyZWF0ZWRBdPtCeLz-VoAAAGJpdkwiIiIiIiIiIiIiIiJqY2lwaGVydGV4dFgwMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzY2FhZFg9T0NBQUQxfDF8bWVzc2FnZXxBMjU2R0NNfEFBRUNBd1FGQmdjSUNRb0xEQTBPRHd8MTcwMDAwMDAwMDAwMA"
-const OCM1_MESSAGE_44 =
-  "OCM1:uQAIYXYBZHR5cGVnbWVzc2FnZWlhbGdvcml0aG1nQTI1NkdDTWVrZXlJZHZBQUVDQXdRRkJnY0lDUW9MREEwT0R3aWNyZWF0ZWRBdPtCeLz-VoAAAGJpdkwiIiIiIiIiIiIiIiJqY2lwaGVydGV4dFgwREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREREY2FhZFg9T0NBQUQxfDF8bWVzc2FnZXxBMjU2R0NNfEFBRUNBd1FGQmdjSUNRb0xEQTBPRHd8MTcwMDAwMDAwMDAwMA"
-const OCK1_SYMMETRIC_KEY =
-  "OCK1:uQAGYXYBZHR5cGVtc3ltbWV0cmljLWtleWlhbGdvcml0aG1nQTI1NkdDTWVrZXlJZHZBQUVDQXdRRkJnY0lDUW9MREEwT0R3aWNyZWF0ZWRBdPtCeLz-VoAAAGNrZXlYIERERERERERERERERERERERERERERERERERERERERERERE"
 
 async function startCapture(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
@@ -389,6 +385,28 @@ describe("online relay UI", () => {
     expect(renderQr).not.toHaveBeenCalled()
   })
 
+  it("reports a second OCM1 message as a cardinality error", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    )
+
+    await enterRelayText(
+      user,
+      await screen.findByLabelText(translate("en", "relay.playback.input.label")),
+      `${OCM1_MESSAGE_33}\n${OCM1_MESSAGE_44}`,
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.show") }),
+    )
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.messageCount")),
+    ).toBeInTheDocument()
+    expect(renderQr).not.toHaveBeenCalled()
+  })
+
   it("refuses a canonical OCK1 at playback and renders nothing", async () => {
     const user = userEvent.setup()
     renderRelay()
@@ -589,6 +607,11 @@ describe("online relay UI", () => {
       "OCM1-after-frames",
       OCM1_MESSAGE_44,
       translate("en", "relay.error.kindMismatch"),
+    ],
+    [
+      "malformed-OCM1-after-frames",
+      "OCM1:AA",
+      translate("en", "relay.error.invalidMessage"),
     ],
     ["OCK1", OCK1_SYMMETRIC_KEY, translate("en", "relay.error.prefix")],
     [

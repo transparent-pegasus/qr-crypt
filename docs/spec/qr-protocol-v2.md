@@ -410,6 +410,8 @@ relay is an untrusted hop: it performs no OCF2 assembly, completed-artifact
 total-hash check, AEAD or signature verification, or decryption. For OCM1 it
 establishes structural canonicality only. Authoritative completion and
 authentication remain on the offline endpoint (§6 for OCF2 assembly).
+Ciphertext is the intended message workflow, not a property this relay can
+verify.
 
 - Every displayed frame string is
   `OCF2:<unpadded-base64url(canonical CBOR frame)>`: after the 5-character
@@ -431,8 +433,9 @@ authentication remain on the offline endpoint (§6 for OCF2 assembly).
   structural canonicality, not authenticity.
 - Rejecting top-level `OCK1:` / `OCP1:` prefixes and OCF2 outer types other
   than `pq-message` does not establish that accepted opaque bytes are free of
-  key material. OCF2 chunk bytes and the OCM1 ciphertext field remain
-  untrusted and are authenticated only on the offline endpoint.
+  key material. OCF2 chunk bytes and every sender-controlled OCM1 field
+  (`keyId`, `createdAt`, `iv`, `ciphertext`, and `aad`) are unauthenticated at
+  the relay and can carry key material or plaintext.
 - Frames carry no artifact digest (§6). A relay can drop, reorder, replay, or
   substitute an entire well-formed frame set.
 - OCF2 relay playback keeps its deliberately named 1,000ms interval and has

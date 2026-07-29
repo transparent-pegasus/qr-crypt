@@ -18,6 +18,11 @@ import {
   openOfflineApp,
   seedSelfPublicBundle,
 } from "./helpers"
+import {
+  inspectPersistentSurfaces,
+  type PersistenceNeedle,
+} from "./persistence-inspector"
+import { OCK1_SYMMETRIC_KEY } from "../fixtures/relay-v1"
 
 interface ObservedRequest {
   body: string | null
@@ -60,13 +65,19 @@ function expectAllowedRelayRequest(request: ObservedRequest): void {
 const V1_KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 const V1_CREATED_AT = 1_700_000_000_000
 const MESSAGE_CIPHERTEXT_FILL = 0x5a
-const RAW_KEY_TEXT_MARKER = "OCK1_RAW_KEY_MARKER_5D9B_1234567"
-const RAW_KEY_BYTES = new TextEncoder().encode(RAW_KEY_TEXT_MARKER)
+const MESSAGE_IV_BYTES = new Uint8Array(12).fill(0x22)
+const MESSAGE_CIPHERTEXT_BYTES = new Uint8Array(48).fill(
+  MESSAGE_CIPHERTEXT_FILL,
+)
+const MESSAGE_AAD_BYTES = buildAad({
+  v: 1,
+  type: "message",
+  algorithm: "A256GCM",
+  keyId: V1_KEY_ID,
+  createdAt: V1_CREATED_AT,
+})
+const SYMMETRIC_KEY_BYTES = new Uint8Array(32).fill(0x44)
 const fixtureEncoder = new Encoder({ useRecords: false, tagUint8Array: false })
-
-if (RAW_KEY_BYTES.byteLength !== 32) {
-  throw new Error("The OCK1 E2E fixture must contain exactly 32 key bytes")
-}
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
@@ -74,9 +85,10 @@ function bytesToHex(bytes: Uint8Array): string {
 
 // Importing @/qr/payload in Playwright's Node worker eagerly evaluates the
 // browser-only import.meta.env schema through @/lib/limits. Keep this fixture
-// encoder to the two v1 kinds under test and mirror the production field order.
-// Both relay boundaries still decode and compare it with the production
-// encodeEnvelopeToPayload result, so any canonicalisation drift fails closed.
+// encoder narrow and mirror the production field order. Accepted OCM1 reaches
+// the production decoder/re-encode boundary. OCK1 is refused by prefix before
+// decode, so its local output is anchored below to the production-generated
+// shared fixture instead of being treated as self-authenticating.
 function encodeEnvelopeToPayload(
   envelope: AesMessageEnvelopeV1 | SymmetricKeyEnvelopeV1,
 ): string {
@@ -105,84 +117,48 @@ function encodeEnvelopeToPayload(
 }
 
 function messagePayload(): string {
-  const ciphertext = new Uint8Array(48).fill(MESSAGE_CIPHERTEXT_FILL)
   return encodeEnvelopeToPayload({
     v: 1,
     type: "message",
     algorithm: "A256GCM",
     keyId: V1_KEY_ID,
     createdAt: V1_CREATED_AT,
-    iv: new Uint8Array(12).fill(0x22),
-    ciphertext,
-    aad: buildAad({
-      v: 1,
-      type: "message",
-      algorithm: "A256GCM",
-      keyId: V1_KEY_ID,
-      createdAt: V1_CREATED_AT,
-    }),
+    iv: MESSAGE_IV_BYTES,
+    ciphertext: MESSAGE_CIPHERTEXT_BYTES,
+    aad: MESSAGE_AAD_BYTES,
   })
 }
 
 function symmetricKeyPayload(): string {
-  return encodeEnvelopeToPayload({
+  const encoded = encodeEnvelopeToPayload({
     v: 1,
     type: "symmetric-key",
     algorithm: "A256GCM",
     keyId: V1_KEY_ID,
     createdAt: V1_CREATED_AT,
-    key: RAW_KEY_BYTES,
+    key: SYMMETRIC_KEY_BYTES,
   })
+  if (encoded !== OCK1_SYMMETRIC_KEY) {
+    throw new Error("The local OCK1 encoder drifted from the production fixture")
+  }
+  return OCK1_SYMMETRIC_KEY
 }
 
 async function assertNoRelayPayloadPersistence(
   page: Page,
-  needles: readonly string[],
+  textNeedles: readonly string[],
+  byteNeedles: readonly PersistenceNeedle[],
 ): Promise<void> {
-  const snapshot = await page.evaluate(async () => {
-    const cacheValues: string[] = []
-    for (const cacheName of await caches.keys()) {
-      const cache = await caches.open(cacheName)
-      for (const request of await cache.keys()) {
-        cacheValues.push(request.url)
-        try {
-          const response = await cache.match(request)
-          if (response) cacheValues.push(await response.clone().text())
-        } catch {
-          // Opaque/binary cache entries remain covered by their keys.
-        }
-      }
-    }
+  const persistence = await inspectPersistentSurfaces(page, [
+    ...textNeedles.map((text, index) => ({
+      marker: `relay-text-${index}`,
+      text,
+    })),
+    ...byteNeedles,
+  ])
+  expect(persistence.matches).toEqual([])
 
-    const databaseValues: string[] = []
-    await new Promise<void>((resolve, reject) => {
-      const opening = indexedDB.open("qr-crypt")
-      opening.onerror = () => reject(opening.error)
-      opening.onsuccess = () => {
-        const database = opening.result
-        const names = Array.from(database.objectStoreNames)
-        if (names.length === 0) {
-          database.close()
-          resolve()
-          return
-        }
-        const transaction = database.transaction(names, "readonly")
-        transaction.onerror = () => reject(transaction.error)
-        transaction.onabort = () => reject(transaction.error)
-        transaction.oncomplete = () => {
-          database.close()
-          resolve()
-        }
-        for (const name of names) {
-          const request = transaction.objectStore(name).getAll()
-          request.onerror = () => reject(request.error)
-          request.onsuccess = () => {
-            databaseValues.push(JSON.stringify(request.result))
-          }
-        }
-      }
-    })
-
+  const snapshot = await page.evaluate(() => {
     const errors =
       (
         window as Window & {
@@ -190,8 +166,6 @@ async function assertNoRelayPayloadPersistence(
         }
       ).__relayE2eErrors ?? []
     return {
-      cacheValues,
-      databaseValues,
       errors,
       historyState: JSON.stringify(history.state),
       href: location.href,
@@ -219,8 +193,6 @@ async function assertNoRelayPayloadPersistence(
     /^(?:top|relay)$/,
   )
   const inspected = [
-    ...snapshot.cacheValues,
-    ...snapshot.databaseValues,
     ...snapshot.errors,
     ...snapshot.localStorageEntries.flat(),
     snapshot.historyState,
@@ -228,10 +200,69 @@ async function assertNoRelayPayloadPersistence(
     snapshot.title,
     snapshot.visibleText,
   ]
-  for (const needle of needles) {
+  for (const needle of textNeedles) {
     for (const value of inspected) expect(value).not.toContain(needle)
   }
 }
+
+test("the relay persistence oracle detects a typed-array marker", async ({
+  page,
+}) => {
+  const databaseName = "relay-persistence-oracle-self-test"
+  const marker = "RELAY_TYPED_ARRAY_ORACLE_7B4D"
+  const markerBytes = Array.from(new TextEncoder().encode(marker))
+  await loadOnlineGate(page)
+  await page.evaluate(
+    ({ bytes, name }) =>
+      new Promise<void>((resolve, reject) => {
+        const opening = indexedDB.open(name, 1)
+        opening.onerror = () => reject(opening.error)
+        opening.onupgradeneeded = () => {
+          opening.result.createObjectStore("markers")
+        }
+        opening.onsuccess = () => {
+          const database = opening.result
+          const transaction = database.transaction("markers", "readwrite")
+          transaction.onerror = () => reject(transaction.error)
+          transaction.onabort = () => reject(transaction.error)
+          transaction.oncomplete = () => {
+            database.close()
+            resolve()
+          }
+          transaction
+            .objectStore("markers")
+            .put(Uint8Array.from(bytes), "typed-array")
+        }
+      }),
+    { bytes: markerBytes, name: databaseName },
+  )
+
+  try {
+    const inspection = await inspectPersistentSurfaces(page, [
+      { marker: "typed-array-self-test", bytes: markerBytes },
+    ])
+    expect(inspection.matches).toEqual([
+      expect.objectContaining({
+        marker: "typed-array-self-test",
+        location: expect.stringContaining(
+          `indexedDB:${databaseName}/markers.values[0]`,
+        ),
+      }),
+    ])
+  } finally {
+    await page.evaluate(
+      (name) =>
+        new Promise<void>((resolve, reject) => {
+          const deletion = indexedDB.deleteDatabase(name)
+          deletion.onerror = () => reject(deletion.error)
+          deletion.onblocked = () =>
+            reject(new Error(`IndexedDB deletion was blocked: ${name}`))
+          deletion.onsuccess = () => resolve()
+        }),
+      databaseName,
+    )
+  }
+})
 
 test("relays canonical OCM1 messages and OCF2 frames without relay-payload persistence or requests", async ({
   baseURL,
@@ -270,9 +301,9 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
     bytesToHex(new Uint8Array(8).fill(MESSAGE_CIPHERTEXT_FILL)),
   ]
   const rawKeyMarkers = [
-    RAW_KEY_TEXT_MARKER,
-    bytesToHex(RAW_KEY_BYTES.subarray(0, 8)),
-    Array.from(RAW_KEY_BYTES.subarray(0, 8)).join(","),
+    new TextDecoder().decode(SYMMETRIC_KEY_BYTES),
+    bytesToHex(SYMMETRIC_KEY_BYTES.subarray(0, 8)),
+    Array.from(SYMMETRIC_KEY_BYTES.subarray(0, 8)).join(","),
   ]
   const requests: ObservedRequest[] = []
   const consoleValues: string[] = []
@@ -459,6 +490,24 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
     canonicalSymmetricKeyPayload,
     ...rawKeyMarkers,
   ]
+  const createdAtBytes = new Uint8Array(8)
+  new DataView(createdAtBytes.buffer).setFloat64(0, V1_CREATED_AT)
+  const relayPayloadByteNeedles: PersistenceNeedle[] = [
+    {
+      marker: "ocm1-keyId",
+      text: V1_KEY_ID,
+      bytes: new TextEncoder().encode(V1_KEY_ID),
+    },
+    {
+      marker: "ocm1-createdAt",
+      text: String(V1_CREATED_AT),
+      bytes: createdAtBytes,
+    },
+    { marker: "ocm1-iv", bytes: MESSAGE_IV_BYTES },
+    { marker: "ocm1-ciphertext", bytes: MESSAGE_CIPHERTEXT_BYTES },
+    { marker: "ocm1-aad", bytes: MESSAGE_AAD_BYTES },
+    { marker: "ock1-key", bytes: SYMMETRIC_KEY_BYTES },
+  ]
   for (const request of requests) {
     expectAllowedRelayRequest(request)
     for (const needle of relayPayloadNeedles) {
@@ -471,5 +520,9 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
       expect(value).not.toContain(needle)
     }
   }
-  await assertNoRelayPayloadPersistence(page, relayPayloadNeedles)
+  await assertNoRelayPayloadPersistence(
+    page,
+    relayPayloadNeedles,
+    relayPayloadByteNeedles,
+  )
 })

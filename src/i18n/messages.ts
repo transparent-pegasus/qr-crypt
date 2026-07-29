@@ -111,10 +111,10 @@ const en = {
   "gate.install.error":
     "Installation could not be started. Use the browser menu instead.",
   "gate.appIcon.alt": "{appName} app icon",
-  "gate.mode.label": "Online installation and ciphertext QR relay",
-  "gate.heading": "Install the PWA or relay ciphertext QR",
+  "gate.mode.label": "Online installation and message-payload QR relay",
+  "gate.heading": "Install the PWA or relay a message-payload QR",
   "gate.description":
-    "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, or one canonical OCM1 message, without using local keys.",
+    "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, or one structurally canonical OCM1 message, without using local keys.",
   "pwa.installState.label": "PWA installation status",
   "pwa.installState.installed": "Installed",
   "pwa.installState.notInstalled": "Not installed",
@@ -133,19 +133,19 @@ const en = {
     "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
   "gate.about.link": "What this app does",
 
-  "relay.card.title": "Ciphertext QR relay",
+  "relay.card.title": "Message-payload QR relay",
   "relay.card.description":
-    "Move canonical ciphertext QR text between a messenger and an offline device: one OCM1 message, or a canonical OCF2 frame set. The relay does not intentionally place payload-derived values in app-managed storage or payload-bearing network requests.",
+    "Move sender-controlled message-payload QR text between a messenger and an offline device: one structurally canonical OCM1 message, or a canonical OCF2 frame set. Ciphertext is the intended workflow, not a fact this relay can verify. The relay does not intentionally place payload-derived values in app-managed storage or payload-bearing network requests.",
   "relay.boundary.title": "Untrusted relay boundary",
   "relay.boundary.body":
-    "The relay accepts OCF2 frames whose untrusted outer header declares pq-message, and OCM1 messages whose encoding is canonical. Top-level key-artifact prefixes and outer types are rejected, but the accepted bytes themselves stay untrusted: the relay performs no assembly, total-hash, AEAD, signature, sender, or safety check, and cannot tell whether an OCF2 chunk or an OCM1 ciphertext field carries key material or plaintext. The receiving offline device is the only place anything is authenticated. Face-to-face key exchange is the supported workflow.",
+    "The relay accepts OCF2 frames whose untrusted outer header declares pq-message, and OCM1 messages whose encoding is structurally canonical. Top-level key-artifact prefixes and OCF2 outer types other than pq-message are rejected, but the accepted bytes themselves stay untrusted: the relay performs no assembly, total-hash, AEAD, signature, sender, or safety check. OCF2 chunks and every sender-controlled OCM1 field—keyId, createdAt, iv, ciphertext, and aad—are unauthenticated here and can carry key material or plaintext. The receiving offline device is the only place anything is authenticated. Face-to-face key exchange is the supported workflow.",
   "relay.capture.open": "QR → text",
   "relay.capture.unavailable":
     "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
   "relay.capture.title": "QR to text",
   "relay.capture.description":
     "Start the camera explicitly, then scan the message QR, or every frame from the offline device. Malformed, mismatched, or wrong-kind payloads are rejected without replacing what was already accepted.",
-  "relay.capture.video.ariaLabel": "Ciphertext relay camera preview",
+  "relay.capture.video.ariaLabel": "Message-payload relay camera preview",
   "relay.capture.startCamera": "Start camera",
   "relay.capture.cameraActive": "Camera active",
   "relay.capture.progress": "{collected} / {total} frames collected",
@@ -173,6 +173,8 @@ const en = {
     "Only canonical OCM1 message strings and canonical OCF2 frame strings are accepted.",
   "relay.error.kindMismatch":
     "One relay transfer carries either one OCM1 message or one OCF2 frame set, never both.",
+  "relay.error.messageCount":
+    "One relay transfer carries exactly one OCM1 message, not multiple message lines.",
   "relay.error.outerType": "The frame's outer header does not declare pq-message.",
   "relay.error.invalidFrame": "The frame is not a canonical OCF2 frame.",
   "relay.error.invalidMessage": "The payload is not a canonical OCM1 message.",
@@ -778,10 +780,10 @@ const ja = {
   "gate.install.error":
     "インストールを開始できませんでした。ブラウザーのメニューから操作してください。",
   "gate.appIcon.alt": "{appName}のアプリアイコン",
-  "gate.mode.label": "オンライン導入・暗号文QRリレーモード",
-  "gate.heading": "PWAの導入または暗号文QRの中継",
+  "gate.mode.label": "オンライン導入・メッセージペイロードQRリレーモード",
+  "gate.heading": "PWAの導入またはメッセージペイロードQRの中継",
   "gate.description":
-    "暗号・復号、鍵作成、鍵一覧、設定は引き続きオフライン専用です。機微ストア走査がエラーなく完了し、鍵行・PQ identity・Vaultが無い場合に限り、クリーンオリジンは外側の信頼できないヘッダーがpq-messageと表明する正規OCF2フレーム、または正規OCM1メッセージ1件を、鍵を使わず中継できます。",
+    "暗号・復号、鍵作成、鍵一覧、設定は引き続きオフライン専用です。機微ストア走査がエラーなく完了し、鍵行・PQ identity・Vaultが無い場合に限り、クリーンオリジンは外側の信頼できないヘッダーがpq-messageと表明する正規OCF2フレーム、または構造的に正規なOCM1メッセージ1件を、鍵を使わず中継できます。",
   "pwa.installState.label": "PWAインストール状態",
   "pwa.installState.installed": "インストール済み",
   "pwa.installState.notInstalled": "未インストール",
@@ -801,19 +803,19 @@ const ja = {
     "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。",
   "gate.about.link": "このアプリが何をするか",
 
-  "relay.card.title": "暗号文QRリレー",
+  "relay.card.title": "メッセージペイロードQRリレー",
   "relay.card.description":
-    "メッセンジャーとオフライン端末の間で、正規の暗号文QR文字列を中継します。OCM1メッセージ1件、または正規OCF2フレーム一式を運びます。ペイロード由来の値をアプリ管理の保存領域やペイロードを含むネットワーク要求へ意図的に書き込みません。",
+    "メッセンジャーとオフライン端末の間で、送信者が制御するメッセージペイロードQR文字列を中継します。構造的に正規なOCM1メッセージ1件、または正規OCF2フレーム一式を運びます。暗号文は想定する運用であり、リレーが検証できる事実ではありません。ペイロード由来の値をアプリ管理の保存領域やペイロードを含むネットワーク要求へ意図的に書き込みません。",
   "relay.boundary.title": "信頼しない中継境界",
   "relay.boundary.body":
-    "外側の信頼できないヘッダーがpq-messageと表明するOCF2フレーム、および符号化が正規であるOCM1メッセージを受け入れます。最上位の鍵成果物プレフィクスと外側の型は拒否しますが、受理したバイト列そのものは信頼しません。組立、全体ハッシュ、AEAD、署名、送信者、安全性は検証せず、OCF2のチャンクやOCM1の暗号文フィールドが鍵素材や平文を含むかどうかを中継は判別できません。真正性を確認できるのは受信側のオフライン端末だけです。鍵交換は対面で行う運用を前提とします。",
+    "外側の信頼できないヘッダーがpq-messageと表明するOCF2フレーム、および符号化が構造的に正規であるOCM1メッセージを受け入れます。最上位の鍵成果物プレフィクスと、pq-message以外のOCF2外側タイプは拒否しますが、受理したバイト列そのものは信頼しません。組立、全体ハッシュ、AEAD、署名、送信者、安全性は検証しません。OCF2チャンクと、送信者が制御するOCM1の全フィールド（keyId、createdAt、iv、ciphertext、aad）はここでは認証されず、鍵素材や平文を運べます。真正性を確認できるのは受信側のオフライン端末だけです。鍵交換は対面で行う運用を前提とします。",
   "relay.capture.open": "QR → テキスト",
   "relay.capture.unavailable":
     "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",
   "relay.capture.title": "QRをテキスト化",
   "relay.capture.description":
     "明示的にカメラを開始し、メッセージQR、またはオフライン端末の全フレームを読み取ってください。不正・不一致・種別違いのペイロードは、受理済みの内容を置き換えず拒否します。",
-  "relay.capture.video.ariaLabel": "暗号文リレーのカメラプレビュー",
+  "relay.capture.video.ariaLabel": "メッセージペイロードリレーのカメラプレビュー",
   "relay.capture.startCamera": "カメラを開始",
   "relay.capture.cameraActive": "カメラ動作中",
   "relay.capture.progress": "{collected} / {total} フレーム収集済み",
@@ -841,6 +843,8 @@ const ja = {
     "正規OCM1メッセージ文字列と正規OCF2フレーム文字列だけを受け入れます。",
   "relay.error.kindMismatch":
     "1回の中継が運ぶのは、OCM1メッセージ1件かOCF2フレーム一式のどちらか一方だけです。",
+  "relay.error.messageCount":
+    "1回の中継で運べるOCM1メッセージは1件だけです。複数行のメッセージは受け入れません。",
   "relay.error.outerType": "フレームの外側ヘッダーがpq-messageを表明していません。",
   "relay.error.invalidFrame": "正規OCF2フレームではありません。",
   "relay.error.invalidMessage": "正規のOCM1メッセージではありません。",
