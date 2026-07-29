@@ -331,6 +331,86 @@ describe("online relay UI", () => {
     ).toBeNull()
   })
 
+  it("renders exactly one QR for a pasted OCM1 message, with no transport controls", async () => {
+    const user = userEvent.setup()
+    renderQr.mockResolvedValue(dataUrl("ocm1"))
+    renderRelay()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    )
+
+    const message = OCM1_MESSAGE_33
+    await enterRelayText(
+      user,
+      await screen.findByLabelText(translate("en", "relay.playback.input.label")),
+      message,
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.show") }),
+    )
+
+    await waitFor(() =>
+      expect(renderQr).toHaveBeenCalledWith(
+        message,
+        expect.objectContaining({ ecLevel: "Q" }),
+      ),
+    )
+    const images = await screen.findAllByRole("img")
+    expect(images).toHaveLength(1)
+    for (const control of ["animatedQr.prev", "animatedQr.next", "animatedQr.pause", "animatedQr.play"] as const) {
+      expect(
+        screen.queryByRole("button", { name: translate("en", control) }),
+      ).toBeNull()
+    }
+    expect(
+      screen.getByText(translate("en", "relay.playback.noDownloadControls")),
+    ).toBeInTheDocument()
+  })
+
+  it("refuses relay text that mixes an OCM1 message with a frame", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    )
+
+    await enterRelayText(
+      user,
+      await screen.findByLabelText(translate("en", "relay.playback.input.label")),
+      `${OCM1_MESSAGE_44}\n${payload(0)}`,
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.show") }),
+    )
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.kindMismatch")),
+    ).toBeInTheDocument()
+    expect(renderQr).not.toHaveBeenCalled()
+  })
+
+  it("refuses a canonical OCK1 at playback and renders nothing", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    )
+
+    await enterRelayText(
+      user,
+      await screen.findByLabelText(translate("en", "relay.playback.input.label")),
+      OCK1_SYMMETRIC_KEY,
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.show") }),
+    )
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.prefix")),
+    ).toBeInTheDocument()
+    expect(renderQr).not.toHaveBeenCalled()
+  })
+
   it("is absent when ineligible and requests no camera on mount or dialog open", async () => {
     const { rerender } = render(
       <LanguageProvider initialLanguage="en">
