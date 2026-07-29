@@ -87,7 +87,7 @@ All decryption-time failures (AAD mismatch, tag mismatch, wrong key) are normali
 | Kind | EC | quiet zone | Size |
 |---|---|---|---|
 | Ciphertext (OCM1) | Q (default; configurable in settings) | 4 | 512px |
-| Relay playback (OCM1) | **Q, else M, else L** (never H; the relay cannot read the sender's preference) | 4 | 512px |
+| Relay playback (OCM1) | see [qr-protocol-v2.md](qr-protocol-v2.md) §10 | 4 | 512px |
 | Symmetric key (OCK1) | **H, fixed** | 4 | 512px |
 | Frames (OCF2: ciphertext, public key, identity) | **Q, fixed** | 4 | 512px |
 

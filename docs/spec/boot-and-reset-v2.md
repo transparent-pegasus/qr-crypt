@@ -171,9 +171,9 @@ against: malicious same-origin code, physical recovery (disk imaging), or
 compromised code that runs first through an update. The theme (`oc-theme`), the
 last online tab (`oc-online-tab`, `top`/`relay`), and the
 pending-acknowledgement marker (`oc-offline-ack-pending="1"`) are
-non-sensitive but are included in the bulk `oc-*` deletion. In an
-online-detected wipe only the acknowledgement marker is re-set, in the order
-above; the tab preference is not.
+non-sensitive but are included in the bulk `oc-*` deletion. Marker re-set
+after an `online-detected` wipe follows §4 step 6; the tab preference is not
+re-set.
 
 ## 7. Display-Only Offline Acknowledgement Phase and the Persistent Marker
 

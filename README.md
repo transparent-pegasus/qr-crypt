@@ -8,8 +8,7 @@
 > encryption, and decryption must therefore happen on a device that stays fully offline.
 
 Once a device has been set up as the offline device, it never goes back online. To retire
-it, run a media-appropriate sanitization procedure (for example NIST SP 800-88) or destroy
-the medium — see the disclaimer below for why the app's own wipe is not enough.
+it, sanitize or destroy the medium — see the disclaimer below.
 
 QR Crypt is a Progressive Web App you install on a device you then keep permanently
 offline. You type a message; the app encrypts it on that device and shows the ciphertext on
@@ -86,10 +85,8 @@ installation. The complete procedure is in
 [docs/develop/install-route-a/](docs/develop/install-route-a/README.md). The archive's
 `INSTALL.txt` is the self-contained copy that reaches the offline device.
 
-That exact host and port are a security and storage boundary. If another page is later
-served on the same host:port, it has same-origin access to the stored keys and Vault key;
-if the port is changed after installation, QR Crypt becomes a different origin and cannot
-reach its stored data.
+That exact host and port are a security and storage boundary. Details:
+[docs/develop/install-route-a/](docs/develop/install-route-a/README.md) §8.
 
 ### Install route B: direct-origin PWA
 
@@ -99,14 +96,10 @@ reach its stored data.
 4. Disconnect that device from every network and leave it that way.
 5. Use the app from the normal screens that appear once the device is offline.
 
-Route B provides no integrity check that the receiving user can perform. An attacker who
-controls the origin, TLS, or CDN can serve an altered bundle to just one targeted device;
-the recipient cannot detect it, and the Service Worker persists it. The device also keeps
-that live origin: if it reconnects, a reachability probe goes to the same origin, and
-because wipe fires only after the sentinel confirms reachability, that beacon necessarily
-leaves before wipe. By contrast, route A's origin is `127.0.0.1`; after its dedicated
-server is stopped and its reserved port is not reused, there is no peer for the probe to
-contact. High-assurance use must use Route A only.
+Route B provides no integrity check that the receiving user can perform. High-assurance
+use must use Route A only — including why Route A's `127.0.0.1` origin avoids the live
+beacon residual:
+[docs/develop/install-route-a/](docs/develop/install-route-a/README.md).
 
 ### Sending a message payload through an online device
 
@@ -130,17 +123,10 @@ transfer.
 4. **Recipient's offline device** — scan the QR or frames. Only this device assembles an
    OCF2 message, and it is the only endpoint that authenticates either kind.
 
-Public keys and identities are still exchanged face to face. The relay accepts canonical
-OCF2 `pq-message` frames and one canonical OCM1 message. It rejects top-level key-artifact
-prefixes and OCF2 outer types other than `pq-message`, but those rejections do not prove
-that accepted opaque bytes are free of key material. It does not assemble OCF2 sets,
-verify AEAD or signatures, or decrypt anything; for OCM1 it decodes the complete envelope
-and checks structural canonicality only. Accepted OCF2 chunk bytes and every
-sender-controlled OCM1 field—`keyId`, `createdAt`, `iv`, `ciphertext`, and `aad`—remain
-unauthenticated at the relay and can carry key material or plaintext. An artifact
-relabelled as a message, including one carrying key material, passes the OCF2 outer filter
-and is rejected only after the offline device assembles it
-([docs/security/threat-model.md](docs/security/threat-model.md) T19).
+Public keys and identities are still exchanged face to face. The relay accepts only
+canonical OCF2 `pq-message` frames or one canonical OCM1 message and does not authenticate
+accepted opaque bytes — full allowlist and residual:
+[docs/security/threat-model.md](docs/security/threat-model.md) T19.
 
 ## Encryption
 
