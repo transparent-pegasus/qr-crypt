@@ -20,7 +20,11 @@ import {
   guardPublicIdentityBundleV2,
   guardQrFrameV2,
 } from "@/crypto/pq/canonical-cbor"
-import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
+import {
+  DSA_SIZES,
+  KEM_SIZES,
+  maxEnvelopeCiphertextBytes,
+} from "@/crypto/pq/profiles"
 import { suiteComponents } from "@/crypto/pq/suites"
 import {
   FRAME_CHUNK_MAX_BYTES,
@@ -28,7 +32,6 @@ import {
   IV_BYTES,
   KEY_ID_PATTERN,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
-  MAX_PLAINTEXT_BYTES,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
 
@@ -61,13 +64,9 @@ const mlKemEnvelopeV2Schema = z
         message: "invalid KEM ciphertext length",
       })
     }
-    const maximumCiphertextBytes =
-      MAX_PLAINTEXT_BYTES +
-      (components.signature === undefined
-        ? 512
-        : DSA_SIZES[components.signature].signatureBytes + 1024) +
-      16
-    if (envelope.ciphertext.byteLength > maximumCiphertextBytes) {
+    if (
+      envelope.ciphertext.byteLength > maxEnvelopeCiphertextBytes(envelope.suite)
+    ) {
       context.addIssue({
         code: "custom",
         path: ["ciphertext"],

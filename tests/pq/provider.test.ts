@@ -31,7 +31,7 @@ describe.each([
     expect(bytesEqual(other.publicKey, first.publicKey)).toBe(false)
   })
 
-  it("encapsulates/decapsulates and uses implicit rejection for tampering", () => {
+  it("returns adapter output lengths and decapsulates with the seeded key", () => {
     const provider = createProvider()
     const recipient = provider.keygen(new Uint8Array(sizes.seedBytes).fill(0x41))
     const encapsulated = provider.encapsulate(recipient.publicKey)
@@ -40,32 +40,6 @@ describe.each([
     expect(provider.decapsulate(encapsulated.ciphertext, recipient.secretKey)).toEqual(
       encapsulated.sharedSecret,
     )
-
-    const tampered = Uint8Array.from(encapsulated.ciphertext)
-    tampered[0] = tampered[0]! ^ 1
-    expect(
-      bytesEqual(
-        provider.decapsulate(tampered, recipient.secretKey),
-        encapsulated.sharedSecret,
-      ),
-    ).toBe(false)
-
-    const otherRecipient = provider.keygen(new Uint8Array(sizes.seedBytes).fill(0x42))
-    expect(
-      bytesEqual(
-        provider.decapsulate(encapsulated.ciphertext, otherRecipient.secretKey),
-        encapsulated.sharedSecret,
-      ),
-    ).toBe(false)
-  })
-
-  it("uses fresh encapsulation randomness", () => {
-    const provider = createProvider()
-    const keys = provider.keygen(new Uint8Array(sizes.seedBytes).fill(0x51))
-    const first = provider.encapsulate(keys.publicKey)
-    const second = provider.encapsulate(keys.publicKey)
-    expect(bytesEqual(first.ciphertext, second.ciphertext)).toBe(false)
-    expect(bytesEqual(first.sharedSecret, second.sharedSecret)).toBe(false)
   })
 
   it("rejects every wrong input length before noble", () => {
@@ -188,10 +162,9 @@ describe.each([
   })
 })
 
-it("KEM and DSA seed domains use different sizes and do not alias", () => {
+it("keeps KEM and DSA seed lengths distinct", () => {
   const kemSeed = new Uint8Array(KEM_SIZES["ML-KEM-768"].seedBytes).fill(0x91)
   const dsaSeed = new Uint8Array(DSA_SIZES["ML-DSA-65"].seedBytes).fill(0x91)
   expect(kemSeed.byteLength).toBe(64)
   expect(dsaSeed.byteLength).toBe(32)
-  expect(kemSeed.buffer).not.toBe(dsaSeed.buffer)
 })

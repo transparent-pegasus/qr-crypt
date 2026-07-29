@@ -1,8 +1,14 @@
 // Profile-to-algorithm and size-constant table.
 // Sources: @noble/post-quantum 0.6.1 source and the FIPS 203/204 parameter tables.
 // This table is part of the v2 contract; changing it requires a protocol revision.
-import type { MlDsaAlgorithm, MlKemAlgorithm, PqProfileId } from "@/schemas/domain"
-import { DSA_SEED_BYTES, KEM_SEED_BYTES } from "@/lib/limits"
+import type {
+  MlDsaAlgorithm,
+  MlKemAlgorithm,
+  PqProfileId,
+  WireSuite,
+} from "@/schemas/domain"
+import { suiteComponents } from "@/crypto/pq/suites"
+import { DSA_SEED_BYTES, KEM_SEED_BYTES, MAX_PLAINTEXT_BYTES } from "@/lib/limits"
 
 export interface KemSizeSpec {
   algorithm: MlKemAlgorithm
@@ -83,4 +89,18 @@ export const PQ_PROFILES: Record<PqProfileId, PqProfileSpec> = {
     symmetric: "AES-256-GCM",
     kdf: "HKDF-SHA-256",
   },
+}
+
+// One owner for the derived inner-ciphertext ceilings. limits.ts owns raw
+// constants; these read the size tables above, so they live beside them
+// (limits cannot import this module without a cycle).
+export function maxSignedMessageBytes(algorithm: MlDsaAlgorithm): number {
+  return MAX_PLAINTEXT_BYTES + DSA_SIZES[algorithm].signatureBytes + 1024
+}
+
+export function maxEnvelopeCiphertextBytes(suite: WireSuite): number {
+  const { signature } = suiteComponents(suite)
+  const innerBytes =
+    signature === undefined ? MAX_PLAINTEXT_BYTES + 512 : maxSignedMessageBytes(signature)
+  return innerBytes + 16
 }

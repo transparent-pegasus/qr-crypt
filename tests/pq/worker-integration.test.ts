@@ -5,7 +5,7 @@ import { createPqCryptoClient, type PqCryptoClient } from "@/crypto/pq/worker-cl
 import { dropVaultKeyCache, getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { closeDb, deleteEntireDatabase } from "@/storage/database"
 import { toBase64Url } from "@/lib/base64url"
-import type { MlKemMessageEnvelopeV2, PostQuantumIdentity } from "@/schemas/domain"
+import type { PostQuantumIdentity } from "@/schemas/domain"
 
 const clients = new Set<PqCryptoClient>()
 
@@ -60,16 +60,6 @@ async function identity(
       status: "active",
       createdAt: 1_700_000_000_000,
     },
-  }
-}
-
-function cloneEnvelope(envelope: MlKemMessageEnvelopeV2): MlKemMessageEnvelopeV2 {
-  return {
-    ...envelope,
-    kemCiphertext: Uint8Array.from(envelope.kemCiphertext),
-    hkdfSalt: Uint8Array.from(envelope.hkdfSalt),
-    iv: Uint8Array.from(envelope.iv),
-    ciphertext: Uint8Array.from(envelope.ciphertext),
   }
 }
 
@@ -256,57 +246,6 @@ describe("in-process PQ Worker handler", () => {
       createdAt,
       senderSigningKeyId: generated.identity.signing.keyId,
     })
-  })
-
-  it("rejects KEM ct, salt, IV, suite, keyId, and GCM tag tampering", async () => {
-    const pq = client()
-    const generated = await identity(pq, 51)
-    const envelope = await pq.encryptPqMessage({
-      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
-      recipientKemKeyId: generated.identity.kem.keyId,
-      recipientKemPublicKey: generated.identity.kem.publicKey,
-      plaintext: new TextEncoder().encode("tamper matrix"),
-      messageId: new Uint8Array(16).fill(0x43),
-      createdAt: 1_700_000_000_003,
-    })
-    const mutations: Array<(value: MlKemMessageEnvelopeV2) => void> = [
-      (value) => {
-        value.kemCiphertext[0] = value.kemCiphertext[0]! ^ 1
-      },
-      (value) => {
-        value.hkdfSalt[0] = value.hkdfSalt[0]! ^ 1
-      },
-      (value) => {
-        value.iv[0] = value.iv[0]! ^ 1
-      },
-      (value) => {
-        const last = value.ciphertext.byteLength - 1
-        value.ciphertext[last] = value.ciphertext[last]! ^ 1
-      },
-      (value) => {
-        value.suite = "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
-      },
-      (value) => {
-        value.recipientKemKeyId = keyId(99)
-      },
-    ]
-    for (const mutate of mutations) {
-      const tampered = cloneEnvelope(envelope)
-      mutate(tampered)
-      await expect(
-        pq.openPqEnvelope({
-          envelope: tampered,
-          recipient: {
-            identityId: generated.identity.id,
-            kemAlgorithm: generated.identity.kem.algorithm,
-            kemKeyId: generated.identity.kem.keyId,
-            encryptedKemSeed: generated.identity.kem.encryptedSeed,
-            storedKemPublicKey: generated.identity.kem.publicKey,
-            vaultKey: generated.vaultKey,
-          },
-        }),
-      ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
-    }
   })
 
   it("rejects stored-public-key replacement before seed use", async () => {

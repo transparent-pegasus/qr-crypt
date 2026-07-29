@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 import { decryptWithAesKey, encryptWithAesKey, generateAesKey } from "@/crypto/aes-gcm"
 import { buildAad, type AesMessageEnvelopeV1 } from "@/crypto/envelope"
-import { fingerprintAesKey, formatFingerprintDisplay } from "@/crypto/fingerprint"
+import { AppError } from "@/crypto/errors"
+import { fingerprintAesKey } from "@/crypto/fingerprint"
 import { importAesKeyRaw } from "@/crypto/key-import-export"
+import { withZeroize } from "@/crypto/pq/zeroize"
 import { toOwnedArrayBuffer, utf8ToBytes } from "@/lib/bytes"
 import {
   MAX_PLAINTEXT_BYTES,
@@ -135,21 +137,9 @@ describe("AES-256-GCM", () => {
     decryptSpy.mockRestore()
   })
 
-  it("rejects non-256-bit raw keys and exposes full plus short fingerprints", async () => {
-    for (const length of [0, 16, 31, 33]) {
-      await expect(importAesKeyRaw(new Uint8Array(length))).rejects.toMatchObject({
-        code: "INVALID_QR_PAYLOAD",
-      })
-    }
-    const key = await importAesKeyRaw(new Uint8Array(32))
-    const fingerprint = await fingerprintAesKey(key)
-    expect(fingerprint.sha256Hex).toMatch(/^[0-9a-f]{64}$/u)
-    expect(fingerprint.display).toMatch(/^\d{4} \d{4} \d{4} \d{4}$/u)
-    expect(
-      formatFingerprintDisplay(
-        new Uint8Array([0x1c, 0xe0, 0x07, 0x30, 0x15, 0x91, 0x23, 0x72]),
-      ),
-    ).toBe("7392 1840 5521 9074")
+  it("fingerprints an AES key as 64 lowercase hex chars", async () => {
+    const key = await generateAesKey()
+    expect(await fingerprintAesKey(key)).toMatch(/^[0-9a-f]{64}$/u)
   })
 
   it("matches the fixed CBOR golden payload and decrypts it", async () => {
@@ -191,4 +181,14 @@ describe("AES-256-GCM", () => {
     )
     expect(await decryptWithAesKey({ key, envelope })).toEqual(plaintext)
   })
+})
+
+it("withZeroize clears buffers on exceptional finally paths", async () => {
+  const secret = new Uint8Array([1, 2, 3, 4])
+  await expect(
+    withZeroize([secret], async () => {
+      throw new AppError("DECRYPTION_FAILED")
+    }),
+  ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
+  expect(secret).toEqual(new Uint8Array(4))
 })

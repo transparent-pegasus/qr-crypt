@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { AppError } from "@/crypto/errors"
 import {
   decodeCanonicalCbor,
   decodeSignedMessageV2,
@@ -13,7 +12,7 @@ import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { createNobleDsa87, createNobleKem1024 } from "@/crypto/pq/provider-noble"
 import { createPqCryptoClient } from "@/crypto/pq/worker-client"
 import { hkdfInfoV2, buildVaultAadV2 } from "@/crypto/pq/wire-bytes"
-import { zeroize, withZeroize } from "@/crypto/pq/zeroize"
+import { zeroize } from "@/crypto/pq/zeroize"
 import { toBase64Url } from "@/lib/base64url"
 import {
   bytesEqual,
@@ -403,14 +402,4 @@ describe("signed composition golden", () => {
       fixture.client.dispose()
     }
   })
-})
-
-it("withZeroize clears buffers on exceptional finally paths", async () => {
-  const secret = new Uint8Array([1, 2, 3, 4])
-  await expect(
-    withZeroize([secret], async () => {
-      throw new AppError("DECRYPTION_FAILED")
-    }),
-  ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
-  expect(secret).toEqual(new Uint8Array(4))
 })

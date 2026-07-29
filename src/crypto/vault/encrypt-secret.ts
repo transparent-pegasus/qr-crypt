@@ -6,6 +6,7 @@ import type { VaultAadFieldsV2 } from "@/crypto/pq/wire-bytes"
 import { buildVaultAadV2, keyIdRawBytes } from "@/crypto/pq/wire-bytes"
 import { AppError } from "@/crypto/errors"
 import { randomBytes } from "@/crypto/random"
+import { isVaultKey } from "@/crypto/vault/is-vault-key"
 import { toOwnedArrayBuffer } from "@/lib/bytes"
 import { DSA_SEED_BYTES, IV_BYTES, KEM_SEED_BYTES } from "@/lib/limits"
 
@@ -15,23 +16,12 @@ export interface EncryptSecretArgs {
   aad: VaultAadFieldsV2
 }
 
-function validVaultKey(key: CryptoKey): boolean {
-  const algorithm = key.algorithm as Partial<AesKeyAlgorithm>
-  return (
-    key.type === "secret" &&
-    key.extractable === false &&
-    algorithm.name === "AES-GCM" &&
-    algorithm.length === 256 &&
-    key.usages.includes("encrypt")
-  )
-}
-
 export async function encryptSecret(args: EncryptSecretArgs): Promise<EncryptedSecret> {
   try {
     const expectedLength =
       args.aad.role === "ml-kem-seed" ? KEM_SEED_BYTES : DSA_SEED_BYTES
     if (
-      !validVaultKey(args.vaultKey) ||
+      !isVaultKey(args.vaultKey) ||
       !(args.plaintextSecret instanceof Uint8Array) ||
       args.plaintextSecret.byteLength !== expectedLength
     ) {
