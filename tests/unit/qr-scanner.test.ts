@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { deferred } from "../helpers/deferred"
 
 const nativeWebAssembly = WebAssembly
 
@@ -17,22 +18,6 @@ vi.mock("zxing-wasm/reader", () => ({
 vi.mock("zxing-wasm/reader/zxing_reader.wasm?url", () => ({
   default: "/assets/zxing_reader-test-hash.wasm",
 }))
-
-interface Deferred<T> {
-  promise: Promise<T>
-  resolve(value: T): void
-  reject(reason?: unknown): void
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, resolve, reject }
-}
 
 class FakeTrack extends EventTarget {
   readonly kind = "video"

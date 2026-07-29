@@ -11,6 +11,7 @@ import { LanguageProvider } from "@/i18n"
 import { translate } from "@/i18n/messages"
 import { decodeFramePayload } from "@/qr/payload-v2"
 import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
+import { deferred } from "../helpers/deferred"
 import {
   confirmBundleFingerprint,
   deleteBundle,
@@ -54,14 +55,6 @@ function expectSingleAlertCancelWithoutClose(dialog: HTMLElement): void {
     within(dialog).queryByRole("button", { name: "Close" }),
   ).toBeNull()
   expect(dialog.querySelector("svg.lucide-x")).toBeNull()
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
-  })
-  return { promise, resolve }
 }
 
 async function renderKeyList(): Promise<void> {

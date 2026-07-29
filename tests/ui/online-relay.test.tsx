@@ -13,6 +13,7 @@ import {
   OCM1_MESSAGE_33,
   OCM1_MESSAGE_44,
 } from "../fixtures/relay-v1"
+import { deferred, type Deferred } from "../helpers/deferred"
 
 const scanStart = vi.hoisted(() => vi.fn())
 const scanStop = vi.hoisted(() => vi.fn())
@@ -91,22 +92,6 @@ async function startCapture(user: ReturnType<typeof userEvent.setup>) {
     }),
   )
   await waitFor(() => expect(scanText).not.toBeNull())
-}
-
-interface Deferred<T> {
-  promise: Promise<T>
-  resolve(value: T): void
-  reject(reason?: unknown): void
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, resolve, reject }
 }
 
 function playbackPayloads(marker: number): readonly [string, string] {

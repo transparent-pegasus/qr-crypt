@@ -17,6 +17,7 @@ import type {
   PublicIdentityBundleV2,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
+import { deferred } from "../helpers/deferred"
 import {
   armMaintenanceToken,
   clearAllIdentities,
@@ -41,14 +42,6 @@ import { renderApp, resetUi } from "./helpers/render-app"
 
 function en(key: Parameters<typeof translate>[1]): string {
   return translate("en", key)
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
-  })
-  return { promise, resolve }
 }
 
 function expectSingleAlertCancelWithoutClose(dialog: HTMLElement): void {
