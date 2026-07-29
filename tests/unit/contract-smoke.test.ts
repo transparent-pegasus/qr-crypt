@@ -19,7 +19,7 @@ import { env, parseAppEnv } from "@/schemas/env-schema"
 import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
 
 describe("contract smoke", () => {
-  it("keeps only error codes and resolves user messages explicitly by language", () => {
+  it("keeps errors code-only and preserves AppError instances", () => {
     expect(ERROR_CODES).toContain("KEY_ID_CONFLICT")
     expect(ERROR_CODES).toContain("MESSAGE_ID_REUSED")
     const error = new AppError("DECRYPTION_FAILED")

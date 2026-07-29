@@ -185,6 +185,57 @@ describe("destructive reachability probe", () => {
     expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
   })
 
+  it.each([
+    ["an offline sentinel", "not-the-sentinel"],
+    ["a confirming sentinel", "QR-CRYPT-REACHABLE"],
+  ])(
+    "keeps a user-requested reset failure terminal against %s still in flight",
+    async (_name, body) => {
+      const resolvers: Array<(value: Response) => void> = []
+      const controller = createBootController({
+        fetchImpl: () =>
+          new Promise<Response>((resolve) => {
+            resolvers.push(resolve)
+          }),
+        readDecision: async () => decision(),
+      })
+      const pending = controller.probe()
+
+      // The reset engaged the one-way barrier while that probe was still open.
+      controller.beginUserRequestedReset()
+      expect(controller.getState()).toEqual({ kind: "wiping" })
+      controller.reportResetFailure(["database"])
+
+      resolvers[0]?.(response(body))
+      await pending
+
+      expect(controller.getState()).toEqual({
+        kind: "partial-failure",
+        failedSteps: ["database"],
+      })
+    },
+  )
+
+  it("refuses to leave a destructive state through any later transition", async () => {
+    const controller = createBootController({
+      fetchImpl: async () => response("not-the-sentinel"),
+      readDecision: async () => decision(),
+    })
+    controller.reportResetFailure(["database", "database-verification"])
+    const terminal = {
+      kind: "partial-failure",
+      failedSteps: ["database", "database-verification"],
+    }
+
+    await controller.probe()
+    controller.start()
+    controller.stop()
+    expect(controller.nudgeDisplayOffline()).toBe(false)
+    expect(await controller.refreshRelayEligibility()).toBe(false)
+
+    expect(controller.getState()).toEqual(terminal)
+  })
+
   it("ignores a stale probe generation", async () => {
     const resolvers: Array<(value: Response) => void> = []
     const fetchImpl = vi.fn(

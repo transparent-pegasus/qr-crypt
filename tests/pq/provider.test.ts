@@ -42,6 +42,26 @@ describe.each([
     )
   })
 
+  it("keeps encapsulation per-call fresh and bound to one recipient key", () => {
+    // Adapter contract, not a noble unit test: a wrapper that cached, reused,
+    // or transposed its arguments would still pass the round trip above.
+    const provider = createProvider()
+    const recipient = provider.keygen(new Uint8Array(sizes.seedBytes).fill(0x41))
+    const other = provider.keygen(new Uint8Array(sizes.seedBytes).fill(0x42))
+
+    const first = provider.encapsulate(recipient.publicKey)
+    const second = provider.encapsulate(recipient.publicKey)
+    expect(bytesEqual(first.ciphertext, second.ciphertext)).toBe(false)
+    expect(bytesEqual(first.sharedSecret, second.sharedSecret)).toBe(false)
+
+    expect(
+      bytesEqual(
+        provider.decapsulate(first.ciphertext, other.secretKey),
+        first.sharedSecret,
+      ),
+    ).toBe(false)
+  })
+
   it("rejects every wrong input length before noble", () => {
     const provider = createProvider()
     expect(() => provider.keygen(new Uint8Array(sizes.seedBytes - 1))).toThrow(RangeError)

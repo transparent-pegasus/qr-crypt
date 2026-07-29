@@ -135,6 +135,11 @@ export function SettingsPage() {
         await refreshKeys()
         toast.success(t("settings.toast.keysCleared"))
       } else {
+        // Publish the terminal boot state BEFORE the coordinator engages its
+        // one-way barrier: the confirmation dialog closes on action, so the
+        // settings page would otherwise stay interactive over dead storage.
+        const controller = getDefaultBootController()
+        controller.beginUserRequestedReset()
         const report = await performUserRequestedReset({
           resetChurnMb: preferences.resetChurnMb,
           resetTransient: clearTransient,
@@ -146,7 +151,7 @@ export function SettingsPage() {
         // The coordinator engaged the one-way barrier before failing, so every
         // storage-backed surface is dead. Publish the terminal state instead of
         // returning to a settings page whose controls would all throw.
-        getDefaultBootController().reportResetFailure(report.failedSteps)
+        controller.reportResetFailure(report.failedSteps)
         return
       }
       setTypedAction(null)

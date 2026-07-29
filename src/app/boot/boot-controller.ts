@@ -107,9 +107,11 @@ export interface BootController {
   probe(): Promise<void>
   refreshRelayEligibility(): Promise<boolean>
   // A user-requested reset engages the same one-way barrier as the
-  // online-detected wipe, so its partial failure is terminal for the whole
-  // application, not for the surface that started it. The controller owns that
-  // state: publishing it here unmounts the Router the same way a wipe does.
+  // online-detected wipe, so it is terminal for the whole application, not for
+  // the surface that started it. The controller owns that state: publishing it
+  // here unmounts the Router the same way a wipe does. Call begin before the
+  // coordinator runs so the barrier is never engaged behind a live Router.
+  beginUserRequestedReset(): void
   reportResetFailure(failedSteps: readonly string[]): void
   registerRelaySessionEndHandler(
     handler: (reason: RelaySessionEndReason) => void,
@@ -468,7 +470,16 @@ export function createBootController(
       }
     | undefined
 
+  const destructive = (candidate: BootState): boolean =>
+    candidate.kind === "wiping" ||
+    candidate.kind === "wiped" ||
+    candidate.kind === "partial-failure"
+
   const emit = (nextState: BootState) => {
+    // Destructive states are monotonic. Once a wipe or reset has engaged the
+    // one-way access barrier, no probe result that was already in flight may
+    // hand the application back a usable Router state.
+    if (destructive(state) && !destructive(nextState)) return
     state = nextState
     for (const listener of listeners) listener()
   }
@@ -503,6 +514,17 @@ export function createBootController(
         // Resetting every remaining handler is more important than one UI error.
       }
     }
+  }
+
+  // A page-originated reset engages the same barrier as the online-detected
+  // wipe, so any probe still running has to be retired before the terminal
+  // state is published — its own continuation would otherwise emit next.
+  const retireActiveProbe = () => {
+    activeProbe?.abort()
+    activeProbe = undefined
+    generation += 1
+    confirmationEpisode = undefined
+    networkTransitionHandled = false
   }
 
   const isDestructiveTerminal = () =>
@@ -735,7 +757,13 @@ export function createBootController(
     nudgeDisplayOffline,
     probe,
     refreshRelayEligibility,
+    beginUserRequestedReset() {
+      retireActiveProbe()
+      invalidateRelay("local-wipe")
+      emit({ kind: "wiping" })
+    },
     reportResetFailure(failedSteps) {
+      retireActiveProbe()
       invalidateRelay("local-wipe")
       emit({ kind: "partial-failure", failedSteps: [...failedSteps] })
     },
