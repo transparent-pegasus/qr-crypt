@@ -66,11 +66,8 @@ persisted. If the clamp is already 1,000B, the switch still changes only the
 dwell from 200ms to 2,000ms. The clamp uses the 100B generated-density grid
 and fails closed as `QR_TOO_LARGE` if the required value exceeds 1,000B.
 
-The automatic reader-based selector was removed because the displaying device
-cannot know whether the peer camera can read its screen. It had also shipped
-an always-compatible bug: its usability predicate required reader-module
-state to reach `usable`, which happened only after camera preparation
-resolved, so the display path never observed that state.
+The automatic reader-based selector was removed; the display contract is
+specified in [docs/spec/qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6.
 
 The receiver allocation ceiling now equals the complete wire budget:
 `MAX_ARTIFACT_BYTES_ABSOLUTE =

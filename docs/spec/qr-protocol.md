@@ -45,7 +45,11 @@ This document is the authoritative specification of the v1 payloads exchanged vi
 
 `v:1, type:"symmetric-key", algorithm:"A256GCM", keyId, createdAt, key: bytes` — `key` is **fixed 32 bytes** (raw AES-256).
 
-### 3.3 `PublicKeyEnvelopeV1` (OCP1)
+### 3.3 `PublicKeyEnvelopeV1` (OCP1) — retired, acceptance-only
+
+RSA key creation and RSA decryption are removed from the application; this
+envelope is retained solely as readable v1 wire vocabulary. See the status note
+in [docs/security/threat-model.md](../security/threat-model.md) §4.
 
 `v:1, type:"public-key", algorithm:"RSA-OAEP-3072", keyId, createdAt, spki: bytes` — `spki` is a SubjectPublicKeyInfo (DER). Validated by a 350–1200 byte range check, with a successful `importKey` as the final confirmation.
 
@@ -61,7 +65,7 @@ AAD = UTF-8( "OCAAD1|" + v + "|" + type + "|" + algorithm + "|" + keyId + "|" + 
 ## 5. Cryptographic Operations
 
 - **AES-256-GCM**: 256-bit key, extractable (required to generate symmetric-key QR codes). A fresh IV per encryption via `crypto.getRandomValues(new Uint8Array(12))`. IV reuse under the same key is forbidden (the implementation is covered by tests verifying IV uniqueness across repeated encryptions). Tag length 128 bits (the WebCrypto default).
-- Recipient key pair: public key `['encrypt','wrapKey']`, extractable / private key `['decrypt','unwrapKey']`, **non-extractable**.
+- Recipient key pair (retired): the v1 design generated an RSA-OAEP-3072 pair — public key `['encrypt','wrapKey']`, extractable; private key `['decrypt','unwrapKey']`, non-extractable. No code path creates or uses such a pair now; only the stored-record and `OCP1` shapes above still validate.
 
 ## 6. Validation Order and Error Mapping
 

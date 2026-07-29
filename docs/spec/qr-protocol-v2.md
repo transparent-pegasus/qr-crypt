@@ -4,8 +4,7 @@ This document is the normative specification of the v2 (ML-KEM / ML-DSA)
 wire format. The implementation (`src/crypto/pq/*`, `src/qr/payload-v2.ts`,
 `src/qr/multipart/*`) and the golden fixtures in `tests/pq/*` follow this
 document. The v1 format remains specified in `docs/spec/qr-protocol.md`
-(reusing v1 prefixes for ML purposes is forbidden). This document is the
-authoritative committed specification of this contract.
+(reusing v1 prefixes for ML purposes is forbidden).
 
 ## 1. Prefix table
 
@@ -224,10 +223,7 @@ QrFrameV2 = {
   member or any other pair is rejected
 - The application does not infer density or dwell from the displaying
   device's QR reader. That device cannot answer whether the peer camera can
-  read its screen. The removed automatic selector also had a shipped
-  always-compatible bug: its usability check required reader-module state to
-  have reached `usable`, which happened only after camera preparation
-  resolved, so the display path never observed the usable state
+  read its screen
 - Before each split, the renderer computes
   `gridMin = 100 × ceil(ceil(totalByteLength / VITE_QR_MAX_FRAMES) / 100)`.
   The per-artifact effective density clamp is
@@ -396,10 +392,6 @@ contract; they do not imply availability under the active policy.
 | OCB2 (reserved) / balanced/768-family operation / legacy RSA format (OCM1-RSA) | `UNSUPPORTED_ALGORITHM` (deprecation wording) |
 | Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
 | Partial failure of local reset | `RESET_FAILED` |
-
-Note: an earlier draft used the provisional name `WIPE_FAILED`; in line with
-the honest-naming policy (no "wipe" / "secure erase" wording), it was
-finalized as `RESET_FAILED`.
 
 ## 10. Online optical relay transport (OCF2 frame sets and one OCM1 message)
 
