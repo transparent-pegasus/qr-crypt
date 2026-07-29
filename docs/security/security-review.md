@@ -306,20 +306,27 @@ guaranteed; JS memory erasure has limits
    is not sufficient: a regression that POSTed relay text to this origin
    would still be same-origin. e2e (`tests/e2e/security.spec.ts` and
    `tests/e2e/online-relay.spec.ts`) must assert:
-   - **Allowlist (methods + paths only):** static/PWA resources; recurring
-     `HEAD /manifest.webmanifest?reach=…` (display probe); boot
+   - **Allowlist (methods, paths, and query keys):** static/PWA resources;
+     recurring `HEAD /manifest.webmanifest?reach=…` (display probe); boot
      `GET /reachability-sentinel.txt` (destructive probe). No other
-     runtime requests.
+     runtime requests. Every allowed request must carry no query key beyond
+     the two named above — checking method and path alone would let an allowed
+     static GET carry a payload field in its query.
    - **Negative matrix after capture / copy / paste / playback / rejection /
      close / `pagehide` / timeout:** a unique relay payload marker and a
      marker from each sender-controlled OCM1 field plus the refused OCK1 key
-     bytes are absent from request bodies and query values, every IndexedDB
-     database's keys/values, CacheStorage metadata/bodies (static shell
-     permitted), localStorage (only `{oc-theme, oc-lang,
+     bytes are absent from request URLs including query names and values,
+     request header names and values, request bodies, every IndexedDB
+     database's schema names — database, object-store and index names and key
+     paths — as well as its keys/values, CacheStorage metadata/bodies (static
+     shell permitted), localStorage (only `{oc-theme, oc-lang,
      oc-offline-ack-pending, oc-online-tab}`), console, `window.onerror` /
      unhandled rejections, visible error text, `document.title`,
-     `location.href`, and history state. The byte-aware storage oracle has a
-     self-test that plants a typed-array marker and requires it to be found.
+     `location.href`, and history state. **One marker set covers every sink**;
+     a request oracle that searches fewer markers than the storage oracle is
+     the hole this line exists to close. The byte-aware storage oracle's
+     self-test plants both a typed-array value marker and a marker that appears
+     only in an object-store name, and requires exactly those two matches.
    - **Window-realm receipts must never appear in IndexedDB, localStorage, or
      CacheStorage.** Receipts are intentional module-memory residue in one loaded
      app window only (`src/features/receipt-cache.ts`), not shared with other tabs
