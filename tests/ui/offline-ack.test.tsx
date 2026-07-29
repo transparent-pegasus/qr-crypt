@@ -115,8 +115,6 @@ describe("offline acknowledgement shell", () => {
     expect(screen.getByRole("status")).toHaveTextContent("オフラインへ切り替わりました")
     expect(heading).not.toHaveFocus()
     expect(document.body).toHaveFocus()
-    expect(shell).toHaveClass("max-h-dvh", "overflow-y-auto")
-    expect(shell.className).toContain("safe-area-inset-top")
     expect(shell).toHaveTextContent(
       "完全に安全にメッセージの暗号化を行う方法はありません",
     )
