@@ -50,9 +50,11 @@ vi.mock("@/hooks/use-register-sw", () => ({
 
 import { FeatureSupportProvider } from "@/app/providers"
 import { OnlineRelay } from "@/components/online-relay"
+import { buildAad } from "@/crypto/envelope"
 import { LanguageProvider } from "@/i18n"
 import { translate } from "@/i18n/messages"
 import { TRANSFER_TIMEOUT_MINUTES_DEFAULT } from "@/lib/limits"
+import { encodeEnvelopeToPayload } from "@/qr/payload"
 import { decodeFramePayload, encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2 } from "@/schemas/domain"
 
@@ -74,6 +76,40 @@ function frame(frameIndex: number, overrides: Partial<QrFrameV2> = {}): QrFrameV
 
 function payload(frameIndex: number, overrides: Partial<QrFrameV2> = {}): string {
   return encodeFrameToPayload(frame(frameIndex, overrides))
+}
+
+const V1_KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
+
+function messagePayload(fill = 0x33): string {
+  const createdAt = 1_700_000_000_000
+  return encodeEnvelopeToPayload({
+    v: 1,
+    type: "message",
+    algorithm: "A256GCM",
+    keyId: V1_KEY_ID,
+    createdAt,
+    iv: new Uint8Array(12).fill(0x22),
+    ciphertext: new Uint8Array(48).fill(fill),
+    aad: buildAad({
+      v: 1,
+      type: "message",
+      algorithm: "A256GCM",
+      keyId: V1_KEY_ID,
+      createdAt,
+    }),
+  })
+}
+
+async function startCapture(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByRole("button", { name: translate("en", "relay.capture.open") }),
+  )
+  await user.click(
+    await screen.findByRole("button", {
+      name: translate("en", "relay.capture.startCamera"),
+    }),
+  )
+  await waitFor(() => expect(scanText).not.toBeNull())
 }
 
 interface Deferred<T> {
@@ -379,6 +415,104 @@ describe("online relay UI", () => {
     expect(scanStop).toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "Copy relay text" }))
     expect(copyText).toHaveBeenCalledWith(`${first}\n${second}`)
+  })
+
+  it("completes capture from one OCM1 scan, stops the camera, and copies exactly that text", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    const message = messagePayload()
+    act(() => scanText?.(message))
+
+    const output = await screen.findByLabelText(
+      translate("en", "relay.capture.output.label"),
+    )
+    expect(output).toHaveValue(message)
+    expect(scanStop).toHaveBeenCalled()
+    // Frame progress belongs to the frames kind only.
+    expect(
+      screen.queryByText(/frames collected/),
+    ).toBeNull()
+
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.capture.copy") }),
+    )
+    expect(copyText).toHaveBeenCalledWith(message)
+  })
+
+  it("refuses a frame after an OCM1 without discarding the message", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    const message = messagePayload()
+    act(() => scanText?.(message))
+    await screen.findByLabelText(translate("en", "relay.capture.output.label"))
+    act(() => scanText?.(payload(0)))
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.kindMismatch")),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByLabelText(translate("en", "relay.capture.output.label")),
+    ).toHaveValue(message)
+  })
+
+  it("refuses an OCM1 once a frame has been accepted", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    act(() => scanText?.(payload(0)))
+    await screen.findByText(
+      translate("en", "relay.capture.progress", { collected: 1, total: 2 }),
+    )
+    act(() => scanText?.(messagePayload()))
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.kindMismatch")),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        translate("en", "relay.capture.progress", { collected: 1, total: 2 }),
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it("refuses a malformed OCM1 with the message error and offers no output", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    act(() => scanText?.("OCM1:AAAA"))
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.invalidMessage")),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByLabelText(translate("en", "relay.capture.output.label")),
+    ).toBeNull()
+    expect(copyText).not.toHaveBeenCalled()
+  })
+
+  it("clears captured message state when the session ends", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startCapture(user)
+
+    act(() => scanText?.(messagePayload()))
+    await screen.findByLabelText(translate("en", "relay.capture.output.label"))
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent("pagehide"))
+    })
+
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText(translate("en", "relay.capture.output.label")),
+      ).toBeNull(),
+    )
   })
 
   it.each([
