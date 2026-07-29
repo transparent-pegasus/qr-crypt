@@ -503,6 +503,49 @@ describe("relay capture session kind", () => {
     })
   })
 
+  it("reports message-count before decoding a malformed second OCM1 line", () => {
+    expect(parseRelayText(`${messagePayload()}\nOCM1:AA`)).toEqual({
+      ok: false,
+      code: "message-count",
+    })
+  })
+
+  it("reports message-count before decoding a malformed first OCM1 line", () => {
+    expect(parseRelayText(`OCM1:AA\n${messagePayload()}`)).toEqual({
+      ok: false,
+      code: "message-count",
+    })
+  })
+
+  it("reports kind-mismatch from prefixes before decoding a malformed OCF2 line", () => {
+    expect(parseRelayText(`${messagePayload()}\nOCF2:AA`)).toEqual({
+      ok: false,
+      code: "kind-mismatch",
+    })
+  })
+
+  it("reports frame-count before decoding an over-limit frame set", () => {
+    const lines = Array.from(
+      { length: PROTOCOL_MAX_FRAMES + 1 },
+      (_, index) => (index === PROTOCOL_MAX_FRAMES ? "OCF2:AA" : payload(0)),
+    )
+    expect(parseRelayText(lines.join("\n"))).toEqual({
+      ok: false,
+      code: "frame-count",
+    })
+  })
+
+  it("reports message-count for a large OCM1-prefixed paste without decoding it", () => {
+    const lines = Array.from(
+      { length: PROTOCOL_MAX_FRAMES },
+      () => "OCM1:AA",
+    )
+    expect(parseRelayText(lines.join("\n"))).toEqual({
+      ok: false,
+      code: "message-count",
+    })
+  })
+
   it("validates every pasted line before deciding whether valid kinds conflict", () => {
     const message = messagePayload()
     expect(
