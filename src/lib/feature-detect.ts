@@ -19,6 +19,14 @@ const EMPTY_WEBASSEMBLY_MODULE = Uint8Array.of(
 )
 
 let webAssemblyRuntimeProbe: Promise<boolean> | undefined
+let webAssemblyRuntimeResolved: boolean | undefined
+
+// The auto-clear delay is chosen at the moment the app is backgrounded, which can be before
+// the probe settles. Callers that cannot await need the settled answer or an honest
+// "not yet" — undefined means the stricter primary delay applies.
+export function webAssemblyRuntimeSupport(): boolean | undefined {
+  return webAssemblyRuntimeResolved
+}
 
 export function hasWebAssemblyInstantiationApi(): boolean {
   try {
@@ -39,13 +47,17 @@ export function probeWebAssemblyRuntime(): Promise<boolean> {
   if (existing !== undefined) return existing
 
   const probe = (async () => {
-    if (!hasWebAssemblyInstantiationApi()) return false
-    try {
-      await WebAssembly.instantiate(EMPTY_WEBASSEMBLY_MODULE)
-      return true
-    } catch {
-      return false
+    let available = false
+    if (hasWebAssemblyInstantiationApi()) {
+      try {
+        await WebAssembly.instantiate(EMPTY_WEBASSEMBLY_MODULE)
+        available = true
+      } catch {
+        // Leave the runtime marked unavailable.
+      }
     }
+    webAssemblyRuntimeResolved = available
+    return available
   })()
   webAssemblyRuntimeProbe = probe
   return probe
