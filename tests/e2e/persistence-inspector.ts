@@ -174,13 +174,30 @@ export async function inspectPersistentSurfaces(
       )
       .sort((left, right) => left.name.localeCompare(right.name))
     for (const entry of databaseEntries) {
+      inspectString(entry.name, `indexedDB:${entry.name}:database-name`)
       const database = await openDatabase(entry.name)
       try {
         for (const storeName of Array.from(database.objectStoreNames).sort()) {
           const storeLocation = `indexedDB:${entry.name}/${storeName}`
           indexedDbStores.push(`${entry.name}/${storeName}`)
+          inspectString(storeName, `${storeLocation}:store-name`)
           const transaction = database.transaction(storeName, "readonly")
           const store = transaction.objectStore(storeName)
+          await inspectValue(
+            store.keyPath,
+            `${storeLocation}:key-path`,
+            new WeakSet(),
+          )
+          for (const indexName of Array.from(store.indexNames).sort()) {
+            const index = store.index(indexName)
+            const indexLocation = `${storeLocation}.indexes[${indexName}]`
+            inspectString(indexName, `${indexLocation}:name`)
+            await inspectValue(
+              index.keyPath,
+              `${indexLocation}:key-path`,
+              new WeakSet(),
+            )
+          }
           const [keys, values] = await Promise.all([
             requestResult(store.getAllKeys()),
             requestResult(store.getAll()),
