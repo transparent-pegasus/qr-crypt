@@ -209,7 +209,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   const scanButton = page.getByRole("button", { name: "QR → text" })
   await scanButton.click()
   const capture = page.getByRole("dialog", {
-    name: "QR frames to text",
+    name: "QR to text",
   })
   await expect(capture).toBeVisible()
   await expectStableTrailingDialogClose(capture, "Close")
@@ -244,7 +244,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   const playbackButton = page.getByRole("button", { name: "Text → QR" })
   await playbackButton.click()
   const playback = page.getByRole("dialog", {
-    name: "Turn relay text into QR frames",
+    name: "Turn relay text into QR",
   })
   await expectStableTrailingDialogClose(playback, "Close")
   await page.keyboard.press("Escape")
@@ -284,7 +284,7 @@ test("relays verbatim header-declared message frames without frame-bearing persi
   await relayNavigationButton.click()
   await scanButton.click()
   await page
-    .getByRole("dialog", { name: "QR frames to text" })
+    .getByRole("dialog", { name: "QR to text" })
     .getByRole("button", { name: "Start camera" })
     .click()
   await emitInjectedQr(page, framePayloads[0]!)

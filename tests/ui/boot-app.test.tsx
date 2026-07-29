@@ -6,6 +6,7 @@ import {
   createBootController,
   type BootDecisionSnapshot,
 } from "@/app/boot/boot-controller"
+import { translate } from "@/i18n/messages"
 import type { BestEffortResetReport } from "@/storage/best-effort-reset"
 import { getPreferences } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
@@ -77,13 +78,15 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(
-      await screen.findByText("Install the PWA or relay OCF2 message-header QR frames"),
+      await screen.findByText(translate("en", "gate.heading")),
     ).toBeVisible()
     expect(
       await screen.findByRole("navigation", { name: "Online navigation" }),
     ).toBeVisible()
     await user.click(screen.getByRole("button", { name: "Relay" }))
-    expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
+    expect(
+      await screen.findByText(translate("en", "relay.card.title")),
+    ).toBeVisible()
     expect(performWipe).not.toHaveBeenCalled()
     controller.stop()
   })
@@ -101,13 +104,17 @@ describe("App boot gate", () => {
     })
     await renderApp("/encrypt", { bootController: controller })
 
-    await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    await screen.findByText(translate("en", "gate.heading"))
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     resolveDecision?.(decision())
     await user.click(
       await screen.findByRole("button", { name: "Relay" }),
     )
-    expect(await screen.findByText("OCF2 message-header QR relay")).toBeVisible()
+    expect(
+      await screen.findByText(translate("en", "relay.card.title")),
+    ).toBeVisible()
     controller.stop()
   })
 
@@ -137,8 +144,10 @@ describe("App boot gate", () => {
     })
     await renderApp("/encrypt", { bootController: controller })
 
-    await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    await screen.findByText(translate("en", "gate.heading"))
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     controller.stop()
   })
 
@@ -150,9 +159,11 @@ describe("App boot gate", () => {
     })
     await renderApp("/encrypt", { bootController: controller })
 
-    await screen.findByText("Install the PWA or relay OCF2 message-header QR frames")
+    await screen.findByText(translate("en", "gate.heading"))
     expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     controller.stop()
   })
 
@@ -172,7 +183,9 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(await screen.findByText("Resetting local data")).toBeInTheDocument()
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     finishWipe?.({ ok: true, failedSteps: [] })
     await screen.findByText(
       "Local data was reset after an online connection was detected",
@@ -193,7 +206,9 @@ describe("App boot gate", () => {
         "Local data was reset after an online connection was detected",
       ),
     ).toBeInTheDocument()
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     expect(
       screen.getByText(
         "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
@@ -214,7 +229,9 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     expect(
       screen.getByText("Some operations did not finish while resetting local data."),
     ).toBeInTheDocument()

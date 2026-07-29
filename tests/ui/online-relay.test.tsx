@@ -258,8 +258,8 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
 
     for (const [triggerName, dialogName] of [
-      ["QR → text", "QR frames to text"],
-      ["Text → QR", "Turn relay text into QR frames"],
+      ["QR → text", translate("en", "relay.capture.title")],
+      ["Text → QR", translate("en", "relay.playback.title")],
     ] as const) {
       await user.click(screen.getByRole("button", { name: triggerName }))
       const dialog = await screen.findByRole("dialog", { name: dialogName })
@@ -321,7 +321,9 @@ describe("online relay UI", () => {
         </FeatureSupportProvider>
       </LanguageProvider>,
     )
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     expect(scanStart).not.toHaveBeenCalled()
 
     rerender(
@@ -342,7 +344,7 @@ describe("online relay UI", () => {
     await user.click(screen.getByRole("button", { name: "QR → text" }))
     expect(await screen.findByRole("dialog")).toBeInTheDocument()
     expect(
-      screen.getByLabelText("OCF2 message-header relay camera preview"),
+      screen.getByLabelText(translate("en", "relay.capture.video.ariaLabel")),
     ).toHaveAttribute("autoplay")
     expect(scanStart).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "Start camera" }))
@@ -376,15 +378,15 @@ describe("online relay UI", () => {
   })
 
   it.each([
-    ["OCP2", "OCP2:AA", "Only canonical OCF2 frame strings are accepted."],
-    ["OCS2", "OCS2:AA", "Only canonical OCF2 frame strings are accepted."],
-    ["OCI2", "OCI2:AA", "Only canonical OCF2 frame strings are accepted."],
-    ["OCM2", "OCM2:AA", "Only canonical OCF2 frame strings are accepted."],
-    ["v1", "OCM1:AA", "Only canonical OCF2 frame strings are accepted."],
+    ["OCP2", "OCP2:AA", translate("en", "relay.error.prefix")],
+    ["OCS2", "OCS2:AA", translate("en", "relay.error.prefix")],
+    ["OCI2", "OCI2:AA", translate("en", "relay.error.prefix")],
+    ["OCM2", "OCM2:AA", translate("en", "relay.error.prefix")],
+    ["v1", "OCM1:AA", translate("en", "relay.error.prefix")],
     [
       "foreign",
       "https://example.invalid/",
-      "Only canonical OCF2 frame strings are accepted.",
+      translate("en", "relay.error.prefix"),
     ],
     [
       "pq-kem-public-key",
@@ -859,7 +861,9 @@ describe("online relay UI", () => {
         "There is too much data to generate a QR code at this error-correction level.",
       ),
     ).not.toBeInTheDocument()
-    expect(screen.getByText("OCF2 message-header QR relay")).toBeInTheDocument()
+    expect(
+      screen.getByText(translate("en", "relay.card.title")),
+    ).toBeInTheDocument()
   })
 
   it("ignores a deferred render rejection after eligibility loss", async () => {
@@ -873,14 +877,18 @@ describe("online relay UI", () => {
     await user.click(screen.getByRole("button", { name: "Show QR frames" }))
 
     rendered.rerender(relayElement({ eligible: false }))
-    expect(screen.queryByText("OCF2 message-header QR relay")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(translate("en", "relay.card.title")),
+    ).not.toBeInTheDocument()
     await act(async () => {
       pendingRender.reject(new Error("ineligible render failure"))
       await pendingRender.promise.catch(() => undefined)
     })
     rendered.rerender(relayElement({ eligible: true }))
 
-    expect(screen.getByText("OCF2 message-header QR relay")).toBeInTheDocument()
+    expect(
+      screen.getByText(translate("en", "relay.card.title")),
+    ).toBeInTheDocument()
     expect(
       screen.queryByText(
         "There is too much data to generate a QR code at this error-correction level.",
