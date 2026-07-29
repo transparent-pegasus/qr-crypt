@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { encodePublicIdentityBundleV2 } from "@/crypto/pq/canonical-cbor"
 import { FRAME_BYTES_MAX, PROTOCOL_MAX_FRAMES } from "@/lib/limits"
+import { relayMessageEcLevel } from "@/qr/encode"
 import { TransferAssembler } from "@/qr/multipart/assemble"
 import { splitIntoFrames } from "@/qr/multipart/split"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
@@ -215,5 +216,25 @@ describe("relay frame-set parser", () => {
     let state = assembler.state()
     for (const original of originals) state = await assembler.add(original)
     expect(state).toEqual({ kind: "error", code: "INVALID_QR_PAYLOAD" })
+  })
+})
+
+describe("relay playback error-correction ladder", () => {
+  // Pure length classification against QR_BYTE_CAPACITY; it does not encode a QR.
+  it.each([
+    [1, "Q"],
+    [1_663, "Q"],
+    [1_664, "M"],
+    [2_331, "M"],
+    [2_332, "L"],
+    [2_953, "L"],
+  ] as const)("classifies a %i-character payload as %s", (length, ecLevel) => {
+    expect(relayMessageEcLevel("A".repeat(length))).toBe(ecLevel)
+  })
+
+  it("never selects H, including at H's own capacity boundary", () => {
+    for (const length of [1, 100, 1_273, 1_274, 2_953, 4_000]) {
+      expect(relayMessageEcLevel("A".repeat(length))).not.toBe("H")
+    }
   })
 })
