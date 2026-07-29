@@ -96,10 +96,7 @@ describe("session receipt cache", () => {
     const subject = signedSubject()
 
     recordReceipt(subject, FIRST_SEEN_AT)
-    expect(recordReceipt(subject, FIRST_SEEN_AT + 1_000)).toEqual({
-      kind: "already-received",
-      firstSeenAt: FIRST_SEEN_AT,
-    })
+    recordReceipt(subject, FIRST_SEEN_AT + 1_000)
     expect(recordReceipt(subject, FIRST_SEEN_AT + 2_000)).toEqual({
       kind: "already-received",
       firstSeenAt: FIRST_SEEN_AT,

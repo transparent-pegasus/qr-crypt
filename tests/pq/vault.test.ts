@@ -84,6 +84,49 @@ describe("vault secret AAD", () => {
     ).resolves.toEqual(dsaSeed)
   })
 
+  it("rejects a single-usage AES key at both vault boundaries (isVaultKey requires both)", async () => {
+    const rawKey = new Uint8Array(32).fill(0x61)
+    const fullUsage = await crypto.subtle.importKey("raw", rawKey, "AES-GCM", false, [
+      "encrypt",
+      "decrypt",
+    ])
+    const encryptOnly = await crypto.subtle.importKey(
+      "raw",
+      rawKey,
+      "AES-GCM",
+      false,
+      ["encrypt"],
+    )
+    const decryptOnly = await crypto.subtle.importKey(
+      "raw",
+      rawKey,
+      "AES-GCM",
+      false,
+      ["decrypt"],
+    )
+    const plaintextSecret = new Uint8Array(64).fill(0x31)
+    const encryptedSecret = await encryptSecret({
+      vaultKey: fullUsage,
+      plaintextSecret,
+      aad: KEM_AAD,
+    })
+
+    await expect.soft(
+      encryptSecret({
+        vaultKey: encryptOnly,
+        plaintextSecret,
+        aad: KEM_AAD,
+      }),
+    ).rejects.toMatchObject({ code: "ENCRYPTION_FAILED" })
+    await expect.soft(
+      decryptSecret({
+        vaultKey: decryptOnly,
+        secret: encryptedSecret,
+        aad: KEM_AAD,
+      }),
+    ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
+  })
+
   it.each([
     ["identity", { ...KEM_AAD, identityId: ID_B }],
     ["key", { ...KEM_AAD, keyId: ID_A }],

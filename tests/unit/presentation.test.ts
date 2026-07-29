@@ -1,11 +1,31 @@
 import { describe, expect, it } from "vitest"
-import { formatDateTime } from "@/features/presentation"
+import {
+  formatDateTime,
+  formatFingerprint,
+  isQrCryptPayload,
+} from "@/features/presentation"
+import { QR_PREFIX } from "@/qr/payload"
+import { QR_PREFIX_V2 } from "@/qr/payload-v2"
 
 describe("presentation formatting", () => {
-  it("returns a fallback string for an out-of-range safe-integer timestamp", () => {
-    const formatted = formatDateTime(Number.MAX_SAFE_INTEGER, "en")
+  it("returns the em-dash fallback for a non-finite timestamp", () => {
+    expect(formatDateTime(Number.NaN, "en")).toBe("—")
+  })
 
-    expect(formatted).toEqual(expect.any(String))
-    expect(formatted.length).toBeGreaterThan(0)
+  it("renders four check-digit groups from the first 16 hex chars (big-endian uint16 mod 10000)", () => {
+    const hex = "000102030405060708090a0b0c0d0e0f".repeat(2)
+    expect(formatFingerprint(hex)).toBe("0001 0515 1029 1543")
+  })
+
+  it("returns short input unchanged instead of fabricating groups", () => {
+    expect(formatFingerprint("abc")).toBe("abc")
+  })
+
+  it("recognizes only prefixes from both QR vocabulary tables", () => {
+    for (const prefix of [...Object.values(QR_PREFIX), ...Object.values(QR_PREFIX_V2)]) {
+      expect(isQrCryptPayload(`${prefix}payload`)).toBe(true)
+    }
+    expect(isQrCryptPayload("OCX9:payload")).toBe(false)
+    expect(isQrCryptPayload("plain text")).toBe(false)
   })
 })
