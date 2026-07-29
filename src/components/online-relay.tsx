@@ -12,6 +12,7 @@ import {
 import type { RelaySessionEndReason } from "@/app/boot/boot-controller"
 import { useFeatureSupport } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
+import { QrDisplay } from "@/components/qr-display"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,7 +34,7 @@ import {
 } from "@/lib/limits"
 import { startQrScan, type QrScanHandle } from "@/qr/decode"
 import { copyTextToClipboard } from "@/qr/export-image"
-import { renderQrDataUrl } from "@/qr/encode"
+import { relayMessageEcLevel, renderQrDataUrl } from "@/qr/encode"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import {
   acceptRelayCapture,
@@ -100,6 +101,7 @@ export function OnlineRelay({
   const [cameraActive, setCameraActive] = useState(false)
   const [playbackText, setPlaybackText] = useState("")
   const [playbackFrames, setPlaybackFrames] = useState<readonly QrFrameV2[]>([])
+  const [playbackMessage, setPlaybackMessage] = useState<string | null>(null)
   const [playbackAnimationSignal, setPlaybackAnimationSignal] = useState<
     AbortSignal | undefined
   >()
@@ -115,6 +117,7 @@ export function OnlineRelay({
   const joinedTextRef = useRef("")
   const playbackTextRef = useRef("")
   const playbackFramesRef = useRef<readonly QrFrameV2[]>([])
+  const playbackMessageRef = useRef<string | null>(null)
   const startupAbortRef = useRef<AbortController | null>(null)
   const liveHandleRef = useRef<QrScanHandle | null>(null)
   const lifetimeTimeoutRef = useRef<number | null>(null)
@@ -158,6 +161,7 @@ export function OnlineRelay({
       joinedTextRef.current = ""
       playbackTextRef.current = ""
       playbackFramesRef.current = []
+      playbackMessageRef.current = null
       if (!mountedRef.current) return
       setDialogMode(null)
       setCapture(EMPTY_RELAY_CAPTURE)
@@ -165,6 +169,7 @@ export function OnlineRelay({
       setCaptureError(null)
       setPlaybackText("")
       setPlaybackFrames([])
+      setPlaybackMessage(null)
       setPlaybackAnimationSignal(undefined)
       setPlaybackError(null)
       setPlaybackMissingIndexes([])
@@ -403,10 +408,46 @@ export function OnlineRelay({
       setPlaybackMissingIndexes(parsed.missingIndexes ?? [])
       return
     }
-    // Temporary: Task 5 replaces this with the single-payload playback branch.
-    if (parsed.kind !== "frames") {
-      setPlaybackError("relay.error.prefix")
+    if (parsed.kind === "message") {
+      const ecLevel = relayMessageEcLevel(parsed.payload)
+      try {
+        await renderQrDataUrl(parsed.payload, {
+          ecLevel,
+          size: env.qrRenderSize,
+        })
+      } catch {
+        if (
+          operation !== playbackOperationRef.current ||
+          generation !== sessionGenerationRef.current ||
+          !mountedRef.current
+        ) {
+          return
+        }
+        endSession("render-error")
+        if (mountedRef.current) {
+          setTerminalNotice(errorMessageKey("QR_TOO_LARGE"))
+        }
+        return
+      }
+      if (
+        operation !== playbackOperationRef.current ||
+        generation !== sessionGenerationRef.current ||
+        !mountedRef.current
+      ) {
+        return
+      }
+      // One payload never animates, so no animation controller is created and
+      // any controller from an earlier playback in this session is released.
+      playbackAnimationAbortRef.current?.abort()
+      playbackAnimationAbortRef.current = null
+      playbackFramesRef.current = []
+      setPlaybackFrames([])
+      setPlaybackAnimationSignal(undefined)
+      playbackMessageRef.current = parsed.payload
+      setPlaybackMessage(parsed.payload)
+      setPlaybackError(null)
       setPlaybackMissingIndexes([])
+      beginLifetime()
       return
     }
     // Re-encoding is a canonical round-trip check; retain only the decoded
@@ -455,6 +496,8 @@ export function OnlineRelay({
     playbackAnimationAbortRef.current = animationAbort
     playbackFramesRef.current = parsed.frames
     setPlaybackFrames(parsed.frames)
+    playbackMessageRef.current = null
+    setPlaybackMessage(null)
     setPlaybackAnimationSignal(animationAbort.signal)
     setPlaybackError(null)
     setPlaybackMissingIndexes([])
@@ -699,6 +742,23 @@ export function OnlineRelay({
                   indexes: formatFramePositions(playbackMissingIndexes, language),
                 })}
               </p>
+            )}
+
+            {playbackMessage !== null && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.playback.screenCaptureWarning")}
+                </p>
+                <QrDisplay
+                  payload={playbackMessage}
+                  ecLevel={relayMessageEcLevel(playbackMessage)}
+                  size={env.qrRenderSize}
+                  title={t("relay.playback.messageQrTitle")}
+                />
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.playback.noDownloadControls")}
+                </p>
+              </div>
             )}
 
             {playbackFrames.length > 0 && (
