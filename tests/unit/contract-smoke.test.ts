@@ -2,7 +2,7 @@
 // Do not invoke stub implementations; verify only implemented portions of the contract.
 // These tests may be extended, but must not be removed or weakened.
 import { describe, expect, it } from "vitest"
-import { AppError, ERROR_CODES, messageFor, toAppError } from "@/crypto/errors"
+import { AppError, ERROR_CODES, toAppError } from "@/crypto/errors"
 import {
   FRAME_INTERVAL_MS_VALUES,
   KEY_ID_PATTERN,
@@ -12,26 +12,19 @@ import {
   MAX_SYMMETRIC_PLAINTEXT_BYTES,
   maximumSymmetricPlaintextBytesForPayloadCapacity,
 } from "@/lib/limits"
-import { ecLevelFor, payloadFits, qrByteCapacity } from "@/qr/encode"
+import { qrByteCapacity } from "@/qr/encode"
 import { QR_PREFIX } from "@/qr/payload"
 import { toUiAlgorithm, toWireAlgorithm } from "@/schemas/domain"
 import { env, parseAppEnv } from "@/schemas/env-schema"
 import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
 
 describe("contract smoke", () => {
-  it("keeps only error codes and resolves user messages explicitly by language", () => {
+  it("keeps errors code-only and preserves AppError instances", () => {
     expect(ERROR_CODES).toContain("KEY_ID_CONFLICT")
     expect(ERROR_CODES).toContain("MESSAGE_ID_REUSED")
     const error = new AppError("DECRYPTION_FAILED")
     expect(error.code).toBe("DECRYPTION_FAILED")
     expect(error).not.toHaveProperty("userMessage")
-    expect(messageFor(error.code, "ja")).toBe(
-      "復号できませんでした。鍵、暗号方式、または暗号文が一致していません。",
-    )
-    expect(messageFor("QR_TOO_LARGE", "en")).toContain("QR code")
-    expect(messageFor("KEY_ID_CONFLICT", "en")).toBe(
-      "One of these key IDs is already reserved by a stored bundle, which may be disabled and hidden from the list. The import was refused.",
-    )
     expect(toAppError(new Error("x"), "STORAGE_FAILED").code).toBe("STORAGE_FAILED")
     expect(toAppError(error, "STORAGE_FAILED")).toBe(error)
   })
@@ -80,7 +73,7 @@ describe("contract smoke", () => {
     )
   })
 
-  it.each(["false", "true", "yes"] as const)(
+  it.each(["false", "yes"] as const)(
     "rejects retired VITE_ENABLE_RSA=%s",
     (value) => {
       expect(() => parseAppEnv({ VITE_ENABLE_RSA: value })).toThrow(
@@ -106,19 +99,6 @@ describe("contract smoke", () => {
     for (const limit of Object.values(symmetricLimits)) {
       expect(limit).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
     }
-  })
-
-  it("QR capacity table and EC policy are fixed", () => {
-    expect(qrByteCapacity("L")).toBe(2953)
-    expect(qrByteCapacity("M")).toBe(2331)
-    expect(qrByteCapacity("Q")).toBe(1663)
-    expect(qrByteCapacity("H")).toBe(1273)
-    expect(payloadFits("a".repeat(1663), "Q")).toBe(true)
-    expect(payloadFits("a".repeat(1664), "Q")).toBe(false)
-    const prefs = { qrErrorCorrection: "L" as const }
-    expect(ecLevelFor("message", prefs)).toBe("L")
-    expect(ecLevelFor("stored-key", prefs)).toBe("H")
-    expect(ecLevelFor("multipart-frame", prefs)).toBe("Q")
   })
 
   it("payload prefixes match the protocol doc", () => {

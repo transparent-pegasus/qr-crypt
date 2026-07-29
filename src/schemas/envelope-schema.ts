@@ -4,15 +4,14 @@
 import { z } from "zod"
 import { AppError } from "@/crypto/errors"
 import type { AnyEnvelopeV1 } from "@/crypto/envelope"
+import { keyIdSchema } from "@/schemas/key-schema"
 import {
   AES_KEY_BYTES,
   IV_BYTES,
-  KEY_ID_PATTERN,
   MAX_AAD_BYTES,
   MAX_CIPHERTEXT_BYTES,
 } from "@/lib/limits"
 
-const keyIdSchema = z.string().regex(KEY_ID_PATTERN)
 const createdAtSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)
 const byteString = z.custom<Uint8Array>((value) => value instanceof Uint8Array)
 const exactBytes = (length: number) =>

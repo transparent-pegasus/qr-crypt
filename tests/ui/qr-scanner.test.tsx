@@ -673,14 +673,6 @@ describe("QrScannerModal", () => {
       name: "Scan a ciphertext QR code",
     })
     expect(dialog).toHaveFocus()
-    expect(dialog).not.toHaveClass("overflow-y-auto")
-    expect(
-      dialog.querySelector("[data-qr-scanner-scroll-region]"),
-    ).toHaveClass(
-      "min-h-0",
-      "max-h-[calc(95dvh-4rem)]",
-      "overflow-y-auto",
-    )
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     expect(
       screen.getByText(

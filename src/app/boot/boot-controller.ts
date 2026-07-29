@@ -15,19 +15,21 @@ import {
   TRANSFER_TIMEOUT_MINUTES_MAX,
   TRANSFER_TIMEOUT_MINUTES_MIN,
 } from "@/lib/limits"
-import { getDb } from "@/storage/database"
+import { probeNonce } from "@/lib/reachability"
+import { VAULT_KEY_METADATA_KEY } from "@/crypto/vault/vault-key"
+import {
+  getDb,
+  STORE_APP_METADATA,
+  STORE_KEYS,
+  STORE_PQ_IDENTITIES,
+  STORE_PREFERENCES,
+} from "@/storage/database"
+import { PREFERENCES_KEY } from "@/storage/preferences-repository"
 import { setAckPending } from "@/app/offline-ack-marker"
 import { clearReceipts } from "@/features/receipt-cache"
 
 export const BOOT_PROBE_TIMEOUT_MS = 3_000
 export const MAINTENANCE_TOKEN_METADATA_KEY = "maintenance-token"
-
-const PREFERENCES_KEY = "preferences"
-const VAULT_KEY_METADATA_KEY = "vault-key"
-const STORE_KEYS = "keys"
-const STORE_PREFERENCES = "preferences"
-const STORE_APP_METADATA = "appMetadata"
-const STORE_PQ_IDENTITIES = "pqIdentities"
 
 // Minimal early-boot storage ports. These are NOT a re-declaration of idb's types for
 // their own sake: readBootDecision accepts an injected getDatabase() and casts to
@@ -104,6 +106,13 @@ export interface BootController {
   nudgeDisplayOffline(): boolean
   probe(): Promise<void>
   refreshRelayEligibility(): Promise<boolean>
+  // A user-requested reset engages the same one-way barrier as the
+  // online-detected wipe, so it is terminal for the whole application, not for
+  // the surface that started it. The controller owns that state: publishing it
+  // here unmounts the Router the same way a wipe does. Call begin before the
+  // coordinator runs so the barrier is never engaged behind a live Router.
+  beginUserRequestedReset(): void
+  reportResetFailure(failedSteps: readonly string[]): void
   registerRelaySessionEndHandler(
     handler: (reason: RelaySessionEndReason) => void,
   ): () => void
@@ -128,17 +137,6 @@ const FALLBACK_DECISION: BootDecisionSnapshot = {
   maintenanceTokenArmed: false,
   resetChurnMb: 0,
   preferencesReadFailed: true,
-}
-
-let fallbackNonce = 0
-
-function sentinelNonce(): string {
-  if (globalThis.crypto?.getRandomValues) {
-    const values = globalThis.crypto.getRandomValues(new Uint32Array(2))
-    return Array.from(values, (value) => value.toString(36)).join("")
-  }
-  fallbackNonce += 1
-  return `${Date.now().toString(36)}-${fallbackNonce.toString(36)}`
 }
 
 function abortError(): DOMException {
@@ -170,7 +168,7 @@ export async function probeNetworkSentinel(
   const timeoutId = setTimeout(abort, timeoutMs)
 
   try {
-    const nonce = options.nonce ?? sentinelNonce()
+    const nonce = options.nonce ?? probeNonce()
     const response = await Promise.race([
       fetchImpl(`${REACHABILITY_SENTINEL_PATH}?n=${encodeURIComponent(nonce)}`, {
         method: "GET",
@@ -262,8 +260,7 @@ function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
     optionalBoolean(value.autoClearPlaintextAfterEncrypt) &&
     optionalBoolean(value.backgroundClearEnabled) &&
     isBootReadableFrameBytes(value.frameBytes) &&
-    (value.frameIntervalMs === undefined ||
-      isBootReadableFrameIntervalMs(value.frameIntervalMs)) &&
+    isBootReadableFrameIntervalMs(value.frameIntervalMs) &&
     optionalIntegerInRange(
       value.transferTimeoutMinutes,
       TRANSFER_TIMEOUT_MINUTES_MIN,
@@ -473,7 +470,16 @@ export function createBootController(
       }
     | undefined
 
+  const destructive = (candidate: BootState): boolean =>
+    candidate.kind === "wiping" ||
+    candidate.kind === "wiped" ||
+    candidate.kind === "partial-failure"
+
   const emit = (nextState: BootState) => {
+    // Destructive states are monotonic. Once a wipe or reset has engaged the
+    // one-way access barrier, no probe result that was already in flight may
+    // hand the application back a usable Router state.
+    if (destructive(state) && !destructive(nextState)) return
     state = nextState
     for (const listener of listeners) listener()
   }
@@ -508,6 +514,17 @@ export function createBootController(
         // Resetting every remaining handler is more important than one UI error.
       }
     }
+  }
+
+  // A page-originated reset engages the same barrier as the online-detected
+  // wipe, so any probe still running has to be retired before the terminal
+  // state is published — its own continuation would otherwise emit next.
+  const retireActiveProbe = () => {
+    activeProbe?.abort()
+    activeProbe = undefined
+    generation += 1
+    confirmationEpisode = undefined
+    networkTransitionHandled = false
   }
 
   const isDestructiveTerminal = () =>
@@ -740,6 +757,16 @@ export function createBootController(
     nudgeDisplayOffline,
     probe,
     refreshRelayEligibility,
+    beginUserRequestedReset() {
+      retireActiveProbe()
+      invalidateRelay("local-wipe")
+      emit({ kind: "wiping" })
+    },
+    reportResetFailure(failedSteps) {
+      retireActiveProbe()
+      invalidateRelay("local-wipe")
+      emit({ kind: "partial-failure", failedSteps: [...failedSteps] })
+    },
     registerRelaySessionEndHandler(handler) {
       if (relaySessionEndHandler && relaySessionEndHandler !== handler) {
         endRelaySession("eligibility-loss")

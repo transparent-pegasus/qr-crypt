@@ -54,6 +54,11 @@ export interface QrRenderOptions {
   size: number
 }
 
+export const QR_RENDER_STYLE = {
+  margin: 4,
+  color: { dark: "#000000", light: "#FFFFFFFF" },
+} as const
+
 // Fix the background to white, modules to black, and quiet zone (margin) to 4,
 // unchanged in dark mode.
 export async function renderQrDataUrl(
@@ -66,9 +71,8 @@ export async function renderQrDataUrl(
   try {
     return await QRCode.toDataURL(payload, {
       errorCorrectionLevel: options.ecLevel,
-      margin: 4,
       width: options.size,
-      color: { dark: "#000000", light: "#FFFFFFFF" },
+      ...QR_RENDER_STYLE,
     })
   } catch (error) {
     throw toAppError(error, "QR_TOO_LARGE")
@@ -86,8 +90,7 @@ export async function renderQrSvgString(
     return await QRCode.toString(payload, {
       type: "svg",
       errorCorrectionLevel: options.ecLevel,
-      margin: 4,
-      color: { dark: "#000000", light: "#FFFFFFFF" },
+      ...QR_RENDER_STYLE,
     })
   } catch (error) {
     throw toAppError(error, "QR_TOO_LARGE")

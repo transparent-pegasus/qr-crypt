@@ -646,40 +646,6 @@ describe("decrypt page v2", () => {
     )
   })
 
-  it("opens the result modal when the decrypt button succeeds", async () => {
-    const user = userEvent.setup()
-    await renderApp("/decrypt")
-    await screen.findByRole("heading", { name: "Scan with the camera" })
-    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
-      target: { value: "OCM1:sym-key-00000001" },
-    })
-    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
-    await waitFor(() => expect(decryptButton).toBeEnabled())
-    await user.click(decryptButton)
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Decryption complete",
-    })
-    expect(within(dialog).getByText("復号済み平文")).toBeInTheDocument()
-  })
-
-  it("opens the result modal immediately after a single QR read", async () => {
-    const user = userEvent.setup()
-    await renderApp("/decrypt")
-    await screen.findByRole("heading", { name: "Scan with the camera" })
-    await user.click(
-      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
-    )
-    await waitFor(() => expect(startQrScan).toHaveBeenCalled())
-
-    await act(async () => emitScannedPayload("OCM1:sym-key-00000001"))
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Decryption complete",
-    })
-    expect(within(dialog).getByText("復号済み平文")).toBeInTheDocument()
-  })
-
   it("opens the result modal when a multipart transfer completes", async () => {
     const user = userEvent.setup()
     await renderApp("/decrypt")

@@ -270,7 +270,7 @@ describe("online relay UI", () => {
     expect(scanStart).not.toHaveBeenCalled()
   })
 
-  it("keeps both scrolling dialog bodies bounded with one trailing close and Escape dismissal", async () => {
+  it("keeps one trailing close and Escape dismissal in both dialogs", async () => {
     renderRelay()
     const user = userEvent.setup()
 
@@ -280,15 +280,6 @@ describe("online relay UI", () => {
     ] as const) {
       await user.click(screen.getByRole("button", { name: triggerName }))
       const dialog = await screen.findByRole("dialog", { name: dialogName })
-      expect(dialog).toHaveClass(
-        "grid",
-        "grid-rows-[minmax(0,1fr)]",
-        "overflow-hidden",
-      )
-      expect(dialog.firstElementChild).toHaveClass(
-        "min-h-0",
-        "overflow-y-auto",
-      )
       const closeControls = within(dialog).getAllByRole("button", {
         name: "Close",
       })

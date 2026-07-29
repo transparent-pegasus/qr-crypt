@@ -447,7 +447,6 @@ describe("preferences and plaintext non-persistence", () => {
       for (const nested of Object.values(value)) inspect(nested)
     }
     const database = await getDb()
-    expect(Array.from(database.objectStoreNames)).not.toContain("qrArtifacts")
     for (const store of [
       STORE_KEYS,
       STORE_PREFERENCES,

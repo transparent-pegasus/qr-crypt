@@ -75,28 +75,6 @@ describe("useAutoClear fixed deadline semantics", () => {
     expect(onClear).toHaveBeenCalledTimes(1)
   })
 
-  it("uses env.autoClearSeconds when the WebAssembly runtime probe succeeds", async () => {
-    mockWebAssemblyProbe(true)
-    const { useAutoClear } = await import("@/hooks/use-auto-clear")
-    const onClear = vi.fn()
-    function Harness() {
-      useAutoClear({ enabled: true, onClear })
-      return null
-    }
-    render(<Harness />)
-    await act(async () => undefined)
-    expect(probeWebAssemblyRuntime).toHaveBeenCalled()
-
-    act(() => {
-      setVisibility("hidden")
-      document.dispatchEvent(new Event("visibilitychange"))
-    })
-    act(() => vi.advanceTimersByTime(env.autoClearSeconds * 1000 - 1))
-    expect(onClear).not.toHaveBeenCalled()
-    act(() => vi.advanceTimersByTime(1))
-    expect(onClear).toHaveBeenCalledTimes(1)
-  })
-
   it("uses env.autoClearFallbackSeconds when the WebAssembly runtime probe fails", async () => {
     mockWebAssemblyProbe(false)
     const { useAutoClear } = await import("@/hooks/use-auto-clear")

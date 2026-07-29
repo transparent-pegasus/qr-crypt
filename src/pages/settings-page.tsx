@@ -11,7 +11,11 @@ import {
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
-import { armMaintenanceToken } from "@/app/boot/boot-controller"
+import {
+  armMaintenanceToken,
+  getDefaultBootController,
+} from "@/app/boot/boot-controller"
+import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
 import {
   useFeatureSupport,
   useTheme,
@@ -65,7 +69,8 @@ import {
   TRANSFER_TIMEOUT_MINUTES_MAX,
   TRANSFER_TIMEOUT_MINUTES_MIN,
 } from "@/lib/limits"
-import { deleteEntireDatabase } from "@/storage/database"
+import { isStandalone } from "@/lib/feature-detect"
+import { reloadApplication } from "@/lib/reload"
 import { clearAllKeys } from "@/storage/key-repository"
 import { clearAllIdentities } from "@/storage/pq-identity-repository"
 
@@ -130,20 +135,34 @@ export function SettingsPage() {
         await refreshKeys()
         toast.success(t("settings.toast.keysCleared"))
       } else {
-        await deleteEntireDatabase()
-        const keysToRemove: string[] = []
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          const key = window.localStorage.key(index)
-          if (key?.startsWith("oc-")) keysToRemove.push(key)
+        // Publish the terminal boot state BEFORE the coordinator engages its
+        // one-way barrier: the confirmation dialog closes on action, so the
+        // settings page would otherwise stay interactive over dead storage.
+        const controller = getDefaultBootController()
+        controller.beginUserRequestedReset()
+        const report = await performUserRequestedReset({
+          resetChurnMb: preferences.resetChurnMb,
+          resetTransient: clearTransient,
+        })
+        if (report.ok) {
+          reloadApplication()
+          return
         }
-        for (const key of keysToRemove) window.localStorage.removeItem(key)
-        clearTransient()
-        await refreshKeys()
-        toast.success(t("boot.wiped.body"))
+        // The coordinator engaged the one-way barrier before failing, so every
+        // storage-backed surface is dead. Publish the terminal state instead of
+        // returning to a settings page whose controls would all throw.
+        controller.reportResetFailure(report.failedSteps)
+        return
       }
       setTypedAction(null)
       setDeleteConfirmation("")
     } catch {
+      // A throw from the full reset happens after the barrier is engaged, so it
+      // is terminal too; only the keys-only arm can recover into the page.
+      if (typedAction === "reset") {
+        getDefaultBootController().reportResetFailure(["reset"])
+        return
+      }
       setError("settings.error.deleteFailed")
     } finally {
       setWorking(false)
@@ -189,9 +208,7 @@ export function SettingsPage() {
     }
   }
 
-  const standalone =
-    window.matchMedia("(display-mode: standalone)").matches ||
-    Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+  const standalone = isStandalone()
 
   return (
     <section className="mx-auto w-full max-w-md space-y-6 px-4 py-6" aria-busy={working}>

@@ -217,6 +217,18 @@ describe("deterministic payload encoding and strict decoding", () => {
 })
 
 describe("QR sizing, rendering, and production decoder round-trips", () => {
+  it("exports the fixed render style shared by every QR renderer", async () => {
+    const encode = (await import("@/qr/encode")) as unknown as Record<
+      string,
+      unknown
+    >
+
+    expect(encode["QR_RENDER_STYLE"]).toEqual({
+      margin: 4,
+      color: { dark: "#000000", light: "#FFFFFFFF" },
+    })
+  })
+
   it("keeps the version-40 capacities and actual encoder boundaries aligned", () => {
     const capacities = { L: 2953, M: 2331, Q: 1663, H: 1273 } as const
     for (const [level, capacity] of Object.entries(capacities)) {

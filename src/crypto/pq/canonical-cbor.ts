@@ -58,14 +58,15 @@ const MAJOR_TEXT = 3
 const MAJOR_MAP = 5
 
 // Structural allocation limits follow the largest active protocol shapes:
-// QrFrameV2 has 9 entries in one map; PublicIdentityBundleV2 has 13 entries
-// across its root and two nested key maps. The longest key is
-// "kemCiphertextSha256" (19 UTF-8 bytes). The only free text is a display name,
-// capped by its guard at 100 UTF-16 code units, which needs at most 300 UTF-8
-// bytes for valid scalar values.
-const MAX_MAP_ENTRIES = 9
+// the largest single map has 8 entries (QrFrameV2 and MlKemMessageEnvelopeV2);
+// PublicIdentityBundleV2 has 13 entries across its root and two nested key
+// maps. The longest decoded key is "senderSigningKeyId" (18 UTF-8 bytes) —
+// "kemCiphertextSha256" (19) exists only in the encode-side AAD, which is
+// never decoded. The only free text is a display name, capped by its guard at
+// 100 UTF-16 code units (at most 300 UTF-8 bytes for valid scalar values).
+const MAX_MAP_ENTRIES = 8
 const MAX_TOTAL_MAP_ENTRIES = 13
-const MAX_KEY_UTF8_BYTES = 19
+const MAX_KEY_UTF8_BYTES = 18
 const MAX_TEXT_UTF8_BYTES = 300
 
 const utf8Encoder = new TextEncoder()

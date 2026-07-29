@@ -269,6 +269,9 @@ function BootGate({
           <p className="text-sm text-muted-foreground">
             {t("boot.partialFailure.retryHint")}
           </p>
+          {state.failedSteps.length > 0 && (
+            <p className="font-mono text-xs">{state.failedSteps.join(", ")}</p>
+          )}
         </BootStatusScreen>
       )
   }

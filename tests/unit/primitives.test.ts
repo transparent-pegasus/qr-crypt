@@ -75,7 +75,6 @@ describe("random ids, feature detection, and env parsing", () => {
       VITE_AUTO_CLEAR_SECONDS: "0",
     })
     expect(parsed.defaultAlgorithm).toBe("MLKEM1024_A256GCM")
-    expect(parsed.enableEcdh).toBe(true)
     expect(parsed.qrRenderSize).toBe(640)
     expect(parsed.autoClearSeconds).toBe(0)
     expect(parsed.buildSha).toBe("development")

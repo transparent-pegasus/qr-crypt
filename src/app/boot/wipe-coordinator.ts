@@ -38,12 +38,7 @@ export interface WipeCoordinator {
 }
 
 const cryptoClients = new Set<Pick<PqCryptoClient, "dispose">>()
-const secretBuffers = new Set<Uint8Array>()
 let wipeBarrierEngaged = false
-
-export function isWipeBarrierEngaged(): boolean {
-  return wipeBarrierEngaged
-}
 
 export function registerPqCryptoClientForWipe(
   client: Pick<PqCryptoClient, "dispose">,
@@ -54,15 +49,6 @@ export function registerPqCryptoClientForWipe(
   }
   cryptoClients.add(client)
   return () => cryptoClients.delete(client)
-}
-
-export function registerSecretBufferForWipe(buffer: Uint8Array): () => void {
-  if (wipeBarrierEngaged) {
-    buffer.fill(0)
-    return () => undefined
-  }
-  secretBuffers.add(buffer)
-  return () => secretBuffers.delete(buffer)
 }
 
 function engageBarrier(): void {
@@ -80,20 +66,12 @@ function disposeCrypto(): void {
     }
   }
   cryptoClients.clear()
-  for (const buffer of secretBuffers) buffer.fill(0)
-  secretBuffers.clear()
   if (failed) throw new Error("crypto disposal failed")
-}
-
-function notImplemented(error: unknown): boolean {
-  return error instanceof Error && error.message.startsWith("NOT_IMPLEMENTED")
 }
 
 async function dropVaultKeyCache(): Promise<void> {
   try {
     dropVaultKeyCacheModule()
-  } catch (error) {
-    if (!notImplemented(error)) throw error
   } finally {
     clearReceipts()
   }
@@ -211,6 +189,19 @@ const defaultCoordinator = createWipeCoordinator()
 
 export function wipeOnOnline(args: WipeCoordinatorArgs): Promise<BestEffortResetReport> {
   return defaultCoordinator.wipe(args)
+}
+
+// The online terminal path memoizes one execution. Settings gets a fresh
+// coordinator per attempt so a partial reset can be retried without reloading.
+export function performUserRequestedReset(
+  args: { resetChurnMb: number; resetTransient: () => void },
+  overrides: Partial<WipeCoordinatorDependencies> = {},
+): Promise<BestEffortResetReport> {
+  return createWipeCoordinator(overrides).wipe({
+    reason: "user-requested",
+    resetChurnMb: args.resetChurnMb,
+    resetTransient: args.resetTransient,
+  })
 }
 
 export interface WipeBroadcastListenerOptions {

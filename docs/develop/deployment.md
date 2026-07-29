@@ -79,10 +79,8 @@ member-set, and per-file rebuild comparison commands; both the archive extractio
 and any copied build tree must remain outside that checkout.
 
 This gate establishes same-environment determinism, not environment-independent
-reproducibility. Cosign attests provenance—which workflow built from which
-commit—not source-to-binary correspondence. An attacker who controls the CI
-environment can therefore publish a correctly signed backdoor; only an
-independent rebuild comparison can detect that case.
+reproducibility. Full Route A verification implications:
+[install-route-a/README.md](install-route-a/README.md) §5.
 
 ## `public/_headers` / `public/_redirects`
 
@@ -105,29 +103,15 @@ rules, serves the MIME types used by the PWA, and implements the current
 for the normal e2e suite; the release workflow reuses it for the extracted ZIP.
 
 A self-hosted install (route A) still needs a separately trusted static server
-that reproduces the bundled response-header and routing behavior: the security
-headers, correct MIME types, SPA fallback, and `no-store` on the reachability
-sentinel. In particular, a server that relies only on the injected meta tag does
-not enforce `frame-ancestors`. The authoritative full Route A procedure —
-independently authenticated Cosign inputs, `cosign verify-blob`, checksum
-verification, mandatory independent rebuild-and-compare, deploy to the offline
-device, and the host:port origin boundary — is
-[install-route-a/README.md](install-route-a/README.md). Its mandatory set matches the
-archive's `INSTALL.txt`; do not treat this page as a second incomplete copy of
-that procedure.
+that reproduces the bundled response-header and routing behavior. Authoritative
+server and CSP/`frame-ancestors` requirements:
+[install-route-a/README.md](install-route-a/README.md) §7.3. The full Route A
+procedure — Cosign inputs, checksum, independent rebuild-and-compare, deploy,
+and host:port origin boundary — is
+[install-route-a/README.md](install-route-a/README.md). Its mandatory set matches
+the archive's `INSTALL.txt`; do not treat this page as a second incomplete copy
+of that procedure.
 
-The exact `http://HOST:PORT` is a security and storage boundary: serving another
-page from the same host and port later gives it same-origin access to the stored
-keys and Vault key, while changing the port after installation creates a
-different origin that cannot reach that data. Route A must therefore use one
-dedicated, uncommon fixed high port that is never reused.
-
-Install route B fetches the PWA directly from its live origin and provides no
-integrity check that the recipient can perform. Control of the origin, TLS, or
-CDN lets an attacker target one device with an altered bundle that the recipient
-cannot detect and the Service Worker will persist. The installed device also
-retains that live origin: on reconnection its same-origin reachability probe is a
-beacon, and wipe cannot fire until after the sentinel response confirms
-reachability. Route A instead points at `127.0.0.1`; after its dedicated server
-is stopped and its reserved port is not reused, the probe has no peer.
-High-assurance use must use Route A only.
+Host:port origin boundary and Route A vs B assurance:
+[install-route-a/README.md](install-route-a/README.md) §8. High-assurance use
+must use Route A only.

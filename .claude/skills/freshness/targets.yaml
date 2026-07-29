@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-07-29 # last revision of this registry itself
+updated: 2026-07-30 # last revision of this registry itself
 
 units:
   - id: deps
@@ -46,9 +46,10 @@ units:
           same-origin (no CDN) and stays precached, and that
           tests/e2e/security.spec.ts still pins 'wasm-unsafe-eval' present and
           bare 'unsafe-eval' absent.
-        - react-hook-form 7.82.0, eslint-config-prettier 10.1.8 — supply-chain
-          incident history in docs/security/threat-model.md §5.1; re-check advisories
-          before moving.
+        - eslint-config-prettier 10.1.8 — supply-chain incident history in
+          docs/security/threat-model.md §5.1; re-check advisories before moving.
+          (react-hook-form was removed from the graph on 2026-07-30: pinned after
+          MAL-2026-2853 but never imported by the application.)
       aube.overrides (rollup OMT) stays until upstream trust is restored.
       After bumping vite-plugin-pwa / workbox, re-review the VitePWA options in
       vite.config.ts (globPatterns, cleanupOutdatedCaches, sentinel NetworkOnly).
@@ -58,7 +59,7 @@ units:
   - id: crypto-noble
     category: crypto
     cadence_days: 90 # also triggered by any @noble/post-quantum advisory/release
-    last_checked: 2026-07-27
+    last_checked: 2026-07-30
     files:
       - package.json # "@noble/post-quantum" exact pin
       - aube-lock.yaml # frozen graph must move with the pin
@@ -300,7 +301,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-07-29
+    last_checked: 2026-07-30
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/qr-protocol.md # v1 A256GCM path; must not regrow retired RSA sections
@@ -355,7 +356,7 @@ units:
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-07-27
+    last_checked: 2026-07-30
     files:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
       - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
@@ -418,7 +419,7 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-07-29
+    last_checked: 2026-07-30
     files:
       - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
@@ -447,7 +448,7 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-07-29
+    last_checked: 2026-07-30
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together
