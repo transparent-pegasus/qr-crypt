@@ -525,6 +525,9 @@ a {
 }
 
 .route__link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   margin: 0;
 }
 

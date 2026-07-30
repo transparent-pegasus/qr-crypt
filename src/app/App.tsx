@@ -17,12 +17,13 @@ import {
 } from "@/lib/feature-detect"
 import { createAppRouter } from "@/app/router"
 import { AppProviders, ThemeProvider, useSensitiveSession } from "@/app/providers"
+import { Button } from "@/components/ui/button"
 import { OnlineGate, OnlineInstallScreen } from "@/components/online-gate"
 import { OfflineAckShell } from "@/components/offline-ack-shell"
 import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
 import {
+  LanguageField,
   LanguageProvider,
-  LanguageSelect,
   useI18n,
   type Language,
 } from "@/i18n"
@@ -48,9 +49,7 @@ function UnsupportedBrowser({ features }: { features: FeatureSupport }) {
   return (
     <main className="grid min-h-dvh place-items-center bg-background p-4 text-foreground">
       <section className="w-full max-w-lg space-y-5 rounded-xl border bg-card p-6 shadow-sm">
-        <div className="flex justify-end">
-          <LanguageSelect />
-        </div>
+        <LanguageField />
         <div className="flex items-start gap-3">
           <AlertTriangle
             aria-hidden="true"
@@ -93,9 +92,7 @@ function BootStatusScreen({ children }: { children: ReactNode }) {
   return (
     <main className="grid min-h-dvh place-items-center bg-background p-4 text-foreground">
       <section className="w-full max-w-md space-y-3 rounded-xl border bg-card p-6 shadow-sm">
-        <div className="flex justify-end">
-          <LanguageSelect />
-        </div>
+        <LanguageField />
         {children}
       </section>
     </main>
@@ -258,6 +255,18 @@ function BootGate({
         <BootStatusScreen>
           <h1 className="text-xl font-bold">{t("boot.wiped.title")}</h1>
           <p className="text-sm text-muted-foreground">{t("boot.wiped.body")}</p>
+          {/* The controller pins itself in this destructive terminal state, so a
+              new JS lifetime is the only honest route back to the install
+              screen. Offline, the acknowledgement shell above owns the exit. */}
+          {display.online && (
+            <Button
+              type="button"
+              className="h-11 w-full whitespace-normal"
+              onClick={reloadPage}
+            >
+              {t("boot.wiped.backOnline")}
+            </Button>
+          )}
         </BootStatusScreen>
       )
     case "partial-failure":
@@ -269,6 +278,9 @@ function BootGate({
           <p className="text-sm text-muted-foreground">
             {t("boot.partialFailure.retryHint")}
           </p>
+          {state.failedSteps.length > 0 && (
+            <p className="font-mono text-xs">{state.failedSteps.join(", ")}</p>
+          )}
         </BootStatusScreen>
       )
   }

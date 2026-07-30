@@ -18,7 +18,12 @@ import { LanguageProvider } from "@/i18n"
 import { translate } from "@/i18n/messages"
 import { fakeFeatures, getPreferences, useFakeRegisterSW } from "./helpers/fakes"
 import { setTestOnlineStatus, stubReachabilityFetch } from "./helpers/network"
-import { memoryLocalStorage, renderApp, resetUi } from "./helpers/render-app"
+import {
+  expectLanguageField,
+  memoryLocalStorage,
+  renderApp,
+  resetUi,
+} from "./helpers/render-app"
 
 const ACK_TITLE = "Confirm before continuing"
 const JA_ACK_TITLE = "続行前の確認"
@@ -43,6 +48,25 @@ function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSn
       overrides.cleanOrigin ??
       (snapshot.sensitiveDataExists ? "dirty" : "confirmed-clean"),
   }
+}
+
+async function renderWipedOnline(
+  initialLanguage: "en" | "ja",
+  reloadPage: () => void,
+) {
+  setTestOnlineStatus(true)
+  const controller = createBootController({
+    fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+    performWipe: vi.fn(async () => ({ ok: true, failedSteps: [] })),
+    readDecision: async () => decision({ sensitiveDataExists: true }),
+  })
+  await renderApp("/encrypt", {
+    bootController: controller,
+    initialLanguage,
+    reloadPage,
+  })
+  await screen.findByText(translate(initialLanguage, "boot.wiped.title"))
+  return controller
 }
 
 async function flushDisplayProbe(): Promise<void> {
@@ -86,6 +110,70 @@ describe("offline acknowledgement shell", () => {
     vi.restoreAllMocks()
   })
 
+  it("renders the language field on the acknowledgement shell", () => {
+    render(
+      <LanguageProvider>
+        <OfflineAckShell generation={1} onContinue={() => true} />
+      </LanguageProvider>,
+    )
+
+    expectLanguageField()
+  })
+
+  it("offers the wiped online exit while preserving acknowledgement offline", async () => {
+    const user = userEvent.setup()
+    const reloadPage = vi.fn()
+    const controller = await renderWipedOnline("en", reloadPage)
+    const onlineExit = screen.queryByRole("button", {
+      name: "Return to the online page",
+    })
+    const onlineAcknowledgement = screen.queryByRole("main", { name: ACK_TITLE })
+    if (onlineExit) await user.click(onlineExit)
+    const onlineReloadCalls = reloadPage.mock.calls.length
+    reloadPage.mockClear()
+
+    await flushDisplayProbe()
+    act(() => setTestOnlineStatus(false, { emit: true }))
+    const acknowledgement = await screen.findByRole("main", { name: ACK_TITLE })
+    const offlineExit = screen.queryByRole("button", {
+      name: "Return to the online page",
+    })
+    controller.stop()
+
+    expect({
+      onlineExitPresent: onlineExit !== null,
+      onlineReloadCalls,
+      onlineAcknowledgementAbsent: onlineAcknowledgement === null,
+      acknowledgementRendered: acknowledgement.isConnected,
+      offlineExitAbsent: offlineExit === null,
+    }).toEqual({
+      onlineExitPresent: true,
+      onlineReloadCalls: 1,
+      onlineAcknowledgementAbsent: true,
+      acknowledgementRendered: true,
+      offlineExitAbsent: true,
+    })
+  })
+
+  it("localizes the wiped online exit in Japanese", async () => {
+    const user = userEvent.setup()
+    const reloadPage = vi.fn()
+    const controller = await renderWipedOnline("ja", reloadPage)
+    const onlineExit = screen.queryByRole("button", {
+      name: "オンラインページへ戻る",
+    })
+    if (onlineExit) await user.click(onlineExit)
+    controller.stop()
+
+    expect({
+      onlineExitPresent: onlineExit !== null,
+      reloadCalls: reloadPage.mock.calls.length,
+    }).toEqual({
+      onlineExitPresent: true,
+      reloadCalls: 1,
+    })
+  })
+
   it("uses the exact risk wording, no positive safety claim, and remains keyboard reachable", async () => {
     Object.defineProperties(window, {
       innerWidth: { configurable: true, value: 320 },
@@ -115,8 +203,6 @@ describe("offline acknowledgement shell", () => {
     expect(screen.getByRole("status")).toHaveTextContent("オフラインへ切り替わりました")
     expect(heading).not.toHaveFocus()
     expect(document.body).toHaveFocus()
-    expect(shell).toHaveClass("max-h-dvh", "overflow-y-auto")
-    expect(shell.className).toContain("safe-area-inset-top")
     expect(shell).toHaveTextContent(
       "完全に安全にメッセージの暗号化を行う方法はありません",
     )

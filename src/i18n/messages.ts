@@ -29,7 +29,6 @@ const en = {
   "common.fingerprintCompare": "Comparison display: {value}",
   "common.loading": "Loading",
   "common.openKeysPage": "Open the keys page",
-  "common.processing": "Processing",
   "common.pastePayload": "Paste a payload",
   "common.na": "N/A",
   "common.yes": "Present",
@@ -105,6 +104,7 @@ const en = {
   "boot.wiped.title": "Local data was reset after an online connection was detected",
   "boot.wiped.body":
     "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
+  "boot.wiped.backOnline": "Return to the online page",
   "boot.partialFailure.retryHint":
     "Close this tab. To use the app again, fully format the device, then reinstall the app.",
 
@@ -222,8 +222,6 @@ const en = {
   "qrDisplay.fullscreen.title": "View {title} full screen",
   "qrDisplay.fullscreen.desc": "Displays the QR code full screen on a white background.",
   "qrDisplay.fullscreen.imageAlt": "Full-screen {title} image",
-  "qrDisplay.fullscreen.brightnessHint":
-    "Increasing the screen brightness can make scanning easier",
 
   "animatedQr.defaultTitle": "Multi-frame QR",
   "animatedQr.empty.title": "There are no frames to display",
@@ -348,7 +346,6 @@ const en = {
   "keys.validation.idNameFallback": "Check the identity name.",
   "keys.toast.symmetricCreated": "The symmetric key was created",
   "keys.toast.identityCreated": "The post-quantum identity was created",
-  "keys.toast.legacyRemoved": "The legacy RSA keys were deleted",
   "keys.toast.symmetricImported": "The symmetric key was imported",
   "keys.toast.bundleConfirmed": "Saved with the fingerprint verified",
   "keys.toast.bundleUnverified": "Saved without verification",
@@ -406,7 +403,6 @@ const en = {
   "encrypt.keyLabel": "Key",
   "encrypt.recipientLabel": "Recipient ML-KEM public key",
   "encrypt.recipient.confirmed": "Verified",
-  "encrypt.recipient.unverified": "Unverified",
   "encrypt.recipient.needsConfirmation":
     "No confirmed recipient. A public identity becomes selectable here once its fingerprint has been compared with the other party through another channel and confirmed under Saved keys.",
   "encrypt.senderLabel": "My ML-DSA signing identity",
@@ -432,7 +428,6 @@ const en = {
   "encrypt.decryptButton.idle": "Decrypt",
   "encrypt.signingKeyId": " Key ID: {id}",
   "encrypt.importSigningKey": "Import a signing key",
-  "encrypt.result.decryptedTitle": "Decryption result",
   "encrypt.result.decryptedModalTitle": "Decryption complete",
   "encrypt.result.unsigned": "Unsigned",
   "encrypt.result.aesUnsigned": "Symmetric-key message, unsigned",
@@ -455,7 +450,6 @@ const en = {
   "encrypt.result.memoryOnly":
     "The decrypted result is held only in memory and is not stored.",
   "encrypt.result.modalTitle": "Encryption complete",
-  "encrypt.result.encryptDone": "Encryption is complete",
   "encrypt.result.copyPayload": "Copy payload",
   "encrypt.result.qrTitle": "Ciphertext QR",
   "encrypt.result.pqTitle": "Ciphertext",
@@ -698,7 +692,6 @@ const ja = {
   "common.fingerprintCompare": "比較表示: {value}",
   "common.loading": "読込中",
   "common.openKeysPage": "鍵ページを開く",
-  "common.processing": "処理中",
   "common.pastePayload": "ペイロードを貼り付ける",
   "common.na": "なし",
   "common.yes": "あり",
@@ -774,6 +767,7 @@ const ja = {
   "boot.wiping.body": "完了するまでこの画面を閉じないでください。",
   "boot.wiped.title": "オンラインを検出したため、ローカルデータを初期化しました",
   "boot.wiped.body": "論理削除を試行しました。物理消去は保証されません。",
+  "boot.wiped.backOnline": "オンラインページへ戻る",
   "boot.partialFailure.retryHint":
     "このタブを閉じてください。再び利用するには、端末を完全フォーマットしてからアプリを導入し直してください。",
 
@@ -893,8 +887,6 @@ const ja = {
   "qrDisplay.fullscreen.title": "{title}を全画面表示",
   "qrDisplay.fullscreen.desc": "白い背景にQRコードを全画面で表示します。",
   "qrDisplay.fullscreen.imageAlt": "{title}の全画面画像",
-  "qrDisplay.fullscreen.brightnessHint":
-    "画面の輝度を上げると読み取りやすくなります",
 
   "animatedQr.defaultTitle": "複数QR",
   "animatedQr.empty.title": "表示できるフレームがありません",
@@ -1016,7 +1008,6 @@ const ja = {
   "keys.validation.idNameFallback": "ID名を確認してください。",
   "keys.toast.symmetricCreated": "共通鍵を作成しました",
   "keys.toast.identityCreated": "ポスト量子IDを作成しました",
-  "keys.toast.legacyRemoved": "旧形式のRSA鍵を削除しました",
   "keys.toast.symmetricImported": "共通鍵を取り込みました",
   "keys.toast.bundleConfirmed": "指紋確認済みで保存しました",
   "keys.toast.bundleUnverified": "未確認のまま保存しました",
@@ -1074,7 +1065,6 @@ const ja = {
   "encrypt.keyLabel": "使用鍵",
   "encrypt.recipientLabel": "受信者のML-KEM公開鍵",
   "encrypt.recipient.confirmed": "確認済み",
-  "encrypt.recipient.unverified": "未確認",
   "encrypt.recipient.needsConfirmation":
     "確認済みの宛先がありません。公開識別子は、相手と別の経路で指紋を比較し、保存済み鍵の画面で確認したものだけがここで選べるようになります。",
   "encrypt.senderLabel": "自分のML-DSA署名ID",
@@ -1103,7 +1093,6 @@ const ja = {
   "encrypt.decryptButton.idle": "復号する",
   "encrypt.signingKeyId": " 鍵ID: {id}",
   "encrypt.importSigningKey": "署名鍵を取り込む",
-  "encrypt.result.decryptedTitle": "復号結果",
   "encrypt.result.decryptedModalTitle": "復号が完了しました",
   "encrypt.result.unsigned": "署名なし",
   "encrypt.result.aesUnsigned": "共通鍵メッセージ、署名なし",
@@ -1125,7 +1114,6 @@ const ja = {
   "encrypt.result.memoryOnly":
     "復号結果はメモリー内だけに保持し、保存しません。",
   "encrypt.result.modalTitle": "暗号化が完了しました",
-  "encrypt.result.encryptDone": "暗号化が完了しました",
   "encrypt.result.copyPayload": "ペイロードをコピー",
   "encrypt.result.qrTitle": "暗号文QR",
   "encrypt.result.pqTitle": "暗号文",

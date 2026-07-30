@@ -92,12 +92,11 @@ offline-confirmed -- display online re-commit --> probing (at most once)
   though the compatibility switch has only two positions. Thus no historical
   stored preference becomes unreadable, `preferencesReadFailed` remains false,
   and this field alone cannot force `wipeOnOnline=true`.
-- The compatibility switch writes both preference members together. Off is
-  the shipped 1,000B/200ms default; on is 100B/2,000ms. A current preference
-  patch with one member or any other pair is rejected. Per-artifact effective
-  density clamps may raise a generated chunk size so an artifact fits, but
-  that raised value is never persisted. Environment values remain strict
-  admitted-set inputs.
+- The compatibility switch itself — exact pairs, atomic write, per-artifact
+  clamp, and dwell-not-cadence — is owned by
+  [qr-protocol-v2.md](qr-protocol-v2.md) §6. Boot only applies the
+  canonicalization rule above; environment values remain strict admitted-set
+  inputs.
 - Once the sentinel body matches, the destructive decision is latched. A
   subsequent offline request does not cancel maintenance-token consumption, a
   transient reset, or a wipe whose conditions are met. Generation numbers and
@@ -122,10 +121,13 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    before the barrier. A peer broadcast performs this as its first action.
 1. Fail-close all new UI/crypto/storage operations (subsequent
    repository/worker calls error immediately).
-2. Cancel/terminate the Workers. Drop (zeroize) the app-owned
-   seed/plaintext/sharedSecret buffers, the Vault key cache, the session
-   receipt cache (`clearReceipts` in `src/features/receipt-cache.ts`), and the
-   promise references.
+2. Cancel/terminate the Workers by disposing every registered PQ crypto
+   client, then drop the Vault key cache, the session receipt cache
+   (`clearReceipts` in `src/features/receipt-cache.ts`), and the promise
+   references. Worker-owned seed/plaintext/sharedSecret buffers are zeroized
+   inside the Worker itself; the app keeps no registry of page-side byte
+   buffers, because page plaintext lives in JavaScript strings, which cannot
+   be zeroized.
 3. Hide and reset transient/SensitiveSession state.
 4. Request stop/close in all tabs via `navigator.locks` (with a fallback) +
    `BroadcastChannel("qr-crypt-wipe")`.
@@ -134,8 +136,9 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    non-extractable `CryptoKey` is impossible and is not claimed).
 6. Delete all DBs (including `pqIdentities`/`pqPublicBundles`) + all `oc-*`
    localStorage keys. This includes the UI language preference (`oc-lang`) and
-   the last online tab (`oc-online-tab`); after a wipe or full reset the app
-   reverts to the English default and to the install screen.
+   the last online tab (`oc-online-tab`); after a wipe or full reset the UI
+   language reverts to the English default and the online gate's tab preference
+   reverts to the install screen.
    Only in the `online-detected` case, re-set `oc-offline-ack-pending="1"`
    after the deletion and before publishing `wiped`. In the `user-requested`
    case it is not re-set.
@@ -172,9 +175,9 @@ against: malicious same-origin code, physical recovery (disk imaging), or
 compromised code that runs first through an update. The theme (`oc-theme`), the
 last online tab (`oc-online-tab`, `top`/`relay`), and the
 pending-acknowledgement marker (`oc-offline-ack-pending="1"`) are
-non-sensitive but are included in the bulk `oc-*` deletion. In an
-online-detected wipe only the acknowledgement marker is re-set, in the order
-above; the tab preference is not.
+non-sensitive but are included in the bulk `oc-*` deletion. Marker re-set
+after an `online-detected` wipe follows §4 step 6; the tab preference is not
+re-set.
 
 ## 7. Display-Only Offline Acknowledgement Phase and the Persistent Marker
 
@@ -206,9 +209,9 @@ redundant re-acknowledgement is allowed but skipping acknowledgement is not.
 | boot / wipe outcome         | Behavior after an offline edge / reload                                                                                                                                                  | Marker                                                                                                                                                                             |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | no wipe                     | The Router is mounted only after the per-generation acknowledgement                                                                                                                      | Deletion attempted on acknowledgement                                                                                                                                              |
-| `wiped` (`online-detected`) | The result and the acknowledgement are shown in the same full-screen shell; the "reload to continue" action performs a full reload. The Router is not mounted in the current JS lifetime | Re-set after the `oc-*` deletion and before publishing `wiped`. Reloading without acknowledging shows the shell again; reloading after acknowledging is a marker-absent cold start |
+| `wiped` (`online-detected`) | While the display is offline the result and the acknowledgement are shown in the same full-screen shell, and the "reload to continue" action performs a full reload. While it is online the status screen carries the result and a "return to the online page" control that performs the same full reload: the controller stays pinned in this destructive terminal state, so a new JS lifetime is the only route back to the install screen. The Router is not mounted in the current JS lifetime | Re-set after the `oc-*` deletion and before publishing `wiped`. Reloading without acknowledging shows the shell again; reloading after acknowledging is a marker-absent cold start |
 | `partial-failure`           | Shows only `RESET_FAILED` plus guidance to close the tab / fully format the device; no resume path is provided                                                                           | Kept re-set as evidence of online contact                                                                                                                                          |
-| `user-requested`            | Normal flow after a manual reset                                                                                                                                                         | Not re-set after the `oc-*` deletion                                                                                                                                               |
+| `user-requested`            | Settings runs the same coordinator sequence (barrier, crypto dispose, Vault-key cache drop, transient reset, cross-tab stop, the ordered deletion above, churn, absence check). On success the app performs a full reload; on partial failure it shows a terminal `RESET_FAILED` state with the failed steps and no resume path | Not re-set after the `oc-*` deletion                                                                                                                                               |
 
 A display offline commit issues no sentinel; only when boot is
 `network-confirmed` does it request the dedicated nudge, once. When the

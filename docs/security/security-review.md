@@ -51,42 +51,23 @@ fixture string):
 | OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 18 / 28 | 2 / 3 |
 | OCB2 reserved sizing fixture | 4,637 | 47 | 5 |
 
-Plaintext ceilings are algorithm-specific. Both post-quantum paths accept at
-most 120,000 UTF-8 bytes. The single-QR A256GCM path derives its smaller
-pre-encryption ceiling from the v1 8,192-character payload ceiling and the
-selected version 40 error-correction capacity: L 2,010B, M 1,543B, Q 1,042B,
-or H 750B.
-
-The single labelled compatibility switch selects an atomic preference pair.
-Off is the shipped default, 1,000B with a 200ms minimum dwell; on is the
-user-selected compatible preference, 100B with a 2,000ms minimum dwell. `*`
-marks maximum fixtures whose per-artifact effective density is clamped to
-1,000B so the artifact fits within 128 frames. That effective value is never
-persisted. If the clamp is already 1,000B, the switch still changes only the
-dwell from 200ms to 2,000ms. The clamp uses the 100B generated-density grid
-and fails closed as `QR_TOO_LARGE` if the required value exceeds 1,000B.
-
-The automatic reader-based selector was removed because the displaying device
-cannot know whether the peer camera can read its screen. It had also shipped
-an always-compatible bug: its usability predicate required reader-module
-state to reach `usable`, which happened only after camera preparation
-resolved, so the display path never observed that state.
-
-The receiver allocation ceiling now equals the complete wire budget:
-`MAX_ARTIFACT_BYTES_ABSOLUTE =
-PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES = 128,000B`. With worst-case
-metadata across every artifact type, a 1,000B chunk produces a
-1,529-character OCF2 payload against the 1,663-character EC-Q version 40
+Plaintext ceilings are algorithm-specific; owners live in `src/lib/limits.ts`
+and the suite size tables beside them. Both post-quantum paths accept at most
+120,000 UTF-8 bytes. The single-QR A256GCM path uses a smaller pre-encryption
+ceiling derived from the v1 payload ceiling and the selected version-40 EC
 capacity.
 
-The frame cursor advances only after the exact rendered code has committed,
-then waits the configured dwell. A maximum signed message has 127 frames, so
-its dwell-only floor is 25.4 seconds with the default preference and 254
-seconds with the compatible preference. The protocol-wide conservative budget
-is 128 × 2,000ms = 256 seconds, which makes
-`TRANSFER_TIMEOUT_MINUTES_MIN` 5 minutes; the assembly timeout default remains
-10 minutes. These are not measured cycle times: actual cycles also include
-every frame's render latency and must be measured separately.
+Verified 2026-07-30: the labelled compatibility-switch contract (exact pairs,
+atomic write, per-artifact clamp, dwell-not-cadence) matches
+[qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6. The automatic reader-based
+selector was removed; that same section owns the display contract.
+
+Receiver allocation ceiling, 1,529-vs-1,663 frame fit, and related wire budgets:
+[qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6.
+
+Verified 2026-07-30: assembly timeout floor and default match
+[qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6 (dwell-only floors are not
+measured cycle times).
 
 **Long-text export, measured 2026-07-26** on the CI-class Linux desktop
 (mobile-chromium Playwright project, `aube run test:e2e`), 120,000-byte signed
@@ -118,13 +99,8 @@ stored preference can become unreadable and force a wipe. New preference
 patches must provide one exact pair, while per-artifact effective clamps are
 never persisted.
 
-Visible dismissal is also an explicit UI contract. Ordinary modal and
-fullscreen views put one close control at bottom right in normal flow, after
-the content. Alert dialogs retain Cancel as their single dismissal and do not
-gain an ×. The fingerprint confirmation is the documented exception: it has
-no close control, blocks Escape and outside dismissal, and requires one of its
-explicit save decisions because the security confirmation must not be
-dismissible.
+Visible dismissal follows [threat-model.md](threat-model.md) (fingerprint
+confirmation is the documented non-dismissible exception).
 
 ## 1. Facts About the Adopted Libraries (as of 2026-07-29)
 
@@ -170,12 +146,8 @@ dismissible.
   attestation, and recorded zxing-wasm SHA-256 rather than a zxing-wasm
   from-source rebuild
 - **Not independently audited**; no advisories at the pinned version as of 2026-07-29
-- Consequence for CSP: `WebAssembly.instantiate` is refused under a bare
-  `script-src 'self'`, so `public/_headers` now ships
-  `script-src 'self' 'wasm-unsafe-eval'`. That grants origin-wide permission to
-  compile arbitrary WebAssembly for any script that already executes. It is
-  materially narrower than `'unsafe-eval'`, which is **not** enabled and which would
-  additionally permit JavaScript string evaluation
+- Consequence for CSP: live `script-src` / `'wasm-unsafe-eval'` facts are owned
+  by [threat-model.md](threat-model.md) §2
 - Attacker-controlled camera pixels now reach a C++/Emscripten parser. See
   `docs/security/threat-model.md` T5 for the resulting denial-of-service residual
 - Phone-side cost (decode latency, peak memory, long tasks, teardown responsiveness)
@@ -207,7 +179,7 @@ dismissible.
   patterns). No fixed 2.x release exists, so both major lines are forced to
   `5.0.8` via `aube.overrides`; `aube run build:prod` and the full test suite were
   re-verified after the override. `aube audit` currently exits 0.
-- Supply-chain pins re-verified clean on 2026-07-29: `react-hook-form@7.82.0`, `eslint-config-prettier@10.1.8`
+- Supply-chain pins re-verified clean on 2026-07-29: `eslint-config-prettier@10.1.8` and the rollup OMT `aube.overrides` entry. `react-hook-form@7.82.0` was also pinned here until 2026-07-30, when it was removed from the dependency graph entirely: it was never imported by the application, so the pin guarded nothing.
 
 ## 1.1 Findings F-01 / F-02 / F-03 (2026-07-28)
 
@@ -223,14 +195,8 @@ They do not close the external `release-approved` blocker.
   procedure, including pre-extraction container validation and an independent
   comparison that accounts for every archive member; both READMEs keep a summary
   plus a link. High-assurance use must use Route A only.
-- **Open — `INSTALL.txt` source derivation:** the release workflow still generates
-  `INSTALL.txt` from an inline heredoc rather than from versioned source. An
-  independent verifier therefore cannot byte-reproduce that member today. Until
-  the release pipeline derives it from a versioned template, its instructions
-  must be compared against the independently authenticated
-  `docs/develop/install-route-a/README.md`, with any added, omitted, or changed
-  requirement treated as tampering. Moving the generator into versioned source
-  is outside this branch.
+- **Open — `INSTALL.txt` source derivation:** see
+  [install-route-a/README.md](../develop/install-route-a/README.md) §5.
 
 ### F-02 — Replayed / re-presented ciphertext
 
@@ -246,11 +212,8 @@ They do not close the external `release-approved` blocker.
   windows. Reload/restart resets it; `clearReceipts` also runs from the wipe
   coordinator's buffer-drop step and the boot controller's transient-clear path.
   Nothing frame-derived is persisted: the §1 / T11 / T19 / clean-origin boot-gate
-  invariant is unchanged. Unsigned PQ receipt identity is recipient KEM key ID
-  plus authenticated `messageId`, with ciphertext hash compared for the verdict.
-  Only v1 AES lacks a message ID and uses recipient key ID plus ciphertext hash as
-  its identity. Neither case authenticates a sender; `createdAt` remains
-  sender-asserted.
+  invariant is unchanged. Receipt identity and verdict rules:
+  [threat-model.md](threat-model.md) §5.
 - **Deferred / open security-design decision — persistent cross-session replay
   detection:** implementing it requires relaxing the no-frame-derived-persistence
   invariant, device-keyed opaque tags instead of a public ciphertext hash,

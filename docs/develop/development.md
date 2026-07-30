@@ -3,6 +3,15 @@
 Everything needed to build, run, and test QR Crypt locally. Product-level usage lives in
 the [README](../../README.md).
 
+## Documentation languages
+
+English is the source of record under `docs/` (and the root `README.md`). Translations of
+docs live under `docs/languages/<lang>/` with the same relative path as the English file —
+for example `docs/languages/ja/develop/install-route-a/README.md` mirrors
+`docs/develop/install-route-a/README.md`. Each English document that has a translation
+links to it; translations link back to English. The product README translation stays at
+the repository root as `README.ja.md` (GitHub language switcher).
+
 ## Tech stack
 
 * React / React DOM / React Router
@@ -90,7 +99,6 @@ Important:
 * `VITE_*` values are embedded in the built client code, so **they must never contain secrets**
 * Do not put encryption keys, private keys, Cloudflare API tokens, or decryption material in `.env`
 * Do not use feature flags as access control or secret protection
-* `VITE_ENABLE_ECDH` / `VITE_ENABLE_PRIVATE_KEY_EXPORT` are **reserved flags** (no UI or module branches are implemented; they are not shown as options)
 * `VITE_ENABLE_RSA` is **retired and rejected**. Its presence in the environment — including the `VITE_ENABLE_RSA=false` that `.env.example` and `.env.prod` used to carry — now fails environment validation at application startup, rather than being accepted and normalized away. Delete the line from any `.env.local` still holding it. The rejection is a startup check, not a build check: `aube build:prod` still succeeds with a stale value and embeds it, so a build that carries one fails for every user instead of failing in CI
 
 ## Pre-release checklist

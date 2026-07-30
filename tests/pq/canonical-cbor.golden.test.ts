@@ -147,7 +147,7 @@ describe("canonical-cbor goldens", () => {
     expect(await sha256Hex(bytes)).toBe(
       "53b5af7642d5394156ef4eacfac829181a682e067d9c1fbc8297206117cea924",
     )
-    // Also pin the first 96 bytes: map header a8 and iv/type/suite ordering.
+    // Also pin the first 48 bytes: map header a8 and iv/type/suite ordering.
     expect(bytesToHex(bytes.subarray(0, 48))).toBe(
       "a86269764c55555555555555555555555564747970656a70712d6d657373616765657375" +
         "697465781e4d4c2d4b454d2d",
@@ -391,7 +391,7 @@ describe("canonical-cbor rejections", () => {
   it("retains no attacker-selected key encoding across repeated decodes", () => {
     const attackerKeys = Array.from(
       { length: 24 },
-      (_, index) => `k${String(index).padStart(18, "0")}`,
+      (_, index) => `k${String(index).padStart(17, "0")}`,
     )
     const submissions = attackerKeys.map((key, index) =>
       encodeCanonicalCbor({ [key]: index }),

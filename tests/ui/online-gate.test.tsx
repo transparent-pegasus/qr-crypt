@@ -4,13 +4,29 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fakeFeatures, fakePwa, useFakeRegisterSW } from "./helpers/fakes"
 import { setTestOnlineStatus } from "./helpers/network"
-import { renderApp, resetUi } from "./helpers/render-app"
+import {
+  expectLanguageField,
+  renderApp,
+  resetUi,
+} from "./helpers/render-app"
 import { createBootController } from "@/app/boot/boot-controller"
 import { translate } from "@/i18n/messages"
 
 describe("OnlineGate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
+
+  it("renders the language field on the online install screen", async () => {
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen />
+      </AppProviders>,
+    )
+
+    expectLanguageField()
+  })
 
   it("shows ready when the service worker already controls this page", async () => {
     const original = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")

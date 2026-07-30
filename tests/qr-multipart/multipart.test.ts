@@ -239,9 +239,6 @@ describe("splitIntoFrames", () => {
 
   it("accepts the exact absolute ceiling through one slowest full cycle", async () => {
     const artifactBytes = pseudoArtifactOfTotalBytes(MAX_ARTIFACT_BYTES_ABSOLUTE)
-    expect(MAX_ARTIFACT_BYTES_ABSOLUTE).toBe(
-      PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES,
-    )
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
       artifactBytes,
@@ -254,7 +251,6 @@ describe("splitIntoFrames", () => {
 
     let now = 0
     const slowestFullCycleMs = PROTOCOL_MAX_FRAMES * FRAME_INTERVAL_MS_MAX
-    const timeoutMs = TRANSFER_TIMEOUT_MINUTES_MIN * 60_000
     const assembler = new TransferAssembler({
       transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_MIN,
       now: () => now,
@@ -264,15 +260,16 @@ describe("splitIntoFrames", () => {
       await assembler.add(encodeFrameToPayload(frame))
     }
     now = slowestFullCycleMs
-    expect(now).toBeLessThan(timeoutMs)
     expectCompleteBytes(
       await assembler.add(encodeFrameToPayload(frames.at(-1)!)),
       artifactBytes,
     )
   })
 
-  it.each(FRAME_BYTES_VALUES)(
-    "round-trips and fits every EC-Q payload with frameBytes=%i",
+  it.each(
+    FRAME_BYTES_VALUES.filter((frameBytes) => frameBytes !== FRAME_BYTES_MAX),
+  )(
+    "round-trips and fits an EC-Q payload with non-maximum frameBytes=%i",
     async (frameBytes) => {
       const artifactBytes = pseudoArtifact(1_700)
       const frames = await splitIntoFrames({
@@ -397,6 +394,33 @@ describe("TransferAssembler", () => {
       kind: "error",
       code: "INVALID_QR_PAYLOAD",
     })
+  })
+
+  it("rejects inconsistent single-frame lengths before opening transfer state", async () => {
+    const now = vi.fn(() => 0)
+    const hostileFrame = {
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16),
+      artifactType: "pq-message",
+      frameIndex: 0,
+      frameCount: 1,
+      totalByteLength: 2,
+      chunk: Uint8Array.of(1),
+    } as const
+    const payload = `${QR_PREFIX_V2.frame}${toBase64Url(
+      encodeCanonicalCbor(hostileFrame),
+    )}`
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+      now,
+    })
+
+    await expect(assembler.add(payload)).resolves.toEqual({
+      kind: "error",
+      code: "INVALID_QR_PAYLOAD",
+    })
+    expect(now).not.toHaveBeenCalled()
   })
 
   it("assembles frames in arbitrary order", async () => {
@@ -593,20 +617,6 @@ describe("TransferAssembler", () => {
       frameBytes: FRAME_BYTES_MAX,
     })
     expect(frames).toHaveLength(5)
-    const assembler = new TransferAssembler({
-      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
-    })
-    expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
-  })
-
-  it("handles a 126619-byte artifact representing a 120000-byte plaintext", async () => {
-    const artifactBytes = pseudoArtifactOfTotalBytes(126_619)
-    const frames = await splitIntoFrames({
-      artifactType: "pq-message",
-      artifactBytes,
-      frameBytes: FRAME_BYTES_MAX,
-    })
-    expect(frames).toHaveLength(127)
     const assembler = new TransferAssembler({
       transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
     })

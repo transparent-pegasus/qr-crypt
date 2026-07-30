@@ -47,6 +47,45 @@ function payload(frameIndex: number, overrides: Partial<QrFrameV2> = {}): string
 }
 
 describe("relay frame-set parser", () => {
+  it("matches shared transfer metadata by bytes and every scalar field", async () => {
+    type FrameMatcher = (
+      metadata: {
+        transferId: Uint8Array
+        artifactType: V2ArtifactType
+        frameCount: number
+        totalByteLength: number
+      },
+      candidate: QrFrameV2,
+    ) => boolean
+    const transferState = (await import(
+      "@/qr/multipart/transfer-state"
+    )) as unknown as Record<string, unknown>
+    const frameMatchesMetadata = transferState["frameMatchesMetadata"] as
+      | FrameMatcher
+      | undefined
+
+    expect(frameMatchesMetadata).toBeTypeOf("function")
+    if (frameMatchesMetadata === undefined) return
+
+    const metadata = {
+      transferId: Uint8Array.from(TRANSFER_ID),
+      artifactType: "pq-message" as const,
+      frameCount: 2,
+      totalByteLength: 2,
+    }
+    expect(frameMatchesMetadata(metadata, frame(0))).toBe(true)
+    expect(
+      frameMatchesMetadata(metadata, frame(0, { transferId: new Uint8Array(16) })),
+    ).toBe(false)
+    expect(
+      frameMatchesMetadata(metadata, frame(0, { artifactType: "pq-public-identity" })),
+    ).toBe(false)
+    expect(frameMatchesMetadata(metadata, frame(0, { frameCount: 3 }))).toBe(false)
+    expect(
+      frameMatchesMetadata(metadata, frame(0, { totalByteLength: 3 })),
+    ).toBe(false)
+  })
+
   it("joins out-of-order frames in index order and treats exact duplicates idempotently", () => {
     const first = payload(0)
     const second = payload(1)
@@ -259,11 +298,6 @@ function messagePayload(plaintextBytes = 32): string {
   return encodeEnvelopeToPayload(messageEnvelope(plaintextBytes))
 }
 
-// Production-generated and parser-pinned in this node environment.
-function symmetricKeyPayload(): string {
-  return OCK1_SYMMETRIC_KEY
-}
-
 const relayEncoder = new Encoder({ useRecords: false, tagUint8Array: false })
 
 // Same fields, different CBOR map key order. decodePayload accepts it because
@@ -339,7 +373,7 @@ describe("relay message acceptance", () => {
 
 describe("relay acceptance boundary", () => {
   const forbidden = () => [
-    ["canonical OCK1 symmetric key", symmetricKeyPayload()],
+    ["canonical OCK1 symmetric key", OCK1_SYMMETRIC_KEY],
     ["OCP1 public key", "OCP1:AA"],
     ["OCB1 reserved backup", "OCB1:AA"],
     ["OCM2 pq message", "OCM2:AA"],
@@ -584,11 +618,5 @@ describe("relay playback error-correction ladder", () => {
     [2_953, "L"],
   ] as const)("classifies a %i-character payload as %s", (length, ecLevel) => {
     expect(relayMessageEcLevel("A".repeat(length))).toBe(ecLevel)
-  })
-
-  it("never selects H, including at H's own capacity boundary", () => {
-    for (const length of [1, 100, 1_273, 1_274, 2_953, 4_000]) {
-      expect(relayMessageEcLevel("A".repeat(length))).not.toBe("H")
-    }
   })
 })

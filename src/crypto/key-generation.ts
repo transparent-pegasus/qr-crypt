@@ -26,13 +26,12 @@ export async function createSymmetricKeyRecord(
   try {
     if (!validTimestamp(now)) throw new AppError("STORAGE_FAILED")
     const symmetricKey = await generateAesKey()
-    const fingerprint = await fingerprintAesKey(symmetricKey)
     return {
       id: generateKeyId(),
       name: normalizedName(name),
       kind: "symmetric",
       algorithm: "A256GCM",
-      fingerprint: fingerprint.sha256Hex,
+      fingerprint: await fingerprintAesKey(symmetricKey),
       createdAt: now,
       useCount: 0,
       symmetricKey,
@@ -50,13 +49,12 @@ export async function importSymmetricKeyRecord(
   try {
     if (!validTimestamp(now)) throw new AppError("STORAGE_FAILED")
     const symmetricKey = await importAesKeyRaw(envelope.key)
-    const fingerprint = await fingerprintAesKey(symmetricKey)
     return {
       id: envelope.keyId,
       name: normalizedName(name),
       kind: "symmetric",
       algorithm: "A256GCM",
-      fingerprint: fingerprint.sha256Hex,
+      fingerprint: await fingerprintAesKey(symmetricKey),
       createdAt: now,
       useCount: 0,
       symmetricKey,

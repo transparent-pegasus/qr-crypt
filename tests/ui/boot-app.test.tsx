@@ -9,7 +9,11 @@ import {
 import { translate } from "@/i18n/messages"
 import type { BestEffortResetReport } from "@/storage/best-effort-reset"
 import { getPreferences } from "./helpers/fakes"
-import { renderApp, resetUi } from "./helpers/render-app"
+import {
+  expectLanguageField,
+  renderApp,
+  resetUi,
+} from "./helpers/render-app"
 import { setTestOnlineStatus } from "./helpers/network"
 
 function response(body: string, status = 200): Response {
@@ -36,6 +40,36 @@ function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSn
 describe("App boot gate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
+
+  it("renders the language field on a boot status screen", async () => {
+    setTestOnlineStatus(true)
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      performWipe: vi.fn(
+        () => new Promise<BestEffortResetReport>(() => undefined),
+      ),
+      readDecision: async () => decision({ sensitiveDataExists: true }),
+    })
+    await renderApp("/encrypt", { bootController: controller })
+    await screen.findByText("Resetting local data")
+    controller.stop()
+
+    expectLanguageField()
+  })
+
+  it("renders the language field on the unsupported-browser screen", async () => {
+    await renderApp("/encrypt", {
+      detectFeatures: () => ({
+        webCrypto: false,
+        indexedDb: true,
+        camera: true,
+        serviceWorker: true,
+      }),
+    })
+    await screen.findByText("UNSUPPORTED_BROWSER")
+
+    expectLanguageField()
+  })
 
   it("[acceptance 1] cold offline mounts Router without acknowledgement", async () => {
     let resolveFetch: ((value: Response) => void) | undefined
@@ -193,31 +227,7 @@ describe("App boot gate", () => {
     controller.stop()
   })
 
-  it("shows the reset completion copy after a successful wipe", async () => {
-    const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
-      performWipe: vi.fn(async () => ({ ok: true, failedSteps: [] })),
-      readDecision: async () => decision({ sensitiveDataExists: true }),
-    })
-    await renderApp("/encrypt", { bootController: controller })
-
-    expect(
-      await screen.findByText(
-        "Local data was reset after an online connection was detected",
-      ),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByText(translate("en", "relay.card.title")),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
-      ),
-    ).toBeInTheDocument()
-    controller.stop()
-  })
-
-  it("shows RESET_FAILED and honest deletion wording after a partial failure", async () => {
+  it("shows RESET_FAILED without the relay after a partial failure", async () => {
     const controller = createBootController({
       fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
       performWipe: vi.fn(async () => ({
@@ -229,17 +239,12 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
+    // Naming the steps that failed is the only actionable detail this terminal
+    // screen can offer; the settings-originated reset reports into it too.
+    expect(screen.getByText("database-verification")).toBeInTheDocument()
     expect(
       screen.queryByText(translate("en", "relay.card.title")),
     ).not.toBeInTheDocument()
-    expect(
-      screen.getByText("Some operations did not finish while resetting local data."),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
-      ),
-    ).toBeInTheDocument()
     controller.stop()
   })
 })

@@ -11,23 +11,23 @@
     <!-- The English wording lives here and nowhere else. Every other language is
          a document built from this one and messages.js at /about/<code>/. -->
     <title data-i18n="meta.title">
-      QR Crypt — encrypt where the network cannot reach
+      QR Crypt — Encrypt beyond the network’s reach
     </title>
     <meta
       name="description"
       data-i18n-content="meta.description"
-      content="Encrypt and decrypt on a device that stays offline. Only scrambled text ever goes onto the network."
+      content="Encrypt and decrypt on a device that stays offline. When a message is sent, only ciphertext travels over the network."
     />
 
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://qr-crypt.pages.dev/about/" />
     <meta
       property="og:title"
-      content="QR Crypt — encrypt where the network cannot reach"
+      content="QR Crypt — Encrypt beyond the network’s reach"
     />
     <meta
       property="og:description"
-      content="Encrypt and decrypt on a device that stays offline. Only scrambled text ever goes onto the network."
+      content="Encrypt and decrypt on a device that stays offline. When a message is sent, only ciphertext travels over the network."
     />
     <!-- Crawlers do not render SVG, so the card is a PNG. This document is the
          English one; /about/ja/ carries the Japanese card. -->
@@ -82,8 +82,8 @@
           >
         </h1>
         <p class="answer" data-i18n="hero.answer">
-          So you encrypt and decrypt on a device that stays fully offline. The only thing
-          that goes onto the network is scrambled text nobody else can read.
+          So encrypt and decrypt on a device that stays fully offline. When a message is
+          sent, the network carries only ciphertext that is unreadable without the key.
         </p>
       </div>
       <p class="wrap scroll-cue">
@@ -113,25 +113,26 @@
         <div class="wrap">
           <p class="eyebrow" data-i18n="what.eyebrow">What this is</p>
           <h2 class="h2" data-i18n="what.heading">
-            Encrypt offline, carry it by QR code
+            Encrypt offline. Transfer by QR code.
           </h2>
           <p class="prose" data-i18n="what.body">
             QR Crypt is a small app that runs on a device you keep permanently offline.
-            You type a message; the app encrypts it and shows the result on screen as a QR
-            code. Your everyday phone scans that code, converts it to a text string, and
-            sends it through any ordinary messenger. The person receiving it does the same
-            in reverse. Only the two offline devices ever see the real message. The online
-            device in between carries nothing but scrambled text.
+            Enter a message, and the app encrypts it and displays the ciphertext as a QR
+            code. Your everyday online device scans the code, converts it to text, and
+            sends it through any messaging app. The recipient follows the same process in
+            reverse. In the intended workflow, plaintext is handled only on the sender’s
+            and recipient’s offline devices; the online devices relay ciphertext.
           </p>
           <ul class="facts">
             <li class="facts__item" data-i18n="what.fact1">
-              No accounts. No servers. No request ever carries your message or your keys.
+              No accounts. No QR Crypt relay server. The app does not send plaintext or
+              secret key material over a network.
             </li>
             <li class="facts__item" data-i18n="what.fact2">
-              Two devices per person. One offline, one online.
+              Two devices per person: one offline and one online.
             </li>
             <li class="facts__item" data-i18n="what.fact3">
-              Open source, Apache-2.0, and not independently audited.
+              Open source under the Apache License 2.0; not independently audited.
             </li>
           </ul>
         </div>
@@ -141,19 +142,18 @@
         <div class="wrap">
           <p class="eyebrow" data-i18n="locks.eyebrow">Encryption</p>
           <h2 class="h2" data-i18n="locks.heading">
-            Convenience, or&nbsp;long&#8209;term&nbsp;strength
+            Convenience or&nbsp;long&#8209;term&nbsp;confidentiality
           </h2>
           <p class="prose" data-i18n="locks.lede">
-            Pick the one that matches how long the message has to stay private.
+            Choose based on how long the message needs to remain confidential.
           </p>
           <div class="locks">
             <article class="lock">
               <p class="lock__name" data-i18n="locks.aes.name">AES-256</p>
               <p class="lock__when" data-i18n="locks.aes.when">For everyday messages</p>
               <p class="lock__body" data-i18n="locks.aes.body">
-                The encryption standard in use almost everywhere today. As of 2026 there
-                is no known practical way to break it. QR Crypt uses it by default: one QR
-                code, and a key you hand over in person.
+                AES-256 is a widely used encryption standard. QR Crypt uses it by default.
+                Each message fits in a single QR code, and you exchange the key in person.
               </p>
             </article>
             <article class="lock lock--pq">
@@ -162,10 +162,14 @@
                 For messages that must stay private for decades
               </p>
               <p class="lock__body" data-i18n="locks.pq.body">
-                A big enough quantum computer will eventually break the way keys are
-                shared today. ML-KEM-1024 is built to resist that, so even against a
-                state-level attacker a message is expected to stay unreadable for decades.
-                It is heavier: the message becomes a sequence of QR codes.
+                A sufficiently capable quantum computer could break many of the public-key
+                mechanisms widely used for key exchange today. Because state intelligence
+                agencies are likely to remain at the forefront of practical cryptanalysis,
+                QR Crypt uses ML-KEM-1024 to prepare for future quantum attacks, including
+                attacks by state-level adversaries. It is intended for messages that
+                require long-term confidentiality against such highly capable attackers.
+                The trade-off is greater processing and data overhead, so each message is
+                split across multiple QR codes.
               </p>
             </article>
           </div>
@@ -181,23 +185,29 @@
             <p class="route__tag" data-i18n="install.a.tag">Route A</p>
             <div class="route__main">
               <h3 class="h3" data-i18n="install.a.heading">Verify the signed ZIP</h3>
-              <p class="prose" data-i18n="install.a.body">
-                This is the default route and the only one suitable for high-assurance
-                use. On a computer you trust, download the signed release and verify its
-                signature and checksum there, using values you obtained some other way.
-                Rebuild the same commit independently and compare the payload file set and
-                hashes against the release — Cosign attests which workflow published the
-                artifact, not source-to-binary correspondence. Move it to the offline
-                device, unzip it, and serve the folder from a static web server bound to
-                127.0.0.1 alone. As the bundled INSTALL.txt requires, use an audited static
-                server that was already preinstalled on the offline device and obtained
-                through an independent trusted process, and apply the headers and redirects
-                shipped with it. A server merely installed through a route called “trusted”
-                is not equivalent. Opening index.html straight from a file path does not
-                work: storage isolation does not hold there, and another local HTML file can
-                end up able to read your keys. Whatever you carry it on, a USB stick or an
-                SD card, has to be trusted too: anything that can alter the storage can alter
-                the app. The complete procedure is documented in the repository.
+              <p class="prose" data-i18n="install.a.body1">
+                This is the default route and the only one intended for high-assurance
+                use. On a trusted computer, download the signed release and verify both its
+                signature and checksum using verification values obtained through an
+                independent channel. Independently rebuild the same commit, then compare
+                the set of payload files and their hashes with the release. Cosign attests
+                which workflow published the artifact; it does not prove that the binary
+                corresponds to the source.
+              </p>
+              <p class="prose" data-i18n="install.a.body2">
+                Transfer the archive to the offline device, extract it, and serve the
+                folder with a static web server bound only to 127.0.0.1. Follow the bundled
+                INSTALL.txt: use an audited static server obtained through an independent,
+                trusted process and installed on the offline device in advance. Apply the
+                bundled headers and redirect rules. Merely installing a server through a
+                process labeled “trusted” does not provide equivalent assurance.
+              </p>
+              <p class="prose" data-i18n="install.a.body3">
+                Do not open index.html directly from a file:// URL. In that context,
+                browser storage isolation does not hold, so another local HTML file may be
+                able to read your keys. The transfer medium—such as a USB drive or SD
+                card—must also be trusted, because anyone who can modify it can modify the
+                app. The repository contains the complete procedure.
               </p>
               <p class="route__link">
                 <a
@@ -227,17 +237,22 @@
               <h3 class="h3" data-i18n="install.b.heading">
                 Install it from the live origin
               </h3>
-              <p class="prose" data-i18n="install.b.body">
-                On the device you will keep offline, open this site and choose Install or
-                Add to Home Screen, then disconnect it from every network. This route has
-                no integrity check you can perform: control of the origin, TLS, or CDN lets
-                an attacker send an altered bundle to just one device without detection,
-                and the Service Worker persists it. The device also keeps that live origin.
-                If it reconnects, a reachability probe goes to the same origin; wipe waits
-                for the sentinel response, so that beacon necessarily leaves before wipe.
-                Route A points only at 127.0.0.1; after its dedicated server is stopped and
-                its reserved port is not reused, there is nobody listening. Never rely on
-                airplane mode to make a device trustworthy.
+              <p class="prose" data-i18n="install.b.body1">
+                On the device you will keep offline, open this site, choose Install or Add
+                to Home Screen, and then disconnect the device from every network. This
+                route offers no integrity check that the user can perform. An attacker who
+                controls the origin server, TLS endpoint, or CDN could deliver a modified
+                bundle to a single target device without detection, and the service worker
+                could keep that modified bundle installed. The app also remains associated
+                with the live origin.
+              </p>
+              <p class="prose" data-i18n="install.b.body2">
+                If the device reconnects, it sends a reachability probe to that origin.
+                Wiping begins only after the sentinel responds, so the probe necessarily
+                leaves the device before the wipe starts. Route A uses only 127.0.0.1;
+                after the dedicated server is stopped and its reserved port is not reused,
+                nothing is listening there. Never treat airplane mode alone as proof that a
+                device is trustworthy.
               </p>
               <p class="route__link">
                 <a class="cta" href="https://qr-crypt.pages.dev/">
@@ -269,12 +284,12 @@
           <p class="eyebrow" data-i18n="flow.eyebrow">Using it</p>
           <h2 class="h2" data-i18n="flow.heading">How a message travels</h2>
           <p class="prose" data-i18n="flow.lede">
-            Through all six steps the readable message never leaves the offline device.
-            What crosses the seam is ciphertext plus the framing information needed to
-            carry it. The key exchange is what differs by method: a symmetric key needs to be
-            read in one direction only, while a post-quantum identity needs each side to
-            read the other's public key whenever the message is signed or the conversation
-            runs both ways. What follows is the post-quantum identity route.
+            Throughout all six steps, plaintext remains on the offline devices. Only
+            ciphertext and the framing data needed to carry it cross the boundary. The
+            key-exchange process depends on the method. A symmetric key is scanned in one
+            direction only. With post-quantum identities, each person must scan the other
+            person’s public key when signatures are used or messages travel in both
+            directions. The steps below show the post-quantum identity workflow.
           </p>
 
           <div class="flow">
@@ -282,13 +297,13 @@
               <p class="flow__head flow__head--online">
                 <span class="flow__headName" data-i18n="flow.online">Online</span>
                 <span class="flow__headSub" data-i18n="flow.onlineSub"
-                  >assume it is breached</span
+                  >assume it is compromised</span
                 >
               </p>
               <p class="flow__head flow__head--offline">
                 <span class="flow__headName" data-i18n="flow.offline">Offline</span>
                 <span class="flow__headSub" data-i18n="flow.offlineSub"
-                  >only you can read it</span
+                  >plaintext stays here</span
                 >
               </p>
             </div>
@@ -349,8 +364,8 @@
                   ><span data-i18n="flow.s2.where">Import dialog</span>
                 </p>
                 <p class="step__note" data-i18n="flow.s2.note">
-                  Do this face to face and compare the fingerprints on screen. Nothing in
-                  the app can check that a key belongs to the person you think it does.
+                  Exchange keys face to face and compare the on-screen fingerprints. The app
+                  cannot determine whether a key actually belongs to the person you expect.
                 </p>
               </li>
 
@@ -379,8 +394,8 @@
                   ><span data-i18n="flow.s3.where">Encrypt page</span>
                 </p>
                 <p class="step__note" data-i18n="flow.s3.note">
-                  Encrypt it with the recipient's key. If you picked a signed suite, your
-                  own key marks it as yours.
+                  Encrypt the message with the recipient’s key. If you choose a signed
+                  suite, your key signs the message so the recipient can verify who sent it.
                 </p>
               </li>
 
@@ -479,7 +494,7 @@
                   ><span data-i18n="flow.s6.where">Decrypt page</span>
                 </p>
                 <p class="step__note" data-i18n="flow.s6.note">
-                  The readable message never leaves this device.
+                  The plaintext never leaves this device.
                 </p>
               </li>
             </ol>
@@ -493,7 +508,7 @@
       <div class="wrap">
         <p class="eyebrow eyebrow--red" data-i18n="warn.eyebrow">Warnings</p>
         <h2 class="h2 h2--void" data-i18n="warn.heading">
-          Read this before you rely on it
+          Read this before relying on QR Crypt
         </h2>
         <div class="warn__items">
           <article class="warn__item">
@@ -502,20 +517,20 @@
             </h3>
             <p class="warn__body" data-i18n="warn.one.body">
               Airplane mode is only a setting. Software on a compromised device can make
-              it look offline when it is not. Treat a device as offline only once it is
-              disconnected for good and stays that way.
+              it appear offline when it is not. Treat a device as offline only after it has
+              been permanently disconnected from every network.
             </p>
           </article>
           <article class="warn__item">
             <h3 class="warn__title" data-i18n="warn.two.title">
-              If the offline device goes online, the app erases all its data
+              If the offline device goes online, the app attempts to erase its stored data
             </h3>
             <p class="warn__body" data-i18n="warn.two.body">
-              It deletes the keys and data it stores, but deleted is not gone. The deletion
-              is best-effort, and the app tells you when a step of it fails. Traces can
-              often be pulled back off the hardware. If it truly has to be unrecoverable,
-              wipe the storage with a method suited to the medium (NIST SP 800-88) or
-              destroy the device.
+              The app attempts to delete its stored keys and data and reports any failed
+              step. Logical deletion does not guarantee physical erasure, and recoverable
+              remnants may remain on the storage medium. If the data must be made
+              unrecoverable, sanitize the storage using a method appropriate to the medium,
+              such as NIST SP 800-88 Rev. 2, or physically destroy the device.
             </p>
           </article>
         </div>
@@ -534,7 +549,7 @@
           <span data-i18n="foot.license">Apache-2.0</span>
         </a>
         <p class="foot__note" data-i18n="foot.noTrackers">
-          This page does not track you and does not connect to anything outside it.
+          This page does not track visitors or load resources from external services.
         </p>
       </div>
     </footer>

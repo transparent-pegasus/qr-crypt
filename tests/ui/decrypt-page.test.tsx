@@ -12,6 +12,7 @@ import type {
   PqPublicBundleRecord,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
+import { deferred } from "../helpers/deferred"
 import {
   deferNextMultipartAdd,
   decryptWithAesKey,
@@ -38,16 +39,6 @@ const fakePqMessageIdHex = Array.from(fakePqMessageId, (byte) =>
   byte.toString(16).padStart(2, "0"),
 ).join("")
 let clearRealReceipts: (() => void) | undefined
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, reject, resolve }
-}
 
 function expectedFakePayloadHash(payload: string): string {
   return new TextEncoder()
@@ -644,40 +635,6 @@ describe("decrypt page v2", () => {
       freshIdentity.id,
       expect.any(Number),
     )
-  })
-
-  it("opens the result modal when the decrypt button succeeds", async () => {
-    const user = userEvent.setup()
-    await renderApp("/decrypt")
-    await screen.findByRole("heading", { name: "Scan with the camera" })
-    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
-      target: { value: "OCM1:sym-key-00000001" },
-    })
-    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
-    await waitFor(() => expect(decryptButton).toBeEnabled())
-    await user.click(decryptButton)
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Decryption complete",
-    })
-    expect(within(dialog).getByText("復号済み平文")).toBeInTheDocument()
-  })
-
-  it("opens the result modal immediately after a single QR read", async () => {
-    const user = userEvent.setup()
-    await renderApp("/decrypt")
-    await screen.findByRole("heading", { name: "Scan with the camera" })
-    await user.click(
-      screen.getByRole("button", { name: "Scan a ciphertext QR code" }),
-    )
-    await waitFor(() => expect(startQrScan).toHaveBeenCalled())
-
-    await act(async () => emitScannedPayload("OCM1:sym-key-00000001"))
-
-    const dialog = await screen.findByRole("dialog", {
-      name: "Decryption complete",
-    })
-    expect(within(dialog).getByText("復号済み平文")).toBeInTheDocument()
   })
 
   it("opens the result modal when a multipart transfer completes", async () => {

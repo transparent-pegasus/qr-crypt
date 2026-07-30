@@ -14,6 +14,7 @@ import type {
   PqPublicBundleRecord,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
+import { deferred } from "../helpers/deferred"
 import {
   encryptWithAesKey,
   encryptPq,
@@ -36,16 +37,6 @@ async function chooseSelectOption(
 ) {
   await user.click(await screen.findByLabelText(label))
   await user.click(await screen.findByRole("option", { name: option }))
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, reject, resolve }
 }
 
 describe("encrypt page v2", () => {
@@ -113,9 +104,7 @@ describe("encrypt page v2", () => {
       (option) => option.textContent ?? "",
     )
 
-    expect(
-      labels.some((label) => label.includes(confirmedBundle.kem.keyId)),
-    ).toBe(true)
+    expect(labels).toContain(`Verified: ${confirmedBundle.kem.keyId}`)
     expect(
       labels.some((label) => label.includes(unverifiedBundle.kem.keyId)),
     ).toBe(false)

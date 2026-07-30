@@ -1,9 +1,17 @@
 import "./helpers/module-mocks"
 import { act, render, screen, waitFor } from "@testing-library/react"
+import { useEffect, useState } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
 import { fakeFeatures, fakePwa, useFakeRegisterSW } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
+
+function useOfflineReadyAfterMount() {
+  const offlineReady = useState(false)
+  const setOfflineReady = offlineReady[1]
+  useEffect(() => setOfflineReady(true), [setOfflineReady])
+  return { offlineReady }
+}
 
 class FakeServiceWorkerContainer extends EventTarget {
   private currentController: object | null = null
@@ -145,6 +153,34 @@ describe("PWA offline readiness", () => {
       expect(screen.queryByLabelText("Loading")).toBeNull()
     } finally {
       vi.useRealTimers()
+    }
+  })
+
+  it("notifies when offline assets are ready without rendering update controls", async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")
+    const container = Object.assign(new EventTarget(), {
+      ready: Promise.resolve(),
+      controller: {},
+    })
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: container,
+    })
+    try {
+      const { AppProviders } = await import("@/app/providers")
+
+      render(
+        <AppProviders features={{ ...fakeFeatures }} pwaHook={useOfflineReadyAfterMount}>
+          <p>アプリ本体</p>
+        </AppProviders>,
+      )
+
+      expect(await screen.findByText("Offline use is ready")).toBeInTheDocument()
+      expect(screen.queryByLabelText("アプリ更新通知")).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "更新する" })).not.toBeInTheDocument()
+    } finally {
+      if (original) Object.defineProperty(navigator, "serviceWorker", original)
+      else Reflect.deleteProperty(navigator, "serviceWorker")
     }
   })
 })

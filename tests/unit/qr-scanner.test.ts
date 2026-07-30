@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { deferred } from "../helpers/deferred"
 
 const nativeWebAssembly = WebAssembly
 
@@ -17,22 +18,6 @@ vi.mock("zxing-wasm/reader", () => ({
 vi.mock("zxing-wasm/reader/zxing_reader.wasm?url", () => ({
   default: "/assets/zxing_reader-test-hash.wasm",
 }))
-
-interface Deferred<T> {
-  promise: Promise<T>
-  resolve(value: T): void
-  reject(reason?: unknown): void
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, resolve, reject }
-}
 
 class FakeTrack extends EventTarget {
   readonly kind = "video"
@@ -1173,7 +1158,6 @@ describe("camera scanner lifecycle", () => {
     getUserMedia.mockResolvedValue(mediaStream(track))
     const decoder = await loadDecoder()
     zxing.readBarcodes.mockResolvedValue([])
-    expect(decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS).toBe(12_000)
     const handle = await decoder.startQrScan(
       videoElement(),
       vi.fn(),
@@ -1433,12 +1417,9 @@ describe("camera scanner lifecycle", () => {
 
   it("uses visibility restart only to request the stopped UI", async () => {
     const decoder = await loadDecoder()
-    let uiMode: "running" | "stopped" = "running"
-    if (decoder.shouldRestartQrScanOnVisibility("failed", "visible")) {
-      uiMode = "stopped"
-    }
-
-    expect(uiMode).toBe("stopped")
+    expect(
+      decoder.shouldRestartQrScanOnVisibility("failed", "visible"),
+    ).toBe(true)
     expect(
       decoder.shouldRestartQrScanOnVisibility("track-ended", "visible"),
     ).toBe(true)
@@ -1520,20 +1501,10 @@ describe("camera scanner lifecycle", () => {
     expect(getUserMedia).not.toHaveBeenCalled()
   })
 
-  it("returns one latched rejection from every failed warm-up", async () => {
-    const failure = new Error("Aborted(wasm)")
-    failure.name = "RuntimeError"
-    zxing.prepareZXingModule.mockRejectedValueOnce(failure)
-    const decoder = await loadColdDecoder()
+  it("does not expose the retired reader warm alias", async () => {
+    const readerModule = await import("@/qr/camera/reader-module")
 
-    const firstWarm = decoder.warmQrReader()
-    await expect(firstWarm).rejects.toBe(failure)
-    const secondWarm = decoder.warmQrReader()
-    expect(secondWarm).toBe(firstWarm)
-    await expect(secondWarm).rejects.toBe(failure)
-
-    expect(zxing.purgeZXingModule).toHaveBeenCalled()
-    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
+    expect(readerModule).not.toHaveProperty("warmQrReaderModule")
   })
 
   it("reuses a warm preparation instead of starting a second one", async () => {

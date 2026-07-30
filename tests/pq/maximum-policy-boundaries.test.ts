@@ -3,12 +3,21 @@ import { encodeSignedMessageV2 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { createIdentity, rotateIdentity } from "@/crypto/pq/identity"
 import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
+import {
+  DSA_SIZES,
+  maxEnvelopeCiphertextBytes,
+  maxSignedMessageBytes,
+} from "@/crypto/pq/profiles"
+import { suiteComponents } from "@/crypto/pq/suites"
 import type { PqCryptoClient, PqWorkerOperation } from "@/crypto/pq/worker-client"
 import { toBase64Url } from "@/lib/base64url"
-import type {
-  MlKemMessageEnvelopeV2,
-  PostQuantumIdentity,
-  PqPublicBundleRecord,
+import { MAX_PLAINTEXT_BYTES } from "@/lib/limits"
+import {
+  ML_DSA_ALGORITHMS,
+  WIRE_SUITES,
+  type MlKemMessageEnvelopeV2,
+  type PostQuantumIdentity,
+  type PqPublicBundleRecord,
 } from "@/schemas/domain"
 import { handlePqWorkerRequest } from "@/workers/pq-crypto.worker"
 
@@ -297,4 +306,24 @@ describe("maximum active-policy boundaries", () => {
     expect(pq.openPqEnvelope).not.toHaveBeenCalled()
     expect(resolveSigningKey).not.toHaveBeenCalled()
   })
+})
+
+describe("derived ciphertext ceilings", () => {
+  it.each(WIRE_SUITES)("derives the envelope ciphertext ceiling for %s", (suite) => {
+    const { signature } = suiteComponents(suite)
+    const expected =
+      signature === undefined
+        ? MAX_PLAINTEXT_BYTES + 512 + 16
+        : MAX_PLAINTEXT_BYTES + DSA_SIZES[signature].signatureBytes + 1024 + 16
+    expect(maxEnvelopeCiphertextBytes(suite)).toBe(expected)
+  })
+
+  it.each(ML_DSA_ALGORITHMS)(
+    "derives the signed-message ceiling for %s",
+    (algorithm) => {
+      expect(maxSignedMessageBytes(algorithm)).toBe(
+        MAX_PLAINTEXT_BYTES + DSA_SIZES[algorithm].signatureBytes + 1024,
+      )
+    },
+  )
 })

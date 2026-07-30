@@ -6,6 +6,7 @@ import { QrScannerPanel } from "@/components/qr-scanner-panel"
 import { AppError, messageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
 import type { TransferState } from "@/qr/multipart/transfer-state"
+import { deferred } from "../helpers/deferred"
 import {
   emitScannedPayload,
   multipartPayload,
@@ -13,17 +14,6 @@ import {
   startQrScan,
 } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
-
-function deferred<T>(): {
-  promise: Promise<T>
-  resolve: (value: T) => void
-} {
-  let resolve: (value: T) => void = () => undefined
-  const promise = new Promise<T>((settle) => {
-    resolve = settle
-  })
-  return { promise, resolve }
-}
 
 function scanner(
   session: MultipartScanSession,

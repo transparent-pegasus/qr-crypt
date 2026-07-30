@@ -67,7 +67,7 @@ import {
   type LocalizedMessage,
 } from "@/i18n"
 import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
-import { selectedGeneratedDisplayPair } from "@/lib/generated-display"
+import { effectiveGeneratedDisplay } from "@/lib/generated-display"
 import {
   FRAME_BYTES_MAX,
   maximumSymmetricPlaintextBytesForPayloadCapacity,
@@ -84,7 +84,6 @@ import { exportQrFramePayloads } from "@/qr/export-frames"
 import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
 import { encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
 import {
-  COMPATIBLE_GENERATED_DISPLAY_PAIR,
   type MlKemMessageEnvelopeV2,
   type PostQuantumIdentity,
   type PqPublicBundleRecord,
@@ -201,23 +200,10 @@ export function EncryptPage() {
   const resultGenerationRef = useRef(0)
   const resultAbortRef = useRef<AbortController | null>(null)
   const pqResult = result?.kind === "pq" ? result : null
-  const selectedFramePair = selectedGeneratedDisplayPair(preferences)
-  const compatibilityEnabled =
-    selectedFramePair === COMPATIBLE_GENERATED_DISPLAY_PAIR
-  const effectiveFrameBytes =
-    pqResult === null
-      ? selectedFramePair.frameBytes
-      : Math.max(
-          selectedFramePair.frameBytes,
-          minimumFrameBytesForArtifact(pqResult.artifactBytes.byteLength),
-        )
-  const frameProfile = {
-    frameBytes: effectiveFrameBytes,
-    frameIntervalMs: selectedFramePair.frameIntervalMs,
-    densityRaised:
-      compatibilityEnabled &&
-      effectiveFrameBytes > COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes,
-  }
+  const frameProfile = effectiveGeneratedDisplay(
+    preferences,
+    pqResult?.artifactBytes.byteLength ?? null,
+  )
   const frameSplit = useFrameSplit({
     bytes: pqResult?.artifactBytes ?? EMPTY_ARTIFACT_BYTES,
     artifactType: pqResult?.artifactType ?? "pq-message",
@@ -562,15 +548,7 @@ export function EncryptPage() {
               loading={pqLoading}
               items={recipients.map((record) => ({
                 value: record.recordId,
-                label: `${t(
-                  record.trust === "fingerprint-confirmed"
-                    ? "encrypt.recipient.confirmed"
-                    : "encrypt.recipient.unverified",
-                )}: ${
-                  record.trust === "fingerprint-confirmed"
-                    ? (record.name ?? record.kem.keyId)
-                    : record.kem.keyId
-                }`,
+                label: `${t("encrypt.recipient.confirmed")}: ${record.name ?? record.kem.keyId}`,
               }))}
             />
             {!pqLoading && recipients.length === 0 && (
@@ -732,7 +710,7 @@ export function EncryptPage() {
                           frameIntervalMs={frameProfile.frameIntervalMs}
                           densityRaised={frameProfile.densityRaised}
                           compatibilityControl={{
-                            enabled: compatibilityEnabled,
+                            enabled: frameProfile.compatibilityEnabled,
                             disabled:
                               preferencesLoading ||
                               preferencesError !== null ||

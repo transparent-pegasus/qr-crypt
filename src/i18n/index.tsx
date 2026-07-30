@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useState,
@@ -168,6 +169,26 @@ export function LanguageSelect({ id, className }: { id?: string; className?: str
         ))}
       </SelectContent>
     </Select>
+  )
+}
+
+// The labelled row for every screen that offers the language choice outside
+// Settings. Those shells have no field chrome of their own, and one owner of the
+// label keeps the boot, gate, and acknowledgement screens identical.
+export function LanguageField() {
+  const { t } = useI18n()
+  const selectId = useId()
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <label
+        htmlFor={selectId}
+        className="select-none touch-manipulation text-sm font-medium text-muted-foreground"
+      >
+        {t("language.field")}
+      </label>
+      <LanguageSelect id={selectId} />
+    </div>
   )
 }
 

@@ -7,11 +7,17 @@ import {
   readMaintenanceToken,
 } from "@/app/boot/boot-controller"
 import {
+  performUserRequestedReset,
+  type WipeCoordinatorDependencies,
+} from "@/app/boot/wipe-coordinator"
+import {
   RESET_CHURN_DATABASE_NAME,
   bestEffortLocalReset,
   clearOcLocalStorage,
   runResetChurn,
+  type BestEffortResetArgs,
   type BestEffortResetDependencies,
+  type BestEffortResetReport,
 } from "@/storage/best-effort-reset"
 import {
   deleteEntireDatabase,
@@ -23,34 +29,7 @@ import {
   STORE_PREFERENCES,
 } from "@/storage/database"
 import { OFFLINE_ACK_PENDING_KEY } from "@/app/offline-ack-marker"
-
-class MemoryStorage implements Storage {
-  readonly values = new Map<string, string>()
-
-  get length(): number {
-    return this.values.size
-  }
-
-  clear(): void {
-    this.values.clear()
-  }
-
-  getItem(key: string): string | null {
-    return this.values.get(key) ?? null
-  }
-
-  key(index: number): string | null {
-    return Array.from(this.values.keys())[index] ?? null
-  }
-
-  removeItem(key: string): void {
-    this.values.delete(key)
-  }
-
-  setItem(key: string, value: string): void {
-    this.values.set(key, value)
-  }
-}
+import { MemoryStorage } from "../helpers/memory-storage"
 
 function dependencies(
   overrides: Partial<BestEffortResetDependencies> = {},
@@ -206,7 +185,9 @@ describe("best-effort local reset", () => {
     storage.setItem("oc-sensitive", "value")
     storage.setItem("unrelated", "keep")
     clearOcLocalStorage(storage)
-    expect(Array.from(storage.values.entries())).toEqual([["unrelated", "keep"]])
+    expect(storage.length).toBe(1)
+    expect(storage.key(0)).toBe("unrelated")
+    expect(storage.getItem("unrelated")).toBe("keep")
   })
 
   it("re-establishes the real marker after online wipe but not user reset", async () => {
@@ -222,14 +203,16 @@ describe("best-effort local reset", () => {
       { reason: "online-detected", resetChurnMb: 0 },
       resetDependencies,
     )
-    expect(Array.from(storage.values.entries())).toEqual([[OFFLINE_ACK_PENDING_KEY, "1"]])
+    expect(storage.length).toBe(1)
+    expect(storage.key(0)).toBe(OFFLINE_ACK_PENDING_KEY)
+    expect(storage.getItem(OFFLINE_ACK_PENDING_KEY)).toBe("1")
 
     storage.setItem("oc-theme", "light")
     await bestEffortLocalReset(
       { reason: "user-requested", resetChurnMb: 0 },
       resetDependencies,
     )
-    expect(Array.from(storage.values.entries())).toEqual([])
+    expect(storage.length).toBe(0)
   })
 
   it("performs the real logical DB deletion and absence verification", async () => {
@@ -297,5 +280,55 @@ describe("boot storage APIs and barrier", () => {
     } finally {
       blocker.close()
     }
+  })
+})
+
+describe("performUserRequestedReset", () => {
+  type ResetSpy = ReturnType<
+    typeof vi.fn<(args: BestEffortResetArgs) => Promise<BestEffortResetReport>>
+  >
+  const quietDeps = (
+    bestEffortReset: ResetSpy,
+  ): Partial<WipeCoordinatorDependencies> => ({
+    bestEffortReset,
+    coordinateTabs: () => {},
+    disposeCrypto: () => {},
+    dropVaultKeyCache: async () => {},
+    engageBarrier: () => {},
+    withExclusiveLock: <T>(operation: () => Promise<T>) => operation(),
+  })
+
+  it("runs a coordinator wipe with reason user-requested and the given churn", async () => {
+    const bestEffortReset: ResetSpy = vi
+      .fn<(args: BestEffortResetArgs) => Promise<BestEffortResetReport>>()
+      .mockResolvedValue({ ok: true, failedSteps: [] })
+    const report = await performUserRequestedReset(
+      { resetChurnMb: 64, resetTransient: () => {} },
+      quietDeps(bestEffortReset),
+    )
+    expect(bestEffortReset).toHaveBeenCalledWith({
+      reason: "user-requested",
+      resetChurnMb: 64,
+    })
+    expect(report).toEqual({ ok: true, failedSteps: [] })
+  })
+
+  it("supports retry after a partially failed reset (no cross-call latch)", async () => {
+    const bestEffortReset: ResetSpy = vi
+      .fn<(args: BestEffortResetArgs) => Promise<BestEffortResetReport>>()
+      .mockResolvedValueOnce({ ok: false, failedSteps: ["database"] })
+      .mockResolvedValueOnce({ ok: true, failedSteps: [] })
+    const deps = quietDeps(bestEffortReset)
+    const first = await performUserRequestedReset(
+      { resetChurnMb: 0, resetTransient: () => {} },
+      deps,
+    )
+    const second = await performUserRequestedReset(
+      { resetChurnMb: 0, resetTransient: () => {} },
+      deps,
+    )
+    expect(first).toEqual({ ok: false, failedSteps: ["database"] })
+    expect(second.ok).toBe(true)
+    expect(bestEffortReset).toHaveBeenCalledTimes(2)
   })
 })

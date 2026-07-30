@@ -7,6 +7,13 @@ export interface FeatureSupport {
   serviceWorker: boolean
 }
 
+export function isStandalone(): boolean {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+  )
+}
+
 const EMPTY_WEBASSEMBLY_MODULE = Uint8Array.of(
   0x00,
   0x61,

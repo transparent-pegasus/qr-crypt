@@ -29,7 +29,7 @@ import { AppError, errorMessageKey } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"
 import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
 import {
-  FRAME_INTERVAL_MS_DEFAULT,
+  RELAY_PLAYBACK_FRAME_INTERVAL_MS,
   TRANSFER_TIMEOUT_MINUTES_DEFAULT,
 } from "@/lib/limits"
 import { startQrScan, type QrScanHandle } from "@/qr/decode"
@@ -551,12 +551,16 @@ export function OnlineRelay({
           {/* Icon and title share the first row so the body can use the full
               width below them: at the boundary copy's length, keeping it in the
               icon's right-hand column costs several lines on a phone and pushes
-              the two actions under the fold. */}
+              the two actions under the fold. The pair sits in one flex row so it
+              centers on a single axis the way a button's icon and label do,
+              instead of a top-aligned grid cell plus a nudge; that wrapper is
+              also why the icon now carries its own size, no longer being a
+              direct child of Alert. */}
           <Alert>
-            <AlertTriangle aria-hidden="true" />
-            <AlertTitle className="mb-0 self-center">
-              {t("relay.boundary.title")}
-            </AlertTitle>
+            <div className="col-span-2 col-start-1 flex items-center gap-3">
+              <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />
+              <AlertTitle className="mb-0">{t("relay.boundary.title")}</AlertTitle>
+            </div>
             <AlertDescription className="col-span-2 col-start-1 mt-2">
               {t("relay.boundary.body")}
             </AlertDescription>
@@ -777,7 +781,7 @@ export function OnlineRelay({
                 </p>
                 <AnimatedQrFrames
                   frames={playbackFrames}
-                  frameIntervalMs={FRAME_INTERVAL_MS_DEFAULT}
+                  frameIntervalMs={RELAY_PLAYBACK_FRAME_INTERVAL_MS}
                   outputName="relay"
                   title={t("relay.playback.qrTitle")}
                   exportsEnabled={false}

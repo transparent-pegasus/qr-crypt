@@ -22,7 +22,13 @@ import type {
 import { WIRE_SUITES } from "@/schemas/domain"
 import { AppError, ERROR_CODES, type ErrorCode } from "@/crypto/errors"
 import { guardMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
-import { DSA_SIZES, KEM_SIZES, PQ_PROFILES } from "@/crypto/pq/profiles"
+import {
+  DSA_SIZES,
+  KEM_SIZES,
+  PQ_PROFILES,
+  maxEnvelopeCiphertextBytes,
+  maxSignedMessageBytes,
+} from "@/crypto/pq/profiles"
 import {
   ACTIVE_PROFILE,
   assertActiveProfile,
@@ -426,14 +432,9 @@ export function validatePqWorkerRequest(
         const recipient = payload["recipient"]
         if (!isRecord(recipient)) throw requestError(operation)
         const components = suiteComponents(envelope.suite)
-        const maxInnerBytes =
-          MAX_PLAINTEXT_BYTES +
-          (components.signature === undefined
-            ? 512
-            : DSA_SIZES[components.signature].signatureBytes + 1024) +
-          16
         if (
-          envelope.ciphertext.byteLength > maxInnerBytes ||
+          envelope.ciphertext.byteLength >
+            maxEnvelopeCiphertextBytes(envelope.suite) ||
           recipient["kemAlgorithm"] !== components.kem ||
           recipient["kemKeyId"] !== envelope.recipientKemKeyId ||
           !isKeyId(recipient["identityId"]) ||
@@ -459,8 +460,7 @@ export function validatePqWorkerRequest(
         if (
           !isBytes(signedMessageBytes) ||
           signedMessageBytes.byteLength === 0 ||
-          signedMessageBytes.byteLength >
-            MAX_PLAINTEXT_BYTES + DSA_SIZES[algorithm].signatureBytes + 1024 ||
+          signedMessageBytes.byteLength > maxSignedMessageBytes(algorithm) ||
           !isBytes(payload["senderPublicKey"], DSA_SIZES[algorithm].publicKeyBytes)
         ) {
           throw requestError(operation)

@@ -1,7 +1,11 @@
 import { vi } from "vitest"
 import * as fakes from "./fakes"
 
-vi.mock("@/lib/feature-detect", () => ({
+// Spread the original so newly-canonical exports (isStandalone) stay real:
+// before it moved here each caller read window.matchMedia directly, and these
+// suites depend on that real read.
+vi.mock("@/lib/feature-detect", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/feature-detect")>()),
   detectFeatures: fakes.detectFeatures,
   probeWebAssemblyRuntime: fakes.probeWebAssemblyRuntime,
   webAssemblyRuntimeSupport: fakes.webAssemblyRuntimeSupport,
@@ -64,17 +68,20 @@ vi.mock("@/crypto/pq/canonical-cbor", async (importOriginal) => ({
   encodeDsaPublicKeyEnvelopeV2: fakes.encodeDsaPublicKeyEnvelopeV2,
   decodeDsaPublicKeyEnvelopeV2: fakes.decodeDsaPublicKeyEnvelopeV2,
 }))
-vi.mock("@/crypto/vault/vault-key", () => ({
+vi.mock("@/crypto/vault/vault-key", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/crypto/vault/vault-key")>()),
   getOrCreateVaultKey: fakes.getOrCreateVaultKey,
   dropVaultKeyCache: vi.fn(),
 }))
 
-vi.mock("@/qr/payload", () => ({
+vi.mock("@/qr/payload", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/qr/payload")>()),
   encodeEnvelopeToPayload: fakes.encodeEnvelopeToPayload,
   decodePayload: fakes.decodePayload,
   payloadSha256Hex: fakes.payloadSha256Hex,
 }))
-vi.mock("@/qr/encode", () => ({
+vi.mock("@/qr/encode", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/qr/encode")>()),
   renderQrDataUrl: fakes.renderQrDataUrl,
   renderQrSvgString: fakes.renderQrSvgString,
   qrByteCapacity: fakes.qrByteCapacity,
@@ -94,7 +101,8 @@ vi.mock("@/qr/export-image", () => ({
 vi.mock("@/qr/export-frames", () => ({
   exportQrFramePayloads: fakes.exportQrFramePayloads,
 }))
-vi.mock("@/qr/decode", () => ({
+vi.mock("@/qr/decode", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/qr/decode")>()),
   CAMERA_READER_READY_TIMEOUT_MS: fakes.CAMERA_READER_READY_TIMEOUT_MS,
   readerModuleState: fakes.readerModuleState,
   startQrScan: fakes.startQrScan,
@@ -144,12 +152,14 @@ vi.mock("@/storage/pq-bundle-repository", () => ({
   findBundleBySigningKeyId: fakes.findBundleBySigningKeyId,
   findBundleByKemKeyId: fakes.findBundleByKemKeyId,
 }))
-vi.mock("@/storage/preferences-repository", () => ({
+vi.mock("@/storage/preferences-repository", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/storage/preferences-repository")>()),
   defaultPreferences: fakes.defaultPreferences,
   getPreferences: fakes.getPreferences,
   updatePreferences: fakes.updatePreferences,
 }))
-vi.mock("@/storage/database", () => ({
+vi.mock("@/storage/database", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/storage/database")>()),
   getDb: fakes.getDb,
   closeDb: fakes.closeDb,
   deleteEntireDatabase: fakes.deleteEntireDatabase,

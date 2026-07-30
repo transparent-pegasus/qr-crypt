@@ -21,6 +21,7 @@ import { useFrameSplit } from "@/hooks/use-frame-split"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
+import { deferred } from "../helpers/deferred"
 import {
   exportQrFramePayloads,
   qrPngBlob,
@@ -51,16 +52,6 @@ function frame(
     totalByteLength,
     chunk: Uint8Array.of(frameIndex),
   }
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason: unknown) => void
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise
-    reject = rejectPromise
-  })
-  return { promise, resolve, reject }
 }
 
 type FullscreenShape = "transport" | "arbitrary" | "none"
@@ -95,6 +86,7 @@ function FullscreenShapeHarness({ shape }: { shape: FullscreenShape }) {
     <QrDisplay
       payload="OCM1:fullscreen-shape"
       ecLevel="Q"
+      size={env.qrRenderSize}
       title={`${shape} QR`}
       {...(fullscreenControls === undefined ? {} : { fullscreenControls })}
       fullscreenOpen={open}

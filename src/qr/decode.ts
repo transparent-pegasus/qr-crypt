@@ -17,7 +17,6 @@ import {
   CAMERA_START_TIMEOUT_MS,
   prepareQrReaderModule,
   readerModuleState,
-  warmQrReaderModule,
 } from "@/qr/camera/reader-module"
 import { AttemptCancelled } from "@/qr/camera/types"
 import type {
@@ -48,7 +47,7 @@ export type {
 // Fetch and compile the reader ahead of any tap. The shared readiness gate awaits this
 // promise before enabling capture and owns presentation of a latched failure.
 export function warmQrReader(): Promise<void> {
-  return warmQrReaderModule()
+  return prepareQrReaderModule()
 }
 
 // true does not automatically restart; it directs the UI to transition to stopped

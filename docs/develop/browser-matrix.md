@@ -63,24 +63,17 @@ On-device measurement sheet. This sheet was originally drawn up for the balanced
 Recorded fields (common to every environment): Device / OS / Browser version / Build hash (`VITE_BUILD_SHA` or equivalent).
 
 Promotion beyond `dev` for the widened QR range is additionally conditional
-on sustained full-transfer passes with both user-selected preferences below
-on both release-gate platforms. Switch off is the shipped default of 1,000B
-with a 200ms minimum dwell. Switch on is the compatible preference of 100B
-with a 2,000ms minimum dwell. When an artifact cannot fit in 128 frames, a
-per-artifact effective clamp raises density without changing the stored
-preference; when the clamp reaches 1,000B, the switch still changes the dwell.
-The displaying device does not infer a choice from its local WebAssembly
-reader because it cannot know the capability of the peer camera.
+on sustained full-transfer passes with both user-selected preferences on both
+release-gate platforms. The preference pairs, clamp, and dwell semantics are
+owned by [qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6.
 
 Each preference must include poor-light operation and recovery after focus is
-lost and reacquired. The cursor advances only after the rendered code has
-committed and then receives its full dwell, so 200ms is not evidence of 5 fps
-and 2,000ms is not a complete per-frame cycle time. Record the actual full
-cycle separately from the configured dwell, along with actual start-to-start
-decode cadence, p95 decode duration and long tasks, sustained CPU and thermal
-behaviour, scanner teardown latency, version 40 QR render completion time on
-the sending device, and the exact post-downscale `ImageData` dimensions seen
-by the decoder.
+lost and reacquired. Configured dwell is a minimum visible time, not a measured
+cadence (§6). Record the actual full cycle separately from the configured dwell,
+along with actual start-to-start decode cadence, p95 decode duration and long
+tasks, sustained CPU and thermal behaviour, scanner teardown latency, version 40
+QR render completion time on the sending device, and the exact post-downscale
+`ImageData` dimensions seen by the decoder.
 
 The decoder now caps the post-downscale camera frame at a 1,280-pixel long
 edge. Source-camera resolution must not be substituted for the recorded

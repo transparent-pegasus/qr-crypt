@@ -45,7 +45,11 @@ This document is the authoritative specification of the v1 payloads exchanged vi
 
 `v:1, type:"symmetric-key", algorithm:"A256GCM", keyId, createdAt, key: bytes` — `key` is **fixed 32 bytes** (raw AES-256).
 
-### 3.3 `PublicKeyEnvelopeV1` (OCP1)
+### 3.3 `PublicKeyEnvelopeV1` (OCP1) — retired, acceptance-only
+
+RSA key creation and RSA decryption are removed from the application; this
+envelope is retained solely as readable v1 wire vocabulary. See the status note
+in [docs/security/threat-model.md](../security/threat-model.md) §4.
 
 `v:1, type:"public-key", algorithm:"RSA-OAEP-3072", keyId, createdAt, spki: bytes` — `spki` is a SubjectPublicKeyInfo (DER). Validated by a 350–1200 byte range check, with a successful `importKey` as the final confirmation.
 
@@ -61,7 +65,7 @@ AAD = UTF-8( "OCAAD1|" + v + "|" + type + "|" + algorithm + "|" + keyId + "|" + 
 ## 5. Cryptographic Operations
 
 - **AES-256-GCM**: 256-bit key, extractable (required to generate symmetric-key QR codes). A fresh IV per encryption via `crypto.getRandomValues(new Uint8Array(12))`. IV reuse under the same key is forbidden (the implementation is covered by tests verifying IV uniqueness across repeated encryptions). Tag length 128 bits (the WebCrypto default).
-- Recipient key pair: public key `['encrypt','wrapKey']`, extractable / private key `['decrypt','unwrapKey']`, **non-extractable**.
+- Recipient key pair (retired): the v1 design generated an RSA-OAEP-3072 pair — public key `['encrypt','wrapKey']`, extractable; private key `['decrypt','unwrapKey']`, non-extractable. No code path creates or uses such a pair now; only the stored-record and `OCP1` shapes above still validate.
 
 ## 6. Validation Order and Error Mapping
 
@@ -82,10 +86,12 @@ All decryption-time failures (AAD mismatch, tag mismatch, wrong key) are normali
 
 | Kind | EC | quiet zone | Size |
 |---|---|---|---|
-| Ciphertext (OCM1) | Q (default; configurable in settings) | 4 | 512px |
-| Relay playback (OCM1) | **Q, else M, else L** (never H; the relay cannot read the sender's preference) | 4 | 512px |
-| Symmetric key (OCK1) | **H, fixed** | 4 | 512px |
-| Frames (OCF2: ciphertext, public key, identity) | **Q, fixed** | 4 | 512px |
+| Ciphertext (OCM1) | Q (default; configurable in settings) | 4 | `VITE_QR_RENDER_SIZE` |
+| Relay playback (OCM1) | see [qr-protocol-v2.md](qr-protocol-v2.md) §10 | 4 | `VITE_QR_RENDER_SIZE` |
+| Symmetric key (OCK1) | **H, fixed** | 4 | `VITE_QR_RENDER_SIZE` |
+| Frames (OCF2: ciphertext, public key, identity) | **Q, fixed** | 4 | `VITE_QR_RENDER_SIZE` |
+
+Every render site passes `env.qrRenderSize`; `QrDisplay` has no default of its own. The shipped value is 1024px, which keeps a version 40 symbol at about 5.5 source pixels per module — at the former 512 the raster, not the camera, capped what a phone could resolve at the dense end of the density range.
 
 Capacity (QR v40, byte mode): L=2953 / M=2331 / Q=1663 / H=1273 bytes. Oversize payloads fail with `QR_TOO_LARGE` (caught both by a pre-generation check and by trapping the generation exception). The expected size is shown to the user in advance via `estimatePayloadChars(plaintextBytes, alg)` (tests guarantee it stays within ±10% of measured values).
 

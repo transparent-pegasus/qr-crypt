@@ -2,7 +2,7 @@ import { useState } from "react"
 import { AlertTriangle, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { LanguageSelect, useI18n } from "@/i18n"
+import { LanguageField, useI18n } from "@/i18n"
 
 export interface OfflineAckShellProps {
   generation: number
@@ -19,7 +19,6 @@ export function OfflineAckShell({
   const [checked, setChecked] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const checkboxId = `offline-risk-ack-${generation}`
-  const languageSelectId = `offline-ack-language-${generation}`
   const wiped = variant === "wiped"
 
   const continueOffline = () => {
@@ -37,15 +36,7 @@ export function OfflineAckShell({
       className="fixed inset-0 max-h-dvh overflow-y-auto bg-background text-foreground [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))]"
     >
       <section className="mx-auto w-full max-w-2xl space-y-5 rounded-xl border bg-card p-5 shadow-sm sm:p-6">
-        <div className="flex items-center justify-between gap-3">
-          <label
-            htmlFor={languageSelectId}
-            className="select-none touch-manipulation text-sm font-medium text-muted-foreground"
-          >
-            {t("language.field")}
-          </label>
-          <LanguageSelect id={languageSelectId} />
-        </div>
+        <LanguageField />
         {wiped && (
           <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 p-4">
             <div className="flex items-start gap-3">

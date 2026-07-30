@@ -73,6 +73,18 @@ describe("i18n catalog", () => {
     }
   })
 
+  it.each([
+    "common.processing",
+    "encrypt.recipient.unverified",
+    "encrypt.result.decryptedTitle",
+    "encrypt.result.encryptDone",
+    "keys.toast.legacyRemoved",
+    "qrDisplay.fullscreen.brightnessHint",
+  ])("does not expose retired catalog key %s", (removedKey) => {
+    expect(messages.en).not.toHaveProperty(removedKey)
+    expect(messages.ja).not.toHaveProperty(removedKey)
+  })
+
   it("provides an English and Japanese catalog entry for every error code", () => {
     for (const code of ERROR_CODES) {
       const key = errorMessageKey(code)

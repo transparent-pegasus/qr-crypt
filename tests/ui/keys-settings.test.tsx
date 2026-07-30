@@ -1,13 +1,23 @@
 import "./helpers/module-mocks"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import userEvent, { type UserEvent } from "@testing-library/user-event"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+vi.mock("@/app/boot/wipe-coordinator", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/app/boot/wipe-coordinator")>()),
+  performUserRequestedReset: vi.fn(),
+}))
+vi.mock("@/lib/reload", () => ({ reloadApplication: vi.fn() }))
+import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
+import { translate } from "@/i18n/messages"
+import { reloadApplication } from "@/lib/reload"
+import { resetDefaultBootControllerForTesting } from "@/app/boot/boot-controller"
 import type {
   DsaPublicKeyEnvelopeV2,
   KemPublicKeyEnvelopeV2,
   PublicIdentityBundleV2,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
+import { deferred } from "../helpers/deferred"
 import {
   armMaintenanceToken,
   clearAllIdentities,
@@ -30,12 +40,8 @@ import {
 } from "./helpers/fakes"
 import { renderApp, resetUi } from "./helpers/render-app"
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise
-  })
-  return { promise, resolve }
+function en(key: Parameters<typeof translate>[1]): string {
+  return translate("en", key)
 }
 
 function expectSingleAlertCancelWithoutClose(dialog: HTMLElement): void {
@@ -48,11 +54,28 @@ function expectSingleAlertCancelWithoutClose(dialog: HTMLElement): void {
   expect(dialog.querySelector("svg.lucide-x")).toBeNull()
 }
 
+async function runResetAllLocalData(user: UserEvent): Promise<void> {
+  await user.click(
+    await screen.findByRole("button", {
+      name: en("settings.resetAllData"),
+    }),
+  )
+  await user.type(screen.getByLabelText(en("settings.confirmationLabel")), "DELETE ALL")
+  await user.click(
+    screen.getByRole("button", {
+      name: en("settings.delete.execute"),
+    }),
+  )
+}
+
 describe("key management v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
     env.requireSignature = false
     resetUi()
+    // The terminal boot state is a module singleton; leaving it engaged would
+    // make every later test in this file start from a dead application.
+    resetDefaultBootControllerForTesting()
   })
 
   it("puts key import in one modal with separated camera and paste cards", async () => {
@@ -144,19 +167,6 @@ describe("key management v2", () => {
     expect(
       await screen.findByText("experimental · not independently audited"),
     ).toBeInTheDocument()
-    const auditNote = screen.getByRole("note")
-    // min-h-11, not h-11: the note wraps in a narrow modal instead of forcing
-    // the dialog wider than the screen.
-    expect(auditNote).toHaveClass(
-      "inline-flex",
-      "min-h-11",
-      "w-full",
-      "whitespace-normal",
-      "items-center",
-      "justify-center",
-      "gap-2",
-    )
-    expect(auditNote.tagName).toBe("DIV")
     await user.type(screen.getByLabelText("Post-quantum identity name"), "新しいPQ ID")
     await user.click(
       screen.getByRole("button", { name: "Create a post-quantum identity" }),
@@ -411,6 +421,9 @@ describe("settings v2", () => {
   afterEach(() => {
     env.requireSignature = false
     resetUi()
+    // The terminal boot state is a module singleton; leaving it engaged would
+    // make every later test in this file start from a dead application.
+    resetDefaultBootControllerForTesting()
   })
 
   it("shows both environment-selected background auto-clear delays", async () => {
@@ -583,5 +596,61 @@ describe("settings v2", () => {
     })
     expect(fakeKeys).toHaveLength(0)
     expect(fakeIdentities).toHaveLength(0)
+  })
+
+  it("routes Reset all local data through the coordinator with stored churn and reloads on success", async () => {
+    const user = userEvent.setup()
+    fakePreferences.resetChurnMb = 64
+    vi.mocked(performUserRequestedReset).mockResolvedValue({
+      ok: true,
+      failedSteps: [],
+    })
+    await renderApp("/settings")
+
+    await runResetAllLocalData(user)
+
+    expect(performUserRequestedReset).toHaveBeenCalledWith({
+      resetChurnMb: 64,
+      resetTransient: expect.any(Function),
+    })
+    expect(reloadApplication).toHaveBeenCalledTimes(1)
+  })
+
+  it("publishes a durable terminal RESET_FAILED gate on partial failure", async () => {
+    const user = userEvent.setup()
+    vi.mocked(performUserRequestedReset).mockResolvedValue({
+      ok: false,
+      failedSteps: ["database", "database-verification"],
+    })
+    await renderApp("/settings")
+
+    await runResetAllLocalData(user)
+
+    // The terminal state belongs to the boot controller, not to this page: the
+    // coordinator already engaged the one-way barrier, so the Router and its
+    // navigation must be gone, not merely covered.
+    expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
+    expect(screen.getByText(en("errors.RESET_FAILED"))).toBeInTheDocument()
+    expect(screen.getByText(en("boot.partialFailure.retryHint"))).toBeInTheDocument()
+    expect(screen.getByText("database, database-verification")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: en("settings.resetAllData") }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
+    expect(reloadApplication).not.toHaveBeenCalled()
+  })
+
+  it("no longer clears oc-* localStorage inline (the coordinator owns it)", async () => {
+    const user = userEvent.setup()
+    vi.mocked(performUserRequestedReset).mockResolvedValue({
+      ok: true,
+      failedSteps: [],
+    })
+    await renderApp("/settings")
+    window.localStorage.setItem("oc-canary", "1")
+
+    await runResetAllLocalData(user)
+
+    expect(window.localStorage.getItem("oc-canary")).toBe("1")
   })
 })
