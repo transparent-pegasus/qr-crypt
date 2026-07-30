@@ -15,7 +15,7 @@ update — so a record of what the software once did constrains nothing.
 | `sonner` instead of `toast` | The shadcn v3 registry has no `toast`, so its official successor `sonner` provides the toast surface |
 | No shadcn CLI; manual vendoring | The CLI generates an npm-style lockfile, so it is not used. Components are placed manually into `src/components/ui/` from the official registry JSON |
 | `radix-ui` umbrella package not adopted | Only `radix-ui@1.6.4` lacked provenance, so the scoped `@radix-ui/react-*` packages are used. Supply-chain incident details: [../security/threat-model.md](../security/threat-model.md) §5.1 |
-| `typescript@6` pin | Major version 6 is pinned explicitly (`"typescript": "6"` in `package.json`) |
+| `typescript@6` pin | Exact major pin: installs never update, so a silently adopted major has no rollback path; moves happen only through the deps freshness unit. |
 | `@playwright/test` instead of `playwright` | `@playwright/test` is the test runner. Browsers are installed via `aube exec playwright install chromium` (CI uses `--with-deps`) |
 | Test-support dev deps (`fake-indexeddb` / `pngjs` / `@types/pngjs` / `@testing-library/jest-dom`, etc.) and Tailwind / Radix packages | Outside the originally recommended dependency list but required by the stack (e.g. PNG round-trip decoding with `pngjs`) |
 | Additional shadcn components `checkbox` / `collapsible` | Needed for strong confirmation and collapsible detail views |

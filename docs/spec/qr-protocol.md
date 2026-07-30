@@ -38,7 +38,7 @@ This document is the authoritative specification of the v1 payloads exchanged vi
 | `keyId` | text | `^[A-Za-z0-9_-]{22}$` (base64url of 16 random bytes) |
 | `createdAt` | int | Unix ms; `0 < x < 2^53` |
 | `iv` | bytes | **fixed 12 bytes** |
-| `ciphertext` | bytes | plaintext + a 16-byte GCM tag. The plaintext ceiling is derived per selected EC level by `maximumSymmetricPlaintextBytesForPayloadCapacity` in `src/lib/limits.ts` — 2010 (L), 1543 (M), 1042 (Q), 750 (H) — not `VITE_MAX_PLAINTEXT_BYTES`, which bounds the post-quantum multipart path. |
+| `ciphertext` | bytes | plaintext + a 16-byte GCM tag. Ceiling: `maximumSymmetricPlaintextBytesForPayloadCapacity` in `src/lib/limits.ts` — 2010 (L), 1543 (M), 1042 (Q), 750 (H). Not `VITE_MAX_PLAINTEXT_BYTES`, which bounds the post-quantum multipart path. |
 | `aad` | bytes | ≤128 bytes; must byte-for-byte match the value recomputed per §4 |
 
 ### 3.2 `SymmetricKeyEnvelopeV1` (OCK1)

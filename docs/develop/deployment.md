@@ -78,8 +78,6 @@ asset. The archive's `INSTALL.txt` contains the clean-checkout, pinned-toolchain
 member-set, and per-file rebuild comparison commands; both the archive extraction
 and any copied build tree must remain outside that checkout.
 
-This gate establishes same-environment determinism, not environment-independent
-reproducibility. Full Route A verification implications:
 [install-route-a/README.md](install-route-a/README.md) §5.
 
 ## `public/_headers` / `public/_redirects`
@@ -87,14 +85,12 @@ reproducibility. Full Route A verification implications:
 * `_redirects`: SPA routing (`/* /index.html 200`)
 * `_headers`: security headers such as CSP, plus `Cache-Control: no-cache` for the SW / manifest (see [deviations.md](deviations.md))
 
-`aube run build:prod` copies both files into `dist/`. It also derives the CSP for
-the `/*` rule in `public/_headers` and injects its supported directives into
-`dist/index.html` as a `<meta http-equiv="Content-Security-Policy">` tag before
-the application scripts. This gives a self-hosted copy a CSP fallback when its
-server does not interpret `_headers`. It is not a substitute for response
-headers: `frame-ancestors` is ignored in a meta CSP and therefore remains
-header-only, while the other security headers and the cache rules are not
-represented by that tag.
+`aube run build:prod` copies both files into `dist/`. It derives the CSP for the
+`/*` rule in `public/_headers` and injects supported directives into
+`dist/index.html` before the application scripts when the server does not
+interpret `_headers`. Meta CSP fallback and `frame-ancestors` header-only rule:
+[threat-model.md](../security/threat-model.md) §2. Other security headers and
+the cache rules are not represented by that tag.
 
 `aube run serve:dist` is the repository's reference server for tests and release
 validation. It reads the selected document root's `_headers`, applies matching

@@ -41,7 +41,7 @@ QR Cryptは、恒久的にオフラインにするデバイスにインストー
 
 これがデフォルトの方法です。オフラインデバイスがライブのアプリオリジンに一切接続しないようにします。署名付きZIPの独立検証（別チャネルからのCosignポリシー値、チェックサム確認、独立したリビルドと比較）は、インストール前に必須です。完全な手順は[docs/languages/ja/develop/install-route-a/README.md](docs/languages/ja/develop/install-route-a/README.md)にあります。アーカイブ内の`INSTALL.txt`は、オフラインデバイスに届く自己完結型のコピーです。
 
-そのホストとポートの正確な組み合わせがセキュリティとストレージの境界です。詳細：[docs/languages/ja/develop/install-route-a/README.md](docs/languages/ja/develop/install-route-a/README.md) §8。
+[docs/languages/ja/develop/install-route-a/README.md](docs/languages/ja/develop/install-route-a/README.md) §8。
 
 ### インストール方法B：ダイレクトオリジンPWA
 

@@ -8,7 +8,8 @@
 > encryption, and decryption must therefore happen on a device that stays fully offline.
 
 Once a device has been set up as the offline device, it never goes back online. To retire
-it, sanitize or destroy the medium — see the disclaimer below.
+it, sanitize or destroy the medium — see the disclaimer below for why the app's own wipe
+alone is not enough.
 
 QR Crypt is a Progressive Web App you install on a device you then keep permanently
 offline. You type a message; the app encrypts it on that device and shows the ciphertext on
@@ -85,7 +86,6 @@ installation. The complete procedure is in
 [docs/develop/install-route-a/](docs/develop/install-route-a/README.md). The archive's
 `INSTALL.txt` is the self-contained copy that reaches the offline device.
 
-That exact host and port are a security and storage boundary. Details:
 [docs/develop/install-route-a/](docs/develop/install-route-a/README.md) §8.
 
 ### Install route B: direct-origin PWA
