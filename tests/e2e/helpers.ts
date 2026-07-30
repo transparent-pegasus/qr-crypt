@@ -15,7 +15,6 @@ import {
 } from "@zxing/library"
 
 export const AES_ALGORITHM_LABEL = "Symmetric-key AES-256-GCM"
-export const PQ_ALGORITHM_LABEL = /^Post-quantum ML-KEM-1024 \+ AES-256-GCM$/
 export const SIGNED_PQ_ALGORITHM_LABEL = /Signed post-quantum/
 const ONLINE_GATE_TIMEOUT_MS = 30_000
 const expectOnline = expect.configure({ timeout: ONLINE_GATE_TIMEOUT_MS })
@@ -336,11 +335,10 @@ export async function encryptWithStoredKey(
   args: {
     keyName: string
     plaintext: string
-    algorithmLabel?: string | RegExp
   },
 ): Promise<{ payload: string }> {
   await goToOfflinePage(page, "/encrypt")
-  await chooseOption(page, "Cryptographic algorithm", args.algorithmLabel ?? AES_ALGORITHM_LABEL)
+  await chooseOption(page, "Cryptographic algorithm", AES_ALGORITHM_LABEL)
   await chooseOption(page, "Key", args.keyName)
   await page.getByLabel("Plaintext", { exact: true }).fill(args.plaintext)
   await page.getByRole("button", { name: "Encrypt", exact: true }).click()

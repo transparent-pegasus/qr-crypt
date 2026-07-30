@@ -5,39 +5,12 @@ import * as i18nExports from "@/i18n"
 import { resetFakes } from "./fakes"
 import { setTestOnlineStatus } from "./network"
 import { clearAckPending } from "@/app/offline-ack-marker"
+import { MemoryStorage } from "../../helpers/memory-storage"
 
 type AppComponent = typeof import("@/app/App").App
 let appComponent: AppComponent | null = null
 
-class MemoryLocalStorage implements Storage {
-  readonly #values = new Map<string, string>()
-
-  get length(): number {
-    return this.#values.size
-  }
-
-  clear(): void {
-    this.#values.clear()
-  }
-
-  getItem(key: string): string | null {
-    return this.#values.get(key) ?? null
-  }
-
-  key(index: number): string | null {
-    return Array.from(this.#values.keys())[index] ?? null
-  }
-
-  removeItem(key: string): void {
-    this.#values.delete(key)
-  }
-
-  setItem(key: string, value: string): void {
-    this.#values.set(key, String(value))
-  }
-}
-
-export const memoryLocalStorage = new MemoryLocalStorage()
+export const memoryLocalStorage = new MemoryStorage()
 Object.defineProperty(window, "localStorage", {
   configurable: true,
   value: memoryLocalStorage,

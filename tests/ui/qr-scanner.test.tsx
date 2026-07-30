@@ -22,6 +22,7 @@ import { MultipartScanSession } from "@/features/multipart-scan-session"
 import { translate } from "@/i18n/messages"
 import type { QrScanHandle } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
+import { deferred } from "../helpers/deferred"
 import {
   emitScannedPayload,
   multipartPayload,
@@ -38,20 +39,6 @@ function setVisibility(state: DocumentVisibilityState): void {
     configurable: true,
     value: state,
   })
-}
-
-function deferred<T>(): {
-  promise: Promise<T>
-  resolve: (value: T) => void
-  reject: (reason: unknown) => void
-} {
-  let resolve: (value: T) => void = () => undefined
-  let reject: (reason: unknown) => void = () => undefined
-  const promise = new Promise<T>((settle, fail) => {
-    resolve = settle
-    reject = fail
-  })
-  return { promise, resolve, reject }
 }
 
 describe("QrScannerPanel single scan and camera lifecycle", () => {

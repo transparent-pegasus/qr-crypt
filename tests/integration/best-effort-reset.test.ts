@@ -29,34 +29,7 @@ import {
   STORE_PREFERENCES,
 } from "@/storage/database"
 import { OFFLINE_ACK_PENDING_KEY } from "@/app/offline-ack-marker"
-
-class MemoryStorage implements Storage {
-  readonly values = new Map<string, string>()
-
-  get length(): number {
-    return this.values.size
-  }
-
-  clear(): void {
-    this.values.clear()
-  }
-
-  getItem(key: string): string | null {
-    return this.values.get(key) ?? null
-  }
-
-  key(index: number): string | null {
-    return Array.from(this.values.keys())[index] ?? null
-  }
-
-  removeItem(key: string): void {
-    this.values.delete(key)
-  }
-
-  setItem(key: string, value: string): void {
-    this.values.set(key, value)
-  }
-}
+import { MemoryStorage } from "../helpers/memory-storage"
 
 function dependencies(
   overrides: Partial<BestEffortResetDependencies> = {},
@@ -212,7 +185,9 @@ describe("best-effort local reset", () => {
     storage.setItem("oc-sensitive", "value")
     storage.setItem("unrelated", "keep")
     clearOcLocalStorage(storage)
-    expect(Array.from(storage.values.entries())).toEqual([["unrelated", "keep"]])
+    expect(storage.length).toBe(1)
+    expect(storage.key(0)).toBe("unrelated")
+    expect(storage.getItem("unrelated")).toBe("keep")
   })
 
   it("re-establishes the real marker after online wipe but not user reset", async () => {
@@ -228,14 +203,16 @@ describe("best-effort local reset", () => {
       { reason: "online-detected", resetChurnMb: 0 },
       resetDependencies,
     )
-    expect(Array.from(storage.values.entries())).toEqual([[OFFLINE_ACK_PENDING_KEY, "1"]])
+    expect(storage.length).toBe(1)
+    expect(storage.key(0)).toBe(OFFLINE_ACK_PENDING_KEY)
+    expect(storage.getItem(OFFLINE_ACK_PENDING_KEY)).toBe("1")
 
     storage.setItem("oc-theme", "light")
     await bestEffortLocalReset(
       { reason: "user-requested", resetChurnMb: 0 },
       resetDependencies,
     )
-    expect(Array.from(storage.values.entries())).toEqual([])
+    expect(storage.length).toBe(0)
   })
 
   it("performs the real logical DB deletion and absence verification", async () => {

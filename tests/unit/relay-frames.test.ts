@@ -298,11 +298,6 @@ function messagePayload(plaintextBytes = 32): string {
   return encodeEnvelopeToPayload(messageEnvelope(plaintextBytes))
 }
 
-// Production-generated and parser-pinned in this node environment.
-function symmetricKeyPayload(): string {
-  return OCK1_SYMMETRIC_KEY
-}
-
 const relayEncoder = new Encoder({ useRecords: false, tagUint8Array: false })
 
 // Same fields, different CBOR map key order. decodePayload accepts it because
@@ -378,7 +373,7 @@ describe("relay message acceptance", () => {
 
 describe("relay acceptance boundary", () => {
   const forbidden = () => [
-    ["canonical OCK1 symmetric key", symmetricKeyPayload()],
+    ["canonical OCK1 symmetric key", OCK1_SYMMETRIC_KEY],
     ["OCP1 public key", "OCP1:AA"],
     ["OCB1 reserved backup", "OCB1:AA"],
     ["OCM2 pq message", "OCM2:AA"],
