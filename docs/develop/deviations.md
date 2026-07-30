@@ -28,7 +28,7 @@ update — so a record of what the software once did constrains nothing.
 
 | Deviation | Reason / basis |
 | --- | --- |
-| `_headers` carries `Cache-Control: no-cache` for `/sw.js`, `/registerSW.js`, and `/manifest.webmanifest` | Keeps the service worker and manifest fresh. A managed addition to the deployment headers |
+| `_headers` carries `Cache-Control: no-cache` for `/index.html`, `/sw.js`, `/registerSW.js`, and `/manifest.webmanifest` | Keeps the service worker and manifest fresh. A managed addition to the deployment headers |
 | CI runs `e2e` as a job independent of `validate` | `.github/workflows/cloudflare-pages.yml` splits validation, e2e, and deploy into three jobs; `deploy` needs both `validate` and `e2e`, so a failing e2e blocks deployment |
 
 ## Crypto and protocol

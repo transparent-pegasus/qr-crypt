@@ -156,7 +156,7 @@ confirmation is the documented non-dismissible exception).
 ### Supply Chain
 
 - Locked in `aube-lock.yaml` (must be committed). For the v1-era supply-chain
-  decisions and the 2026-07-24 re-verification, see `docs/security/threat-model.md` §5.1
+  decisions and the current re-check table, see `docs/security/threat-model.md` §5.1
 - ZIP output is an in-house store-only implementation with no added dependency (`fflate` was rejected for lacking provenance)
 - **RESOLVED (dev chain, re-verified 2026-07-29)**: `sharp` — `GHSA-f88m-g3jw-g9cj`
   (CVE-2026-33327 / CVE-2026-33328 / CVE-2026-35590 / CVE-2026-35591,

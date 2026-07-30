@@ -103,6 +103,6 @@ Capacity (QR v40, byte mode): L=2953 / M=2331 / Q=1663 / H=1273 bytes. Oversize 
 
 ## 9. Compatibility Policy
 
-- Unknown `v` values are rejected as future versions (`UNSUPPORTED_PROTOCOL_VERSION`, surfaced to the user as "This QR code was created by a newer version of the app. Update the app." — Japanese locale: 「新しいバージョンのアプリで作成されたQRコードです。アプリを更新してください。」).
+- Unknown `v` values are rejected as future versions (`UNSUPPORTED_PROTOCOL_VERSION`, surfaced to the user as "This QR code was created by a newer version of the app. This installation cannot read it." — Japanese locale: 「新しいバージョンのアプリで作成されたQRコードです。このインストールでは読み取れません。」).
 - The v1 implementation does not accept unknown keys (strict). Adding a field requires bumping `v`.
 - Format stability is guaranteed by golden fixture tests (exact match of known payload strings generated from fixed keys and fixed IVs, plus a decryption round trip).
