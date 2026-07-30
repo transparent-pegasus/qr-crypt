@@ -86,6 +86,7 @@ function FullscreenShapeHarness({ shape }: { shape: FullscreenShape }) {
     <QrDisplay
       payload="OCM1:fullscreen-shape"
       ecLevel="Q"
+      size={env.qrRenderSize}
       title={`${shape} QR`}
       {...(fullscreenControls === undefined ? {} : { fullscreenControls })}
       fullscreenOpen={open}

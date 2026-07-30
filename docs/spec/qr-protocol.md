@@ -86,10 +86,12 @@ All decryption-time failures (AAD mismatch, tag mismatch, wrong key) are normali
 
 | Kind | EC | quiet zone | Size |
 |---|---|---|---|
-| Ciphertext (OCM1) | Q (default; configurable in settings) | 4 | 512px |
-| Relay playback (OCM1) | see [qr-protocol-v2.md](qr-protocol-v2.md) §10 | 4 | 512px |
-| Symmetric key (OCK1) | **H, fixed** | 4 | 512px |
-| Frames (OCF2: ciphertext, public key, identity) | **Q, fixed** | 4 | 512px |
+| Ciphertext (OCM1) | Q (default; configurable in settings) | 4 | `VITE_QR_RENDER_SIZE` |
+| Relay playback (OCM1) | see [qr-protocol-v2.md](qr-protocol-v2.md) §10 | 4 | `VITE_QR_RENDER_SIZE` |
+| Symmetric key (OCK1) | **H, fixed** | 4 | `VITE_QR_RENDER_SIZE` |
+| Frames (OCF2: ciphertext, public key, identity) | **Q, fixed** | 4 | `VITE_QR_RENDER_SIZE` |
+
+Every render site passes `env.qrRenderSize`; `QrDisplay` has no default of its own. The shipped value is 1024px, which keeps a version 40 symbol at about 5.5 source pixels per module — at the former 512 the raster, not the camera, capped what a phone could resolve at the dense end of the density range.
 
 Capacity (QR v40, byte mode): L=2953 / M=2331 / Q=1663 / H=1273 bytes. Oversize payloads fail with `QR_TOO_LARGE` (caught both by a pre-generation check and by trapping the generation exception). The expected size is shown to the user in advance via `estimatePayloadChars(plaintextBytes, alg)` (tests guarantee it stays within ±10% of measured values).
 

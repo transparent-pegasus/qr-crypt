@@ -20,7 +20,7 @@ import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
 export interface QrDisplayProps {
   payload: string
   ecLevel: QrEcLevel
-  size?: number
+  size: number
   title?: string
   onRendered?: (payload: string) => void
   fullscreenEnabled?: boolean
@@ -51,7 +51,7 @@ interface QrRenderRequest {
 export function QrDisplay({
   payload,
   ecLevel,
-  size = 512,
+  size,
   title: titleProp,
   onRendered,
   fullscreenEnabled = true,
@@ -241,6 +241,7 @@ export function QrDisplay({
     <div className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         {dataUrl ? (
+          // max-w-[512px] is a CSS-pixel layout cap and is independent of the render raster size, which comes from VITE_QR_RENDER_SIZE.
           <img
             src={dataUrl}
             alt={t("qrDisplay.image.alt", { title })}

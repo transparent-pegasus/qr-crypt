@@ -29,7 +29,7 @@ import { AppError, errorMessageKey } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"
 import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
 import {
-  FRAME_INTERVAL_MS_DEFAULT,
+  RELAY_PLAYBACK_FRAME_INTERVAL_MS,
   TRANSFER_TIMEOUT_MINUTES_DEFAULT,
 } from "@/lib/limits"
 import { startQrScan, type QrScanHandle } from "@/qr/decode"
@@ -781,7 +781,7 @@ export function OnlineRelay({
                 </p>
                 <AnimatedQrFrames
                   frames={playbackFrames}
-                  frameIntervalMs={FRAME_INTERVAL_MS_DEFAULT}
+                  frameIntervalMs={RELAY_PLAYBACK_FRAME_INTERVAL_MS}
                   outputName="relay"
                   title={t("relay.playback.qrTitle")}
                   exportsEnabled={false}

@@ -19,7 +19,6 @@ export {
   type FrameBytes,
 } from "@/lib/frame-bytes"
 export {
-  FRAME_INTERVAL_MS_DEFAULT,
   FRAME_INTERVAL_MS_MAX,
   FRAME_INTERVAL_MS_MIN,
   FRAME_INTERVAL_MS_STEP,
@@ -29,12 +28,15 @@ export {
   LEGACY_FRAME_INTERVAL_MS_MAX,
   LEGACY_FRAME_INTERVAL_MS_MIN,
   normalizeLegacyFrameIntervalMs,
+  RELAY_PLAYBACK_FRAME_INTERVAL_MS,
   type FrameIntervalMs,
 } from "@/lib/frame-interval"
 
-// The environment-configured plaintext ceiling belongs to the post-quantum
-// multipart path. MAX_PLAINTEXT_BYTES remains the shared crypto allocation
-// ceiling; the A256GCM UI must additionally apply the v1 single-QR bound below.
+// One environment value serves two roles: MAX_PQ_PLAINTEXT_BYTES is the
+// post-quantum multipart plaintext ceiling, and MAX_PLAINTEXT_BYTES is the
+// same bound reused as the shared crypto allocation ceiling for AES-GCM and
+// the vault. The v1 single-QR path narrows further through
+// MAX_SYMMETRIC_PLAINTEXT_BYTES.
 export const MAX_PQ_PLAINTEXT_BYTES = env.maxPlaintextBytes
 export const MAX_PLAINTEXT_BYTES = MAX_PQ_PLAINTEXT_BYTES
 

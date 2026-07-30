@@ -4,12 +4,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { formatSuggestedDate } from "@/features/presentation"
 import { useFrameSplit } from "@/hooks/use-frame-split"
 import { useI18n, useLocalizedMessage } from "@/i18n"
-import { selectedGeneratedDisplayPair } from "@/lib/generated-display"
-import { minimumFrameBytesForArtifact } from "@/lib/limits"
-import {
-  COMPATIBLE_GENERATED_DISPLAY_PAIR,
-  type Preferences,
-} from "@/schemas/domain"
+import { effectiveGeneratedDisplay } from "@/lib/generated-display"
+import type { Preferences } from "@/schemas/domain"
 
 export interface IdentityQrSessionProps {
   view: IdentityQrView
@@ -37,22 +33,16 @@ export function IdentityQrSession({
   onFullscreenOpenChange,
 }: IdentityQrSessionProps) {
   const { t } = useI18n()
-  const selectedFramePair = selectedGeneratedDisplayPair(preferences)
-  const compatibilityEnabled =
-    selectedFramePair === COMPATIBLE_GENERATED_DISPLAY_PAIR
-  const effectiveFrameBytes = Math.max(
-    selectedFramePair.frameBytes,
-    minimumFrameBytesForArtifact(view.artifactBytes.byteLength),
+  const frameProfile = effectiveGeneratedDisplay(
+    preferences,
+    view.artifactBytes.byteLength,
   )
-  const densityRaised =
-    compatibilityEnabled &&
-    effectiveFrameBytes > COMPATIBLE_GENERATED_DISPLAY_PAIR.frameBytes
   const split = useFrameSplit({
     bytes: view.artifactBytes,
     artifactType: view.artifactType,
-    frameBytes: effectiveFrameBytes,
+    frameBytes: frameProfile.frameBytes,
     enabled,
-    generation: `${view.generation}:${effectiveFrameBytes}`,
+    generation: `${view.generation}:${frameProfile.frameBytes}`,
   })
   const localizedError = useLocalizedMessage(split.error)
 
@@ -72,10 +62,10 @@ export function IdentityQrSession({
       {(split.frames.length > 0 || split.splitting) && (
         <AnimatedQrFrames
           frames={split.frames}
-          frameIntervalMs={selectedFramePair.frameIntervalMs}
-          densityRaised={densityRaised}
+          frameIntervalMs={frameProfile.frameIntervalMs}
+          densityRaised={frameProfile.densityRaised}
           compatibilityControl={{
-            enabled: compatibilityEnabled,
+            enabled: frameProfile.compatibilityEnabled,
             disabled: compatibilityDisabled,
             onEnabledChange: onCompatibilityModeChange,
           }}

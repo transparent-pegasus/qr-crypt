@@ -8,7 +8,6 @@ import {
   KEY_ID_PATTERN,
   MAX_CIPHERTEXT_BYTES,
   MAX_PQ_PLAINTEXT_BYTES,
-  MAX_PLAINTEXT_BYTES,
   MAX_SYMMETRIC_PLAINTEXT_BYTES,
   maximumSymmetricPlaintextBytesForPayloadCapacity,
 } from "@/lib/limits"
@@ -38,7 +37,6 @@ describe("contract smoke", () => {
   it("env parsing applies defaults, cross-field normalization, and retired-value rejection", () => {
     expect(env.maxPlaintextBytes).toBe(120_000)
     expect(MAX_PQ_PLAINTEXT_BYTES).toBe(env.maxPlaintextBytes)
-    expect(MAX_PLAINTEXT_BYTES).toBe(env.maxPlaintextBytes)
     // The v1 envelope bound is structural — what one OCM1 payload can carry — and is
     // deliberately NOT the post-quantum multipart ceiling.
     expect(MAX_SYMMETRIC_PLAINTEXT_BYTES).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
