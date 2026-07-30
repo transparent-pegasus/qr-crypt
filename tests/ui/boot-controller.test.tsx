@@ -824,7 +824,7 @@ describe("WipeCoordinator order", () => {
       disposeCrypto: () => {
         order.push("2-worker")
       },
-      dropVaultKeyCache: () => {
+      dropVaultKeyCacheAndReceipts: () => {
         order.push("2-vault-cache")
       },
       coordinateTabs: () => {
@@ -888,7 +888,7 @@ describe("WipeCoordinator order", () => {
       {
         closeDatabase: () => order.push("close-db"),
         disposeCrypto: () => order.push("crypto"),
-        dropVaultKeyCache: async () => {
+        dropVaultKeyCacheAndReceipts: async () => {
           order.push("vault")
         },
         engageBarrier: () => order.push("barrier"),

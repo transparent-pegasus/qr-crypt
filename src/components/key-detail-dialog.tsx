@@ -10,10 +10,7 @@ import {
 import { toast } from "sonner"
 import { useSensitiveSession } from "@/app/providers"
 import { IdentityDetails } from "@/components/key-detail/identity-details"
-import {
-  assertUsableIdentity,
-  isUsableIdentity,
-} from "@/components/key-detail/identity-policy"
+import { assertUsableIdentity } from "@/components/key-detail/identity-policy"
 import { IdentityQrSession } from "@/components/key-detail/identity-qr-session"
 import { SymmetricDetails } from "@/components/key-detail/symmetric-details"
 import type { DetailView } from "@/components/key-detail/types"
@@ -122,8 +119,6 @@ export function resolveKeyDetailRecord(
   if (selection?.kind === "symmetric") return symmetric
   return undefined
 }
-
-export { isUsableIdentity }
 
 export function KeyDetailDialog({
   onOpenChange,

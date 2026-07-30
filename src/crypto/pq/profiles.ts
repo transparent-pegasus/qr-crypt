@@ -8,7 +8,12 @@ import type {
   WireSuite,
 } from "@/schemas/domain"
 import { suiteComponents } from "@/crypto/pq/suites"
-import { DSA_SEED_BYTES, KEM_SEED_BYTES, MAX_PLAINTEXT_BYTES } from "@/lib/limits"
+import {
+  AES_GCM_TAG_BYTES,
+  DSA_SEED_BYTES,
+  KEM_SEED_BYTES,
+  MAX_PLAINTEXT_BYTES,
+} from "@/lib/limits"
 
 export interface KemSizeSpec {
   algorithm: MlKemAlgorithm
@@ -94,13 +99,24 @@ export const PQ_PROFILES: Record<PqProfileId, PqProfileSpec> = {
 // One owner for the derived inner-ciphertext ceilings. limits.ts owns raw
 // constants; these read the size tables above, so they live beside them
 // (limits cannot import this module without a cycle).
+// Measured canonical-CBOR envelope overhead allowances; the golden fixtures in
+// tests/pq/maximum-artifact-size.golden.test.ts pin the real totals.
+const UNSIGNED_BODY_CBOR_OVERHEAD_BYTES = 512
+const SIGNED_MESSAGE_CBOR_OVERHEAD_BYTES = 1024
+
 export function maxSignedMessageBytes(algorithm: MlDsaAlgorithm): number {
-  return MAX_PLAINTEXT_BYTES + DSA_SIZES[algorithm].signatureBytes + 1024
+  return (
+    MAX_PLAINTEXT_BYTES +
+    DSA_SIZES[algorithm].signatureBytes +
+    SIGNED_MESSAGE_CBOR_OVERHEAD_BYTES
+  )
 }
 
 export function maxEnvelopeCiphertextBytes(suite: WireSuite): number {
   const { signature } = suiteComponents(suite)
   const innerBytes =
-    signature === undefined ? MAX_PLAINTEXT_BYTES + 512 : maxSignedMessageBytes(signature)
-  return innerBytes + 16
+    signature === undefined
+      ? MAX_PLAINTEXT_BYTES + UNSIGNED_BODY_CBOR_OVERHEAD_BYTES
+      : maxSignedMessageBytes(signature)
+  return innerBytes + AES_GCM_TAG_BYTES
 }

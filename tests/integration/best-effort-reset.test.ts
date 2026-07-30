@@ -293,7 +293,7 @@ describe("performUserRequestedReset", () => {
     bestEffortReset,
     coordinateTabs: () => {},
     disposeCrypto: () => {},
-    dropVaultKeyCache: async () => {},
+    dropVaultKeyCacheAndReceipts: async () => {},
     engageBarrier: () => {},
     withExclusiveLock: <T>(operation: () => Promise<T>) => operation(),
   })

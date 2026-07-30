@@ -7,11 +7,7 @@ import { AppError, toAppError } from "@/crypto/errors"
 import { decodeMlKemEnvelopeV2, encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { zeroize } from "@/crypto/pq/zeroize"
-import {
-  assertActiveProfile,
-  assertActiveSuite,
-  resolveSuite,
-} from "@/crypto/pq/suites"
+import { assertActiveSuite } from "@/crypto/pq/suites"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import {
   useFeatureSupport,
@@ -19,6 +15,10 @@ import {
   useTransientClear,
 } from "@/app/providers"
 import { DetailRow } from "@/components/detail-row"
+import {
+  isUsableBundle,
+  isUsableIdentity,
+} from "@/components/key-detail/identity-policy"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrScannerModal } from "@/components/qr-scanner-modal"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -44,7 +44,6 @@ import {
   payloadSha256Hex,
 } from "@/qr/payload"
 import type {
-  PostQuantumIdentity,
   PqPublicBundleRecord,
   WireSuite,
 } from "@/schemas/domain"
@@ -72,25 +71,6 @@ type DecryptionResult =
     }
   | { kind: "signed-key-unknown"; senderSigningKeyId: string }
   | { kind: "aes"; text: string; replay: ReceiptVerdict }
-
-function isActiveBundle(record: PqPublicBundleRecord): boolean {
-  try {
-    assertActiveSuite(resolveSuite(record.kem.algorithm, record.signing.algorithm))
-    return true
-  } catch {
-    return false
-  }
-}
-
-function isActiveIdentity(identity: PostQuantumIdentity): boolean {
-  try {
-    assertActiveProfile(identity.profile)
-    assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
-    return true
-  } catch {
-    return false
-  }
-}
 
 function isActiveWireSuite(suite: WireSuite): boolean {
   try {
@@ -160,7 +140,7 @@ export function DecryptPage() {
       ? identities.find(
           (identity) =>
             identity.kem.keyId === parsedDecrypt.envelope.recipientKemKeyId &&
-            isActiveIdentity(identity),
+            isUsableIdentity(identity),
         )
       : undefined
   const decryptKeyMissing =
@@ -231,7 +211,7 @@ export function DecryptPage() {
         ? identities.find(
             (candidate) =>
               candidate.kem.keyId === parsed.envelope.recipientKemKeyId &&
-              isActiveIdentity(candidate),
+              isUsableIdentity(candidate),
           )
         : undefined
     if (parsed.kind === "message" ? aesKey === undefined : identity === undefined) return
@@ -279,7 +259,7 @@ export function DecryptPage() {
         const recipient = await findIdentityByKemKeyId(
           parsed.envelope.recipientKemKeyId,
         )
-        if (recipient === undefined || !isActiveIdentity(recipient)) {
+        if (recipient === undefined || !isUsableIdentity(recipient)) {
           throw new AppError("KEY_NOT_FOUND")
         }
         // Key ids are attacker-assertable, so the record that verifies the signature is
@@ -292,7 +272,7 @@ export function DecryptPage() {
           vaultKey: await getOrCreateVaultKey(),
           resolveSigningKey: async (keyId) => {
             const record = await findBundleBySigningKeyId(keyId)
-            if (record === undefined || !isActiveBundle(record)) return undefined
+            if (record === undefined || !isUsableBundle(record)) return undefined
             resolvedSender = record
             return {
               algorithm: record.signing.algorithm,
