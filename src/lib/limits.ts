@@ -34,9 +34,11 @@ export {
 
 // One environment value serves two roles: MAX_PQ_PLAINTEXT_BYTES is the
 // post-quantum multipart plaintext ceiling, and MAX_PLAINTEXT_BYTES is the
-// same bound reused as the shared crypto allocation ceiling for AES-GCM and
-// the vault. The v1 single-QR path narrows further through
-// MAX_SYMMETRIC_PLAINTEXT_BYTES.
+// same bound reused as the shared allocation ceiling by AES-GCM message
+// crypto and by the post-quantum envelope, worker, profile, and QR-encode
+// gates. The v1 single-QR path narrows further through
+// MAX_SYMMETRIC_PLAINTEXT_BYTES. The vault wraps fixed-length seeds and
+// uses KEM_SEED_BYTES / DSA_SEED_BYTES instead.
 export const MAX_PQ_PLAINTEXT_BYTES = env.maxPlaintextBytes
 export const MAX_PLAINTEXT_BYTES = MAX_PQ_PLAINTEXT_BYTES
 
