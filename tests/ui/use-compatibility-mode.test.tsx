@@ -90,7 +90,7 @@ describe("useCompatibilityMode", () => {
     expect(result.current.updating).toBe(false)
   })
 
-  it("usable again after the surface becomes active a second time", async () => {
+  it("discards a write that settles while inactive even after the surface reactivates", async () => {
     const write = deferred<unknown>()
     const updatePreferences = vi.fn((patch: Partial<Preferences>) => {
       void patch

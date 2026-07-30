@@ -103,7 +103,6 @@ test("routes an injected decoder stream through the UI handler and imports a shu
   await page.getByRole("button", { name: "Start camera" }).click()
   await expect(page.getByText("QR codes can be read in any order")).toBeVisible()
 
-  // Restart with the last frame, repeat it, then finish in reverse order.
   const lastIndex = frames.length - 1
   await emitInjectedQr(page, frames[lastIndex]!)
   await expect(page.getByText(`Received 1 / ${frames.length}`, { exact: true })).toBeVisible()

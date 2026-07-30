@@ -33,6 +33,7 @@ import {
   splitIntoFrames,
   updatePreferences,
 } from "./helpers/fakes"
+import { expectSingleAlertCancelWithoutClose } from "./helpers/dialog-assertions"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 let KeyDetailDialog: typeof import("@/components/key-detail-dialog").KeyDetailDialog
@@ -45,16 +46,6 @@ function rowFor(text: string): HTMLButtonElement {
   const row = screen.getByText(text).closest("button")
   if (!(row instanceof HTMLButtonElement)) throw new Error(`row not found: ${text}`)
   return row
-}
-
-function expectSingleAlertCancelWithoutClose(dialog: HTMLElement): void {
-  expect(
-    within(dialog).getAllByRole("button", { name: "Cancel" }),
-  ).toHaveLength(1)
-  expect(
-    within(dialog).queryByRole("button", { name: "Close" }),
-  ).toBeNull()
-  expect(dialog.querySelector("svg.lucide-x")).toBeNull()
 }
 
 async function renderKeyList(): Promise<void> {
@@ -209,7 +200,6 @@ describe("key list page", () => {
         }),
       ),
     ).toBeInTheDocument()
-    // The three fingerprints left the row entirely.
     expect(screen.queryByText(bundle.identityFingerprint)).toBeNull()
     expect(screen.queryByText(bundle.kem.fingerprint)).toBeNull()
     expect(screen.queryByText(bundle.signing.fingerprint)).toBeNull()
@@ -880,30 +870,6 @@ describe("key list page", () => {
 
     expect(within(dialog).getByText("更新済み")).toBeInTheDocument()
     expect(within(dialog).queryByText("rotated")).not.toBeInTheDocument()
-  })
-
-  it("keeps the discard fake all-or-nothing and ignores duplicate or missing ids", async () => {
-    const rotation = await seedRotation(1_724_000_000_000)
-    const snapshot = [...fakeIdentities]
-
-    await expect(
-      deleteSupersededIdentities([
-        rotation.previous.id,
-        rotation.next.id,
-        rotation.previous.id,
-        "M".repeat(22),
-      ]),
-    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
-    expect(fakeIdentities).toEqual(snapshot)
-
-    await expect(
-      deleteSupersededIdentities([
-        rotation.previous.id,
-        rotation.previous.id,
-        "M".repeat(22),
-      ]),
-    ).resolves.toBeUndefined()
-    expect(fakeIdentities.map(({ id }) => id)).toEqual([rotation.next.id])
   })
 
   it("closes automatically when the selected symmetric key is deleted", async () => {

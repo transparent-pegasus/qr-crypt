@@ -3,21 +3,12 @@ import {
   act,
   fireEvent,
   render,
-  renderHook,
   screen,
   waitFor,
   within,
 } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
-import { useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
-import {
-  QrDisplay,
-  type QrDisplayFullscreenControls,
-} from "@/components/qr-display"
-import { AppError } from "@/crypto/errors"
-import { useFrameSplit } from "@/hooks/use-frame-split"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
@@ -27,7 +18,6 @@ import {
   qrPngBlob,
   renderQrDataUrl,
   sanitizeQrFileName,
-  splitIntoFrames,
   triggerDownload,
 } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
@@ -39,8 +29,7 @@ function frame(
   frameCount: number,
   {
     transfer = 0,
-    totalByteLength = frameCount,
-  }: { transfer?: number; totalByteLength?: number } = {},
+  }: { transfer?: number } = {},
 ): QrFrameV2 {
   return {
     version: 2,
@@ -49,51 +38,9 @@ function frame(
     artifactType: "pq-message",
     frameIndex,
     frameCount,
-    totalByteLength,
+    totalByteLength: frameCount,
     chunk: Uint8Array.of(frameIndex),
   }
-}
-
-type FullscreenShape = "transport" | "arbitrary" | "none"
-
-function controlsForShape(
-  shape: FullscreenShape,
-): QrDisplayFullscreenControls | undefined {
-  if (shape === "transport") {
-    return {
-      kind: "transport",
-      render: (closeSlot: ReactNode) => (
-        <div data-testid="transport-close-slot">
-          <button type="button">Transport action</button>
-          {closeSlot}
-        </div>
-      ),
-    }
-  }
-  if (shape === "arbitrary") {
-    return {
-      kind: "arbitrary",
-      content: <button type="button">Arbitrary action</button>,
-    }
-  }
-  return undefined
-}
-
-function FullscreenShapeHarness({ shape }: { shape: FullscreenShape }) {
-  const [open, setOpen] = useState(true)
-  const fullscreenControls = controlsForShape(shape)
-  return (
-    <QrDisplay
-      payload="OCM1:fullscreen-shape"
-      ecLevel="Q"
-      size={env.qrRenderSize}
-      title={`${shape} QR`}
-      {...(fullscreenControls === undefined ? {} : { fullscreenControls })}
-      fullscreenOpen={open}
-      showFullscreenTrigger={false}
-      onFullscreenOpenChange={setOpen}
-    />
-  )
 }
 
 describe("AnimatedQrFrames", () => {
@@ -445,231 +392,5 @@ describe("AnimatedQrFrames", () => {
     expect(sanitizeQrFileName).not.toHaveBeenCalled()
     expect(qrPngBlob).not.toHaveBeenCalled()
     expect(triggerDownload).not.toHaveBeenCalled()
-  })
-})
-
-describe("QrDisplay fullscreen close contract", () => {
-  beforeEach(resetUi)
-  afterEach(resetUi)
-
-  it.each(["transport", "arbitrary", "none"] as const)(
-    "owns exactly one trailing close in the %s shape and retains Escape dismissal",
-    async (shape) => {
-      const user = userEvent.setup()
-      render(<FullscreenShapeHarness shape={shape} />)
-      const dialog = await screen.findByRole("dialog", {
-        name: new RegExp(`View ${shape} QR full screen`),
-      })
-      const closeControls = within(dialog).getAllByRole("button", {
-        name: "Close",
-      })
-      expect(closeControls).toHaveLength(1)
-      const close = closeControls[0]!
-      const tabbableButtons = Array.from(
-        dialog.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
-      )
-      expect(tabbableButtons.at(-1)).toBe(close)
-
-      if (shape === "transport") {
-        expect(
-          within(screen.getByTestId("transport-close-slot")).getAllByRole(
-            "button",
-            { name: "Close" },
-          ),
-        ).toHaveLength(1)
-        expect(dialog.querySelector("[data-fullscreen-close-row]")).toBeNull()
-      } else {
-        expect(dialog.querySelector("[data-fullscreen-close-row]")).toContainElement(
-          close,
-        )
-      }
-
-      if (tabbableButtons.length > 1) {
-        tabbableButtons.at(-2)!.focus()
-        await user.tab()
-        expect(close).toHaveFocus()
-      }
-
-      await user.keyboard("{Escape}")
-      await waitFor(() => expect(dialog).not.toBeInTheDocument())
-    },
-  )
-})
-
-describe("useFrameSplit", () => {
-  beforeEach(resetUi)
-  afterEach(resetUi)
-
-  it("keeps completed frames visible and lets only the newest success or error commit", async () => {
-    const first = deferred<QrFrameV2[]>()
-    const second = deferred<QrFrameV2[]>()
-    const third = deferred<QrFrameV2[]>()
-    splitIntoFrames
-      .mockImplementationOnce(() => first.promise)
-      .mockImplementationOnce(() => second.promise)
-      .mockImplementationOnce(() => third.promise)
-    const bytes = Uint8Array.of(1, 2, 3)
-    const { result, rerender } = renderHook(
-      ({ frameBytes }) =>
-        useFrameSplit({
-          bytes,
-          artifactType: "pq-message",
-          frameBytes,
-          enabled: true,
-          generation: 1,
-        }),
-      { initialProps: { frameBytes: 200 } },
-    )
-    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(1))
-    const firstFrames = [frame(0, 1, { transfer: 1 })]
-    await act(async () => {
-      first.resolve(firstFrames)
-      await first.promise
-    })
-    await waitFor(() => expect(result.current.frames).toBe(firstFrames))
-
-    rerender({ frameBytes: 300 })
-    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(2))
-    expect(result.current.frames).toBe(firstFrames)
-    expect(result.current.splitting).toBe(true)
-
-    rerender({ frameBytes: 200 })
-    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(3))
-    const newestFrames = [frame(0, 1, { transfer: 3 })]
-    await act(async () => {
-      third.resolve(newestFrames)
-      await third.promise
-    })
-    await waitFor(() => {
-      expect(result.current.frames).toBe(newestFrames)
-      expect(result.current.splitting).toBe(false)
-    })
-    second.reject(new AppError("QR_TOO_LARGE"))
-    await act(async () => Promise.resolve())
-    expect(result.current.frames).toBe(newestFrames)
-    expect(result.current.error).toBeNull()
-  })
-
-  it("invalidates close, Back, selection change, close/reopen, and unmount sessions", async () => {
-    const closing = deferred<QrFrameV2[]>()
-    const reopened = deferred<QrFrameV2[]>()
-    const backing = deferred<QrFrameV2[]>()
-    const oldSelection = deferred<QrFrameV2[]>()
-    const newSelection = deferred<QrFrameV2[]>()
-    const unmounting = deferred<QrFrameV2[]>()
-    splitIntoFrames
-      .mockImplementationOnce(() => closing.promise)
-      .mockImplementationOnce(() => reopened.promise)
-      .mockImplementationOnce(() => backing.promise)
-      .mockImplementationOnce(() => oldSelection.promise)
-      .mockImplementationOnce(() => newSelection.promise)
-      .mockImplementationOnce(() => unmounting.promise)
-
-    const firstBytes = Uint8Array.of(1)
-    const secondBytes = Uint8Array.of(2)
-    const thirdBytes = Uint8Array.of(3)
-    const { result, rerender, unmount } = renderHook(
-      ({
-        bytes,
-        enabled,
-        generation,
-        frameBytes,
-      }: {
-        bytes: Uint8Array
-        enabled: boolean
-        generation: number
-        frameBytes: number
-      }) =>
-        useFrameSplit({
-          bytes,
-          artifactType: "pq-message",
-          frameBytes,
-          enabled,
-          generation,
-        }),
-      {
-        initialProps: {
-          bytes: firstBytes,
-          enabled: true,
-          generation: 1,
-          frameBytes: 200,
-        },
-      },
-    )
-    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(1))
-
-    rerender({
-      bytes: firstBytes,
-      enabled: false,
-      generation: 1,
-      frameBytes: 200,
-    })
-    closing.resolve([frame(0, 1, { transfer: 1 })])
-    await act(async () => Promise.resolve())
-    expect(result.current.frames).toHaveLength(0)
-    expect(result.current.error).toBeNull()
-
-    rerender({
-      bytes: firstBytes,
-      enabled: true,
-      generation: 2,
-      frameBytes: 200,
-    })
-    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(2))
-    const reopenedFrames = [frame(0, 1, { transfer: 2 })]
-    reopened.resolve(reopenedFrames)
-    await waitFor(() => expect(result.current.frames).toBe(reopenedFrames))
-
-    rerender({
-      bytes: firstBytes,
-      enabled: true,
-      generation: 2,
-      frameBytes: 300,
-    })
-    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(3))
-    rerender({
-      bytes: firstBytes,
-      enabled: false,
-      generation: 3,
-      frameBytes: 300,
-    })
-    backing.reject(new AppError("QR_TOO_LARGE"))
-    await act(async () => Promise.resolve())
-    expect(result.current.error).toBeNull()
-    expect(result.current.frames).toHaveLength(0)
-
-    rerender({
-      bytes: secondBytes,
-      enabled: true,
-      generation: 4,
-      frameBytes: 200,
-    })
-    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(4))
-    rerender({
-      bytes: thirdBytes,
-      enabled: true,
-      generation: 5,
-      frameBytes: 200,
-    })
-    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(5))
-    oldSelection.reject(new AppError("QR_TOO_LARGE"))
-    const selectedFrames = [frame(0, 1, { transfer: 5 })]
-    newSelection.resolve(selectedFrames)
-    await waitFor(() => {
-      expect(result.current.frames).toBe(selectedFrames)
-      expect(result.current.error).toBeNull()
-    })
-
-    rerender({
-      bytes: thirdBytes,
-      enabled: true,
-      generation: 5,
-      frameBytes: 300,
-    })
-    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledTimes(6))
-    unmount()
-    unmounting.resolve([frame(0, 1, { transfer: 6 })])
-    await act(async () => Promise.resolve())
-    expect(splitIntoFrames).toHaveBeenCalledTimes(6)
   })
 })

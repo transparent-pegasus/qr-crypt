@@ -22,10 +22,14 @@ function changed(bytes: Uint8Array, index = 0): Uint8Array {
 }
 
 describe("AES-256-GCM", () => {
-  it("round-trips Japanese 30 chars, emoji, empty, and the symmetric maximum", async () => {
+  it("generates an extractable key for encryption and decryption", async () => {
     const key = await generateAesKey()
     expect(key.extractable).toBe(true)
     expect(key.usages).toEqual(["encrypt", "decrypt"])
+  })
+
+  it("round-trips Japanese 30 chars, emoji, empty, and the symmetric maximum", async () => {
+    const key = await generateAesKey()
     const samples = [
       utf8ToBytes("日".repeat(30)),
       utf8ToBytes("暗号🔐 QR📱 emoji"),
@@ -192,12 +196,14 @@ describe("AES-256-GCM", () => {
   })
 })
 
-it("withZeroize clears buffers on exceptional finally paths", async () => {
-  const secret = new Uint8Array([1, 2, 3, 4])
-  await expect(
-    withZeroize([secret], async () => {
-      throw new AppError("DECRYPTION_FAILED")
-    }),
-  ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
-  expect(secret).toEqual(new Uint8Array(4))
+describe("zeroize", () => {
+  it("clears buffers on exceptional finally paths", async () => {
+    const secret = new Uint8Array([1, 2, 3, 4])
+    await expect(
+      withZeroize([secret], async () => {
+        throw new AppError("DECRYPTION_FAILED")
+      }),
+    ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
+    expect(secret).toEqual(new Uint8Array(4))
+  })
 })

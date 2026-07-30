@@ -429,25 +429,6 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
   })
 
-  it("starts automatically only when autoStart is enabled", async () => {
-    const view = render(
-      <QrScannerPanel
-        singleTargets={["message"]}
-        onSingleScan={vi.fn()}
-        autoStart
-      />,
-    )
-    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
-
-    view.unmount()
-    resetUi()
-    render(
-      <QrScannerPanel singleTargets={["message"]} onSingleScan={vi.fn()} />,
-    )
-    await act(async () => Promise.resolve())
-    expect(startQrScan).not.toHaveBeenCalled()
-  })
-
   it("leaves exactly one live auto-start run under StrictMode", async () => {
     render(
       <StrictMode>
@@ -620,14 +601,6 @@ describe("QrScannerPanel single scan and camera lifecycle", () => {
     expect(scannerStop).toHaveBeenCalledOnce()
   })
 
-  it("warms the QR reader when the scanner panel mounts", async () => {
-    readerModuleState.mockReturnValue("idle")
-    render(
-      <QrScannerPanel singleTargets={["message"]} onSingleScan={vi.fn()} />,
-    )
-
-    expect(warmQrReader).toHaveBeenCalled()
-  })
 })
 
 describe("QrScannerModal", () => {

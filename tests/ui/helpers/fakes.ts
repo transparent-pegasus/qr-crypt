@@ -179,12 +179,6 @@ let lastPublicBundle: PublicIdentityBundleV2 | null = null
 let lastKemEnvelope: KemPublicKeyEnvelopeV2 | null = null
 let lastDsaEnvelope: DsaPublicKeyEnvelopeV2 | null = null
 
-// errors.ts is pure (dependency-free), so use the real module instead of mocking it.
-// Defining FakeAppError as a separate class creates a circular initialization between
-// the vi.mock factory and fakes, so retain it as an alias of the real AppError.
-export const FakeAppError = AppError
-export type FakeAppError = AppError
-
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
 let webAssemblyRuntimeSettled: boolean | undefined
 let webAssemblyProbeGeneration = 0
@@ -388,7 +382,7 @@ export const decodePayload = vi.fn((payload: string) => {
         } satisfies DsaPublicKeyEnvelopeV2),
     }
   }
-  throw new FakeAppError("INVALID_QR_PREFIX")
+  throw new AppError("INVALID_QR_PREFIX")
 })
 export const payloadSha256Hex = vi.fn(async (payload: string) =>
   encoder.encode(payload).byteLength.toString(16).padStart(64, "0"),
@@ -468,7 +462,6 @@ export const copyTextToClipboard = vi.fn(async () => undefined)
 type FakeCameraFailureState = "failed" | "track-ended"
 
 export const scannerStop = vi.fn()
-export const CAMERA_READER_READY_TIMEOUT_MS = 30_000
 export const readerModuleState = vi.fn<
   () => "idle" | "preparing" | "ready" | "failed"
 >(() => "ready")
@@ -478,7 +471,7 @@ export const startQrScan = vi.fn(
   async (
     _video: HTMLVideoElement,
     onText: (payload: string) => void,
-    _onError: (error: FakeAppError, failureState: FakeCameraFailureState) => void,
+    _onError: (error: AppError, failureState: FakeCameraFailureState) => void,
     _options?: {
       once?: boolean
       signal?: AbortSignal
@@ -496,7 +489,6 @@ export function emitScannedPayload(payload: string): void {
 export const disposePqClient = vi.fn()
 export const createPqCryptoClient = vi.fn(() => ({ dispose: disposePqClient }))
 export const getOrCreateVaultKey = vi.fn(async () => cryptoKey("secret"))
-export const registerPqCryptoClientForWipe = vi.fn(() => () => undefined)
 
 export const buildPublicBundle = vi.fn(
   (identity: PostQuantumIdentity): PublicIdentityBundleV2 => ({
@@ -604,7 +596,7 @@ export const splitIntoFrames = vi.fn(
     frameCount?: number
   }): Promise<QrFrameV2[]> => {
     if (artifactBytes.byteLength > MAX_ARTIFACT_BYTES_ABSOLUTE) {
-      throw new FakeAppError("QR_TOO_LARGE")
+      throw new AppError("QR_TOO_LARGE")
     }
     const frameCount =
       requestedFrameCount ??
@@ -807,7 +799,7 @@ export const armMaintenanceToken = vi.fn(async () => undefined)
 export const listKeyRecords = vi.fn(async () => [...fakeKeys])
 export const saveKeyRecord = vi.fn(async (record: StoredKeyRecord) => {
   if (fakeKeys.some((item) => item.fingerprint === record.fingerprint)) {
-    throw new FakeAppError("DUPLICATE_KEY")
+    throw new AppError("DUPLICATE_KEY")
   }
   fakeKeys.unshift(record)
 })

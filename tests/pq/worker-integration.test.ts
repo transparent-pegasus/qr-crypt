@@ -22,35 +22,33 @@ function client(): PqCryptoClient {
 async function identity(
   pq: PqCryptoClient,
   fill: number,
-  profile: "balanced" | "maximum" = "maximum",
 ): Promise<{ identity: PostQuantumIdentity; vaultKey: CryptoKey }> {
   const vaultKey = await getOrCreateVaultKey()
   const identityId = keyId(fill)
   const kemKeyId = keyId(fill + 1)
   const signingKeyId = keyId(fill + 2)
   const generated = await pq.generateIdentityKeys({
-    profile,
+    profile: "maximum",
     vaultKey,
     identityId,
     kemKeyId,
     signingKeyId,
   })
-  const maximum = profile === "maximum"
   return {
     vaultKey,
     identity: {
       id: identityId,
       name: `identity-${fill}`,
-      profile,
+      profile: "maximum",
       kem: {
-        algorithm: maximum ? "ML-KEM-1024" : "ML-KEM-768",
+        algorithm: "ML-KEM-1024",
         keyId: kemKeyId,
         publicKey: generated.kem.publicKey,
         encryptedSeed: generated.kem.encryptedSeed,
         fingerprint: "test-kem",
       },
       signing: {
-        algorithm: maximum ? "ML-DSA-87" : "ML-DSA-65",
+        algorithm: "ML-DSA-87",
         keyId: signingKeyId,
         publicKey: generated.signing.publicKey,
         encryptedSeed: generated.signing.encryptedSeed,

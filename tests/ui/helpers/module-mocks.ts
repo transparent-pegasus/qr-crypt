@@ -103,7 +103,6 @@ vi.mock("@/qr/export-frames", () => ({
 }))
 vi.mock("@/qr/decode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/decode")>()),
-  CAMERA_READER_READY_TIMEOUT_MS: fakes.CAMERA_READER_READY_TIMEOUT_MS,
   readerModuleState: fakes.readerModuleState,
   startQrScan: fakes.startQrScan,
   warmQrReader: fakes.warmQrReader,

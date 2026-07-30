@@ -18,6 +18,7 @@ import {
   recordReceipt,
   type ReceiptSubject,
 } from "@/features/receipt-cache"
+import { decision, response } from "../helpers/boot-fixtures"
 import { MemoryStorage } from "../helpers/memory-storage"
 
 const localStorage = new MemoryStorage()
@@ -25,27 +26,6 @@ Object.defineProperty(window, "localStorage", {
   configurable: true,
   value: localStorage,
 })
-
-function response(body: string, status = 200): Response {
-  return { status, text: vi.fn(async () => body) } as unknown as Response
-}
-
-function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSnapshot {
-  const snapshot = {
-    wipeOnOnline: true,
-    sensitiveDataExists: false,
-    maintenanceTokenArmed: false,
-    resetChurnMb: 0,
-    preferencesReadFailed: false,
-    ...overrides,
-  }
-  return {
-    ...snapshot,
-    cleanOrigin:
-      overrides.cleanOrigin ??
-      (snapshot.sensitiveDataExists ? "dirty" : "confirmed-clean"),
-  }
-}
 
 interface FakeBootDatabaseOptions {
   countFailure?: "keys" | "pqIdentities"
@@ -59,7 +39,7 @@ interface FakeBootDatabaseOptions {
 function fakeBootDatabase(options: FakeBootDatabaseOptions = {}) {
   const storeNames = new Set(["keys", "preferences", "appMetadata", "pqIdentities"])
   if (options.missingStore) storeNames.delete(options.missingStore)
-  const transaction = vi.fn((requestedStores: readonly string[], mode: "readonly") => {
+  const transaction = vi.fn((_requestedStores: readonly string[], mode: "readonly") => {
     if (options.transactionFailure === "create") {
       throw new DOMException("transaction failed", "InvalidStateError")
     }
@@ -95,7 +75,6 @@ function fakeBootDatabase(options: FakeBootDatabaseOptions = {}) {
         options.transactionFailure === "done"
           ? Promise.reject(new DOMException("transaction aborted", "AbortError"))
           : Promise.resolve(),
-      requestedStores,
       mode,
     }
   })

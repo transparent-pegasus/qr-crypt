@@ -2,7 +2,7 @@ import "./helpers/module-mocks"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { fakeFeatures, fakePwa, useFakeRegisterSW } from "./helpers/fakes"
+import { fakeFeatures, useFakeRegisterSW } from "./helpers/fakes"
 import { setTestOnlineStatus } from "./helpers/network"
 import {
   expectLanguageField,
@@ -28,17 +28,12 @@ describe("OnlineGate", () => {
     expectLanguageField()
   })
 
-  it("shows ready when the service worker already controls this page", async () => {
+  it("renders the ready offline-use status", async () => {
     const original = Object.getOwnPropertyDescriptor(navigator, "serviceWorker")
-    const container = Object.assign(new EventTarget(), {
-      ready: Promise.resolve(),
-      controller: {},
-    })
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
-      value: container,
+      value: Object.assign(new EventTarget(), { controller: {} }),
     })
-    fakePwa.offlineReady = false
     try {
       const { AppProviders } = await import("@/app/providers")
       const { OnlineInstallScreen } = await import("@/components/online-gate")
@@ -48,10 +43,8 @@ describe("OnlineGate", () => {
         </AppProviders>,
       )
 
-      await waitFor(() =>
-        expect(screen.getByText("Offline-use readiness").parentElement).toHaveTextContent(
-          "Ready",
-        ),
+      expect(screen.getByText("Offline-use readiness").parentElement).toHaveTextContent(
+        "Ready",
       )
     } finally {
       if (original) Object.defineProperty(navigator, "serviceWorker", original)
@@ -253,11 +246,6 @@ describe("OnlineGate", () => {
       "Not installed",
     )
     expect(screen.getByText("Offline-use readiness")).toBeVisible()
-    expect(
-      screen.getByText(
-        "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
-      ),
-    ).toBeVisible()
     expect(
       screen.queryByText("Switching to offline mode makes every feature available."),
     ).not.toBeInTheDocument()

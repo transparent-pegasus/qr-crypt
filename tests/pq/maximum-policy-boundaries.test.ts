@@ -57,7 +57,8 @@ function legacyIdentity(): PostQuantumIdentity {
   }
 }
 
-function legacyBundle(identity = legacyIdentity()): PqPublicBundleRecord {
+function legacyBundle(): PqPublicBundleRecord {
+  const identity = legacyIdentity()
   return {
     recordId: keyId(4),
     identityId: identity.id,
@@ -82,13 +83,11 @@ function legacyBundle(identity = legacyIdentity()): PqPublicBundleRecord {
   }
 }
 
-function legacyEnvelope(signed = true): MlKemMessageEnvelopeV2 {
+function legacyEnvelope(): MlKemMessageEnvelopeV2 {
   return {
     version: 2,
     type: "pq-message",
-    suite: signed
-      ? "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM"
-      : "ML-KEM-768+HKDF-SHA256+A256GCM",
+    suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
     recipientKemKeyId: keyId(2),
     kemCiphertext: new Uint8Array(1088),
     hkdfSalt: new Uint8Array(32),

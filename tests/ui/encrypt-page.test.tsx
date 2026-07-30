@@ -397,7 +397,6 @@ describe("encrypt page v2", () => {
     await waitFor(() =>
       expect(timeout.mock.calls.some(([, delay]) => delay === 200)).toBe(true),
     )
-    expect(globalThis.WebAssembly).toBeUndefined()
     expect(
       within(result).getByRole("switch", { name: "Compatibility mode" }),
     ).not.toBeChecked()

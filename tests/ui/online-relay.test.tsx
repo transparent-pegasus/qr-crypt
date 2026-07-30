@@ -29,7 +29,6 @@ const warmQrReader = vi.hoisted(() => vi.fn<() => Promise<void>>())
 
 vi.mock("@/qr/decode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/decode")>()),
-  CAMERA_READER_READY_TIMEOUT_MS: 30_000,
   readerModuleState,
   startQrScan: scanStart,
   warmQrReader,
@@ -489,7 +488,6 @@ describe("online relay UI", () => {
     )
     expect(output).toHaveValue(message)
     expect(scanStop).toHaveBeenCalled()
-    // Frame progress belongs to the frames kind only.
     expect(
       screen.queryByText(/frames collected/),
     ).toBeNull()

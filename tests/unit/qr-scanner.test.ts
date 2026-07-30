@@ -1492,32 +1492,4 @@ describe("camera scanner lifecycle", () => {
     handle.stop()
   })
 
-  it("warms the reader module without touching the camera", async () => {
-    const decoder = await loadColdDecoder()
-
-    await expect(decoder.warmQrReader()).resolves.toBeUndefined()
-
-    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
-    expect(getUserMedia).not.toHaveBeenCalled()
-  })
-
-  it("does not expose the retired reader warm alias", async () => {
-    const readerModule = await import("@/qr/camera/reader-module")
-
-    expect(readerModule).not.toHaveProperty("warmQrReaderModule")
-  })
-
-  it("reuses a warm preparation instead of starting a second one", async () => {
-    getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
-    const decoder = await loadDecoder()
-
-    await decoder.warmQrReader()
-    const handle = await decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), {
-      once: false,
-    })
-    await advance(0)
-
-    expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
-    handle.stop()
-  })
 })

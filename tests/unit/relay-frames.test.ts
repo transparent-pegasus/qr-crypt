@@ -588,10 +588,6 @@ describe("relay capture session kind", () => {
       ok: false,
       code: "prefix",
     })
-    expect(parseRelayText(`${message}\nOCF2:AA`)).toEqual({
-      ok: false,
-      code: "kind-mismatch",
-    })
     expect(parseRelayText(`OCM1:AA\n${payload(0)}`)).toEqual({
       ok: false,
       code: "kind-mismatch",

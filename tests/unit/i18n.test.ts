@@ -67,22 +67,16 @@ describe("i18n catalog", () => {
       "settings.toast.saved",
       "sensitive.secretQrWarning",
       "sensitive.title",
+      "common.processing",
+      "encrypt.recipient.unverified",
+      "encrypt.result.decryptedTitle",
+      "encrypt.result.encryptDone",
+      "keys.toast.legacyRemoved",
+      "qrDisplay.fullscreen.brightnessHint",
     ]) {
       expect(messages.en).not.toHaveProperty(removedKey)
       expect(messages.ja).not.toHaveProperty(removedKey)
     }
-  })
-
-  it.each([
-    "common.processing",
-    "encrypt.recipient.unverified",
-    "encrypt.result.decryptedTitle",
-    "encrypt.result.encryptDone",
-    "keys.toast.legacyRemoved",
-    "qrDisplay.fullscreen.brightnessHint",
-  ])("does not expose retired catalog key %s", (removedKey) => {
-    expect(messages.en).not.toHaveProperty(removedKey)
-    expect(messages.ja).not.toHaveProperty(removedKey)
   })
 
   it("provides an English and Japanese catalog entry for every error code", () => {

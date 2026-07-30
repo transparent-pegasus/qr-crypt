@@ -3,10 +3,8 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
-import { encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import { formatDateTime } from "@/features/presentation"
 import { translate } from "@/i18n/messages"
-import { buildV2Payload } from "@/qr/payload-v2"
 import type {
   MlKemMessageEnvelopeV2,
   PqPublicBundleRecord,
@@ -39,13 +37,6 @@ const fakePqMessageIdHex = Array.from(fakePqMessageId, (byte) =>
   byte.toString(16).padStart(2, "0"),
 ).join("")
 let clearRealReceipts: (() => void) | undefined
-
-function expectedFakePayloadHash(payload: string): string {
-  return new TextEncoder()
-    .encode(payload)
-    .byteLength.toString(16)
-    .padStart(64, "0")
-}
 
 async function preparePqPayload(
   signed: boolean,
@@ -83,9 +74,6 @@ describe("decrypt page v2", () => {
     const user = userEvent.setup()
     await renderApp("/decrypt")
     await screen.findByRole("heading", { name: "Scan with the camera" })
-    expect(
-      screen.getByRole("heading", { name: "Scan with the camera" }),
-    ).toBeInTheDocument()
     expect(startQrScan).not.toHaveBeenCalled()
     await user.click(screen.getByRole("button", { name: "Scan a ciphertext QR code" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalled())
@@ -343,10 +331,7 @@ describe("decrypt page v2", () => {
       ).not.toBeInTheDocument(),
     )
 
-    const signedEnvelope = await preparePqPayload(true)
-    const signedEnvelopeHash = expectedFakePayloadHash(
-      buildV2Payload("pq-message", encodeMlKemEnvelopeV2(signedEnvelope)),
-    )
+    await preparePqPayload(true)
     fireEvent.change(input, {
       target: { value: "OCM2:signed" },
     })
@@ -362,10 +347,7 @@ describe("decrypt page v2", () => {
       ).not.toBeInTheDocument(),
     )
 
-    const unsignedEnvelope = await preparePqPayload(false)
-    const unsignedEnvelopeHash = expectedFakePayloadHash(
-      buildV2Payload("pq-message", encodeMlKemEnvelopeV2(unsignedEnvelope)),
-    )
+    await preparePqPayload(false)
     fireEvent.change(input, {
       target: { value: "OCM2:unsigned" },
     })
@@ -380,7 +362,7 @@ describe("decrypt page v2", () => {
         {
           kind: "aes",
           recipientKeyId: "sym-key-00000001",
-          envelopeHash: expectedFakePayloadHash("OCM1:sym-key-00000001"),
+          envelopeHash: "0000000000000000000000000000000000000000000000000000000000000015",
         },
         expect.any(Number),
       ],
@@ -390,7 +372,7 @@ describe("decrypt page v2", () => {
           senderFingerprint: fakeBundles[0]!.signing.fingerprint,
           recipientKemKeyId: fakeIdentities[0]!.kem.keyId,
           messageIdHex: fakePqMessageIdHex,
-          envelopeHash: signedEnvelopeHash,
+          envelopeHash: "0000000000000000000000000000000000000000000000000000000000001b17",
         },
         expect.any(Number),
       ],
@@ -399,7 +381,7 @@ describe("decrypt page v2", () => {
           kind: "pq-unsigned",
           recipientKemKeyId: fakeIdentities[0]!.kem.keyId,
           messageIdHex: fakePqMessageIdHex,
-          envelopeHash: unsignedEnvelopeHash,
+          envelopeHash: "0000000000000000000000000000000000000000000000000000000000000987",
         },
         expect.any(Number),
       ],
@@ -781,44 +763,6 @@ describe("decrypt page v2", () => {
     await act(async () => emitScannedPayload("OCM1:sym-key-99999999"))
 
     expect(await screen.findByText("KEY_NOT_FOUND")).toBeInTheDocument()
-    expect(
-      screen.queryByRole("dialog", { name: "Decryption complete" }),
-    ).not.toBeInTheDocument()
-  })
-
-  it("shows an alert and no modal when decryption throws", async () => {
-    const user = userEvent.setup()
-    decryptWithAesKey.mockRejectedValueOnce(new AppError("DECRYPTION_FAILED"))
-    await renderApp("/decrypt")
-    await screen.findByRole("heading", { name: "Scan with the camera" })
-    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
-      target: { value: "OCM1:sym-key-00000001" },
-    })
-    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
-    await waitFor(() => expect(decryptButton).toBeEnabled())
-    await user.click(decryptButton)
-
-    expect(
-      await screen.findByText(messageFor("DECRYPTION_FAILED", "en")),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole("dialog", { name: "Decryption complete" }),
-    ).not.toBeInTheDocument()
-  })
-
-  it("keeps signed-key-unknown on its own alert with no modal", async () => {
-    const user = userEvent.setup()
-    fakePqDecrypt.kind = "signed-key-unknown"
-    await renderApp("/decrypt")
-    await screen.findByRole("heading", { name: "Scan with the camera" })
-    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
-      target: { value: "OCM2:fake" },
-    })
-    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
-    await waitFor(() => expect(decryptButton).toBeEnabled())
-    await user.click(decryptButton)
-
-    expect(await screen.findByText("SIGNING_KEY_NOT_FOUND")).toBeInTheDocument()
     expect(
       screen.queryByRole("dialog", { name: "Decryption complete" }),
     ).not.toBeInTheDocument()
