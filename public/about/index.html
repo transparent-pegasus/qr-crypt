@@ -162,10 +162,12 @@
                 For messages that must stay private for decades
               </p>
               <p class="lock__body" data-i18n="locks.pq.body">
-                A big enough quantum computer will eventually break the way keys are
-                shared today. ML-KEM-1024 is built to resist that, so even against a
-                state-level attacker a message is expected to stay unreadable for decades.
-                It is heavier: the message becomes a sequence of QR codes.
+                As quantum computers scale and cryptanalytic techniques advance, we
+                believe that the public-key mechanisms widely used to share keys today
+                will eventually be broken. ML-KEM-1024 is designed for that future. Even
+                against a state-level adversary, a message is expected to remain
+                unreadable for decades. The tradeoff is greater computational and data
+                overhead, so the message is split across multiple QR codes.
               </p>
             </article>
           </div>
