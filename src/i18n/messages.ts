@@ -104,6 +104,7 @@ const en = {
   "boot.wiped.title": "Local data was reset after an online connection was detected",
   "boot.wiped.body":
     "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
+  "boot.wiped.backOnline": "Return to the online page",
   "boot.partialFailure.retryHint":
     "Close this tab. To use the app again, fully format the device, then reinstall the app.",
 
@@ -766,6 +767,7 @@ const ja = {
   "boot.wiping.body": "完了するまでこの画面を閉じないでください。",
   "boot.wiped.title": "オンラインを検出したため、ローカルデータを初期化しました",
   "boot.wiped.body": "論理削除を試行しました。物理消去は保証されません。",
+  "boot.wiped.backOnline": "オンラインページへ戻る",
   "boot.partialFailure.retryHint":
     "このタブを閉じてください。再び利用するには、端末を完全フォーマットしてからアプリを導入し直してください。",
 

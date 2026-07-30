@@ -9,7 +9,11 @@ import {
 import { translate } from "@/i18n/messages"
 import type { BestEffortResetReport } from "@/storage/best-effort-reset"
 import { getPreferences } from "./helpers/fakes"
-import { renderApp, resetUi } from "./helpers/render-app"
+import {
+  expectLanguageField,
+  renderApp,
+  resetUi,
+} from "./helpers/render-app"
 import { setTestOnlineStatus } from "./helpers/network"
 
 function response(body: string, status = 200): Response {
@@ -36,6 +40,36 @@ function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSn
 describe("App boot gate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
+
+  it("renders the language field on a boot status screen", async () => {
+    setTestOnlineStatus(true)
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      performWipe: vi.fn(
+        () => new Promise<BestEffortResetReport>(() => undefined),
+      ),
+      readDecision: async () => decision({ sensitiveDataExists: true }),
+    })
+    await renderApp("/encrypt", { bootController: controller })
+    await screen.findByText("Resetting local data")
+    controller.stop()
+
+    expectLanguageField()
+  })
+
+  it("renders the language field on the unsupported-browser screen", async () => {
+    await renderApp("/encrypt", {
+      detectFeatures: () => ({
+        webCrypto: false,
+        indexedDb: true,
+        camera: true,
+        serviceWorker: true,
+      }),
+    })
+    await screen.findByText("UNSUPPORTED_BROWSER")
+
+    expectLanguageField()
+  })
 
   it("[acceptance 1] cold offline mounts Router without acknowledgement", async () => {
     let resolveFetch: ((value: Response) => void) | undefined

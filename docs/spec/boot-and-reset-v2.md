@@ -136,8 +136,9 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    non-extractable `CryptoKey` is impossible and is not claimed).
 6. Delete all DBs (including `pqIdentities`/`pqPublicBundles`) + all `oc-*`
    localStorage keys. This includes the UI language preference (`oc-lang`) and
-   the last online tab (`oc-online-tab`); after a wipe or full reset the app
-   reverts to the English default and to the install screen.
+   the last online tab (`oc-online-tab`); after a wipe or full reset the UI
+   language reverts to the English default and the online gate's tab preference
+   reverts to the install screen.
    Only in the `online-detected` case, re-set `oc-offline-ack-pending="1"`
    after the deletion and before publishing `wiped`. In the `user-requested`
    case it is not re-set.
@@ -208,7 +209,7 @@ redundant re-acknowledgement is allowed but skipping acknowledgement is not.
 | boot / wipe outcome         | Behavior after an offline edge / reload                                                                                                                                                  | Marker                                                                                                                                                                             |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | no wipe                     | The Router is mounted only after the per-generation acknowledgement                                                                                                                      | Deletion attempted on acknowledgement                                                                                                                                              |
-| `wiped` (`online-detected`) | The result and the acknowledgement are shown in the same full-screen shell; the "reload to continue" action performs a full reload. The Router is not mounted in the current JS lifetime | Re-set after the `oc-*` deletion and before publishing `wiped`. Reloading without acknowledging shows the shell again; reloading after acknowledging is a marker-absent cold start |
+| `wiped` (`online-detected`) | While the display is offline the result and the acknowledgement are shown in the same full-screen shell, and the "reload to continue" action performs a full reload. While it is online the status screen carries the result and a "return to the online page" control that performs the same full reload: the controller stays pinned in this destructive terminal state, so a new JS lifetime is the only route back to the install screen. The Router is not mounted in the current JS lifetime | Re-set after the `oc-*` deletion and before publishing `wiped`. Reloading without acknowledging shows the shell again; reloading after acknowledging is a marker-absent cold start |
 | `partial-failure`           | Shows only `RESET_FAILED` plus guidance to close the tab / fully format the device; no resume path is provided                                                                           | Kept re-set as evidence of online contact                                                                                                                                          |
 | `user-requested`            | Settings runs the same coordinator sequence (barrier, crypto dispose, Vault-key cache drop, transient reset, cross-tab stop, the ordered deletion above, churn, absence check). On success the app performs a full reload; on partial failure it shows a terminal `RESET_FAILED` state with the failed steps and no resume path | Not re-set after the `oc-*` deletion                                                                                                                                               |
 
