@@ -370,15 +370,11 @@ export async function encryptSignedPq(
   return { payload, result }
 }
 
-export interface QrArtifactSummary {
-  kind?: string
-  payload?: string
-}
-
-export async function rawQrArtifacts(page: Page): Promise<QrArtifactSummary[]> {
+// The store never exists, so any returned list would be constant; asserting on it is not a test.
+export async function expectNoQrArtifactStore(page: Page): Promise<void> {
   return page.evaluate(
     () =>
-      new Promise<QrArtifactSummary[]>((resolve, reject) => {
+      new Promise<void>((resolve, reject) => {
         const open = indexedDB.open("qr-crypt")
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
@@ -388,7 +384,7 @@ export async function rawQrArtifacts(page: Page): Promise<QrArtifactSummary[]> {
             reject(new Error("qrArtifacts store must not exist"))
           } else {
             database.close()
-            resolve([])
+            resolve()
           }
         }
       }),
