@@ -3,6 +3,15 @@
 Everything needed to build, run, and test QR Crypt locally. Product-level usage lives in
 the [README](../../README.md).
 
+## Documentation languages
+
+English is the source of record under `docs/` (and the root `README.md`). Translations of
+docs live under `docs/languages/<lang>/` with the same relative path as the English file —
+for example `docs/languages/ja/develop/install-route-a/README.md` mirrors
+`docs/develop/install-route-a/README.md`. Each English document that has a translation
+links to it; translations link back to English. The product README translation stays at
+the repository root as `README.ja.md` (GitHub language switcher).
+
 ## Tech stack
 
 * React / React DOM / React Router

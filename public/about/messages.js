@@ -74,9 +74,9 @@ export const LOCALES = {
         "index.htmlをfile:// URLから直接開いてはいけません。この環境ではブラウザーのストレージ分離が機能せず、別のローカルHTMLファイルから鍵を読み取られるおそれがあります。転送に使うUSBメモリーやSDカードも、信頼できるものに限ってください。記録媒体を改変できる攻撃者は、アプリも改ざんできます。詳しい手順はリポジトリのドキュメントにあります。",
       "install.a.link": "最新リリースを取得",
       "install.a.docLink": "導入手順の全文を読む",
-      "install.a.docUrl": "docs/develop/install-route-a/README.ja.md",
+      "install.a.docUrl": "docs/languages/ja/develop/install-route-a/README.md",
       "install.a.docHref":
-        "https://github.com/transparent-pegasus/qr-crypt/blob/main/docs/develop/install-route-a/README.ja.md",
+        "https://github.com/transparent-pegasus/qr-crypt/blob/main/docs/languages/ja/develop/install-route-a/README.md",
       "install.b.tag": "方法B",
       "install.b.heading": "インターネット上の配信元からインストールする",
       "install.b.body1":
