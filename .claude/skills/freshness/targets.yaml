@@ -430,23 +430,23 @@ units:
       - src/components/key-add-dialog.tsx # experimental / not-independently-audited banners
       - src/components/online-gate.tsx # offline-switch compromise-assumption copy
       - src/components/offline-ack-shell.tsx # "a connected device can always be compromised" copy
-      - public/about/index.html # landing page, en source of record: AES-256 "as of 2026", PQ rationale, wipe honesty
+      - public/about/index.html # landing page, en source of record: AES-256 default, ML-KEM as KEM, wipe honesty (attempts / Rev. 2)
       - public/about/messages.js # ja translation of the same landing-page claims
     why: >
       In-app disclosures (noble unaudited, JS side-channel caveat, wipe
       honesty, feature rows) mirror docs; they stale when audit status,
       active policy, or threat model change. The copy itself lives in the
       i18n catalog (both locales must move together). The public landing page
-      states the same claims to non-engineers and carries a dated AES-256
-      assertion, so it moves with them.
+      states the same claims to non-engineers (AES default, ML-KEM as key
+      encapsulation, wipe as best-effort with NIST SP 800-88 Rev. 2), so it
+      moves with them.
     method: |
       Diff the disclosure copy (both locales in src/i18n/messages.ts) against
       docs/security/security-review.md and docs/security/threat-model.md; update banners when
-      audit/release status moves. Re-read the landing page's dated AES-256
-      sentence and PQ ("store now, open later") rationale against the same
-      docs, and keep public/about/index.html and messages.js in step — the
-      English text lives only in the HTML, the other locales only in
-      messages.js.
+      audit/release status moves. Re-read the landing page's AES-256 /
+      ML-KEM / wipe honesty wording against the same docs, and keep
+      public/about/index.html and messages.js in step — the English text lives
+      only in the HTML, the other locales only in messages.js.
     verify: aube run test -- tests/ui/keys-settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
 
   - id: readme
