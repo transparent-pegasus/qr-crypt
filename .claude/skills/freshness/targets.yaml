@@ -211,7 +211,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-07-29
+    last_checked: 2026-07-30
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
@@ -316,7 +316,8 @@ units:
       - src/storage/preferences-repository.ts # atomic pair writes and boot-readable pair canonicalization
       - src/pages/encrypt-page.tsx # message-display preference and per-artifact effective clamp
       - src/pages/decrypt-page.tsx # decoded-artifact ceilings on the paste and scan paths
-      - src/lib/generated-display.ts # the one selectedGeneratedDisplayPair, shared by every display surface
+      - src/lib/generated-display.ts # the one effectiveGeneratedDisplay (pair + per-artifact clamp), shared by every display surface
+      - src/components/qr-display.tsx # renders at the caller-supplied env.qrRenderSize; holds no size default of its own
       - src/components/key-detail-dialog.tsx # identity-display preference and per-artifact effective clamp
       - src/components/key-detail/identity-qr-session.tsx # the identity display surface that consumes the pair
       - src/components/animated-qr-frames.tsx # labelled compatibility switch, commit-gated dwell, and one-button export
@@ -344,6 +345,9 @@ units:
       generated-display.ts, key-detail-dialog.tsx,
       key-detail/identity-qr-session.tsx,
       animated-qr-frames.tsx, and online-relay.tsx. Confirm the
+      qr-protocol.md §7 size column still names VITE_QR_RENDER_SIZE rather
+      than a copied pixel value, and that qr-display.tsx still requires the
+      size prop so no surface can render off that contract. Confirm the
       qr-protocol-v2.md messageId note (~169–170) still states the wire format
       is not a replay-prevention mechanism while documenting the receiving
       session-memory receipt keyed by it, and that the clarification matches
