@@ -3,6 +3,7 @@
 import {
   FRAME_BYTES_MAX,
   FRAME_BYTES_STEP,
+  FRAME_BYTES_VALUES,
 } from "@/lib/frame-bytes"
 import { FRAME_INTERVAL_MS_MAX } from "@/lib/frame-interval"
 import { env } from "@/schemas/env-schema"
@@ -26,67 +27,15 @@ export {
 } from "@/lib/frame-interval"
 
 // One environment value serves two roles: MAX_PQ_PLAINTEXT_BYTES is the
-// post-quantum multipart plaintext ceiling, and MAX_PLAINTEXT_BYTES is the
-// same bound reused as the shared allocation ceiling by AES-GCM message
-// crypto and by the post-quantum envelope, worker, profile, and QR-encode
-// gates. The v1 single-QR path narrows further through
-// MAX_SYMMETRIC_PLAINTEXT_BYTES. The vault wraps fixed-length seeds and
-// uses KEM_SEED_BYTES / DSA_SEED_BYTES instead.
+// post-quantum multipart plaintext ceiling, and MAX_PLAINTEXT_BYTES is its
+// shared allocation bound. Symmetric messages use the independent single-frame
+// MAX_SYM_PLAINTEXT_BYTES ceiling below. The vault wraps fixed-length seeds.
 export const MAX_PQ_PLAINTEXT_BYTES = env.maxPlaintextBytes
 export const MAX_PLAINTEXT_BYTES = MAX_PQ_PLAINTEXT_BYTES
-
-
-// AAD ("OCAAD1|v|type|alg|keyId|createdAt") is about 60B in practice.
-// This limit includes headroom.
-export const MAX_AAD_BYTES = 128
-
-// Input ceiling for the v1 path before parsing; unused by v2. The value is a chosen
-// bound, not a derived one: the largest payload any live v1 envelope produces is far
-// below it, and the per-EC-level QR capacity in qr/encode.ts is what actually binds
-// generation. Kept as a cheap pre-parse guard against oversized input.
-export const MAX_PAYLOAD_CHARS = 8192
 
 // AES-GCM IVs are fixed at 96 bits.
 export const IV_BYTES = 12
 export const AES_GCM_TAG_BYTES = 16
-
-// A v1 A256GCM message has a five-character OCM1 prefix and at most 201
-// non-plaintext CBOR bytes: the fixed eight-entry map, fixed fields, a
-// 16-byte GCM tag, and the longest valid decimal createdAt in both the map
-// and AAD. cbor-x uses a three-byte map header in this profile.
-const V1_MESSAGE_PREFIX_CHARS = 5
-const V1_MESSAGE_MAX_FIXED_CBOR_BYTES = 201
-
-// Derive the pre-encryption A256GCM limit from both independent encoded-text
-// ceilings. The caller supplies qrByteCapacity(selectedEcLevel), keeping the
-// QR capacity table owned by qr/encode.ts and making preference changes explicit.
-export function maximumSymmetricPlaintextBytesForPayloadCapacity(
-  qrPayloadCapacityChars: number,
-): number {
-  if (
-    !Number.isSafeInteger(qrPayloadCapacityChars) ||
-    qrPayloadCapacityChars <= V1_MESSAGE_PREFIX_CHARS
-  ) {
-    throw new RangeError("v1 QR payload capacity is out of range")
-  }
-  const payloadChars = Math.min(MAX_PAYLOAD_CHARS, qrPayloadCapacityChars)
-  const base64UrlChars = payloadChars - V1_MESSAGE_PREFIX_CHARS
-  const maximumCborBytes = Math.floor((base64UrlChars * 3) / 4)
-  return Math.max(0, maximumCborBytes - V1_MESSAGE_MAX_FIXED_CBOR_BYTES)
-}
-
-// Structural v1 ceiling: the most a single OCM1 payload can carry at any EC level.
-// The UI narrows this further with the selected level's QR capacity.
-export const MAX_SYMMETRIC_PLAINTEXT_BYTES =
-  maximumSymmetricPlaintextBytesForPayloadCapacity(MAX_PAYLOAD_CHARS)
-
-// AES-256-GCM size is plaintext length + a 16B authentication tag appended by WebCrypto.
-// The v1 envelope is bounded by what a single OCM1 payload can carry, NOT by the
-// post-quantum multipart ceiling: tying it to MAX_PLAINTEXT_BYTES would let the v1
-// decoder accept envelopes no legitimate v1 QR could ever contain.
-export const MAX_CIPHERTEXT_BYTES =
-  MAX_SYMMETRIC_PLAINTEXT_BYTES + AES_GCM_TAG_BYTES
-
 
 // Key IDs / artifact IDs: base64url of 16 random bytes (22 characters).
 export const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/
@@ -96,7 +45,7 @@ export const KEY_ID_RAW_BYTES = 16
 export const AES_KEY_BYTES = 32
 
 // ---------------------------------------------------------------------------
-// v2 post-quantum limits; see docs/spec/qr-protocol-v2.md §4–§6.
+// v2 wire limits; see docs/spec/qr-protocol-v2.md §3–§7.
 // ---------------------------------------------------------------------------
 
 // HKDF-SHA-256 salt is 32B from the CSPRNG for each encryption.
@@ -129,6 +78,20 @@ export function minimumFrameBytesForArtifact(
     Math.ceil(Math.ceil(artifactByteLength / maximumFrames) / FRAME_BYTES_STEP)
   )
 }
+
+// Select the least dense admitted frame that can carry the whole artifact.
+export function singleFrameBytesFor(artifactByteLength: number): number {
+  if (!Number.isSafeInteger(artifactByteLength) || artifactByteLength < 1) {
+    throw new RangeError("artifact byte length is out of range")
+  }
+  const frameBytes = FRAME_BYTES_VALUES.find(
+    (candidate) => candidate >= artifactByteLength,
+  )
+  if (frameBytes === undefined) {
+    throw new RangeError("artifact exceeds the single-frame capacity")
+  }
+  return frameBytes
+}
 // The active internal density reaches the 1,000-byte chunk ceiling, so the
 // density-derived artifact capacity and the algebraic wire budget now coincide.
 // This intentionally permits at most 128,000 bytes of attacker-controlled
@@ -138,6 +101,12 @@ export const PROTOCOL_MAX_FRAMES = 128
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX
 export const MAX_ARTIFACT_BYTES_ABSOLUTE =
   PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES
+
+// At the maximum boundary: 1B map header + 159B fixed fields + 11B encoded
+// ciphertext key + 3B byte-string header. Ciphertext bytes are excluded.
+export const SYM_MESSAGE_OVERHEAD_BYTES = 174
+export const MAX_SYM_PLAINTEXT_BYTES =
+  FRAME_CHUNK_MAX_BYTES - SYM_MESSAGE_OVERHEAD_BYTES - AES_GCM_TAG_BYTES
 
 // Cover a complete cycle at the slowest admitted display interval. The maximum
 // signed message takes 127 × 2,000ms = 254s; deriving from the full 128-frame

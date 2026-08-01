@@ -12,7 +12,7 @@ const ID_B = "EAESExQVFhcYGRobHB0eHw"
 const KEM_AAD: VaultAadFieldsV2 = {
   identityId: ID_A,
   role: "ml-kem-seed",
-  algorithm: "ML-KEM-768",
+  algorithm: "ML-KEM-1024",
   keyId: ID_B,
   publicKeySha256: new Uint8Array(32).fill(0x11),
 }
@@ -59,7 +59,7 @@ describe("vault secret AAD", () => {
     const dsaAad: VaultAadFieldsV2 = {
       identityId: ID_A,
       role: "ml-dsa-seed",
-      algorithm: "ML-DSA-65",
+      algorithm: "ML-DSA-87",
       keyId: ID_B,
       publicKeySha256: new Uint8Array(32).fill(0x22),
     }
@@ -153,7 +153,7 @@ describe("vault secret AAD", () => {
     const roleSwapped: VaultAadFieldsV2 = {
       ...KEM_AAD,
       role: "ml-dsa-seed",
-      algorithm: "ML-DSA-65",
+      algorithm: "ML-DSA-87",
     }
     await expect(
       decryptSecret({ vaultKey, secret: encrypted, aad: roleSwapped }),

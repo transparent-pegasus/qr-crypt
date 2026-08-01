@@ -6,7 +6,6 @@ import {
   encodeMlKemEnvelopeV2,
   encodePublicIdentityBundleV2,
   encodeSignedMessageV2,
-  encodeUnsignedMessageBodyV2,
 } from "@/crypto/pq/canonical-cbor"
 import { DSA_SIZES } from "@/crypto/pq/profiles"
 import { toBase64Url } from "@/lib/base64url"
@@ -47,7 +46,7 @@ interface ArtifactFixture {
   expectedFrames: Record<(typeof FRAME_BYTES)[number], number>
 }
 
-function messageArtifact(signed: boolean, plaintextBytes: number): Uint8Array {
+function messageArtifact(plaintextBytes: number): Uint8Array {
   const commonBody = {
     version: 2 as const,
     messageId: new Uint8Array(16).fill(0x11),
@@ -55,24 +54,20 @@ function messageArtifact(signed: boolean, plaintextBytes: number): Uint8Array {
     recipientKemKeyId: KEY_ID,
     plaintext: new Uint8Array(plaintextBytes).fill(0x22),
   }
-  const innerBytes = signed
-    ? encodeSignedMessageV2({
-        body: {
-          ...commonBody,
-          senderSigningKeyId: KEY_ID,
-        },
-        signature: {
-          algorithm: "ML-DSA-87",
-          value: new Uint8Array(DSA_SIZES["ML-DSA-87"].signatureBytes).fill(0x33),
-        },
-      })
-    : encodeUnsignedMessageBodyV2(commonBody)
+  const innerBytes = encodeSignedMessageV2({
+    body: {
+      ...commonBody,
+      senderSigningKeyId: KEY_ID,
+    },
+    signature: {
+      algorithm: "ML-DSA-87",
+      value: new Uint8Array(DSA_SIZES["ML-DSA-87"].signatureBytes).fill(0x33),
+    },
+  })
   return encodeMlKemEnvelopeV2({
     version: 2,
     type: "pq-message",
-    suite: signed
-      ? "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
-      : "ML-KEM-1024+HKDF-SHA256+A256GCM",
+    suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: KEY_ID,
     kemCiphertext: new Uint8Array(1568).fill(0x44),
     hkdfSalt: new Uint8Array(32).fill(0x55),
@@ -155,45 +150,9 @@ function artifactFixtures(): ArtifactFixture[] {
 
   return [
     {
-      label: "unsigned / empty plaintext",
-      artifactType: "pq-message",
-      bytes: messageArtifact(false, 0),
-      expectedBytes: 1887,
-      expectedFrames: {
-        100: 19,
-        200: 10,
-        300: 7,
-        400: 5,
-        500: 4,
-        600: 4,
-        700: 3,
-        800: 3,
-        900: 3,
-        1_000: 2,
-      },
-    },
-    {
-      label: "unsigned / maximum plaintext",
-      artifactType: "pq-message",
-      bytes: messageArtifact(false, MAX_PQ_PLAINTEXT_BYTES),
-      expectedBytes: 121_894,
-      expectedFrames: {
-        100: 1_219,
-        200: 610,
-        300: 407,
-        400: 305,
-        500: 244,
-        600: 204,
-        700: 175,
-        800: 153,
-        900: 136,
-        1_000: 122,
-      },
-    },
-    {
       label: "signed / empty plaintext",
       artifactType: "pq-message",
-      bytes: messageArtifact(true, 0),
+      bytes: messageArtifact(0),
       expectedBytes: 6613,
       expectedFrames: {
         100: 67,
@@ -211,7 +170,7 @@ function artifactFixtures(): ArtifactFixture[] {
     {
       label: "signed / maximum plaintext",
       artifactType: "pq-message",
-      bytes: messageArtifact(true, MAX_PQ_PLAINTEXT_BYTES),
+      bytes: messageArtifact(MAX_PQ_PLAINTEXT_BYTES),
       expectedBytes: 126_619,
       expectedFrames: {
         100: 1_267,
@@ -433,12 +392,12 @@ describe("maximum canonical CBOR artifact sizing", () => {
       [65_536, 72_155],
       [MAX_PQ_PLAINTEXT_BYTES, 126_619],
     ] as const) {
-      expect(messageArtifact(true, plaintextBytes)).toHaveLength(expectedArtifactBytes)
+      expect(messageArtifact(plaintextBytes)).toHaveLength(expectedArtifactBytes)
     }
   })
 
   it("round-trips a maximum PQ plaintext as 127 EC-Q frames byte for byte", async () => {
-    const artifactBytes = messageArtifact(true, MAX_PQ_PLAINTEXT_BYTES)
+    const artifactBytes = messageArtifact(MAX_PQ_PLAINTEXT_BYTES)
     expect(MAX_PQ_PLAINTEXT_BYTES).toBe(120_000)
     expect(artifactBytes).toHaveLength(126_619)
 
@@ -472,7 +431,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
 
   it("env capacity guard uses maximum internal density for every active stop", () => {
     for (const plaintextBytes of [MAX_PQ_PLAINTEXT_BYTES, 16_384]) {
-      const signedArtifactBytes = messageArtifact(true, plaintextBytes).byteLength
+      const signedArtifactBytes = messageArtifact(plaintextBytes).byteLength
       const requiredFrames = Math.ceil(signedArtifactBytes / FRAME_BYTES_MAX)
       for (const frameBytes of FRAME_BYTES) {
         expect(
@@ -544,7 +503,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
       const originalMaximum = env.qrMaxFrames
       try {
         env.qrMaxFrames = qrMaxFrames
-        const artifactBytes = messageArtifact(true, plaintextBytes)
+        const artifactBytes = messageArtifact(plaintextBytes)
         const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)
         expect(minimum).toBe(expectedMinimum)
         const frames = await splitIntoFrames({
@@ -560,7 +519,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
   )
 
   it("fails closed when the grid-rounded minimum exceeds the active density maximum", async () => {
-    const artifactBytes = messageArtifact(true, MAX_PQ_PLAINTEXT_BYTES)
+    const artifactBytes = messageArtifact(MAX_PQ_PLAINTEXT_BYTES)
     const originalMaximum = env.qrMaxFrames
     try {
       env.qrMaxFrames = 10
@@ -580,7 +539,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
   })
 
   it("raises the compatible 100B preference for a 16KiB signed artifact and keeps 1000B valid", async () => {
-    const artifactBytes = messageArtifact(true, 16_384)
+    const artifactBytes = messageArtifact(16_384)
     expect(artifactBytes).toHaveLength(22_999)
     const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)
     expect(minimum).toBe(200)

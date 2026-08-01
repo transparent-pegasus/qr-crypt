@@ -5,24 +5,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
 import {
   FRAME_BYTES_MAX,
-  maximumSymmetricPlaintextBytesForPayloadCapacity,
+  FRAME_BYTES_VALUES,
+  MAX_SYM_PLAINTEXT_BYTES,
 } from "@/lib/limits"
 import { decodeFramePayload } from "@/qr/payload-v2"
 import { translate } from "@/i18n/messages"
 import type {
   MlKemMessageEnvelopeV2,
   PqPublicBundleRecord,
+  StoredKeyRecord,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"
 import {
-  encryptWithAesKey,
   encryptPq,
+  encodeSymMessageEnvelopeV2,
   exportQrFramePayloads,
   fakeBundles,
   fakeIdentities,
+  fakeKeys,
   fakePreferences,
   renderQrDataUrl,
+  sealSymMessage,
   splitIntoFrames,
   updatePreferences,
 } from "./helpers/fakes"
@@ -39,6 +43,13 @@ async function chooseSelectOption(
   await user.click(await screen.findByRole("option", { name: option }))
 }
 
+async function choosePqRecipient(
+  user: ReturnType<typeof userEvent.setup>,
+): Promise<void> {
+  await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+  await chooseSelectOption(user, "My ML-DSA signing identity", "自分のPQ ID")
+}
+
 describe("encrypt page v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
@@ -48,7 +59,7 @@ describe("encrypt page v2", () => {
     resetUi()
   })
 
-  it("offers the three active suites and never exposes RSA", async () => {
+  it("offers the two active algorithms and never exposes RSA", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
     await user.click(await screen.findByLabelText("Cryptographic algorithm"))
@@ -57,13 +68,42 @@ describe("encrypt page v2", () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole("option", {
-        name: /^Post-quantum ML-KEM-1024 \+ AES-256-GCM$/,
+        name: /^Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES-256-GCM$/,
       }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole("option", { name: /Signed post-quantum/ }),
+      screen.getByRole("option", { name: /ML-DSA-87/ }),
     ).toBeInTheDocument()
     expect(screen.queryByText(/RSA/)).not.toBeInTheDocument()
+  })
+
+  it("offers only active symmetric lineage heads and hides the rotated predecessor", async () => {
+    const user = userEvent.setup()
+    const previous = {
+      ...fakeKeys[0]!,
+      id: "P".repeat(22),
+      name: "共通鍵（旧世代）",
+      status: "rotated",
+      rotatedAt: 1_724_000_000_000,
+    } satisfies StoredKeyRecord
+    const head = {
+      ...fakeKeys[0]!,
+      id: "H".repeat(22),
+      name: "共通鍵（現行世代）",
+      createdAt: previous.rotatedAt,
+      status: "active",
+      rotatedFromId: previous.id,
+    } satisfies StoredKeyRecord
+    fakeKeys.unshift(head, previous)
+
+    await renderApp("/encrypt")
+    await user.click(await screen.findByLabelText("Key"))
+    const labels = (await screen.findAllByRole("option")).map(
+      (option) => option.textContent,
+    )
+
+    expect(labels).toEqual(expect.arrayContaining(["共通鍵A", head.name]))
+    expect(labels).not.toContain(previous.name)
   })
 
   it("offers only fingerprint-confirmed bundles as encryption recipients", async () => {
@@ -97,7 +137,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await user.click(await screen.findByLabelText("Recipient ML-KEM public key"))
     const labels = (await screen.findAllByRole("option")).map(
@@ -123,7 +163,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
 
     expect(
@@ -143,9 +183,8 @@ describe("encrypt page v2", () => {
         }),
     )
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "Cryptographic algorithm", /Signed post-quantum/)
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
-    await chooseSelectOption(user, "My ML-DSA signing identity", "自分のPQ ID")
+    await chooseSelectOption(user, "Cryptographic algorithm", /ML-DSA-87/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "署名付き短文")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -231,9 +270,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "stable transfer")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -277,9 +316,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "worker failure")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -290,38 +329,97 @@ describe("encrypt page v2", () => {
     expect(screen.queryByText("Encryption is complete")).not.toBeInTheDocument()
   })
 
-  it("rejects the smaller symmetric limit before encryption while accepting the same plaintext for PQ", async () => {
+  it("renders A256GCM as exactly one sym-message OCF2 frame and exposes an OCA2 payload", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Symmetric-key.*AES-256-GCM/,
+    )
+    await chooseSelectOption(user, "Key", "共通鍵A")
+    await user.type(screen.getByLabelText("Plaintext"), "single sym frame")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    const result = await screen.findByRole("dialog", {
+      name: "Encryption complete",
+    })
+    expect(within(result).getByText(/^OCA2:/)).toBeInTheDocument()
+    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledOnce())
+
+    const splitArgs = splitIntoFrames.mock.calls[0]![0]
+    const smallestFrameBytes = FRAME_BYTES_VALUES.find(
+      (value) => value >= splitArgs.artifactBytes.byteLength,
+    )
+    expect(splitArgs).toMatchObject({
+      artifactType: "sym-message",
+      frameBytes: smallestFrameBytes,
+    })
+    expect(encodeSymMessageEnvelopeV2).toHaveBeenCalledOnce()
+    expect(sealSymMessage).toHaveBeenCalledWith({
+      record: fakeKeys[0],
+      plaintext: new TextEncoder().encode("single sym frame"),
+      now: expect.any(Number),
+    })
+
+    await waitFor(() =>
+      expect(
+        renderQrDataUrl.mock.calls.some(([payload]) => payload.startsWith("OCF2:")),
+      ).toBe(true),
+    )
+    const framePayload = renderQrDataUrl.mock.calls.find(([payload]) =>
+      payload.startsWith("OCF2:"),
+    )![0]
+    expect(decodeFramePayload(framePayload)).toMatchObject({
+      artifactType: "sym-message",
+      frameIndex: 0,
+      frameCount: 1,
+    })
+  })
+
+  it("counts UTF-8 bytes against the sym-v2 ceiling and refuses one byte more while PQ accepts it", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
     await chooseSelectOption(user, "Key", "共通鍵A")
     const plaintext = screen.getByLabelText("Plaintext")
-    const symmetricLimit = maximumSymmetricPlaintextBytesForPayloadCapacity(1_663)
-    const symmetricOversizePlaintext = "a".repeat(4_097)
+    const symmetricAtLimit = "界".repeat(MAX_SYM_PLAINTEXT_BYTES / 3)
+    const symmetricOversizePlaintext = `${symmetricAtLimit}a`
 
-    expect(symmetricLimit).toBe(1_042)
-    expect(symmetricLimit).toBeLessThan(env.maxPlaintextBytes)
+    expect(MAX_SYM_PLAINTEXT_BYTES).toBe(810)
+    expect(MAX_SYM_PLAINTEXT_BYTES).toBeLessThan(env.maxPlaintextBytes)
+    fireEvent.change(plaintext, { target: { value: symmetricAtLimit } })
+    expect(
+      screen.getByText(
+        `${MAX_SYM_PLAINTEXT_BYTES} / ${MAX_SYM_PLAINTEXT_BYTES} bytes`,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Encrypt" })).toBeEnabled()
+
     fireEvent.change(plaintext, { target: { value: symmetricOversizePlaintext } })
     expect(
-      screen.getByText(`${symmetricOversizePlaintext.length} / ${symmetricLimit} bytes`),
+      screen.getByText(
+        `${MAX_SYM_PLAINTEXT_BYTES + 1} / ${MAX_SYM_PLAINTEXT_BYTES} bytes`,
+      ),
     ).toBeInTheDocument()
     expect(screen.getByText("The plaintext limit has been exceeded")).toBeInTheDocument()
     expect(
       screen.getByText(
-        `Shorten the UTF-8 text to no more than ${symmetricLimit} bytes.`,
+        `Shorten the UTF-8 text to no more than ${MAX_SYM_PLAINTEXT_BYTES} bytes.`,
       ),
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Encrypt" })).toBeDisabled()
-    expect(encryptWithAesKey).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Encrypt" }))
+    expect(sealSymMessage).not.toHaveBeenCalled()
 
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     expect(
       screen.getByText(
-        `${symmetricOversizePlaintext.length} / ${env.maxPlaintextBytes} bytes`,
+        `${MAX_SYM_PLAINTEXT_BYTES + 1} / ${env.maxPlaintextBytes} bytes`,
       ),
     ).toBeInTheDocument()
     expect(screen.queryByText("The plaintext limit has been exceeded")).toBeNull()
@@ -331,9 +429,9 @@ describe("encrypt page v2", () => {
     await screen.findByRole("dialog", { name: "Encryption complete" })
     expect(encryptPq).toHaveBeenCalledOnce()
     expect(encryptPq.mock.calls[0]![0].plaintext).toHaveLength(
-      symmetricOversizePlaintext.length,
+      MAX_SYM_PLAINTEXT_BYTES + 1,
     )
-    expect(encryptWithAesKey).not.toHaveBeenCalled()
+    expect(sealSymMessage).not.toHaveBeenCalled()
   })
 
   it("clears plaintext after symmetric success and exposes no SVG affordance", async () => {
@@ -355,7 +453,7 @@ describe("encrypt page v2", () => {
     await waitFor(() => expect(fullscreenButton).toBeEnabled())
     await user.click(fullscreenButton)
     const fullscreen = screen.getByRole("dialog", {
-      name: /View Ciphertext QR full screen/,
+      name: /View Ciphertext .*full screen/,
     })
     expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
   })
@@ -365,7 +463,7 @@ describe("encrypt page v2", () => {
     encryptPq.mockResolvedValueOnce({
       version: 2,
       type: "pq-message",
-      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: fakeBundles[0]!.kem.keyId,
       kemCiphertext: new Uint8Array(1_568),
       hkdfSalt: new Uint8Array(32),
@@ -378,9 +476,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "no wasm default")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -411,7 +509,7 @@ describe("encrypt page v2", () => {
     encryptPq.mockResolvedValueOnce({
       version: 2,
       type: "pq-message",
-      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: fakeBundles[0]!.kem.keyId,
       kemCiphertext: new Uint8Array(1_568),
       hkdfSalt: new Uint8Array(32),
@@ -429,9 +527,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "fullscreen compatibility")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -539,7 +637,7 @@ describe("encrypt page v2", () => {
     encryptPq.mockResolvedValue({
       version: 2,
       type: "pq-message",
-      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: fakeBundles[0]!.kem.keyId,
       kemCiphertext: new Uint8Array(1_568),
       hkdfSalt: new Uint8Array(32),
@@ -551,9 +649,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "compatible clamp")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -611,9 +709,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "compatible remount")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -648,7 +746,7 @@ describe("encrypt page v2", () => {
     encryptPq.mockResolvedValueOnce({
       version: 2,
       type: "pq-message",
-      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: fakeBundles[0]!.kem.keyId,
       kemCiphertext: new Uint8Array(1_568),
       hkdfSalt: new Uint8Array(32),
@@ -661,9 +759,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "density floor")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -722,9 +820,8 @@ describe("encrypt page v2", () => {
     })
     const user = userEvent.setup()
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "Cryptographic algorithm", /Signed post-quantum/)
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
-    await chooseSelectOption(user, "My ML-DSA signing identity", "自分のPQ ID")
+    await chooseSelectOption(user, "Cryptographic algorithm", /ML-DSA-87/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "too large")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -763,9 +860,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "PQ modal transport controls")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -800,6 +897,7 @@ describe("encrypt page v2", () => {
       ).not.toBeInTheDocument()
     })
     expect(screen.queryByText(/^OCM1:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^OCA2:/)).not.toBeInTheDocument()
   })
 
   it("disables the PQ download until the frame split has frames", async () => {
@@ -810,9 +908,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "pending PQ frame split")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -827,9 +925,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "PQ export failure")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -845,15 +943,15 @@ describe("encrypt page v2", () => {
 
   it("F1 keeps every encryption entry point closed while crypto is in flight", async () => {
     const user = userEvent.setup()
-    const defaultEncryptWithAesKey = encryptWithAesKey.getMockImplementation()!
+    const defaultSealSymMessage = sealSymMessage.getMockImplementation()!
     const pendingEncryption =
-      deferred<Awaited<ReturnType<typeof defaultEncryptWithAesKey>>>()
-    encryptWithAesKey.mockReturnValueOnce(pendingEncryption.promise)
+      deferred<Awaited<ReturnType<typeof defaultSealSymMessage>>>()
+    sealSymMessage.mockReturnValueOnce(pendingEncryption.promise)
     await renderApp("/encrypt")
     await chooseSelectOption(user, "Key", "共通鍵A")
     await user.type(screen.getByLabelText("Plaintext"), "single-flight encryption")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
-    await waitFor(() => expect(encryptWithAesKey).toHaveBeenCalledOnce())
+    await waitFor(() => expect(sealSymMessage).toHaveBeenCalledOnce())
 
     // Decryption now lives on its own route, so a second operation cannot be
     // started from here at all; what this asserts is that the encrypt page
@@ -868,14 +966,14 @@ describe("encrypt page v2", () => {
         .hasAttribute("disabled"),
     }
 
-    const encryptionArgs = encryptWithAesKey.mock.calls[0]![0]
-    const encrypted = await defaultEncryptWithAesKey(encryptionArgs)
+    const encryptionArgs = sealSymMessage.mock.calls[0]![0]
+    const encrypted = await defaultSealSymMessage(encryptionArgs)
     await act(async () => {
       pendingEncryption.resolve(encrypted)
       await pendingEncryption.promise
     })
     await screen.findByRole("dialog", { name: "Encryption complete" })
-    expect(encryptWithAesKey).toHaveBeenCalledOnce()
+    expect(sealSymMessage).toHaveBeenCalledOnce()
 
     expect(busyState).toEqual({
       plaintextDisabled: true,
@@ -892,9 +990,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "dismissed export")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -965,9 +1063,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "compatibility failure")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 
@@ -1003,9 +1101,9 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ AES/,
+      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
-    await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
+    await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "stale compatibility")
     await user.click(screen.getByRole("button", { name: "Encrypt" }))
 

@@ -69,12 +69,11 @@ describe("random ids, feature detection, and env parsing", () => {
 
   it("strictly parses active booleans and integers", () => {
     const parsed = parseAppEnv({
-      VITE_DEFAULT_ALGORITHM: "MLKEM1024_A256GCM",
-      VITE_ENABLE_ECDH: "true",
+      VITE_DEFAULT_ALGORITHM: "MLKEM1024_MLDSA87_A256GCM",
       VITE_QR_RENDER_SIZE: "640",
       VITE_AUTO_CLEAR_SECONDS: "0",
     })
-    expect(parsed.defaultAlgorithm).toBe("MLKEM1024_A256GCM")
+    expect(parsed.defaultAlgorithm).toBe("MLKEM1024_MLDSA87_A256GCM")
     expect(parsed.qrRenderSize).toBe(640)
     expect(parsed.autoClearSeconds).toBe(0)
     expect(parsed.buildSha).toBe("development")

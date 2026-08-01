@@ -157,19 +157,17 @@
               </p>
             </article>
             <article class="lock lock--pq">
-              <p class="lock__name" data-i18n="locks.pq.name">ML-KEM-1024</p>
+              <p class="lock__name" data-i18n="locks.pq.name">ML-KEM-1024 + ML-DSA-87</p>
               <p class="lock__when" data-i18n="locks.pq.when">
                 For messages that must stay private for decades
               </p>
               <p class="lock__body" data-i18n="locks.pq.body">
-                A sufficiently capable quantum computer could break many of the public-key
-                mechanisms widely used for key exchange today. Because state intelligence
-                agencies are likely to remain at the forefront of practical cryptanalysis,
-                QR Crypt uses ML-KEM-1024 to prepare for future quantum attacks, including
-                attacks by state-level adversaries. It is intended for messages that
-                require long-term confidentiality against such highly capable attackers.
-                The trade-off is greater processing and data overhead, so each message is
-                split across multiple QR codes.
+                With ML-KEM-1024, the sender establishes a per-message shared secret using only
+                the recipient's public key — unlike a shared symmetric key, the secret that can
+                decrypt messages never has to be handed to the sender. On top of that, every
+                message carries an ML-DSA-87 signature, so the recipient can verify who sent it.
+                The trade-off is greater processing and data overhead, so each message is split
+                across multiple QR codes.
               </p>
             </article>
           </div>

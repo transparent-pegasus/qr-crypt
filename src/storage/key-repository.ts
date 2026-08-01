@@ -1,4 +1,5 @@
 // Key-record persistence. Validate per-kind invariants at the write boundary.
+import type { RotatedSymmetricKey } from "@/crypto/key-generation"
 import type { StoredKeyRecord } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { keyNameSchema, validateStoredKeyRecord } from "@/schemas/key-schema"
@@ -58,6 +59,59 @@ export async function getKeyRecord(id: string): Promise<StoredKeyRecord | undefi
   try {
     const value = await (await getDb()).get(STORE_KEYS, id)
     return value === undefined ? undefined : checkedRecord(value)
+  } catch (error) {
+    throw toAppError(error, "STORAGE_FAILED")
+  }
+}
+
+export async function getActiveKeyRecord(
+  id: string,
+): Promise<StoredKeyRecord | undefined> {
+  const record = await getKeyRecord(id)
+  return record?.status === "active" ? record : undefined
+}
+
+export async function saveSymmetricRotation(
+  rotated: RotatedSymmetricKey,
+): Promise<void> {
+  const next = checkedRecord(rotated.next)
+  const previous = checkedRecord(rotated.previous)
+  if (
+    next.status !== "active" ||
+    previous.status !== "rotated" ||
+    next.rotatedFromId !== previous.id ||
+    previous.rotatedAt === undefined ||
+    next.createdAt !== previous.rotatedAt
+  ) {
+    throw new AppError("STORAGE_FAILED")
+  }
+  try {
+    const database = await getDb()
+    const tx = database.transaction(STORE_KEYS, "readwrite")
+    try {
+      const persistedValue = await tx.store.get(previous.id)
+      const persisted =
+        persistedValue === undefined ? undefined : checkedRecord(persistedValue)
+      if (
+        persisted === undefined ||
+        persisted.id !== previous.id ||
+        persisted.status !== "active" ||
+        persisted.fingerprint !== previous.fingerprint
+      ) {
+        tx.abort()
+        throw new AppError("STORAGE_FAILED")
+      }
+      await tx.store.put(previous)
+      await tx.store.add(next)
+      await tx.done
+    } catch (error) {
+      try {
+        await tx.done
+      } catch {
+        // The transaction's request failure already carries the public error.
+      }
+      throw error
+    }
   } catch (error) {
     throw toAppError(error, "STORAGE_FAILED")
   }

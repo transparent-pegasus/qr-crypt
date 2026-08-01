@@ -3,8 +3,8 @@
 // build on this module.
 //
 // Policy:
-//   - OCM2/OCP2/OCS2/OCI2 are the single-payload representation (paste/file import)
-//     and the logical type.
+//   - OCM2/OCA2/OCK2/OCP2/OCS2/OCI2 are the single-payload representation
+//     (paste/file import) and the logical type.
 //   - Display always uses OCF2 (frameCount≥1). Frame chunks split raw artifact-CBOR
 //     bytes directly; re-encoding an inner string as base64url is prohibited.
 //   - OCB2 is reserved only: unconditionally rejected everywhere (never generate,
@@ -21,6 +21,8 @@ import {
 // artifactType ↔ prefix mapping; reusing v1 prefixes is prohibited.
 export const QR_PREFIX_V2 = {
   "pq-message": "OCM2:",
+  "sym-message": "OCA2:",
+  "symmetric-key": "OCK2:",
   "pq-kem-public-key": "OCP2:",
   "pq-dsa-public-key": "OCS2:",
   "pq-public-identity": "OCI2:",
@@ -42,7 +44,7 @@ export interface ClassifiedV2Payload {
   prefix: string
 }
 
-// Detect a v2 prefix. Return null for non-v2 input so the caller can delegate to the v1 path.
+// Detect a v2 prefix. Return null for unrecognized input so the caller can reject it.
 export function classifyV2Payload(text: string): ClassifiedV2Payload | null {
   for (const [kind, prefix] of Object.entries(QR_PREFIX_V2) as [
     V2PayloadKind,

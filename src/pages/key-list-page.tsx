@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toAppError } from "@/crypto/errors"
+import { groupSymmetricKeys } from "@/crypto/key-generation"
 import { formatDateTime } from "@/features/presentation"
 import { useKeys } from "@/hooks/use-keys"
 import { usePqRecords } from "@/hooks/use-pq-records"
@@ -68,6 +69,11 @@ interface IdentityGroup {
   previous: PostQuantumIdentity[]
 }
 
+interface SymmetricGroup {
+  head: StoredKeyRecord
+  previous: StoredKeyRecord[]
+}
+
 type OwnKeyFilter = "all" | "pq-identity" | "symmetric"
 
 type OwnKeyItem =
@@ -79,7 +85,7 @@ type OwnKeyItem =
   | {
       kind: "symmetric"
       createdAt: number
-      record: StoredKeyRecord
+      group: SymmetricGroup
     }
 
 function groupIdentities(identities: PostQuantumIdentity[]): IdentityGroup[] {
@@ -139,11 +145,11 @@ export function KeyListPage() {
   if (bundleDetailId !== null && !pqLoading && bundleDetail === null) {
     setBundleDetailId(null)
   }
-  const symmetricKeys = useMemo(
-    () => keys.filter((key) => key.kind === "symmetric"),
+  const identityGroups = useMemo(() => groupIdentities(identities), [identities])
+  const symmetricGroups = useMemo(
+    () => groupSymmetricKeys(keys),
     [keys],
   )
-  const identityGroups = useMemo(() => groupIdentities(identities), [identities])
   const ownKeyItems = useMemo<OwnKeyItem[]>(
     () =>
       [
@@ -154,15 +160,15 @@ export function KeyListPage() {
             group,
           }),
         ),
-        ...symmetricKeys.map(
-          (record): OwnKeyItem => ({
+        ...symmetricGroups.map(
+          (group): OwnKeyItem => ({
             kind: "symmetric",
-            createdAt: record.createdAt,
-            record,
+            createdAt: group.head.createdAt,
+            group,
           }),
         ),
       ].sort((left, right) => right.createdAt - left.createdAt),
-    [identityGroups, symmetricKeys],
+    [identityGroups, symmetricGroups],
   )
   const filteredOwnKeyItems = useMemo(
     () =>
@@ -180,18 +186,20 @@ export function KeyListPage() {
       target?.kind === "identity"
         ? identityGroups.find(({ head }) => head.id === target.id)
         : undefined
-    const symmetric =
+    const symmetricGroup =
       target?.kind === "symmetric"
-        ? symmetricKeys.find((record) => record.id === target.id)
+        ? symmetricGroups.find(({ head }) => head.id === target.id)
         : undefined
     const missing =
       (target?.kind === "identity" && !pqLoading && group === undefined) ||
-      (target?.kind === "symmetric" && !keysLoading && symmetric === undefined)
+      (target?.kind === "symmetric" &&
+        !keysLoading &&
+        symmetricGroup === undefined)
     return {
       selection: missing ? null : target,
       identity: group?.head,
       previous: group?.previous,
-      symmetric,
+      symmetric: symmetricGroup?.head,
     }
   }
   const listDetail = resolveDetail(selection)
@@ -373,26 +381,37 @@ export function KeyListPage() {
               )
             }
 
-            const { record } = item
+            const { head, previous } = item.group
             return (
               <button
-                key={record.id}
+                key={head.id}
                 type="button"
                 className="select-none touch-manipulation w-full cursor-pointer rounded-xl border bg-card p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2"
-                onClick={() => setSelection({ kind: "symmetric", id: record.id })}
+                onClick={() => setSelection({ kind: "symmetric", id: head.id })}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{record.name}</p>
+                    <p className="truncate font-medium">{head.name}</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {t("keyList.item.symmetricMeta", {
-                        datetime: formatDateTime(record.createdAt, language),
+                        datetime: formatDateTime(head.createdAt, language),
                       })}
                     </p>
                   </div>
-                  {/* Symmetric records carry no lifecycle state; the badge column is
-                      state everywhere, and the algorithm already shows in the meta line. */}
-                  <Badge>{t("keyStatus.active")}</Badge>
+                  <div className="max-w-[45%] shrink-0 text-right">
+                    <Badge
+                      variant={head.status === "active" ? "default" : "secondary"}
+                    >
+                      {t(`keyStatus.${head.status}`)}
+                    </Badge>
+                    {previous.length > 0 && (
+                      <p className="mt-1 text-xs font-medium text-destructive">
+                        {t("keyList.item.supersededWarning", {
+                          count: previous.length,
+                        })}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </button>
             )

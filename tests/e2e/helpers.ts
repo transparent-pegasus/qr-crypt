@@ -15,7 +15,9 @@ import {
 } from "@zxing/library"
 
 export const AES_ALGORITHM_LABEL = "Symmetric-key AES-256-GCM"
-export const SIGNED_PQ_ALGORITHM_LABEL = /Signed post-quantum/
+// Matched on the signature algorithm because the unsigned option, until it is
+// deleted, shares the leading words of this label.
+export const PQ_ALGORITHM_LABEL = /ML-DSA-87/
 const ONLINE_GATE_TIMEOUT_MS = 30_000
 const expectOnline = expect.configure({ timeout: ONLINE_GATE_TIMEOUT_MS })
 const SECOND_WORKER_WAVE_DELAY_MS = 10_000
@@ -42,9 +44,10 @@ export async function expectOnlineGate(page: Page): Promise<void> {
     ).toBeVisible(),
     expectOnline(
       page.getByText(
-        "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, or one structurally canonical OCM1 message, without using local keys.",
+        /clean origin may also relay canonical OCF2 frames.*pq-message.*sym-message.*without using local keys/,
       ),
     ).toBeVisible(),
+    expectOnline(page.getByText(/OCM1/)).toHaveCount(0),
     expectOnline(page.getByRole("img", { name: /app icon/ })).toBeVisible(),
     expectOnline(page.getByText("PWA installation status")).toBeVisible(),
     expectOnline(page.getByText("Offline-use readiness")).toBeVisible(),
@@ -66,9 +69,7 @@ export async function expectOfflineAcknowledgement(page: Page): Promise<void> {
   await expect(
     shell.getByText(/no way to encrypt messages with complete safety/),
   ).toBeVisible()
-  await expect(
-    shell.getByText(/does not guarantee complete safety/),
-  ).toBeVisible()
+  await expect(shell.getByText(/does not guarantee complete safety/)).toBeVisible()
   await expect(
     shell.getByText(/does not verify or restore the security of the device/),
   ).toBeVisible()
@@ -200,9 +201,7 @@ export async function goToOfflinePage(
   } as const
   await mainNavigation(page)
     .getByRole("link", {
-      name: new RegExp(
-        `^${escapeRegex(labels[path])}(?: current page)?$`,
-      ),
+      name: new RegExp(`^${escapeRegex(labels[path])}(?: current page)?$`),
     })
     .click()
   await expect(page).toHaveURL(new RegExp(`${escapeRegex(path)}$`))
@@ -336,7 +335,7 @@ export async function encryptWithStoredKey(
     keyName: string
     plaintext: string
   },
-): Promise<{ payload: string }> {
+): Promise<{ framePayload: string; payload: string }> {
   await goToOfflinePage(page, "/encrypt")
   await chooseOption(page, "Cryptographic algorithm", AES_ALGORITHM_LABEL)
   await chooseOption(page, "Key", args.keyName)
@@ -345,10 +344,29 @@ export async function encryptWithStoredKey(
 
   const result = page.getByRole("dialog", { name: "Encryption complete" })
   await expect(result).toBeVisible()
-  await expect(result.getByRole("img", { name: "Ciphertext QR image" })).toBeVisible()
-  const payload = (await result.locator("p").first().innerText()).trim()
-  expect(payload).toMatch(/^OCM1:/)
-  return { payload }
+  const qr = result.getByTestId("encrypt-result-qr")
+  const image = qr.getByRole("img", { name: "Ciphertext QR image" })
+  await expect(image).toHaveCount(1)
+  await expect(image).toBeVisible()
+  await expect(qr.getByRole("region", { name: /frame display$/ })).toHaveCount(0)
+  await expect(
+    qr.getByRole("button", { name: /^(?:Previous|Pause|Play|Next)$/ }),
+  ).toHaveCount(0)
+  await expect(qr.getByRole("switch", { name: "Compatibility mode" })).toHaveCount(0)
+  await expect(qr.getByText(/^\d+ \/ \d+$/)).toHaveCount(0)
+
+  await expect(image).toHaveAttribute("src", /^data:image\/png;base64,/)
+  const source = await image.getAttribute("src")
+  if (source === null) throw new Error("Ciphertext QR image has no source")
+  const framePayload = decodePng(Buffer.from(source.split(",", 2)[1]!, "base64"))
+  expect(framePayload).toMatch(/^OCF2:/)
+
+  const payload = (
+    await result.getByTestId("encrypt-result-payload").locator("p").first().innerText()
+  ).trim()
+  expect(payload).toMatch(/^OCA2:/)
+  expect(Number.parseInt(await detailValue(result, "QR frame count"), 10)).toBe(1)
+  return { framePayload, payload }
 }
 
 export async function encryptSignedPq(
@@ -356,7 +374,7 @@ export async function encryptSignedPq(
   args: { identityName: string; plaintext: string },
 ): Promise<{ payload: string; result: Locator }> {
   await goToOfflinePage(page, "/encrypt")
-  await chooseOption(page, "Cryptographic algorithm", SIGNED_PQ_ALGORITHM_LABEL)
+  await chooseOption(page, "Cryptographic algorithm", PQ_ALGORITHM_LABEL)
   await chooseOption(page, "Recipient ML-KEM public key", /^Verified: /)
   await chooseOption(page, "My ML-DSA signing identity", args.identityName)
   await page.getByLabel("Plaintext", { exact: true }).fill(args.plaintext)
@@ -844,8 +862,7 @@ export async function expectStableTrailingDialogClose(
       closeAtTop.right > contentAtTop.left &&
       closeAtTop.top < contentAtTop.bottom &&
       closeAtTop.bottom > contentAtTop.top
-    const contentAtBottom =
-      lastContent === null ? scrollAtBottom : rectOf(lastContent)
+    const contentAtBottom = lastContent === null ? scrollAtBottom : rectOf(lastContent)
     const closeOverlapsBodyAtBottom =
       closeAtBottom.left < contentAtBottom.right &&
       closeAtBottom.right > contentAtBottom.left &&
@@ -891,9 +908,7 @@ export async function expectStableTrailingDialogClose(
   }
   // An absolute close sits over the padded tail of the scroll body rather than
   // below it, so bottom-alignment is asserted against the dialog, not the body.
-  expect(metrics.closeAtTop.bottom).toBeLessThanOrEqual(
-    metrics.dialogAtTop.bottom + 0.5,
-  )
+  expect(metrics.closeAtTop.bottom).toBeLessThanOrEqual(metrics.dialogAtTop.bottom + 0.5)
   expect(metrics.closeAtTop.right).toBeGreaterThan(
     metrics.dialogAtTop.left + metrics.dialogAtTop.width / 2,
   )

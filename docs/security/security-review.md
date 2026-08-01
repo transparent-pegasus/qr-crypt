@@ -3,30 +3,36 @@
 This document is the **factual record** for the release completion condition
 "independent security review of the adopted libraries". Completion is judged in
 the following two categories. The current operational review scope is the
-maximum mainline, i.e. ML-KEM-1024 and ML-DSA-87 (unsigned and signed). The
-four `WireSuite` values are retained as a wire/codec contract, but balanced
-(768/65) is outside the active policy and is rejected at the operational
-boundary as `UNSUPPORTED_ALGORITHM`.
+single active post-quantum suite `ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM`
+(signing mandatory) plus the symmetric suite `HKDF-SHA256+A256GCM`
+(`sym-message` / `symmetric-key`). Removed vocabulary (unsigned suites,
+ML-KEM-768 / ML-DSA-65 / `balanced`, v1 prefixes, RSA) is absent from active
+domain unions, writes, and cryptographic and wire dispatch — there is no
+retained four-suite wire/codec contract. Boot alone keeps a read-only
+`RSA-HYBRID` preference exception so an old stored value cannot make
+`wipeOnOnline=false` unreadable; repository normalization replaces it with
+`A256GCM`, and no RSA operation remains.
 
 - **implementation-complete**: The state in which the in-repository
   implementation, tests, and documentation are complete. It can be reached with
   all of the following in-repository conditions satisfied while this document
   still records "independent third-party audit: not performed".
-  - The maximum identity, Worker, encryption, decryption, storage, and
-    OCP2/OCS2/OCF2 paths pass composition/integration/UI tests.
-  - `tests/pq/maximum-policy-boundaries.test.ts`, the Worker integration tests,
-    and the import negative tests reject the balanced/768 family with
-    `UNSUPPORTED_ALGORITHM` before any cryptographic processing.
-  - The settings negative/migration tests reject update injection of legacy
-    algorithms and of balanced; legacy preferences are normalized on read to
-    maximum while preserving `wipeOnOnline=false`.
+  - The maximum identity, Worker, encryption, decryption, storage,
+    OCP2/OCS2/OCF2, and OCA2/OCK2 paths pass composition/integration/UI tests.
+  - Negative tests reject removed vocabulary (v1 prefixes, unsigned suite
+    strings, 768/65, `balanced`) before any cryptographic processing.
+  - Boot can read the retired `RSA-HYBRID` algorithm solely to preserve an old
+    `wipeOnOnline=false`, after which the repository returns the active
+    `A256GCM` default. Removed `defaultPqProfile` and `requireSignature` fields
+    are ignored and omitted rather than restored.
   - `tests/pq/maximum-artifact-size.golden.test.ts` pins the canonical CBOR raw
     byte counts in the table below, the OCF2 frame counts across the internal
     100–1,000B chunk set, both exact display preference pairs and the
     per-artifact effective density clamps, real EC-Q generation for every
     displayable frame, the 1,529-character
     worst-metadata payload at the 1,000B ceiling, and boundary agreement with
-    the env capacity guard.
+    the env capacity guard. `tests/pq/sym-envelope.golden.test.ts` pins the
+    sym-message overhead (174 B) and plaintext ceiling (810 B).
   - The ML-KEM-1024 / ML-DSA-87 KATs and `aube run test` /
     `aube run typecheck` pass, and the `aube run bench:pq` maximum reference
     figures plus the README and
@@ -44,17 +50,17 @@ fixture string):
 
 | artifact | canonical CBOR (bytes) | compatible-preference frames | default-preference frames |
 |---|---:|---:|---:|
-| unsigned empty / max | 1,887 / 121,894 | 19 / 122* | 2 / 122 |
 | signed empty / max | 6,613 / 126,619 | 67 / 127* | 7 / 127 |
 | OCI2 bundle | 4,402 | 45 | 5 |
 | OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 18 / 28 | 2 / 3 |
 | OCB2 reserved sizing fixture | 4,637 | 47 | 5 |
+| sym-message at plaintext ceiling | 1,000 (exactly one frame) | 1 | 1 |
 
 Plaintext ceilings are algorithm-specific; owners live in `src/lib/limits.ts`
-and the suite size tables beside them. Both post-quantum paths accept at most
-120,000 UTF-8 bytes. The single-QR A256GCM path uses a smaller pre-encryption
-ceiling derived from the v1 payload ceiling and the selected version-40 EC
-capacity.
+and the suite size tables beside them. The post-quantum path accepts at most
+120,000 UTF-8 bytes. The single-frame symmetric path
+(`sym-message` / `OCA2`) is capped at `MAX_SYM_PLAINTEXT_BYTES` = 810
+(`FRAME_CHUNK_MAX_BYTES` − `SYM_MESSAGE_OVERHEAD_BYTES` − `AES_GCM_TAG_BYTES`).
 
 Verified 2026-07-30: the labelled compatibility-switch contract (exact pairs,
 atomic write, per-artifact clamp, dwell-not-cadence) matches
@@ -87,29 +93,34 @@ frames serially, so its peak memory is bounded by roughly one 1024px raster
 rather than by 127 of them, but its ~7s wall clock on desktop implies a
 materially longer wait on a phone.
 
-Boot readability is append-only; non-exact historical pairs canonicalize to the
-default 1,000B/200ms pair before strict validation. Detail:
+Numeric generated-display boot readability is append-only; non-exact
+historical pairs canonicalize to the default 1,000B/200ms pair before strict
+validation. The read-only `RSA-HYBRID` boot exception independently protects
+the stored wipe flag and normalizes to `A256GCM`. Detail:
 [boot-and-reset-v2.md](../spec/boot-and-reset-v2.md) §2.
 
 Visible dismissal follows [threat-model.md](threat-model.md) (fingerprint
 confirmation is the documented non-dismissible exception).
 
-## 1. Facts About the Adopted Libraries (as of 2026-08-01)
+## 1. Facts About the Adopted Libraries (as of 2026-08-02)
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-08-01: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-08-02: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
 - Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-07-29): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
+- FIPS errata (§3 step 1, checked 2026-08-02): the current NIST FIPS 203
+  and FIPS 204 workbooks list prospective corrections that introduce no new
+  technical requirements (the FIPS 204 workbook was updated 2026-07-31). None
+  affects the active API or size table
 - **Not independently audited.** The audit status as of 0.6.1 is self-audit only (scope: everything)
 - **Side channels: as a JS implementation, constant-time execution is not guaranteed.** In particular, for the ML-KEM decaps implicit-rejection path, constant-time behavior under JS/JIT is explicitly documented and not guaranteed
 - APIs used by the active policy (verified against the actual 0.6.1 source):
   `ml_kem1024.keygen(seed64?)` / `.encapsulate(pk)` / `.decapsulate(ct, sk)`,
   `ml_dsa87.keygen(seed32?)` / `.sign(msg, sk, {context})` /
-  `.verify(sig, msg, pk, {context})`. The library also contains 768/65
-  implementations, but the active policy does not use them for cryptographic
-  processing
+  `.verify(sig, msg, pk, {context})`. The library may also ship 768/65
+  entry points; the application never calls them after the single-active
+  vocabulary purge
 
 ### zxing-wasm 3.1.2 (exact pin; camera QR reading, reader-only build)
 
@@ -137,7 +148,7 @@ confirmation is the documented non-dismissible exception).
   detect. Trust also continues to include the lockfile pin, npm provenance
   attestation, and recorded zxing-wasm SHA-256 rather than a zxing-wasm
   from-source rebuild
-- **Not independently audited**; no advisories at the pinned version as of 2026-08-01
+- **Not independently audited**; no advisories at the pinned version as of 2026-08-02
 - Consequence for CSP: live `script-src` / `'wasm-unsafe-eval'` facts are owned
   by [threat-model.md](threat-model.md) §2
 - Attacker-controlled camera pixels now reach a C++/Emscripten parser. See
@@ -203,18 +214,18 @@ They do not close the external `release-approved` blocker.
   is refused as `MESSAGE_ID_REUSED`. The map is not shared with other tabs or
   windows. Reload/restart resets it; `clearReceipts` also runs from the wipe
   coordinator's buffer-drop step and the boot controller's transient-clear path.
-  Nothing frame-derived is persisted: the §1 / T11 / T19 / clean-origin boot-gate
-  invariant is unchanged. Receipt identity and verdict rules:
-  [threat-model.md](threat-model.md) §5.
+  Nothing frame- or assembled-artifact-derived is persisted: the §1 / T11 / T19 /
+  clean-origin boot-gate invariant is unchanged. Receipt identity and verdict
+  rules: [threat-model.md](threat-model.md) §5.
 - **Deferred / open security-design decision — persistent cross-session replay
-  detection:** implementing it requires relaxing the no-frame-derived-persistence
-  invariant, device-keyed opaque tags instead of a public ciphertext hash,
-  `receivedMessages` ownership in `readBootDecision`
-  (`src/app/boot/boot-controller.ts`), and matching changes to
-  `docs/spec/boot-and-reset-v2.md` (§2 sensitive-store scan, ~48–57). Not
+  detection:** implementing it requires relaxing the
+  no-frame-or-artifact-derived-persistence invariant, device-keyed opaque tags
+  instead of a public ciphertext hash, `receivedMessages` ownership in
+  `readBootDecision` (`src/app/boot/boot-controller.ts`), and matching changes
+  to `docs/spec/boot-and-reset-v2.md` (§2 sensitive-store scan, ~48–57). Not
   implemented here.
 - **Also deferred:** conversation IDs, monotonic sequence numbers, hash chains,
-  and adding a message ID to the AES v1 format (all wire-format changes).
+  and adding an inner message ID to `sym-message` (all wire-format changes).
 
 ### F-03 — Imported-bundle key-ID shadowing
 
@@ -254,27 +265,28 @@ guaranteed; JS memory erasure has limits
      static GET carry a payload field in its query.
    - **Negative matrix after capture / copy / paste / playback / rejection /
      close / `pagehide` / timeout:** a unique relay payload marker and a
-     marker from each sender-controlled OCM1 field plus the refused OCK1 key
-     bytes are absent from request URLs including query names and values,
-     request header names and values, request bodies, every IndexedDB
-     database's schema names — database, object-store and index names and key
-     paths — as well as its keys/values, CacheStorage metadata/bodies (static
-     shell permitted), localStorage (only `{oc-theme, oc-lang,
-     oc-offline-ack-pending, oc-online-tab}`), console, `window.onerror` /
-     unhandled rejections, visible error text, `document.title`,
-     `location.href`, and history state. **One marker set covers every sink**;
-     a request oracle that searches fewer markers than the storage oracle is
-     the hole this line exists to close. The byte-aware storage oracle's
-     self-test plants both a typed-array value marker and a marker that appears
-     only in an object-store name, and requires exactly those two matches.
+     marker from each sender-controlled `sym-message` / `pq-message` field plus
+     the refused `OCK2` / public-key artifact bytes are absent from request URLs
+     including query names and values, request header names and values, request
+     bodies, every IndexedDB database's schema names — database, object-store
+     and index names and key paths — as well as its keys/values, CacheStorage
+     metadata/bodies (static shell permitted), localStorage (only `{oc-theme,
+     oc-lang, oc-offline-ack-pending, oc-online-tab}`), console,
+     `window.onerror` / unhandled rejections, visible error text,
+     `document.title`, `location.href`, and history state. **One marker set
+     covers every sink**; a request oracle that searches fewer markers than the
+     storage oracle is the hole this line exists to close. The byte-aware
+     storage oracle's self-test plants both a typed-array value marker and a
+     marker that appears only in an object-store name, and requires exactly
+     those two matches.
    - **Window-realm receipts must never appear in IndexedDB, localStorage, or
      CacheStorage.** Receipts are intentional module-memory residue in one loaded
      app window only (`src/features/receipt-cache.ts`), not shared with other tabs
      or windows. Reload, transient clear, wipe, or oldest-first bounded eviction
      removes detection coverage. A change that persists them fails this gate: it
-     would store a frame- or OCM1-derived value, break the clean-origin boot
-     gate's "no frame- or OCM1-derived residue" premise, and contradict
-     `docs/security/threat-model.md` §1 / T11 / T19.
+     would store a frame- or assembled-artifact-derived value, break the
+     clean-origin boot gate's "no frame- or artifact-derived residue" premise,
+     and contradict `docs/security/threat-model.md` §1 / T11 / T19.
    - Errors use fixed i18n / `AppError` mappings — never interpolate raw
      input, frame metadata, `transferId`, hashes, or `caught.message`.
 5. Review the `aube-lock.yaml` diff (provenance maintained)
@@ -284,8 +296,8 @@ guaranteed; JS memory erasure has limits
 - Reviewing party (basis of independence) / review period
 - Target commit hash, build hash, `@noble/post-quantum` version, and transitive lock
 - Scope (the maximum-mainline libraries, the protocol design in
-  docs/spec/qr-protocol-v2.md, the application implementation, and the retained
-  4-suite wire/codec contract)
+  docs/spec/qr-protocol-v2.md, the application implementation, and the
+  single-active suite / `sym-message` / `symmetric-key` wire contract)
 - List of findings, fix commits, and re-verification results
 - FIPS errata check result
 

@@ -17,9 +17,9 @@ This table maps the target browser environments to the primary verification item
 | QR range-extension telemetry: actual decode cadence/duration, long tasks, sustained CPU/thermal behaviour, teardown latency, sender v40 render time, and post-downscale decoder dimensions | not yet measured | not yet measured | not yet measured | not yet measured | not yet measured |
 | Non-extractable CryptoKey persistence in IndexedDB (generate → close tab → restore → decrypt) | automated (e2e) | manual-pending | automated (e2e) | automated (e2e) | manual-pending |
 | Online relay: camera scan → text (getUserMedia start on explicit action only) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| Online relay: single-scan canonical OCM1 capture | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| Online relay: text → QR playback (verbatim OCF2 frame re-display, or one canonical OCM1 QR at EC Q/M/L) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
-| Online relay: canonical OCM1 playback at EC Q, M, and L fallback levels | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: single-frame OCF2 `sym-message` capture (one AES QR) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: text → QR playback (verbatim OCF2 frame re-display for `pq-message` or `sym-message` after assembled-artifact validation) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: reject non-message OCF2 outer types and bare `OC?2` / retired v1 prefixes | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: clipboard copy/paste (incl. CRLF intermediaries) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: session teardown on `pagehide` / BFCache restore (`pageshow` persisted) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: camera stop on close / background / eligibility loss | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
@@ -56,7 +56,11 @@ This table maps the target browser environments to the primary verification item
 
 ## v2 Post-Quantum On-Device Measurements (release gate)
 
-On-device measurement sheet. This sheet was originally drawn up for the balanced profile (ML-KEM-768 / ML-DSA-65); the active policy is now the **maximum** profile (ML-KEM-1024 / ML-DSA-87), and all release-gate measurements must be taken on the maximum profile. Values are entered manually. Cells that have not been measured are explicitly marked **not yet measured**.
+On-device measurement sheet for the sole active post-quantum profile
+(**maximum**: ML-KEM-1024 / ML-DSA-87). All release-gate measurements must be
+taken on that profile (plus the single-frame symmetric path where listed).
+Values are entered manually. Cells that have not been measured are explicitly
+marked **not yet measured**.
 
 **On-device measurements are a mandatory condition for `release-approved`.** Any measurement during which a timeout / crash / OOM / UI freeze occurs counts as a fail. `aube bench:pq` on Node is a reference value only and does not substitute for this table. The minimum release-gate targets are **Android Chrome** and **iOS Safari** (desktop results are recorded alongside).
 
@@ -175,17 +179,17 @@ Windows Chrome / macOS Safari / Edge, etc. Not a mandatory release-gate target, 
 
 ### Node reference bench (development machine, not a release gate)
 
-Values from a single run of `aube bench:pq` on 2026-07-26 (Vitest 4.1.10, Linux x86_64,
+Values from a single run of `aube bench:pq` on 2026-08-02 (Vitest 4.1.10, Linux x86_64,
 Intel Core i7-10870H). `hz` is operations per second; mean is the average milliseconds per
 operation.
 
 | Operation | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| ML-KEM-1024 keygen | 1,088.26 | 0.9189 | 1,047.13 | 0.9550 |
-| ML-KEM-1024 encapsulate | 979.24 | 1.0212 | 934.98 | 1.0695 |
-| ML-KEM-1024 decapsulate | 748.70 | 1.3356 | 729.28 | 1.3712 |
-| ML-DSA-87 sign | 88.5802 | 11.2892 | 77.1664 | 12.9590 |
-| ML-DSA-87 verify | 278.11 | 3.5957 | 270.07 | 3.7028 |
+| ML-KEM-1024 keygen | 1,112.27 | 0.8991 | 1,101.78 | 0.9076 |
+| ML-KEM-1024 encapsulate | 939.30 | 1.0646 | 901.83 | 1.1089 |
+| ML-KEM-1024 decapsulate | 762.52 | 1.3114 | 695.69 | 1.4374 |
+| ML-DSA-87 sign | 89.0465 | 11.2301 | 84.4185 | 11.8458 |
+| ML-DSA-87 verify | 290.79 | 3.4389 | 268.44 | 3.7252 |
 
 These are reference values from a development machine. They do not substitute for the
 on-device measurements above, nor for the `release-approved` determination.

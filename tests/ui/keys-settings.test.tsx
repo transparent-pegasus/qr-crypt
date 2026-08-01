@@ -10,16 +10,19 @@ vi.mock("@/lib/reload", () => ({ reloadApplication: vi.fn() }))
 import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
 import { translate } from "@/i18n/messages"
 import { reloadApplication } from "@/lib/reload"
+import { buildV2Payload } from "@/qr/payload-v2"
 import { resetDefaultBootControllerForTesting } from "@/app/boot/boot-controller"
 import type {
   DsaPublicKeyEnvelopeV2,
   KemPublicKeyEnvelopeV2,
   PublicIdentityBundleV2,
+  StoredKeyRecord,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"
 import {
   armMaintenanceToken,
+  buildSymmetricKeyEnvelopeV2,
   clearAllIdentities,
   clearAllKeys,
   confirmBundleFingerprint,
@@ -29,12 +32,19 @@ import {
   encodeDsaPublicKeyEnvelopeV2,
   encodeKemPublicKeyEnvelopeV2,
   encodePublicIdentityBundleV2,
+  encodeSymmetricKeyEnvelopeV2,
   fakeBundles,
   fakeIdentities,
   fakeKeys,
   fakePreferences,
+  decodeSymmetricKeyEnvelopeV2,
+  importSymmetricKeyRecordV2,
+  multipartPayload,
   renderQrDataUrl,
   saveBundle,
+  saveKeyRecord,
+  setNextMultipartArtifactBytes,
+  splitIntoFrames,
   startQrScan,
   updatePreferences,
 } from "./helpers/fakes"
@@ -43,6 +53,28 @@ import { renderApp, resetUi } from "./helpers/render-app"
 
 function en(key: Parameters<typeof translate>[1]): string {
   return translate("en", key)
+}
+
+function ock2SourceRecord(): StoredKeyRecord {
+  return {
+    ...fakeKeys[0]!,
+    id: "Y".repeat(22),
+    name: "OCK2 source key",
+    fingerprint: "ab".repeat(32),
+    status: "active",
+  }
+}
+
+async function prepareOck2Artifact(source: StoredKeyRecord): Promise<{
+  artifactBytes: Uint8Array
+  payload: string
+}> {
+  const envelope = await buildSymmetricKeyEnvelopeV2(source)
+  const artifactBytes = encodeSymmetricKeyEnvelopeV2(envelope)
+  return {
+    artifactBytes,
+    payload: buildV2Payload("symmetric-key", artifactBytes),
+  }
 }
 
 async function runResetAllLocalData(user: UserEvent): Promise<void> {
@@ -62,7 +94,6 @@ async function runResetAllLocalData(user: UserEvent): Promise<void> {
 describe("key management v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
-    env.requireSignature = false
     resetUi()
     // The terminal boot state is a module singleton; leaving it engaged would
     // make every later test in this file start from a dead application.
@@ -182,6 +213,9 @@ describe("key management v2", () => {
     let dialog = await screen.findByRole("dialog", { name: "全画面共通鍵" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
     dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
+    )
     const symmetricFullscreenTriggers = within(dialog).getAllByRole("button", {
       name: "View full screen",
     })
@@ -305,7 +339,7 @@ describe("key management v2", () => {
   })
 
   it("rejects a balanced OCI2 bundle before the fingerprint/import flow", async () => {
-    const legacyBundle: PublicIdentityBundleV2 = {
+    const legacyBundle = {
       version: 2,
       type: "pq-public-identity",
       identityId: "B".repeat(22),
@@ -320,7 +354,7 @@ describe("key management v2", () => {
         publicKey: new Uint8Array(1952),
       },
       createdAt: 1_700_000_000_000,
-    }
+    } as unknown as PublicIdentityBundleV2
     encodePublicIdentityBundleV2(legacyBundle)
     const user = userEvent.setup()
     await renderApp("/keys")
@@ -341,7 +375,7 @@ describe("key management v2", () => {
   })
 
   it("rejects balanced OCP2 and OCS2 single keys before exposing fingerprints", async () => {
-    const legacyKem: KemPublicKeyEnvelopeV2 = {
+    const legacyKem = {
       version: 2,
       type: "pq-kem-public-key",
       identityId: "B".repeat(22),
@@ -349,8 +383,8 @@ describe("key management v2", () => {
       keyId: "K".repeat(22),
       publicKey: new Uint8Array(1184),
       createdAt: 1_700_000_000_000,
-    }
-    const legacyDsa: DsaPublicKeyEnvelopeV2 = {
+    } as unknown as KemPublicKeyEnvelopeV2
+    const legacyDsa = {
       version: 2,
       type: "pq-dsa-public-key",
       identityId: "B".repeat(22),
@@ -358,7 +392,7 @@ describe("key management v2", () => {
       keyId: "S".repeat(22),
       publicKey: new Uint8Array(1952),
       createdAt: 1_700_000_000_000,
-    }
+    } as unknown as DsaPublicKeyEnvelopeV2
     const user = userEvent.setup()
     await renderApp("/keys")
     await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
@@ -383,7 +417,140 @@ describe("key management v2", () => {
     expect(screen.queryByText("A single key was read")).not.toBeInTheDocument()
   })
 
-  it("keeps single-frame OCK1 camera import behind a secret-key confirmation", async () => {
+  it("imports a shared OCK2 frame through multipart completion with the source fingerprint", async () => {
+    const user = userEvent.setup()
+    const source = ock2SourceRecord()
+    fakeKeys[0] = source
+    await renderApp("/keys")
+
+    await user.click(await screen.findByText(source.name))
+    let dialog = await screen.findByRole("dialog", { name: source.name })
+    await user.click(
+      within(dialog).getByRole("button", { name: "Show secret-key QR" }),
+    )
+    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
+    )
+    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledOnce())
+    const sharedArtifactBytes =
+      splitIntoFrames.mock.calls[0]![0].artifactBytes.slice()
+    expect(splitIntoFrames.mock.calls[0]![0]).toMatchObject({
+      artifactType: "symmetric-key",
+    })
+    await user.click(
+      within(dialog).getByRole("button", { name: "Back to details" }),
+    )
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+
+    fakeKeys.splice(0)
+    await user.click(screen.getByRole("tab", { name: "Other parties' keys" }))
+    await user.click(screen.getByRole("button", { name: "Scan a key QR" }))
+    setNextMultipartArtifactBytes(sharedArtifactBytes)
+    await user.click(screen.getByRole("button", { name: "Scan a key QR code" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalled())
+    await act(async () =>
+      emitScannedPayload(
+        multipartPayload("ock2-import", 0, 1, "symmetric-key"),
+      ),
+    )
+
+    dialog = await screen.findByRole("dialog", { name: "Import a symmetric key" })
+    await user.click(
+      within(dialog).getByRole("checkbox", {
+        name: "I trust the channel used to share this key",
+      }),
+    )
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save the symmetric key" }),
+    )
+
+    await waitFor(() => expect(fakeKeys).toHaveLength(1))
+    expect(fakeKeys[0]?.fingerprint).toBe(source.fingerprint)
+    expect(decodeSymmetricKeyEnvelopeV2).toHaveBeenCalledWith(sharedArtifactBytes)
+    expect(importSymmetricKeyRecordV2).toHaveBeenCalledOnce()
+    expect(saveKeyRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ fingerprint: source.fingerprint }),
+    )
+  })
+
+  it("imports a pasted bare OCK2 payload with the source fingerprint", async () => {
+    const user = userEvent.setup()
+    const source = ock2SourceRecord()
+    const { payload } = await prepareOck2Artifact(source)
+    fakeKeys.splice(0)
+    await renderApp("/keys")
+    await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
+    await user.click(screen.getByRole("button", { name: "Scan a key QR" }))
+
+    fireEvent.change(screen.getByLabelText("Key payload"), {
+      target: { value: payload },
+    })
+    await user.click(screen.getByRole("button", { name: "Read the key" }))
+    const dialog = await screen.findByRole("dialog", {
+      name: "Import a symmetric key",
+    })
+    await user.click(
+      within(dialog).getByRole("checkbox", {
+        name: "I trust the channel used to share this key",
+      }),
+    )
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save the symmetric key" }),
+    )
+
+    await waitFor(() => expect(fakeKeys).toHaveLength(1))
+    expect(payload).toMatch(/^OCK2:/)
+    expect(fakeKeys[0]?.fingerprint).toBe(source.fingerprint)
+    expect(importSymmetricKeyRecordV2).toHaveBeenCalledOnce()
+    expect(saveKeyRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ fingerprint: source.fingerprint }),
+    )
+  })
+
+  it("rejects a trailing-byte non-canonical OCK2 on paste and multipart without storing it", async () => {
+    const user = userEvent.setup()
+    const source = ock2SourceRecord()
+    const { artifactBytes } = await prepareOck2Artifact(source)
+    const nonCanonicalBytes = new Uint8Array(artifactBytes.byteLength + 1)
+    nonCanonicalBytes.set(artifactBytes)
+    const payload = buildV2Payload("symmetric-key", nonCanonicalBytes)
+    fakeKeys.splice(0)
+    await renderApp("/keys")
+    await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
+    await user.click(screen.getByRole("button", { name: "Scan a key QR" }))
+
+    fireEvent.change(screen.getByLabelText("Key payload"), {
+      target: { value: payload },
+    })
+    await user.click(screen.getByRole("button", { name: "Read the key" }))
+    expect(await screen.findByText(en("errors.INVALID_QR_PAYLOAD"))).toBeInTheDocument()
+    expect(fakeKeys).toHaveLength(0)
+    expect(saveKeyRecord).not.toHaveBeenCalled()
+
+    decodeSymmetricKeyEnvelopeV2.mockClear()
+    setNextMultipartArtifactBytes(nonCanonicalBytes)
+    await user.click(screen.getByRole("button", { name: "Scan a key QR code" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalled())
+    await act(async () =>
+      emitScannedPayload(
+        multipartPayload("ock2-invalid", 0, 1, "symmetric-key"),
+      ),
+    )
+
+    const scanner = await screen.findByRole("dialog", {
+      name: "Scan a key QR code",
+    })
+    expect(
+      await within(scanner).findByText(en("errors.INVALID_QR_PAYLOAD")),
+    ).toBeInTheDocument()
+    expect(decodeSymmetricKeyEnvelopeV2).toHaveBeenCalledWith(nonCanonicalBytes)
+    expect(importSymmetricKeyRecordV2).not.toHaveBeenCalled()
+    expect(saveKeyRecord).not.toHaveBeenCalled()
+    expect(fakeKeys).toHaveLength(0)
+  })
+
+  it("rejects a retired OCK1 payload at the multipart camera boundary", async () => {
     const user = userEvent.setup()
     const originalCount = fakeKeys.length
     await renderApp("/keys")
@@ -394,23 +561,22 @@ describe("key management v2", () => {
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     await act(async () => emitScannedPayload("OCK1:imported-key-000001"))
 
-    const dialog = await screen.findByRole("dialog", { name: "Import a symmetric key" })
-    const save = within(dialog).getByRole("button", { name: "Save the symmetric key" })
-    expect(save).toBeDisabled()
-    await user.click(
-      within(dialog).getByRole("checkbox", {
-        name: "I trust the channel used to share this key",
-      }),
-    )
-    await user.click(save)
-    await waitFor(() => expect(fakeKeys).toHaveLength(originalCount + 1))
+    expect(
+      await screen.findByText(
+        "This QR code is not accepted (Not from this app). This screen can scan multi-frame QR.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "Import a symmetric key" }),
+    ).not.toBeInTheDocument()
+    expect(importSymmetricKeyRecordV2).not.toHaveBeenCalled()
+    expect(fakeKeys).toHaveLength(originalCount)
   })
 })
 
 describe("settings v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
-    env.requireSignature = false
     resetUi()
     // The terminal boot state is a module singleton; leaving it engaged would
     // make every later test in this file start from a dead application.
@@ -505,24 +671,31 @@ describe("settings v2", () => {
     expect(screen.getByText(deleteError)).toBeInTheDocument()
   })
 
-  it("enforces the environment signature floor", async () => {
-    env.requireSignature = true
-    fakePreferences.requireSignature = true
+  it("offers neither retired post-quantum preference control", async () => {
     await renderApp("/settings")
-    const signature = await screen.findByRole("switch", { name: "Require a signature" })
-    expect(signature).toBeChecked()
-    expect(signature).toBeDisabled()
+    await screen.findByLabelText("Default cryptographic algorithm")
     expect(
-      screen.getByText(
-        /cannot be disabled because it is required by the environment configuration/,
-      ),
-    ).toBeInTheDocument()
-    await userEvent
-      .setup()
-      .click(screen.getByLabelText("Default cryptographic algorithm"))
-    expect(
-      screen.queryByRole("option", { name: /^Post-quantum ML-KEM/ }),
+      screen.queryByRole("combobox", { name: /post-quantum profile/iu }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("switch", { name: "Require a signature" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("offers only symmetric and signed post-quantum algorithms", async () => {
+    const user = userEvent.setup()
+    await renderApp("/settings")
+    const algorithm = await screen.findByLabelText("Default cryptographic algorithm")
+    await user.click(algorithm)
+    expect(
+      screen.queryByRole("option", {
+        name: "Post-quantum ML-KEM-1024 + AES-256-GCM",
+      }),
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Symmetric-key AES-256-GCM",
+      "Post-quantum ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
+    ])
   })
 
   it("switches the settings language and persists the selection", async () => {

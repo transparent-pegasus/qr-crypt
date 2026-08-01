@@ -17,13 +17,13 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-07-30 # last revision of this registry itself
+updated: 2026-08-02 # last revision of this registry itself
 
 units:
   - id: deps
     category: dependencies
     cadence_days: 14
-    last_checked: 2026-07-27
+    last_checked: 2026-08-02
     files:
       - package.json
       - aube-lock.yaml
@@ -57,9 +57,10 @@ units:
     sync: [threat-model, security-review]
 
   - id: crypto-noble
+    # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     category: crypto
     cadence_days: 90 # also triggered by any @noble/post-quantum advisory/release
-    last_checked: 2026-08-01
+    last_checked: 2026-08-02
     files:
       - package.json # "@noble/post-quantum" exact pin
       - aube-lock.yaml # frozen graph must move with the pin
@@ -80,7 +81,7 @@ units:
     verify: aube audit && aube run test:pq && aube run test:pq-vectors && aube run bench:pq
     constraint: >
       Never bump the pin without KAT (test:pq-vectors) and golden passes.
-      Size tables are append-only: retired profiles keep their rows.
+      Size tables are active-only: retired algorithms and profiles have no rows.
     sync: [security-review, threat-model, ui-security-copy, readme]
 
   - id: toolchain
@@ -176,7 +177,7 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-08-01
+    last_checked: 2026-08-02
     files:
       - docs/security/threat-model.md
       - src/crypto/pq/canonical-cbor.ts # structural allocation caps and retained-key behavior cited by T20
@@ -193,7 +194,9 @@ units:
       Re-run aube audit; refresh §5.1 advisory status for the pinned deps.
       Reconcile threat/mitigation entries (T14/T15 algorithm names) with the
       active policy in src/crypto/pq/suites.ts and boot behavior in
-      src/app/boot/. Reconcile T5's scanner bounds with qr/camera/frame-pump.ts
+      src/app/boot/, including the read-only RSA-HYBRID preference exception
+      that protects wipeOnOnline=false while repository normalization removes
+      it. Reconcile T5's scanner bounds with qr/camera/frame-pump.ts
       — decode.ts is now a thin facade and holds none of them — and T20's
       frame/paste allocation and CBOR caps with limits.ts, payload-v2.ts,
       assemble.ts, and canonical-cbor.ts. Re-check the §5 session-memory
@@ -211,7 +214,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-08-01
+    last_checked: 2026-08-02
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
@@ -301,10 +304,9 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-08-01
+    last_checked: 2026-08-02
     files:
       - docs/spec/qr-protocol-v2.md
-      - docs/spec/qr-protocol.md # v1 A256GCM path; must not regrow retired RSA sections
       - docs/spec/boot-and-reset-v2.md
       - src/crypto/pq/wire-bytes.ts # mirrors documented wire layout
       - src/crypto/pq/canonical-cbor.ts # mirrors documented canonical encoding
@@ -322,10 +324,11 @@ units:
       - src/components/key-detail/identity-qr-session.tsx # the identity display surface that consumes the pair
       - src/components/animated-qr-frames.tsx # labelled compatibility switch, commit-gated dwell, and one-button export
       - src/components/online-relay.tsx # independent replay cadence and deliberately absent switch
-      - src/qr/relay-frames.ts # two-kind validation, session binding, and canonical relay boundary
-      - tests/fixtures/relay-v1.ts # production-generated canonical v1 relay literals
+      - src/qr/relay-frames.ts # two-message allowlist, session binding, and assembled-artifact validation
+      - tests/fixtures/relay-legacy.ts # retired OCM1 strings retained only as rejection fixtures
       - tests/unit/relay-frames.test.ts # parser contract and node-environment fixture pins
-      - tests/ui/online-relay.test.tsx # jsdom relay behavior using the pinned literals
+      - tests/ui/online-relay.test.tsx # jsdom relay behavior and rejection boundaries
+      - tests/pq/sym-envelope.golden.test.ts # frozen sym envelope, AAD, HKDF info, and size boundary
       - tests/pq/wire-bytes.golden.test.ts # frozen hex must match the docs
       - tests/pq/canonical-cbor.golden.test.ts
       - tests/pq/composition-golden.test.ts
@@ -344,27 +347,31 @@ units:
       preferences-repository.ts, encrypt-page.tsx, decrypt-page.tsx,
       generated-display.ts, key-detail-dialog.tsx,
       key-detail/identity-qr-session.tsx,
-      animated-qr-frames.tsx, and online-relay.tsx. Confirm the
-      qr-protocol.md §7 size column still names VITE_QR_RENDER_SIZE rather
-      than a copied pixel value, and that qr-display.tsx still requires the
-      size prop so no surface can render off that contract. Confirm the
+      animated-qr-frames.tsx, and online-relay.tsx. Reconcile the documented
+      sym-message/symmetric-key layouts, prefixes, HKDF inputs, byte bounds,
+      and single-frame rule with sym-envelope.golden.test.ts. Confirm the relay
+      allowlist and completed-set assembled-artifact validation match
+      relay-frames.ts and its unit/UI tests. Confirm qr-display.tsx still
+      requires the size prop so no surface can render off that contract. Confirm the
       qr-protocol-v2.md messageId note (~169–170) still states the wire format
       is not a replay-prevention mechanism while documenting the receiving
       session-memory receipt keyed by it, and that the clarification matches
       src/features/receipt-cache.ts (no wire change). Diff
       boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
-      and wipe coordinator behavior (including clearReceipts in the buffer-drop
-      inventory). Update dated statements to current state.
+      and wipe coordinator behavior, including the read-only RSA-HYBRID boot
+      exception and clearReceipts in the buffer-drop inventory. Update dated
+      statements to current state.
     verify: aube run test:pq && aube run test -- tests/ui/boot-controller.test.tsx
 
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-08-01
+    last_checked: 2026-08-02
     files:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
       - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
       - src/lib/frame-interval.ts # preference/relay dwell set and append-only boot range
+      - tests/pq/sym-envelope.golden.test.ts # sym overhead, plaintext ceiling, and single-frame boundary
       - tests/pq/maximum-artifact-size.golden.test.ts # preference-pair / effective-clamp / boundary fixtures
       - src/schemas/env-schema.ts # PQ ceiling and golden maximum-artifact guard
       - .env.prod # runtime crypto/framing contract
@@ -402,7 +409,7 @@ units:
   - id: acvp-vectors
     category: crypto
     cadence_days: 90
-    last_checked: 2026-07-24
+    last_checked: 2026-08-02
     files:
       - tests/pq-vectors/acvp-fixtures.ts # pinned upstream commit
       - tests/pq-vectors/acvp-kat.test.ts
@@ -423,7 +430,7 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-08-01
+    last_checked: 2026-08-02
     files:
       - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
@@ -452,7 +459,7 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-08-01
+    last_checked: 2026-08-02
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together
@@ -496,7 +503,7 @@ units:
   - id: external-links
     category: links
     cadence_days: 180
-    last_checked: 2026-07-28
+    last_checked: 2026-08-02
     files:
       - components.json # https://ui.shadcn.com/schema.json
       - design-system/PROVENANCE.md # plugin path/version provenance
@@ -524,73 +531,107 @@ units:
 invariants:
   # Check-only guards. A sweep VERIFIES these; it must never "update" them
   # in the name of freshness. Violations are release blockers.
-  - id: boot-allowlist-append-only
+  # boot-allowlist-append-only is split: numeric display history and the
+  # read-only RSA-HYBRID safety exception are guarded independently below.
+  # Other retired crypto/profile vocabulary is gone from active boundaries.
+  # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
+  - id: display-preference-reads-append-only
     files:
       - src/app/boot/boot-controller.ts
       - src/lib/frame-bytes.ts
       - src/lib/frame-interval.ts
       - src/storage/preferences-repository.ts
     rule: >
-      The boot read-allowlist (algorithms incl. legacy RSA-HYBRID/MLKEM768_*,
-      profiles ["balanced","maximum"], and numeric density/interval contracts)
-      is APPEND-ONLY. Every admitted density value (100–1,000B in 100B steps)
-      and interval value (200–1,000ms in 100ms steps plus 2,000ms) must be
-      boot-readable, as must every historical density integer 100–900 and
-      interval integer 150–2,000 together with 2,500/3,000. The repository
-      must preserve the exact 1000B/200ms default and 100B/2000ms compatible
-      pairs, and canonicalize every other boot-readable historical
-      combination (including a missing member) to the default pair before
-      strict preference validation. Per-field historical normalizers remain
-      present, current preference patches supply both members of one exact
-      pair, environment writes remain strict, and per-artifact effective
-      clamps are never persisted. Dropping an old id/value, narrowing a read
-      range, or losing this pair canonicalization makes stored preferences
-      unreadable → preferencesReadFailed → wipeOnOnline forced true → a later
-      network-confirmed contact can wipe user data.
+      The boot read-allowlist for numeric display preferences is APPEND-ONLY.
+      Every admitted density value (100–1,000B in 100B steps) and interval
+      value (200–1,000ms in 100ms steps plus 2,000ms) must be boot-readable,
+      as must every historical density integer 100–900 and interval integer
+      150–2,000 together with 2,500/3,000. The repository must preserve the
+      exact 1000B/200ms default and 100B/2000ms compatible pairs, and
+      canonicalize every other boot-readable historical combination
+      (including a missing member) to the default pair before strict
+      preference validation. Per-field historical normalizers remain present,
+      current preference patches supply both members of one exact pair,
+      environment writes remain strict, and per-artifact effective clamps are
+      never persisted. Dropping an old value, narrowing a read range, or
+      losing this pair canonicalization makes stored preferences unreadable →
+      preferencesReadFailed → wipeOnOnline forced true → a later
+      network-confirmed contact can wipe user data. Algorithm and profile ids
+      are governed separately by boot-retired-rsa-read-safety,
+      vocabulary-single-active, and removed-vocabulary-rejected.
     verify: >
       aube run test -- tests/unit/qr-density-safety.test.ts
       tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx
-  - id: vocabulary-append-only
+  - id: boot-retired-rsa-read-safety
+    files:
+      - src/app/boot/boot-controller.ts
+      - src/storage/preferences-repository.ts
+      - tests/integration/storage.test.ts
+    rule: >
+      Boot's stored-preference read allowlist retains RSA-HYBRID solely so an
+      old preference row cannot become unreadable, force wipeOnOnline=true,
+      and expose protected data to a later network-confirmed wipe. The normal
+      repository must discard that identifier and return the active A256GCM
+      default while preserving an explicitly stored wipeOnOnline=false. No
+      active domain union, preference write, cryptographic dispatch, or wire
+      contract may restore RSA.
+    verify: aube run test -- tests/integration/storage.test.ts
+  - id: vocabulary-single-active
+    # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     files:
       - src/schemas/domain.ts
     rule: >
-      PQ_PROFILE_IDS, algorithm ids, and WIRE_SUITES hold the full historical
-      vocabulary. Append new ids; never remove old ones while stored rows or
-      wire payloads can still carry them.
+      ML_KEM_ALGORITHMS, ML_DSA_ALGORITHMS, PQ_PROFILE_IDS, WIRE_SUITES, and
+      SYM_SUITE contain only "ML-KEM-1024", "ML-DSA-87", "maximum",
+      "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM", and
+      "HKDF-SHA256+A256GCM", respectively. No removed identifier remains in
+      an active domain union.
     verify: aube run typecheck && aube run test:pq
   - id: wire-suite-mappings-retained
+    # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     files:
       - src/crypto/pq/suites.ts
     rule: >
-      resolveSuite/suiteComponents stay exhaustive over all WIRE_SUITES
-      (768/65 and 1024/87). Policy changes touch ACTIVE_PROFILE /
-      assertActiveSuite only.
+      resolveSuite("ML-KEM-1024", "ML-DSA-87") returns the single WIRE_SUITES
+      entry, and suiteComponents returns that same algorithm pair. No other
+      mapping is retained.
     verify: aube run test:pq -- tests/pq/maximum-policy-boundaries.test.ts
-  - id: legacy-read-normalization
+  # Legacy numeric display normalization lives here; the read-only RSA
+  # preference safety path is guarded independently above.
+  # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
+  - id: display-preference-normalization
     files:
       - src/storage/preferences-repository.ts
       - src/lib/frame-bytes.ts
       - src/lib/frame-interval.ts
     rule: >
-      normalizeLegacyStoredPreferences keeps recognizing historical stored
-      values (balanced, legacy algorithm strings, every historical density
-      integer 100–900, and interval integer 150–2,000 plus 2,500/3,000).
-      It preserves the two exact generated-display preference pairs and
-      canonicalizes every other boot-readable historical combination,
-      including either missing member, to the 1000B/200ms default before
-      validation, while retaining the per-field historical normalization
-      paths. The active profile and atomic preference-pair write allowlists
-      stay stricter than the boot read allowlists.
+      normalizeLegacyStoredPreferences keeps recognizing every historical
+      stored density integer 100–900 and interval integer 150–2,000 plus
+      2,500/3,000. It preserves the two exact generated-display preference
+      pairs and canonicalizes every other boot-readable historical
+      combination, including either missing member, to the 1000B/200ms
+      default before validation, while retaining the per-field historical
+      normalization paths. The atomic preference-pair write allowlist stays
+      stricter than the boot read allowlist.
     verify: >
       aube run test -- tests/unit/qr-density-safety.test.ts
       tests/integration/storage.test.ts
-  - id: retired-profile-negative-tests
+  - id: removed-vocabulary-rejected
+    # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     files:
       - tests/pq/maximum-policy-boundaries.test.ts
     rule: >
-      Negative coverage for balanced/768 rejection stays as long as the ids
-      exist in domain.ts; extend when new profiles retire, never delete.
-    verify: aube run test:pq -- tests/pq/maximum-policy-boundaries.test.ts
+      Active decoders, validators, imports, storage writes, and wire paths
+      reject the removed identifiers enumerated here: v1 prefixes,
+      ML-KEM-768, ML-DSA-65, balanced, and unsigned suite strings. Boot rejects
+      retired algorithm values it interprets except for the separate
+      read-only RSA-HYBRID safety exception; removed preference fields are
+      ignored as unknown and omitted by the repository. Negative tests retain
+      every applicable rejection path. RSA safety is governed by
+      boot-retired-rsa-read-safety.
+    verify: >
+      aube run test:pq -- tests/pq/maximum-policy-boundaries.test.ts &&
+      aube run test -- tests/unit/payload-qr.test.ts tests/unit/relay-frames.test.ts
   - id: reachability-sentinel-lockstep
     files:
       - public/reachability-sentinel.txt

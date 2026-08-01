@@ -1,6 +1,5 @@
 import { assertActiveProfile, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
-import type { PostQuantumIdentity } from "@/schemas/domain"
-import type { PqPublicBundleRecord } from "@/schemas/domain"
+import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
 
 export function assertUsableIdentity(identity: PostQuantumIdentity): void {
   assertActiveProfile(identity.profile)

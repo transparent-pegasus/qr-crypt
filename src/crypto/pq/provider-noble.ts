@@ -1,13 +1,13 @@
 // @noble/post-quantum 0.6.1 adapter. The dependency must remain exactly pinned.
-// noble API(0.6.1): ml_kem768/1024.keygen(seed64?) / .encapsulate(pk) /
-// .decapsulate(ct, sk), ml_dsa65/87.keygen(seed32?) / .sign(msg, sk, { context })
+// noble API(0.6.1): ml_kem1024.keygen(seed64?) / .encapsulate(pk) /
+// .decapsulate(ct, sk), ml_dsa87.keygen(seed32?) / .sign(msg, sk, { context })
 // / .verify(sig, msg, pk, { context }). Map context into opts.
 // Input and output lengths must match the constant table in profiles.ts; the adapter verifies them.
 import type { MlDsaProvider, MlKemProvider } from "@/crypto/pq/provider"
 import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
 import type { MlDsaAlgorithm, MlKemAlgorithm } from "@/schemas/domain"
-import { ml_kem768, ml_kem1024 } from "@noble/post-quantum/ml-kem.js"
-import { ml_dsa65, ml_dsa87 } from "@noble/post-quantum/ml-dsa.js"
+import { ml_kem1024 } from "@noble/post-quantum/ml-kem.js"
+import { ml_dsa87 } from "@noble/post-quantum/ml-dsa.js"
 
 interface NobleKem {
   keygen(seed?: Uint8Array): { publicKey: Uint8Array; secretKey: Uint8Array }
@@ -144,16 +144,8 @@ function createDsa(algorithm: MlDsaAlgorithm, noble: NobleDsa): MlDsaProvider {
   })
 }
 
-export function createNobleKem768(): MlKemProvider {
-  return createKem("ML-KEM-768", ml_kem768)
-}
-
 export function createNobleKem1024(): MlKemProvider {
   return createKem("ML-KEM-1024", ml_kem1024)
-}
-
-export function createNobleDsa65(): MlDsaProvider {
-  return createDsa("ML-DSA-65", ml_dsa65)
 }
 
 export function createNobleDsa87(): MlDsaProvider {

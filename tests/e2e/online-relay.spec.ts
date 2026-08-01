@@ -1,28 +1,19 @@
 import { expect, test, type Page, type Request } from "@playwright/test"
 import {
-  buildAad,
-  type AesMessageEnvelopeV1,
-  type SymmetricKeyEnvelopeV1,
-} from "@/crypto/envelope"
-import { toBase64Url } from "@/lib/base64url"
-import { Encoder } from "cbor-x"
-import {
-  collectAnimatedFramePayloads,
-  createPqIdentity,
+  createSymmetricKey,
   emitInjectedQr,
-  encryptSignedPq,
+  encryptWithStoredKey,
   expectStableTrailingDialogClose,
   injectedScanSnapshot,
   installInjectedDecoderStream,
   loadOnlineGate,
   openOfflineApp,
-  seedSelfPublicBundle,
 } from "./helpers"
 import {
   inspectPersistentSurfaces,
   type PersistenceNeedle,
 } from "./persistence-inspector"
-import { OCK1_SYMMETRIC_KEY } from "../fixtures/relay-v1"
+import { OCM1_MESSAGE_33 } from "../fixtures/relay-legacy"
 
 interface ObservedRequest {
   body: string | null
@@ -81,88 +72,6 @@ function expectAllowedRelayRequest(request: ObservedRequest): void {
         (url.pathname === "/index.html" || url.pathname === "/favicon.svg")),
     `Unexpected relay request: ${request.method} ${request.url}`,
   ).toBe(true)
-}
-
-const V1_KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
-const V1_CREATED_AT = 1_700_000_000_000
-const MESSAGE_CIPHERTEXT_FILL = 0x5a
-const MESSAGE_IV_BYTES = new Uint8Array(12).fill(0x22)
-const MESSAGE_CIPHERTEXT_BYTES = new Uint8Array(48).fill(
-  MESSAGE_CIPHERTEXT_FILL,
-)
-const MESSAGE_AAD_BYTES = buildAad({
-  v: 1,
-  type: "message",
-  algorithm: "A256GCM",
-  keyId: V1_KEY_ID,
-  createdAt: V1_CREATED_AT,
-})
-const SYMMETRIC_KEY_BYTES = new Uint8Array(32).fill(0x44)
-const fixtureEncoder = new Encoder({ useRecords: false, tagUint8Array: false })
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
-}
-
-// Importing @/qr/payload in Playwright's Node worker eagerly evaluates the
-// browser-only import.meta.env schema through @/lib/limits. Keep this fixture
-// encoder narrow and mirror the production field order. Accepted OCM1 reaches
-// the production decoder/re-encode boundary. OCK1 is refused by prefix before
-// decode, so its local output is anchored below to the production-generated
-// shared fixture instead of being treated as self-authenticating.
-function encodeEnvelopeToPayload(
-  envelope: AesMessageEnvelopeV1 | SymmetricKeyEnvelopeV1,
-): string {
-  const ordered =
-    envelope.type === "message"
-      ? {
-          v: envelope.v,
-          type: envelope.type,
-          algorithm: envelope.algorithm,
-          keyId: envelope.keyId,
-          createdAt: envelope.createdAt,
-          iv: envelope.iv,
-          ciphertext: envelope.ciphertext,
-          aad: envelope.aad,
-        }
-      : {
-          v: envelope.v,
-          type: envelope.type,
-          algorithm: envelope.algorithm,
-          keyId: envelope.keyId,
-          createdAt: envelope.createdAt,
-          key: envelope.key,
-        }
-  const prefix = envelope.type === "message" ? "OCM1:" : "OCK1:"
-  return `${prefix}${toBase64Url(fixtureEncoder.encode(ordered))}`
-}
-
-function messagePayload(): string {
-  return encodeEnvelopeToPayload({
-    v: 1,
-    type: "message",
-    algorithm: "A256GCM",
-    keyId: V1_KEY_ID,
-    createdAt: V1_CREATED_AT,
-    iv: MESSAGE_IV_BYTES,
-    ciphertext: MESSAGE_CIPHERTEXT_BYTES,
-    aad: MESSAGE_AAD_BYTES,
-  })
-}
-
-function symmetricKeyPayload(): string {
-  const encoded = encodeEnvelopeToPayload({
-    v: 1,
-    type: "symmetric-key",
-    algorithm: "A256GCM",
-    keyId: V1_KEY_ID,
-    createdAt: V1_CREATED_AT,
-    key: SYMMETRIC_KEY_BYTES,
-  })
-  if (encoded !== OCK1_SYMMETRIC_KEY) {
-    throw new Error("The local OCK1 encoder drifted from the production fixture")
-  }
-  return OCK1_SYMMETRIC_KEY
 }
 
 interface RelayPayloadMarker extends PersistenceNeedle {
@@ -278,9 +187,7 @@ test("the relay persistence oracle detects binary, schema-name, and cookie marke
             database.close()
             resolve()
           }
-          transaction
-            .objectStore(store)
-            .put(Uint8Array.from(bytes), "typed-array")
+          transaction.objectStore(store).put(Uint8Array.from(bytes), "typed-array")
         }
       }),
     { bytes: markerBytes, name: databaseName, store: storeName },
@@ -331,7 +238,7 @@ test("the relay persistence oracle detects binary, schema-name, and cookie marke
   }
 })
 
-test("relays canonical OCM1 messages and OCF2 frames without relay-payload persistence or requests", async ({
+test("relays a canonical sym-message frame without relay-payload persistence or requests", async ({
   baseURL,
   browser,
   context,
@@ -343,35 +250,24 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
     baseURL,
   })
   const source = await sourceContext.newPage()
-  let framePayloads: string[]
+  const symmetricKeyName = "relay-source-symmetric-key"
+  const symmetricPlaintext = "relay-e2e-symmetric-ciphertext-source"
+  let symmetricFramePayload: string
+  let bareSymmetricPayload: string
   try {
-    const identityName = "relay-source-identity"
     await openOfflineApp(source, sourceContext, "/keys")
-    await createPqIdentity(source, identityName)
-    await seedSelfPublicBundle(source, identityName)
-    const { result } = await encryptSignedPq(source, {
-      identityName,
-      plaintext: "relay-e2e-ciphertext-source",
+    await createSymmetricKey(source, symmetricKeyName)
+    const { framePayload, payload } = await encryptWithStoredKey(source, {
+      keyName: symmetricKeyName,
+      plaintext: symmetricPlaintext,
     })
-    framePayloads = await collectAnimatedFramePayloads(
-      result.getByRole("region", { name: "Ciphertext frame display" }),
-    )
+    symmetricFramePayload = framePayload
+    bareSymmetricPayload = payload
   } finally {
     await sourceContext.close()
   }
 
   const relayPayloadMarker = "RELAY_E2E_PAYLOAD_MARKER_7f9c2a"
-  const canonicalMessagePayload = messagePayload()
-  const canonicalSymmetricKeyPayload = symmetricKeyPayload()
-  const decodedMessageMarkers = [
-    V1_KEY_ID,
-    bytesToHex(new Uint8Array(8).fill(MESSAGE_CIPHERTEXT_FILL)),
-  ]
-  const rawKeyMarkers = [
-    new TextDecoder().decode(SYMMETRIC_KEY_BYTES),
-    bytesToHex(SYMMETRIC_KEY_BYTES.subarray(0, 8)),
-    Array.from(SYMMETRIC_KEY_BYTES.subarray(0, 8)).join(","),
-  ]
   const pendingRequestObservations: Promise<ObservedRequest>[] = []
   const consoleValues: string[] = []
   context.on("request", (request) =>
@@ -398,9 +294,7 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
     name: "Relay",
     exact: true,
   })
-  await expect(
-    page.getByRole("navigation", { name: "Online navigation" }),
-  ).toBeVisible()
+  await expect(page.getByRole("navigation", { name: "Online navigation" })).toBeVisible()
   await relayNavigationButton.click()
   const scanButton = page.getByRole("button", { name: "QR → text" })
   await scanButton.click()
@@ -417,55 +311,36 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
   await capture.getByRole("button", { name: "Start camera" }).click()
   await expect.poll(async () => (await injectedScanSnapshot(page)).length).toBe(1)
 
-  await emitInjectedQr(page, canonicalSymmetricKeyPayload)
-  const keyCaptureRejection = capture.getByText(
-    "Only canonical OCM1 message strings and canonical OCF2 frame strings are accepted.",
-  )
-  await expect(keyCaptureRejection).toBeVisible()
-  await expect(keyCaptureRejection).not.toContainText(canonicalSymmetricKeyPayload)
-  for (const rawKeyMarker of rawKeyMarkers) {
-    await expect(keyCaptureRejection).not.toContainText(rawKeyMarker)
-  }
+  await emitInjectedQr(page, OCM1_MESSAGE_33)
+  const legacyCaptureRejection = capture.getByText("Relay input rejected")
+  await expect(legacyCaptureRejection).toBeVisible()
+  await expect(legacyCaptureRejection).not.toContainText(OCM1_MESSAGE_33)
   await expect(capture.getByLabel("Relay text")).toHaveCount(0)
-  await expect(
-    capture.getByRole("button", { name: "Copy relay text" }),
-  ).toHaveCount(0)
+  await expect(capture.getByRole("button", { name: "Copy relay text" })).toHaveCount(0)
 
   await emitInjectedQr(page, `OCF2:${relayPayloadMarker}`)
   const fixedRejection = capture.getByText("The frame is not a canonical OCF2 frame.")
   await expect(fixedRejection).toBeVisible()
   await expect(fixedRejection).not.toContainText(relayPayloadMarker)
 
-  const shuffled = [
-    framePayloads.at(-1)!,
-    framePayloads[0]!,
-    framePayloads.at(-1)!,
-    ...framePayloads.slice(1, -1).reverse(),
-  ]
-  for (const framePayload of shuffled) {
-    await emitInjectedQr(page, framePayload)
-  }
-  const relayText = framePayloads.join("\n")
+  await emitInjectedQr(page, symmetricFramePayload)
+  const relayText = symmetricFramePayload
   await expect(capture.getByLabel("Relay text")).toHaveValue(relayText)
   await capture.getByRole("button", { name: "Copy relay text" }).click()
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(relayText)
   await capture.getByRole("button", { name: "Close" }).click()
 
   await scanButton.click()
   await expect(capture).toBeVisible()
   await capture.getByRole("button", { name: "Start camera" }).click()
   await expect.poll(async () => (await injectedScanSnapshot(page)).length).toBe(2)
-  await emitInjectedQr(page, canonicalMessagePayload)
-  await expect(capture.getByLabel("Relay text")).toHaveValue(
-    canonicalMessagePayload,
-  )
-  const messageCopyButton = capture.getByRole("button", {
-    name: "Copy relay text",
-  })
-  await expect(messageCopyButton).toBeEnabled()
-  await messageCopyButton.click()
-  await expect
-    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-    .toBe(canonicalMessagePayload)
+  await emitInjectedQr(page, bareSymmetricPayload)
+  const bareCaptureRejection = capture.getByText("Relay input rejected")
+  await expect(bareCaptureRejection).toBeVisible()
+  await expect(bareCaptureRejection).not.toContainText(bareSymmetricPayload)
+  await expect(capture.getByLabel("Relay text")).toHaveCount(0)
   await capture.getByRole("button", { name: "Close" }).click()
 
   await relayNavigationButton.click()
@@ -479,9 +354,7 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
   await expect(playback).toBeHidden()
   await playbackButton.click()
   await expect(playback).toBeVisible()
-  await playback
-    .getByLabel("Relay text")
-    .fill(`${framePayloads.slice().reverse().join("\r\n")}\r\n`)
+  await playback.getByLabel("Relay text").fill(`${relayText}\r\n`)
   await playback.getByRole("button", { name: "Show QR" }).click()
   await expect(
     playback.getByText("This relay provides no app file-download controls."),
@@ -489,16 +362,6 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
   for (const name of ["Export all PNGs", "Export ZIP", "Current SVG"]) {
     await expect(playback.getByRole("button", { name })).toHaveCount(0)
   }
-
-  const playbackInput = playback.getByLabel("Relay text")
-  await playbackInput.fill("")
-  await playbackInput.focus()
-  await page.keyboard.press("Control+V")
-  await expect(playbackInput).toHaveValue(canonicalMessagePayload)
-  await playback.getByRole("button", { name: "Show QR" }).click()
-  await expect(
-    playback.getByRole("img", { name: "Relayed OCM1 message image" }),
-  ).toHaveCount(1)
   await expect(playback.getByRole("img")).toHaveCount(1)
   await playback.getByRole("button", { name: "Close" }).click()
 
@@ -509,18 +372,11 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
   const playbackRejection = playback.getByText("The frame is not a canonical OCF2 frame.")
   await expect(playbackRejection).toBeVisible()
   await expect(playbackRejection).not.toContainText(relayPayloadMarker)
-  await playback.getByLabel("Relay text").fill(canonicalSymmetricKeyPayload)
+  await playback.getByLabel("Relay text").fill(OCM1_MESSAGE_33)
   await playback.getByRole("button", { name: "Show QR" }).click()
-  const keyPlaybackRejection = playback.getByText(
-    "Only canonical OCM1 message strings and canonical OCF2 frame strings are accepted.",
-  )
-  await expect(keyPlaybackRejection).toBeVisible()
-  await expect(keyPlaybackRejection).not.toContainText(
-    canonicalSymmetricKeyPayload,
-  )
-  for (const rawKeyMarker of rawKeyMarkers) {
-    await expect(keyPlaybackRejection).not.toContainText(rawKeyMarker)
-  }
+  const legacyPlaybackRejection = playback.getByText("Relay input rejected")
+  await expect(legacyPlaybackRejection).toBeVisible()
+  await expect(legacyPlaybackRejection).not.toContainText(OCM1_MESSAGE_33)
   await expect(playback.getByRole("img")).toHaveCount(0)
   await page.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent("pagehide"))
@@ -542,7 +398,7 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
     .getByRole("dialog", { name: "QR to text" })
     .getByRole("button", { name: "Start camera" })
     .click()
-  await emitInjectedQr(page, canonicalMessagePayload)
+  await emitInjectedQr(page, symmetricFramePayload)
   await expect(
     page.getByText(
       "The relay session timed out and its app-held payload references were cleared.",
@@ -550,50 +406,15 @@ test("relays canonical OCM1 messages and OCF2 frames without relay-payload persi
   ).toBeVisible()
   expect((await injectedScanSnapshot(page)).every(({ active }) => !active)).toBe(true)
 
-  const createdAtBytes = new Uint8Array(8)
-  new DataView(createdAtBytes.buffer).setFloat64(0, V1_CREATED_AT)
   const relayPayloadMarkers: RelayPayloadMarker[] = [
     { marker: "invalid-ocf2-marker", text: relayPayloadMarker },
-    { marker: "ocf2-first-frame", text: framePayloads[0]! },
-    { marker: "ocf2-frame-set", text: relayText },
-    { marker: "ocm1-payload", text: canonicalMessagePayload },
+    { marker: "sym-message-frame", text: symmetricFramePayload },
+    { marker: "sym-message-bare-payload", text: bareSymmetricPayload },
+    { marker: "retired-ocm1-payload", text: OCM1_MESSAGE_33 },
     {
-      marker: "ocm1-keyId",
-      text: V1_KEY_ID,
-      bytes: new TextEncoder().encode(V1_KEY_ID),
-    },
-    {
-      marker: "ocm1-createdAt",
-      text: String(V1_CREATED_AT),
-      bytes: createdAtBytes,
-    },
-    {
-      marker: "ocm1-iv",
-      text: bytesToHex(MESSAGE_IV_BYTES),
-      bytes: MESSAGE_IV_BYTES,
-    },
-    {
-      marker: "ocm1-ciphertext-prefix",
-      text: decodedMessageMarkers[1]!,
-    },
-    {
-      marker: "ocm1-ciphertext",
-      text: bytesToHex(MESSAGE_CIPHERTEXT_BYTES),
-      bytes: MESSAGE_CIPHERTEXT_BYTES,
-    },
-    {
-      marker: "ocm1-aad",
-      text: bytesToHex(MESSAGE_AAD_BYTES),
-      bytes: MESSAGE_AAD_BYTES,
-    },
-    { marker: "ock1-payload", text: canonicalSymmetricKeyPayload },
-    { marker: "ock1-key-text", text: rawKeyMarkers[0]! },
-    { marker: "ock1-key-prefix-hex", text: rawKeyMarkers[1]! },
-    { marker: "ock1-key-prefix-decimal", text: rawKeyMarkers[2]! },
-    {
-      marker: "ock1-key",
-      text: bytesToHex(SYMMETRIC_KEY_BYTES),
-      bytes: SYMMETRIC_KEY_BYTES,
+      marker: "symmetric-plaintext",
+      text: symmetricPlaintext,
+      bytes: new TextEncoder().encode(symmetricPlaintext),
     },
   ]
   for (const value of consoleValues) {
