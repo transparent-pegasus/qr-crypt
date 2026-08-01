@@ -1,5 +1,14 @@
 import { AppError } from "@/crypto/errors"
 import {
+  decodeMlKemEnvelopeV2,
+  decodeSymMessageEnvelopeV2,
+} from "@/crypto/pq/canonical-cbor"
+import {
+  validateMlKemEnvelopeV2,
+  validateSymMessageEnvelopeV2,
+} from "@/crypto/pq/validation"
+import { concatBytes } from "@/lib/bytes"
+import {
   FRAME_CHUNK_MAX_BYTES,
   MAX_FRAME_PAYLOAD_CHARS,
   PROTOCOL_MAX_FRAMES,
@@ -8,27 +17,40 @@ import {
   frameMatchesMetadata,
   type FrameTransferMetadata,
 } from "@/qr/multipart/transfer-state"
-import { decodePayload, encodeEnvelopeToPayload, QR_PREFIX } from "@/qr/payload"
 import { decodeFramePayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
-import type { QrFrameV2 } from "@/schemas/domain"
+import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 
 export const RELAY_TEXT_MAX_CHARS = PROTOCOL_MAX_FRAMES * (MAX_FRAME_PAYLOAD_CHARS + 2)
+
+export type RelayArtifactType = Extract<
+  V2ArtifactType,
+  "pq-message" | "sym-message"
+>
+
+export const RELAY_ARTIFACT_TYPES: ReadonlySet<V2ArtifactType> = new Set([
+  "pq-message",
+  "sym-message",
+])
+
+function isRelayArtifactType(
+  artifactType: V2ArtifactType,
+): artifactType is RelayArtifactType {
+  return RELAY_ARTIFACT_TYPES.has(artifactType)
+}
 
 export type RelayParseErrorCode =
   | "empty"
   | "frame-count"
   | "input-size"
   | "invalid-frame"
-  | "invalid-message"
   | "kind-mismatch"
   | "length"
-  | "message-count"
   | "mismatch"
   | "outer-type"
   | "prefix"
 
 type RelayMetadata = FrameTransferMetadata & {
-  readonly artifactType: "pq-message"
+  readonly artifactType: RelayArtifactType
 }
 
 export interface RelayFrameEntry {
@@ -53,7 +75,6 @@ export type RelayTextParseResult =
       frames: readonly QrFrameV2[]
       originals: readonly string[]
     }
-  | { ok: true; kind: "message"; payload: string }
   | {
       ok: false
       code: RelayParseErrorCode
@@ -82,6 +103,25 @@ function validFrameLengths(frame: QrFrameV2): boolean {
     frame.totalByteLength <= frame.frameCount * FRAME_CHUNK_MAX_BYTES &&
     (frame.frameCount !== 1 || frame.chunk.byteLength === frame.totalByteLength)
   )
+}
+
+export function validateRelayArtifact(
+  artifactType: RelayArtifactType,
+  bytes: Uint8Array,
+): void {
+  try {
+    if (artifactType === "pq-message") {
+      validateMlKemEnvelopeV2(decodeMlKemEnvelopeV2(bytes))
+      return
+    }
+    validateSymMessageEnvelopeV2(decodeSymMessageEnvelopeV2(bytes))
+  } catch {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
+}
+
+function assembleRelayArtifact(set: RelayFrameSet): Uint8Array {
+  return concatBytes(...orderedRelayEntries(set).map(({ frame }) => frame.chunk))
 }
 
 /**
@@ -113,7 +153,7 @@ export function parseRelayFrameSet(
       return { ok: false, code: parserError(error) }
     }
 
-    if (frame.artifactType !== "pq-message") {
+    if (!isRelayArtifactType(frame.artifactType)) {
       return { ok: false, code: "outer-type" }
     }
     if (!validFrameLengths(frame)) return { ok: false, code: "length" }
@@ -121,7 +161,7 @@ export function parseRelayFrameSet(
     if (metadata === null) {
       metadata = {
         transferId: Uint8Array.from(frame.transferId),
-        artifactType: "pq-message",
+        artifactType: frame.artifactType,
         frameCount: frame.frameCount,
         totalByteLength: frame.totalByteLength,
       }
@@ -148,17 +188,21 @@ export function parseRelayFrameSet(
     receivedByteLength = nextByteLength
   }
 
-  if (
-    metadata !== null &&
-    entries.size === metadata.frameCount &&
-    receivedByteLength !== metadata.totalByteLength
-  ) {
-    return { ok: false, code: "length" }
+  const set = { metadata, entries, receivedByteLength }
+  if (metadata !== null && entries.size === metadata.frameCount) {
+    if (receivedByteLength !== metadata.totalByteLength) {
+      return { ok: false, code: "length" }
+    }
+    try {
+      validateRelayArtifact(metadata.artifactType, assembleRelayArtifact(set))
+    } catch {
+      return { ok: false, code: "invalid-frame" }
+    }
   }
 
   return {
     ok: true,
-    set: { metadata, entries, receivedByteLength },
+    set,
   }
 }
 
@@ -177,113 +221,24 @@ export function orderedRelayEntries(set: RelayFrameSet): RelayFrameEntry[] {
     .map(([, entry]) => entry)
 }
 
-/**
- * The relay's prefix gate. `parseRelayFrameSet` enforces the OCF2 outer type,
- * and `parseRelayMessage` enforces OCM1 structure and canonical form. Exactly
- * two prefixes reach those parsers; every other prefix stops here, including
- * the OCK1 symmetric key and the OCP1 public key. Rejecting those prefixes does
- * not guarantee that no key material crosses the relay: accepted OCF2 chunks
- * and every sender-controlled OCM1 field (`keyId`, `createdAt`, `iv`,
- * `ciphertext`, and `aad`) remain untrusted, and the offline endpoint is the
- * only authentication boundary (threat-model T19).
- */
-function classifyRelayLine(text: string): "message" | "frames" | null {
-  if (text.startsWith(QR_PREFIX.message)) return "message"
-  if (text.startsWith(QR_PREFIX_V2.frame)) return "frames"
-  return null
-}
-
-export type RelayMessageParseResult =
-  | { ok: true; payload: string }
-  | { ok: false; code: RelayParseErrorCode }
-
-/**
- * A single canonical v1 AES message. Decoding is purely structural — CBOR shape
- * and strict schema, never a key, an AEAD operation, or an AAD recomputation.
- * Requiring the canonical re-encode to reproduce the input byte for byte means a
- * non-canonical encoding can never be forwarded to the offline endpoint.
- */
-export function parseRelayMessage(text: string): RelayMessageParseResult {
-  if (classifyRelayLine(text) !== "message") {
-    return { ok: false, code: "prefix" }
-  }
-  try {
-    const decoded = decodePayload(text)
-    if (decoded.kind !== "message") {
-      return { ok: false, code: "invalid-message" }
-    }
-    if (encodeEnvelopeToPayload(decoded.envelope) !== text) {
-      return { ok: false, code: "invalid-message" }
-    }
-    return { ok: true, payload: text }
-  } catch {
-    return { ok: false, code: "invalid-message" }
-  }
-}
-
-type ValidatedRelayLine =
-  | { ok: true; kind: "message"; payload: string }
-  | { ok: true; kind: "frames"; set: RelayFrameSet }
-  | { ok: false; code: RelayParseErrorCode }
-
-function validateRelayLine(original: string): ValidatedRelayLine {
-  const kind = classifyRelayLine(original)
-  if (kind === null) return { ok: false, code: "prefix" }
-  if (kind === "message") {
-    const parsed = parseRelayMessage(original)
-    return parsed.ok
-      ? { ok: true, kind: "message", payload: parsed.payload }
-      : parsed
-  }
-  const parsed = parseRelayFrameSet([original])
-  return parsed.ok ? { ok: true, kind: "frames", set: parsed.set } : parsed
-}
-
 export type RelayCapture =
   | { kind: null }
   | { kind: "frames"; set: RelayFrameSet }
-  | { kind: "message"; payload: string }
 
 export const EMPTY_RELAY_CAPTURE: RelayCapture = { kind: null }
 
 export type RelayCaptureResult =
-  | { ok: true; capture: RelayCapture }
+  | { ok: true; capture: Extract<RelayCapture, { kind: "frames" }> }
   | { ok: false; code: RelayParseErrorCode }
 
-/**
- * The camera boundary. The first accepted payload fixes the session kind; the
- * other kind is then refused without discarding what was already accepted. A
- * forbidden or foreign prefix stays a prefix error — "kind mismatch" is reserved
- * for input that really is the other allowed kind.
- */
 export function acceptRelayCapture(
   original: string,
   current: RelayCapture,
 ): RelayCaptureResult {
-  const candidate = validateRelayLine(original)
-  if (!candidate.ok) return candidate
-  if (current.kind !== null && current.kind !== candidate.kind) {
-    return { ok: false, code: "kind-mismatch" }
-  }
-
-  if (candidate.kind === "message") {
-    if (current.kind === "message" && current.payload !== candidate.payload) {
-      return { ok: false, code: "mismatch" }
-    }
-    return {
-      ok: true,
-      capture: { kind: "message", payload: candidate.payload },
-    }
-  }
-
-  if (current.kind === null) {
-    return { ok: true, capture: { kind: "frames", set: candidate.set } }
-  }
-  if (current.kind !== "frames") {
-    return { ok: false, code: "kind-mismatch" }
-  }
-  const previous = current.set
-  const parsed = parseRelayFrameSet([original], previous)
+  const parsed = parseRelayFrameSet(
+    [original],
+    current.kind === "frames" ? current.set : emptyRelayFrameSet(),
+  )
   if (!parsed.ok) return parsed
   return { ok: true, capture: { kind: "frames", set: parsed.set } }
 }
@@ -297,36 +252,6 @@ export function parseRelayText(text: string): RelayTextParseResult {
     .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line))
     .filter((line) => line.length > 0)
   if (originals.length === 0) return { ok: false, code: "empty" }
-  const kinds = originals.map(classifyRelayLine)
-  if (kinds.some((kind) => kind === null)) {
-    return { ok: false, code: "prefix" }
-  }
-
-  const messageCount = kinds.filter((kind) => kind === "message").length
-  if (messageCount > 1) {
-    return { ok: false, code: "message-count" }
-  }
-  if (messageCount === 1 && kinds.some((kind) => kind === "frames")) {
-    return { ok: false, code: "kind-mismatch" }
-  }
-  if (originals.length > PROTOCOL_MAX_FRAMES) {
-    return { ok: false, code: "frame-count" }
-  }
-
-  const validated: ValidatedRelayLine[] = []
-  for (const original of originals) {
-    const candidate = validateRelayLine(original)
-    if (!candidate.ok) return candidate
-    validated.push(candidate)
-  }
-
-  const messages = validated.filter(
-    (candidate): candidate is Extract<ValidatedRelayLine, { kind: "message" }> =>
-      candidate.ok && candidate.kind === "message",
-  )
-  if (messages[0] !== undefined) {
-    return { ok: true, kind: "message", payload: messages[0].payload }
-  }
 
   const parsed = parseRelayFrameSet(originals)
   if (!parsed.ok) return parsed

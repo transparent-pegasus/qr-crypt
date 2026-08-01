@@ -61,7 +61,7 @@ import {
   useI18n,
   type MessageKey,
 } from "@/i18n"
-import type { Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
+import type { Preferences, UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
   RESET_CHURN_MB_MAX,
@@ -259,11 +259,6 @@ export function SettingsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="A256GCM">{t("algorithm.A256GCM")}</SelectItem>
-              {env.enableMlKem && !preferences.requireSignature && (
-                <SelectItem value="MLKEM1024_A256GCM">
-                  {t("algorithm.MLKEM1024_A256GCM")}
-                </SelectItem>
-              )}
               {env.enableMlKem && env.enableMlDsa && (
                 <SelectItem value="MLKEM1024_MLDSA87_A256GCM">
                   {t("algorithm.MLKEM1024_MLDSA87_A256GCM")}
@@ -272,58 +267,9 @@ export function SettingsPage() {
             </SelectContent>
           </Select>
         </SettingField>
-        <SettingField label={t("settings.field.defaultEc")} htmlFor="default-ec">
-          <Select
-            value={preferences.qrErrorCorrection}
-            disabled={preferencesLoading}
-            onValueChange={(value) =>
-              void savePreference({ qrErrorCorrection: value as QrEcLevel })
-            }
-          >
-            <SelectTrigger id="default-ec" className="h-11 text-base">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["L", "M", "Q", "H"] as const).map((level) => (
-                <SelectItem key={level} value={level}>
-                  {level}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {t("settings.ec.hint")}
-          </p>
-        </SettingField>
       </SettingsCard>
 
       <SettingsCard title={t("settings.card.pqMessage")}>
-        <div className="flex min-h-11 items-center justify-between gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="require-signature">
-              {t("settings.requireSignature.label")}
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              {env.requireSignature
-                ? t("settings.requireSignature.forced")
-                : t("settings.requireSignature.hint")}
-            </p>
-          </div>
-          <Switch
-            id="require-signature"
-            aria-label={t("settings.requireSignature.label")}
-            checked={preferences.requireSignature}
-            disabled={env.requireSignature || preferencesLoading}
-            onCheckedChange={(checked) =>
-              void savePreference({
-                requireSignature: checked,
-                ...(checked && preferences.defaultAlgorithm === "MLKEM1024_A256GCM"
-                  ? { defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM" }
-                  : {}),
-              })
-            }
-          />
-        </div>
         <SettingField
           label={t("settings.field.transferTimeout", {
             min: TRANSFER_TIMEOUT_MINUTES_MIN,

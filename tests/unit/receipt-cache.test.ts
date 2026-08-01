@@ -59,19 +59,6 @@ describe("session receipt cache", () => {
     ).toEqual({ kind: "first-seen" })
   })
 
-  it("separates signed and unsigned receipt namespaces", () => {
-    const signed = signedSubject()
-    const unsigned: ReceiptSubject = {
-      kind: "pq-unsigned",
-      recipientKemKeyId: signed.recipientKemKeyId,
-      messageIdHex: signed.messageIdHex,
-      envelopeHash: "unsigned-envelope",
-    }
-
-    expect(recordReceipt(signed, FIRST_SEEN_AT)).toEqual({ kind: "first-seen" })
-    expect(recordReceipt(unsigned, FIRST_SEEN_AT + 1)).toEqual({ kind: "first-seen" })
-  })
-
   it("keys AES receipts by ciphertext so message-id reuse is unreachable", () => {
     const subject: ReceiptSubject = {
       kind: "aes",

@@ -2,16 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router"
 import { AlertCircle, CheckCircle2, LoaderCircle, LockOpen } from "lucide-react"
 import { toast } from "sonner"
-import { decryptWithAesKey } from "@/crypto/aes-gcm"
+import { openSymMessage } from "@/crypto/aes-gcm"
 import { AppError, toAppError } from "@/crypto/errors"
-import { decodeMlKemEnvelopeV2, encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
+import {
+  decodeMlKemEnvelopeV2,
+  decodeSymMessageEnvelopeV2,
+  encodeMlKemEnvelopeV2,
+  encodeSymMessageEnvelopeV2,
+} from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { zeroize } from "@/crypto/pq/zeroize"
-import {
-  assertActiveProfile,
-  assertActiveSuite,
-  resolveSuite,
-} from "@/crypto/pq/suites"
+import { assertActiveSuite } from "@/crypto/pq/suites"
+import { validateSymMessageEnvelopeV2 } from "@/crypto/pq/validation"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import {
   useFeatureSupport,
@@ -19,6 +21,10 @@ import {
   useTransientClear,
 } from "@/app/providers"
 import { DetailRow } from "@/components/detail-row"
+import {
+  isUsableBundle,
+  isUsableIdentity,
+} from "@/components/key-detail/identity-policy"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrScannerModal } from "@/components/qr-scanner-modal"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -40,11 +46,9 @@ import { bytesToHex, bytesToUtf8 } from "@/lib/bytes"
 import { buildV2Payload } from "@/qr/payload-v2"
 import {
   decodePayload,
-  encodeEnvelopeToPayload,
   payloadSha256Hex,
 } from "@/qr/payload"
 import type {
-  PostQuantumIdentity,
   PqPublicBundleRecord,
   WireSuite,
 } from "@/schemas/domain"
@@ -57,40 +61,15 @@ import {
 
 type DecryptionResult =
   | {
-      kind: "unsigned"
-      text: string
-      replay: ReceiptVerdict
-      senderCreatedAt: number
-    }
-  | {
       kind: "signed-valid"
       text: string
       replay: ReceiptVerdict
       senderCreatedAt: number
       senderSigningKeyId: string
-      sender: PqPublicBundleRecord | undefined
+      sender: PqPublicBundleRecord
     }
   | { kind: "signed-key-unknown"; senderSigningKeyId: string }
   | { kind: "aes"; text: string; replay: ReceiptVerdict }
-
-function isActiveBundle(record: PqPublicBundleRecord): boolean {
-  try {
-    assertActiveSuite(resolveSuite(record.kem.algorithm, record.signing.algorithm))
-    return true
-  } catch {
-    return false
-  }
-}
-
-function isActiveIdentity(identity: PostQuantumIdentity): boolean {
-  try {
-    assertActiveProfile(identity.profile)
-    assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
-    return true
-  } catch {
-    return false
-  }
-}
 
 function isActiveWireSuite(suite: WireSuite): boolean {
   try {
@@ -126,11 +105,7 @@ export function DecryptPage() {
     setReplayAcknowledged(false)
   }, [])
 
-  const symmetricKeys = useMemo(
-    () =>
-      keys.filter((key) => key.kind === "symmetric" && key.symmetricKey !== undefined),
-    [keys],
-  )
+  const symmetricKeys = keys
 
   const multipartSession = useMemo(
     () => new MultipartScanSession(preferences.transferTimeoutMinutes),
@@ -142,7 +117,10 @@ export function DecryptPage() {
     if (!input) return null
     try {
       const decoded = decodePayload(input)
-      return decoded.kind === "message" || decoded.kind === "pq-message" ? decoded : null
+      return decoded.kind === "sym-message" ||
+        decoded.kind === "pq-message"
+        ? decoded
+        : null
     } catch {
       return null
     }
@@ -151,8 +129,8 @@ export function DecryptPage() {
   const parsedPqUnsupported =
     parsedDecrypt?.kind === "pq-message" &&
     !isActiveWireSuite(parsedDecrypt.envelope.suite)
-  const decryptAesKey =
-    parsedDecrypt?.kind === "message"
+  const decryptSymmetricKey =
+    parsedDecrypt?.kind === "sym-message"
       ? symmetricKeys.find((key) => key.id === parsedDecrypt.envelope.keyId)
       : undefined
   const decryptIdentity =
@@ -160,22 +138,22 @@ export function DecryptPage() {
       ? identities.find(
           (identity) =>
             identity.kem.keyId === parsedDecrypt.envelope.recipientKemKeyId &&
-            isActiveIdentity(identity),
+            isUsableIdentity(identity),
         )
       : undefined
   const decryptKeyMissing =
     parsedDecrypt !== null &&
     !parsedPqUnsupported &&
-    (parsedDecrypt.kind === "message"
-      ? decryptAesKey === undefined
-      : decryptIdentity === undefined)
+    (parsedDecrypt.kind === "pq-message"
+      ? decryptIdentity === undefined
+      : decryptSymmetricKey === undefined)
   const canDecrypt =
     !busy &&
     parsedDecrypt !== null &&
     !parsedPqUnsupported &&
-    (parsedDecrypt.kind === "message"
-      ? decryptAesKey !== undefined
-      : decryptIdentity !== undefined)
+    (parsedDecrypt.kind === "pq-message"
+      ? decryptIdentity !== undefined
+      : decryptSymmetricKey !== undefined)
 
   useEffect(() => {
     setSensitiveSession({
@@ -215,15 +193,18 @@ export function DecryptPage() {
     try {
       const decoded = decodePayload(payload.trim())
       parsed =
-        decoded.kind === "message" || decoded.kind === "pq-message" ? decoded : null
+        decoded.kind === "sym-message" ||
+        decoded.kind === "pq-message"
+          ? decoded
+          : null
     } catch {
       parsed = null
     }
     if (parsed === null) return
     if (parsed.kind === "pq-message" && !isActiveWireSuite(parsed.envelope.suite)) return
 
-    const aesKey =
-      parsed.kind === "message"
+    const symmetricKey =
+      parsed.kind === "sym-message"
         ? symmetricKeys.find((key) => key.id === parsed.envelope.keyId)
         : undefined
     const identity =
@@ -231,32 +212,42 @@ export function DecryptPage() {
         ? identities.find(
             (candidate) =>
               candidate.kem.keyId === parsed.envelope.recipientKemKeyId &&
-              isActiveIdentity(candidate),
+              isUsableIdentity(candidate),
           )
         : undefined
-    if (parsed.kind === "message" ? aesKey === undefined : identity === undefined) return
+    if (
+      parsed.kind === "pq-message"
+        ? identity === undefined
+        : symmetricKey === undefined
+    ) {
+      return
+    }
 
     setBusy(true)
     setError(null)
     clearDecrypted()
     try {
-      if (parsed.kind === "message" && aesKey?.symmetricKey) {
-        const decryptedBytes = await decryptWithAesKey({
-          key: aesKey.symmetricKey,
+      if (parsed.kind === "sym-message" && symmetricKey) {
+        const decryptedBytes = await openSymMessage({
+          record: symmetricKey,
           envelope: parsed.envelope,
         })
         try {
+          const envelopeHash = await payloadSha256Hex(
+            buildV2Payload(
+              "sym-message",
+              encodeSymMessageEnvelopeV2(parsed.envelope),
+            ),
+          )
           const verdict = recordReceipt(
             {
-              kind: "aes",
-              recipientKeyId: aesKey.id,
-              envelopeHash: await payloadSha256Hex(
-                encodeEnvelopeToPayload(parsed.envelope),
-              ),
+              kind: "sym",
+              recipientKeyId: symmetricKey.id,
+              envelopeHash,
             },
             Date.now(),
           )
-          // Unreachable for AES — its receipt identity already includes the
+          // Unreachable for symmetric messages — their receipt identity includes the
           // ciphertext hash — but the refusal is shared with the PQ path.
           if (verdict.kind === "message-id-reused") {
             throw new AppError("MESSAGE_ID_REUSED")
@@ -266,7 +257,7 @@ export function DecryptPage() {
             text: bytesToUtf8(decryptedBytes),
             replay: verdict,
           }
-          await markKeyUsed(aesKey.id, Date.now()).catch(() => undefined)
+          await markKeyUsed(symmetricKey.id, Date.now()).catch(() => undefined)
           setDecrypted(outcome)
         } finally {
           zeroize(decryptedBytes)
@@ -279,7 +270,7 @@ export function DecryptPage() {
         const recipient = await findIdentityByKemKeyId(
           parsed.envelope.recipientKemKeyId,
         )
-        if (recipient === undefined || !isActiveIdentity(recipient)) {
+        if (recipient === undefined || !isUsableIdentity(recipient)) {
           throw new AppError("KEY_NOT_FOUND")
         }
         // Key ids are attacker-assertable, so the record that verifies the signature is
@@ -292,7 +283,7 @@ export function DecryptPage() {
           vaultKey: await getOrCreateVaultKey(),
           resolveSigningKey: async (keyId) => {
             const record = await findBundleBySigningKeyId(keyId)
-            if (record === undefined || !isActiveBundle(record)) return undefined
+            if (record === undefined || !isUsableBundle(record)) return undefined
             resolvedSender = record
             return {
               algorithm: record.signing.algorithm,
@@ -317,42 +308,30 @@ export function DecryptPage() {
               ),
             )
             const messageIdHex = bytesToHex(pqResult.messageId)
+            if (resolvedSender === undefined) {
+              throw new AppError("DECRYPTION_FAILED")
+            }
             const verdict = recordReceipt(
-              pqResult.kind === "signed-valid" && resolvedSender !== undefined
-                ? {
-                    kind: "pq-signed",
-                    senderFingerprint: resolvedSender.signing.fingerprint,
-                    recipientKemKeyId: parsed.envelope.recipientKemKeyId,
-                    messageIdHex,
-                    envelopeHash,
-                  }
-                : {
-                    kind: "pq-unsigned",
-                    recipientKemKeyId: parsed.envelope.recipientKemKeyId,
-                    messageIdHex,
-                    envelopeHash,
-                  },
+              {
+                kind: "pq-signed",
+                senderFingerprint: resolvedSender.signing.fingerprint,
+                recipientKemKeyId: parsed.envelope.recipientKemKeyId,
+                messageIdHex,
+                envelopeHash,
+              },
               Date.now(),
             )
             if (verdict.kind === "message-id-reused") {
               throw new AppError("MESSAGE_ID_REUSED")
             }
-            const outcome: DecryptionResult =
-              pqResult.kind === "unsigned"
-                ? {
-                    kind: "unsigned",
-                    text: bytesToUtf8(decryptedBytes),
-                    replay: verdict,
-                    senderCreatedAt: pqResult.createdAt,
-                  }
-                : {
-                    kind: "signed-valid",
-                    text: bytesToUtf8(decryptedBytes),
-                    replay: verdict,
-                    senderCreatedAt: pqResult.createdAt,
-                    senderSigningKeyId: pqResult.senderSigningKeyId,
-                    sender: resolvedSender,
-                  }
+            const outcome: DecryptionResult = {
+              kind: "signed-valid",
+              text: bytesToUtf8(decryptedBytes),
+              replay: verdict,
+              senderCreatedAt: pqResult.createdAt,
+              senderSigningKeyId: pqResult.senderSigningKeyId,
+              sender: resolvedSender,
+            }
             await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
             setDecrypted(outcome)
           } finally {
@@ -385,29 +364,33 @@ export function DecryptPage() {
           <QrScannerModal
             triggerLabel={t("encrypt.decrypt.scanTrigger")}
             className="space-y-6"
-            singleTargets={["message"]}
             cameraAvailable={camera}
             triggerDisabled={busy}
             title={t("encrypt.decrypt.scanTrigger")}
-            onSingleScan={(_target, payload) => {
-              setDecryptInput(payload)
-              clearDecrypted()
-              setError(null)
-              pendingDecryptRef.current = payload
-            }}
             multipart={{
               session: multipartSession,
               onComplete: ({ artifactType, artifactBytes }) => {
                 // The payload string below is the working copy from here on, so the
                 // assembler's own copy of the ciphertext is released immediately.
                 try {
-                  if (artifactType !== "pq-message")
+                  let payload: string
+                  if (artifactType === "pq-message") {
+                    const envelope = decodeMlKemEnvelopeV2(artifactBytes)
+                    payload = buildV2Payload(
+                      "pq-message",
+                      encodeMlKemEnvelopeV2(envelope),
+                    )
+                  } else if (artifactType === "sym-message") {
+                    const envelope = validateSymMessageEnvelopeV2(
+                      decodeSymMessageEnvelopeV2(artifactBytes),
+                    )
+                    payload = buildV2Payload(
+                      "sym-message",
+                      encodeSymMessageEnvelopeV2(envelope),
+                    )
+                  } else {
                     throw new AppError("INVALID_QR_PAYLOAD")
-                  const envelope = decodeMlKemEnvelopeV2(artifactBytes)
-                  const payload = buildV2Payload(
-                    "pq-message",
-                    encodeMlKemEnvelopeV2(envelope),
-                  )
+                  }
                   setDecryptInput(payload)
                   clearDecrypted()
                   setError(null)
@@ -471,18 +454,14 @@ export function DecryptPage() {
             <div className="space-y-2 text-sm">
               <DetailRow
                 label={t("encrypt.detail.method")}
-                value={
-                  parsedDecrypt.kind === "message"
-                    ? "A256GCM"
-                    : parsedDecrypt.envelope.suite
-                }
+                value={parsedDecrypt.envelope.suite}
               />
               <DetailRow
                 label={t("encrypt.detail.recipientKeyId")}
                 value={
-                  parsedDecrypt.kind === "message"
-                    ? parsedDecrypt.envelope.keyId
-                    : parsedDecrypt.envelope.recipientKemKeyId
+                  parsedDecrypt.kind === "pq-message"
+                    ? parsedDecrypt.envelope.recipientKemKeyId
+                    : parsedDecrypt.envelope.keyId
                 }
                 mono
               />
@@ -581,18 +560,15 @@ export function DecryptPage() {
             </DialogHeader>
             {decrypted !== null && decrypted.kind !== "signed-key-unknown" && (
               <>
-                {decrypted.kind === "unsigned" && (
-                  <p className="text-sm font-medium">{t("encrypt.result.unsigned")}</p>
-                )}
                 {decrypted.kind === "aes" && (
-                  <p className="text-sm font-medium">{t("encrypt.result.aesUnsigned")}</p>
+                  <p className="text-sm font-medium">{t("encrypt.result.symmetric")}</p>
                 )}
                 {decrypted.kind === "signed-valid" && (
                   <>
                     <div className="space-y-1 text-sm">
                       <p
                         className={
-                          decrypted.sender?.trust === "fingerprint-confirmed"
+                          decrypted.sender.trust === "fingerprint-confirmed"
                             ? "font-medium text-success"
                             : "font-medium"
                         }
@@ -604,14 +580,14 @@ export function DecryptPage() {
                           id: decrypted.senderSigningKeyId,
                         })}
                       </p>
-                      {decrypted.sender?.trust === "fingerprint-confirmed" && (
+                      {decrypted.sender.trust === "fingerprint-confirmed" && (
                         <p className="font-medium text-success">
                           {t("encrypt.result.identityCheck.label")}{" "}
                           {t("encrypt.result.identityCheck.confirmed")}
                         </p>
                       )}
                     </div>
-                    {decrypted.sender?.trust !== "fingerprint-confirmed" && (
+                    {decrypted.sender.trust !== "fingerprint-confirmed" && (
                       <Alert
                         variant="destructive"
                         role="group"
@@ -634,8 +610,7 @@ export function DecryptPage() {
                     )}
                   </>
                 )}
-                {(decrypted.kind === "unsigned" ||
-                  decrypted.kind === "signed-valid") && (
+                {decrypted.kind === "signed-valid" && (
                   <p className="text-xs text-muted-foreground">
                     {t("encrypt.result.senderCreatedAt", {
                       time: formatDateTime(decrypted.senderCreatedAt, language),

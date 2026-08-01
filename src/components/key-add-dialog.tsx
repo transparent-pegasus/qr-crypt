@@ -34,16 +34,18 @@ import { Textarea } from "@/components/ui/textarea"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
   createSymmetricKeyRecord,
-  importSymmetricKeyRecord,
+  importSymmetricKeyRecordV2,
 } from "@/crypto/key-generation"
 import {
   decodeDsaPublicKeyEnvelopeV2,
   decodeKemPublicKeyEnvelopeV2,
   decodePublicIdentityBundleV2,
+  decodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import { createIdentity } from "@/crypto/pq/identity"
 import { PQ_PROFILES } from "@/crypto/pq/profiles"
 import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
+import { validateSymmetricKeyEnvelopeV2 } from "@/crypto/pq/validation"
 import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { generateKeyId } from "@/crypto/random"
@@ -76,7 +78,7 @@ import { saveIdentity } from "@/storage/pq-identity-repository"
 
 export type KeyAddMode = "create" | "import"
 
-type CreateKeyKind = "pq-identity" | "symmetric"
+type CreateKeyType = "pq-identity" | "symmetric"
 
 type SingleKeyRead = KemPublicKeyEnvelopeV2 | DsaPublicKeyEnvelopeV2
 
@@ -108,7 +110,10 @@ function assertUsableBundle(bundle: PublicIdentityBundleV2 | PqPublicBundleRecor
 function assertUsableSingleKey(envelope: SingleKeyRead): void {
   const suite =
     envelope.type === "pq-kem-public-key"
-      ? resolveSuite(envelope.algorithm)
+      ? resolveSuite(
+          envelope.algorithm,
+          PQ_PROFILES[ACTIVE_PROFILE].signature.algorithm,
+        )
       : resolveSuite(PQ_PROFILES[ACTIVE_PROFILE].kem.algorithm, envelope.algorithm)
   assertActiveSuite(suite)
 }
@@ -128,8 +133,8 @@ export function KeyAddDialog({
   const [view, setView] = useState<AddView>({ kind: mode ?? "create" })
   const [openedAs, setOpenedAs] = useState<KeyAddMode | null>(mode)
   // Follow the configured default algorithm unless the user explicitly selects a kind.
-  const [createKindOverride, setCreateKindOverride] = useState<CreateKeyKind | null>(null)
-  const createKind: CreateKeyKind =
+  const [createKindOverride, setCreateKindOverride] = useState<CreateKeyType | null>(null)
+  const createKind: CreateKeyType =
     createKindOverride ??
     (preferences.defaultAlgorithm === "A256GCM" ? "symmetric" : "pq-identity")
   const [keyName, setKeyName] = useState("")
@@ -295,6 +300,17 @@ export function KeyAddDialog({
     setView({ kind: "single-key", envelope, fingerprint })
   }
 
+  const beginSymmetricImport = (record: StoredKeyRecord) => {
+    setSymmetricImportName(record.name)
+    setSymmetricImportAcknowledged(false)
+    setView({ kind: "symmetric-import", record })
+  }
+
+  const symmetricImportDefaultName = () =>
+    t("keys.import.symmetricDefaultName", {
+      date: formatSuggestedDate(Date.now()),
+    })
+
   const importDecoded = async (
     decoded: ReturnType<typeof decodePayload>,
     opening: number,
@@ -302,16 +318,12 @@ export function KeyAddDialog({
     if (abandoned(opening)) return
     switch (decoded.kind) {
       case "symmetric-key": {
-        const record = await importSymmetricKeyRecord(
-          t("keys.import.symmetricDefaultName", {
-            date: formatSuggestedDate(Date.now()),
-          }),
+        const record = await importSymmetricKeyRecordV2(
+          symmetricImportDefaultName(),
           decoded.envelope,
           Date.now(),
         )
-        setSymmetricImportName(record.name)
-        setSymmetricImportAcknowledged(false)
-        setView({ kind: "symmetric-import", record })
+        beginSymmetricImport(record)
         return
       }
       case "pq-public-identity":
@@ -342,17 +354,6 @@ export function KeyAddDialog({
     }
   }
 
-  const importScannedPayload = async (payload: string) => {
-    const opening = openingRef.current
-    setBusy(true)
-    setError(null)
-    try {
-      await importDecoded(decodePayload(payload), opening)
-    } finally {
-      if (!abandoned(opening)) setBusy(false)
-    }
-  }
-
   const handleCompletedArtifact = async (args: {
     artifactType: string
     artifactBytes: Uint8Array
@@ -370,6 +371,19 @@ export function KeyAddDialog({
       }
       if (args.artifactType === "pq-dsa-public-key") {
         await handleSingleKey(decodeDsaPublicKeyEnvelopeV2(args.artifactBytes))
+        return
+      }
+      if (args.artifactType === "symmetric-key") {
+        const envelope = validateSymmetricKeyEnvelopeV2(
+          decodeSymmetricKeyEnvelopeV2(args.artifactBytes),
+        )
+        beginSymmetricImport(
+          await importSymmetricKeyRecordV2(
+            symmetricImportDefaultName(),
+            envelope,
+            Date.now(),
+          ),
+        )
         return
       }
       throw new AppError("INVALID_QR_PAYLOAD")
@@ -518,10 +532,8 @@ export function KeyAddDialog({
                   <p className="text-sm text-muted-foreground">{t("keys.demo.hint")}</p>
                   <QrScannerModal
                     triggerLabel={t("keys.import.scanTrigger")}
-                    singleTargets={["symmetric-key"]}
                     cameraAvailable={camera}
                     title={t("keys.import.scanTrigger")}
-                    onSingleScan={(_target, payload) => importScannedPayload(payload)}
                     multipart={{
                       session: scanSession,
                       onComplete: (completion) => handleCompletedArtifact(completion),
@@ -692,8 +704,8 @@ function CreateField({
   busy,
   onCreate,
 }: {
-  kind: CreateKeyKind
-  onKindChange: (kind: CreateKeyKind) => void
+  kind: CreateKeyType
+  onKindChange: (kind: CreateKeyType) => void
   value: string
   onChange: (value: string) => void
   busy: boolean
@@ -710,7 +722,7 @@ function CreateField({
           <Label htmlFor="create-key-kind">{t("keys.create.kindLabel")}</Label>
           <Select
             value={kind}
-            onValueChange={(value) => onKindChange(value as CreateKeyKind)}
+          onValueChange={(value) => onKindChange(value as CreateKeyType)}
           >
             <SelectTrigger id="create-key-kind" className="h-11">
               <SelectValue />

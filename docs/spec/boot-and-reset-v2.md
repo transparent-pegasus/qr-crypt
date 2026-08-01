@@ -67,21 +67,32 @@ offline-confirmed -- display online re-commit --> probing (at most once)
   mutation-exclusion lease is held. A second tab can therefore create a key
   after a successful proof and before the next re-check; this residual race is
   a stale policy signal, not a relay read of or disclosure from the database.
-- As of 2026-07-24 the boot read-compatibility allowlist is algorithm
-  (`A256GCM`, `RSA-HYBRID`, `MLKEM768_A256GCM`,
-  `MLKEM768_MLDSA65_A256GCM`, `MLKEM1024_A256GCM`,
-  `MLKEM1024_MLDSA87_A256GCM`) and profile (`balanced`, `maximum`).
-  The allowlist is append-only so that a stored preference can never turn into
-  a read failure and misfire the fail-safe above.
-- The numeric read allowlists are append-only for the same reason. Active
+- The active preference and write vocabulary has two algorithms:
+  `A256GCM` and `MLKEM1024_MLDSA87_A256GCM`. Boot deliberately has one
+  read-only exception: its `defaultAlgorithm` allowlist also accepts the
+  retired `RSA-HYBRID` identifier. The normal preferences repository drops
+  that value and uses the `A256GCM` default, but boot must first preserve a
+  stored `wipeOnOnline:false`. Treating the row as unreadable would set
+  `preferencesReadFailed=true`, force `wipeOnOnline=true`, and allow a later
+  network-confirmed contact to wipe user data. Nothing can write or select
+  `RSA-HYBRID`, and no RSA key or crypto path is retained.
+- Other retired algorithm values, including `MLKEM768_*` and
+  `MLKEM1024_A256GCM`, are not boot-readable. The removed
+  `defaultPqProfile` and `requireSignature` fields are no longer preferences;
+  boot does not interpret unknown fields, and the repository omits them while
+  merging recognized values over current defaults. Thus a historical
+  `defaultPqProfile: "balanced"` field does not restore that profile and does
+  not by itself endanger a stored `wipeOnOnline:false`.
+- The numeric density and interval read allowlists remain append-only. Active
   generated density is every 100B grid value from 100 through 1,000B; boot
   accepts every safe density integer from 100 through 1,000B, retaining every
   historical integer from 100 through 900. The generated interval set is
   every 100ms grid value from 200 through 1,000ms plus 2,000ms; boot accepts
   every safe interval integer from 150 through 3,000ms, retaining every
   historical integer from 150 through 2,000 together with 2,500 and 3,000.
-  Neither boot-readable set may be narrowed when the display preference
-  policy changes.
+  Neither numeric boot-readable set may be narrowed when the display preference
+  policy changes — narrowing them would make older stored preferences
+  unreadable and force `wipeOnOnline`.
 - Boot only decides whether the stored row is readable. When the normal
   preferences repository later loads that row, it preserves the exact default
   1,000B/200ms pair and the exact user-selected compatible 100B/2,000ms pair.
@@ -175,9 +186,8 @@ against: malicious same-origin code, physical recovery (disk imaging), or
 compromised code that runs first through an update. The theme (`oc-theme`), the
 last online tab (`oc-online-tab`, `top`/`relay`), and the
 pending-acknowledgement marker (`oc-offline-ack-pending="1"`) are
-non-sensitive but are included in the bulk `oc-*` deletion. Marker re-set
-after an `online-detected` wipe follows §4 step 6; the tab preference is not
-re-set.
+non-sensitive but are included in the bulk `oc-*` deletion. §4 step 6; the tab
+preference is not re-set.
 
 ## 7. Display-Only Offline Acknowledgement Phase and the Persistent Marker
 
@@ -209,9 +219,9 @@ redundant re-acknowledgement is allowed but skipping acknowledgement is not.
 | boot / wipe outcome         | Behavior after an offline edge / reload                                                                                                                                                  | Marker                                                                                                                                                                             |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | no wipe                     | The Router is mounted only after the per-generation acknowledgement                                                                                                                      | Deletion attempted on acknowledgement                                                                                                                                              |
-| `wiped` (`online-detected`) | While the display is offline the result and the acknowledgement are shown in the same full-screen shell, and the "reload to continue" action performs a full reload. While it is online the status screen carries the result and a "return to the online page" control that performs the same full reload: the controller stays pinned in this destructive terminal state, so a new JS lifetime is the only route back to the install screen. The Router is not mounted in the current JS lifetime | Re-set after the `oc-*` deletion and before publishing `wiped`. Reloading without acknowledging shows the shell again; reloading after acknowledging is a marker-absent cold start |
+| `wiped` (`online-detected`) | While the display is offline the result and the acknowledgement are shown in the same full-screen shell, and the "reload to continue" action performs a full reload. While it is online the status screen carries the result and a "return to the online page" control that performs the same full reload: the controller stays pinned in this destructive terminal state, so a new JS lifetime is the only route back to the install screen. The Router is not mounted in the current JS lifetime | §4 step 6 |
 | `partial-failure`           | Shows only `RESET_FAILED` plus guidance to close the tab / fully format the device; no resume path is provided                                                                           | Kept re-set as evidence of online contact                                                                                                                                          |
-| `user-requested`            | Settings runs the same coordinator sequence (barrier, crypto dispose, Vault-key cache drop, transient reset, cross-tab stop, the ordered deletion above, churn, absence check). On success the app performs a full reload; on partial failure it shows a terminal `RESET_FAILED` state with the failed steps and no resume path | Not re-set after the `oc-*` deletion                                                                                                                                               |
+| `user-requested`            | Settings runs the §4 sequence. On success the app performs a full reload; on partial failure it shows a terminal `RESET_FAILED` state with the failed steps and no resume path | Not re-set (§4 step 6) |
 
 A display offline commit issues no sentinel; only when boot is
 `network-confirmed` does it request the dedicated nudge, once. When the

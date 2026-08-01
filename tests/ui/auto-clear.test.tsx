@@ -97,10 +97,8 @@ describe("useAutoClear fixed deadline semantics", () => {
   })
 
   it("uses the fallback delay for the first schedule when mounting hidden after the probe settled false", async () => {
-    const runtimeProbe = deferred<boolean>()
-    runtimeProbe.resolve(false)
-    await runtimeProbe.promise
-    fakes.mockWebAssemblyProbe(runtimeProbe.promise)
+    fakes.mockWebAssemblyProbe(false)
+    await fakes.probeWebAssemblyRuntime()
     setVisibility("hidden")
     const { useAutoClear } = await import("@/hooks/use-auto-clear")
     const onClear = vi.fn()

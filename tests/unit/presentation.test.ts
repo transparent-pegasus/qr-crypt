@@ -4,7 +4,6 @@ import {
   formatFingerprint,
   isQrCryptPayload,
 } from "@/features/presentation"
-import { QR_PREFIX } from "@/qr/payload"
 import { QR_PREFIX_V2 } from "@/qr/payload-v2"
 
 describe("presentation formatting", () => {
@@ -21,8 +20,8 @@ describe("presentation formatting", () => {
     expect(formatFingerprint("abc")).toBe("abc")
   })
 
-  it("recognizes only prefixes from both QR vocabulary tables", () => {
-    for (const prefix of [...Object.values(QR_PREFIX), ...Object.values(QR_PREFIX_V2)]) {
+  it("recognizes only active v2 prefixes", () => {
+    for (const prefix of Object.values(QR_PREFIX_V2)) {
       expect(isQrCryptPayload(`${prefix}payload`)).toBe(true)
     }
     expect(isQrCryptPayload("OCX9:payload")).toBe(false)

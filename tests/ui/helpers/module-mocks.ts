@@ -29,13 +29,15 @@ vi.mock("@/crypto/random", () => ({
 }))
 vi.mock("@/crypto/aes-gcm", () => ({
   generateAesKey: fakes.generateAesKey,
-  encryptWithAesKey: fakes.encryptWithAesKey,
-  decryptWithAesKey: fakes.decryptWithAesKey,
+  sealSymMessage: fakes.sealSymMessage,
+  openSymMessage: fakes.openSymMessage,
 }))
 vi.mock("@/crypto/key-generation", () => ({
   createSymmetricKeyRecord: fakes.createSymmetricKeyRecord,
-  importSymmetricKeyRecord: fakes.importSymmetricKeyRecord,
-  buildSymmetricKeyEnvelope: fakes.buildSymmetricKeyEnvelope,
+  importSymmetricKeyRecordV2: fakes.importSymmetricKeyRecordV2,
+  buildSymmetricKeyEnvelopeV2: fakes.buildSymmetricKeyEnvelopeV2,
+  rotateSymmetricKeyRecord: fakes.rotateSymmetricKeyRecord,
+  groupSymmetricKeys: fakes.groupSymmetricKeys,
 }))
 vi.mock("@/crypto/pq/worker-client", () => ({
   createPqCryptoClient: fakes.createPqCryptoClient,
@@ -55,19 +57,33 @@ vi.mock("@/crypto/pq/wire-bytes", () => ({
   pqKeyFingerprint: fakes.pqKeyFingerprint,
   pqIdentityFingerprint: fakes.pqIdentityFingerprint,
 }))
-vi.mock("@/crypto/pq/canonical-cbor", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/crypto/pq/canonical-cbor")>()),
-  encodeUnsignedMessageBodyV2: fakes.encodeUnsignedMessageBodyV2,
-  encodeSignedMessageV2: fakes.encodeSignedMessageV2,
-  encodeMlKemEnvelopeV2: fakes.encodeMlKemEnvelopeV2,
-  decodeMlKemEnvelopeV2: fakes.decodeMlKemEnvelopeV2,
-  encodePublicIdentityBundleV2: fakes.encodePublicIdentityBundleV2,
-  decodePublicIdentityBundleV2: fakes.decodePublicIdentityBundleV2,
-  encodeKemPublicKeyEnvelopeV2: fakes.encodeKemPublicKeyEnvelopeV2,
-  decodeKemPublicKeyEnvelopeV2: fakes.decodeKemPublicKeyEnvelopeV2,
-  encodeDsaPublicKeyEnvelopeV2: fakes.encodeDsaPublicKeyEnvelopeV2,
-  decodeDsaPublicKeyEnvelopeV2: fakes.decodeDsaPublicKeyEnvelopeV2,
-}))
+vi.mock("@/crypto/pq/canonical-cbor", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("@/crypto/pq/canonical-cbor")>()
+  fakes.encodeSymmetricKeyEnvelopeV2.mockImplementation(
+    original.encodeSymmetricKeyEnvelopeV2,
+  )
+  fakes.decodeSymmetricKeyEnvelopeV2.mockImplementation(
+    original.decodeSymmetricKeyEnvelopeV2,
+  )
+  return {
+    ...original,
+    encodeUnsignedMessageBodyV2: fakes.encodeUnsignedMessageBodyV2,
+    encodeSignedMessageV2: fakes.encodeSignedMessageV2,
+    encodeMlKemEnvelopeV2: fakes.encodeMlKemEnvelopeV2,
+    decodeMlKemEnvelopeV2: fakes.decodeMlKemEnvelopeV2,
+    encodeSymMessageEnvelopeV2: fakes.encodeSymMessageEnvelopeV2,
+    decodeSymMessageEnvelopeV2: fakes.decodeSymMessageEnvelopeV2,
+    encodeSymmetricKeyEnvelopeV2: fakes.encodeSymmetricKeyEnvelopeV2,
+    decodeSymmetricKeyEnvelopeV2: fakes.decodeSymmetricKeyEnvelopeV2,
+    encodePublicIdentityBundleV2: fakes.encodePublicIdentityBundleV2,
+    decodePublicIdentityBundleV2: fakes.decodePublicIdentityBundleV2,
+    encodeKemPublicKeyEnvelopeV2: fakes.encodeKemPublicKeyEnvelopeV2,
+    decodeKemPublicKeyEnvelopeV2: fakes.decodeKemPublicKeyEnvelopeV2,
+    encodeDsaPublicKeyEnvelopeV2: fakes.encodeDsaPublicKeyEnvelopeV2,
+    decodeDsaPublicKeyEnvelopeV2: fakes.decodeDsaPublicKeyEnvelopeV2,
+  }
+})
 vi.mock("@/crypto/vault/vault-key", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/crypto/vault/vault-key")>()),
   getOrCreateVaultKey: fakes.getOrCreateVaultKey,
@@ -76,7 +92,6 @@ vi.mock("@/crypto/vault/vault-key", async (importOriginal) => ({
 
 vi.mock("@/qr/payload", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/payload")>()),
-  encodeEnvelopeToPayload: fakes.encodeEnvelopeToPayload,
   decodePayload: fakes.decodePayload,
   payloadSha256Hex: fakes.payloadSha256Hex,
 }))
@@ -86,9 +101,6 @@ vi.mock("@/qr/encode", async (importOriginal) => ({
   renderQrSvgString: fakes.renderQrSvgString,
   qrByteCapacity: fakes.qrByteCapacity,
   payloadFits: fakes.payloadFits,
-  estimatePayloadChars: fakes.estimatePayloadChars,
-  ecLevelFor: fakes.ecLevelFor,
-  relayMessageEcLevel: fakes.relayMessageEcLevel,
 }))
 vi.mock("@/qr/export-image", () => ({
   qrPngBlob: fakes.qrPngBlob,
@@ -103,7 +115,6 @@ vi.mock("@/qr/export-frames", () => ({
 }))
 vi.mock("@/qr/decode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/decode")>()),
-  CAMERA_READER_READY_TIMEOUT_MS: fakes.CAMERA_READER_READY_TIMEOUT_MS,
   readerModuleState: fakes.readerModuleState,
   startQrScan: fakes.startQrScan,
   warmQrReader: fakes.warmQrReader,
@@ -124,6 +135,8 @@ vi.mock("@/storage/key-repository", () => ({
   listKeyRecords: fakes.listKeyRecords,
   saveKeyRecord: fakes.saveKeyRecord,
   getKeyRecord: fakes.getKeyRecord,
+  getActiveKeyRecord: fakes.getActiveKeyRecord,
+  saveSymmetricRotation: fakes.saveSymmetricRotation,
   findKeyByFingerprint: fakes.findKeyByFingerprint,
   renameKeyRecord: fakes.renameKeyRecord,
   deleteKeyRecord: fakes.deleteKeyRecord,

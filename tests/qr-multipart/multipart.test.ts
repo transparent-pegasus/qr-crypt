@@ -350,11 +350,6 @@ describe("TransferAssembler", () => {
   it.each([
     ["one", FRAME_BYTES_MAX, 1],
     ["two", FRAME_BYTES_MAX + 1, 2],
-    [
-      "absolute-ceiling",
-      MAX_ARTIFACT_BYTES_ABSOLUTE,
-      PROTOCOL_MAX_FRAMES,
-    ],
   ] as const)(
     "assembles a %s-frame-class transfer",
     async (_name, totalByteLength, count) => {

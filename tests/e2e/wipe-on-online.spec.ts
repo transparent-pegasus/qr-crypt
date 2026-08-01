@@ -1,10 +1,10 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test"
 import {
   createSymmetricKey,
+  expectNoQrArtifactStore,
   expectOnlineGate,
   loadOnlineGate,
   mainNavigation,
-  rawQrArtifacts,
   rawStoreCount,
   switchToOfflineApp,
 } from "./helpers"
@@ -172,7 +172,7 @@ test("returning online to a reachable sentinel after key creation resets data an
   await expect(mainNavigation(page)).toBeVisible()
   expect(await rawStoreCount(page, "keys")).toBe(0)
   expect(await rawStoreCount(page, "pqIdentities")).toBe(0)
-  expect(await rawQrArtifacts(page)).toEqual([])
+  await expectNoQrArtifactStore(page)
 })
 
 test("preserves pending when a two-tab reset broadcast races a peer online-marker write", async ({

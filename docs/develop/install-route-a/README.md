@@ -25,9 +25,11 @@ tampered build can weaken the RNG, swap a loaded public key, or embed plaintext
 in data that looks like ciphertext and have the user carry it out as ordinary
 `OCF2:` frames. That covert-egress scenario is **T21** in
 [docs/security/threat-model.md](../../security/threat-model.md). **T19** covers only
-the relay mechanics (OCF2 outer-header filter and OCM1 structural-canonicality
-check, no assembly or AEAD on the online hop, no frame- or OCM1-derived app
-persistence) — not installation integrity.
+the relay mechanics (OCF2 allowlist for `pq-message` \| `sym-message`,
+assembled-artifact schema validation before playback, no AEAD on the online hop,
+no frame- or artifact-derived app persistence) — not installation integrity.
+**T21** states the residual that validation does not close: covert data inside
+otherwise valid ciphertext, salt, IV, or other sender-controlled fields.
 
 ## 2. Independently authenticated inputs — mandatory
 
@@ -273,10 +275,9 @@ it; treating it as required would disagree with the archive copy.
    `127.0.0.1` only. A server merely installed through a route called “trusted”
    is not equivalent. It must apply the bundled `_headers` and `_redirects`
    semantics: the security headers, correct MIME types, the SPA fallback to
-   `/index.html`, and `no-store` for the reachability sentinel. The production
-   build also carries the supported part of the same CSP in a meta tag as a
-   fallback, but `frame-ancestors` cannot be enforced there and remains available
-   only through the `_headers` response header. Choose one uncommon fixed high
+   `/index.html`, and `no-store` for the reachability sentinel. Meta CSP fallback
+   and `frame-ancestors` header-only rule:
+   [threat-model.md](../../security/threat-model.md) §2. Choose one uncommon fixed high
    port (not a collision-prone default such as 8000 or 8080) and reserve that port
    for QR Crypt.
 4. Open the exact `http://127.0.0.1:PORT` origin and wait until the app reports

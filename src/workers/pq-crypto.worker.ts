@@ -5,14 +5,11 @@
 import { AppError, type ErrorCode } from "@/crypto/errors"
 import {
   decodeSignedMessageV2,
-  decodeUnsignedMessageBodyV2,
   encodeMlKemAadV2,
   encodeSignedMessageV2,
-  encodeUnsignedMessageBodyV2,
 } from "@/crypto/pq/canonical-cbor"
 import { generateDsaSeed, generateKemSeed } from "@/crypto/pq/key-seeds"
 import { signBody, verifySignedBody } from "@/crypto/pq/ml-dsa-signature"
-import type { MlDsaProvider, MlKemProvider } from "@/crypto/pq/provider"
 import { resolveProviders } from "@/crypto/pq/provider"
 import { PQ_PROFILES } from "@/crypto/pq/profiles"
 import { suiteComponents } from "@/crypto/pq/suites"
@@ -44,8 +41,6 @@ import { bytesEqual, sha256, toOwnedArrayBuffer } from "@/lib/bytes"
 import { HKDF_SALT_BYTES, IV_BYTES } from "@/lib/limits"
 import type {
   EncryptedSecret,
-  MlDsaAlgorithm,
-  MlKemAlgorithm,
   SignedMessageBodyV2,
 } from "@/schemas/domain"
 
@@ -72,14 +67,6 @@ function reportStage(stage: IdentityKeyStage, error: unknown): void {
         ? error.name
         : typeof error
   console.error("[pq-worker-stage]", "generateIdentityKeys", stage, kind)
-}
-
-function kemProvider(algorithm: MlKemAlgorithm): MlKemProvider {
-  return algorithm === "ML-KEM-768" ? providers.kem768 : providers.kem1024
-}
-
-function dsaProvider(algorithm: MlDsaAlgorithm): MlDsaProvider {
-  return algorithm === "ML-DSA-65" ? providers.dsa65 : providers.dsa87
 }
 
 async function deriveMessageKey(
@@ -116,8 +103,8 @@ async function generateIdentityKeys(
   request: GenerateIdentityKeysRequest,
 ): Promise<GeneratedIdentityKeys> {
   const profile = PQ_PROFILES[request.profile]
-  const kem = kemProvider(profile.kem.algorithm)
-  const dsa = dsaProvider(profile.signature.algorithm)
+  const kem = providers.kem1024
+  const dsa = providers.dsa87
   let kemSeed: Uint8Array | undefined
   let dsaSeed: Uint8Array | undefined
   let kemSecretKey: Uint8Array | undefined
@@ -192,8 +179,8 @@ async function generateIdentityKeys(
 async function publicKeysFromSeeds(
   request: PublicKeysFromSeedsRequest,
 ): Promise<PublicKeysFromSeedsResult> {
-  const kem = kemProvider(request.kem.algorithm)
-  const dsa = dsaProvider(request.signing.algorithm)
+  const kem = providers.kem1024
+  const dsa = providers.dsa87
   let kemSeed: Uint8Array | undefined
   let dsaSeed: Uint8Array | undefined
   let kemSecretKey: Uint8Array | undefined
@@ -247,7 +234,7 @@ async function publicKeysFromSeeds(
 }
 
 async function signWithSeed(request: SignWithSeedRequest): Promise<Uint8Array> {
-  const provider = dsaProvider(request.algorithm)
+  const provider = providers.dsa87
   let seed: Uint8Array | undefined
   let secretKey: Uint8Array | undefined
   try {
@@ -274,7 +261,7 @@ async function signWithSeed(request: SignWithSeedRequest): Promise<Uint8Array> {
 }
 
 function verify(request: VerifyRequest): boolean {
-  return dsaProvider(request.algorithm).verify(
+  return providers.dsa87.verify(
     request.signature,
     request.message,
     request.publicKey,
@@ -286,7 +273,7 @@ async function encryptPqMessage(
   request: EncryptPqMessageRequest,
 ): Promise<import("@/schemas/domain").MlKemMessageEnvelopeV2> {
   const components = suiteComponents(request.suite)
-  const kem = kemProvider(components.kem)
+  const kem = providers.kem1024
   const plaintext = Uint8Array.from(request.plaintext)
   let signingSeed: Uint8Array | undefined
   let signingSecretKey: Uint8Array | undefined
@@ -295,48 +282,38 @@ async function encryptPqMessage(
   let sharedSecret: Uint8Array | undefined
   let hkdfInfo: Uint8Array | undefined
   try {
-    if (components.signature === undefined) {
-      innerBytes = encodeUnsignedMessageBodyV2({
-        version: 2,
-        messageId: Uint8Array.from(request.messageId),
-        createdAt: request.createdAt,
-        recipientKemKeyId: request.recipientKemKeyId,
-        plaintext,
-      })
-    } else {
-      const sign = request.sign
-      if (sign === undefined || sign.algorithm !== components.signature) {
-        throw new AppError("ENCRYPTION_FAILED")
-      }
-      const provider = dsaProvider(sign.algorithm)
-      signingSeed = await decryptSecret({
-        vaultKey: sign.vaultKey,
-        secret: sign.encryptedSeed,
-        aad: {
-          identityId: sign.identityId,
-          role: "ml-dsa-seed",
-          algorithm: sign.algorithm,
-          keyId: sign.senderSigningKeyId,
-          publicKeySha256: await sha256(sign.storedPublicKey),
-        },
-      })
-      const generated = provider.keygen(signingSeed)
-      signingSecretKey = generated.secretKey
-      if (!bytesEqual(generated.publicKey, sign.storedPublicKey)) {
-        throw new AppError("ENCRYPTION_FAILED")
-      }
-      const body: SignedMessageBodyV2 = {
-        version: 2,
-        messageId: Uint8Array.from(request.messageId),
-        createdAt: request.createdAt,
-        recipientKemKeyId: request.recipientKemKeyId,
-        plaintext,
-        senderSigningKeyId: sign.senderSigningKeyId,
-      }
-      const signature = signBody({ provider, body, secretKey: signingSecretKey })
-      signatureValue = signature.value
-      innerBytes = encodeSignedMessageV2({ body, signature })
+    const sign = request.sign
+    if (sign.algorithm !== components.signature) {
+      throw new AppError("ENCRYPTION_FAILED")
     }
+    const provider = providers.dsa87
+    signingSeed = await decryptSecret({
+      vaultKey: sign.vaultKey,
+      secret: sign.encryptedSeed,
+      aad: {
+        identityId: sign.identityId,
+        role: "ml-dsa-seed",
+        algorithm: sign.algorithm,
+        keyId: sign.senderSigningKeyId,
+        publicKeySha256: await sha256(sign.storedPublicKey),
+      },
+    })
+    const generated = provider.keygen(signingSeed)
+    signingSecretKey = generated.secretKey
+    if (!bytesEqual(generated.publicKey, sign.storedPublicKey)) {
+      throw new AppError("ENCRYPTION_FAILED")
+    }
+    const body: SignedMessageBodyV2 = {
+      version: 2,
+      messageId: Uint8Array.from(request.messageId),
+      createdAt: request.createdAt,
+      recipientKemKeyId: request.recipientKemKeyId,
+      plaintext,
+      senderSigningKeyId: sign.senderSigningKeyId,
+    }
+    const signature = signBody({ provider, body, secretKey: signingSecretKey })
+    signatureValue = signature.value
+    innerBytes = encodeSignedMessageV2({ body, signature })
 
     const encapsulated = kem.encapsulate(request.recipientKemPublicKey)
     sharedSecret = encapsulated.sharedSecret
@@ -389,7 +366,7 @@ async function encryptPqMessage(
 async function openPqEnvelope(request: OpenPqEnvelopeRequest): Promise<OpenedPqEnvelope> {
   const { envelope, recipient } = request
   const components = suiteComponents(envelope.suite)
-  const kem = kemProvider(components.kem)
+  const kem = providers.kem1024
   let seed: Uint8Array | undefined
   let secretKey: Uint8Array | undefined
   let sharedSecret: Uint8Array | undefined
@@ -443,20 +420,6 @@ async function openPqEnvelope(request: OpenPqEnvelopeRequest): Promise<OpenedPqE
       ),
     )
 
-    if (components.signature === undefined) {
-      const body = decodeUnsignedMessageBodyV2(decrypted)
-      parsedPlaintext = body.plaintext
-      if (body.recipientKemKeyId !== envelope.recipientKemKeyId) {
-        throw new AppError("DECRYPTION_FAILED")
-      }
-      return {
-        kind: "unsigned",
-        plaintext: Uint8Array.from(body.plaintext),
-        messageId: Uint8Array.from(body.messageId),
-        createdAt: body.createdAt,
-      }
-    }
-
     const signed = decodeSignedMessageV2(decrypted)
     parsedPlaintext = signed.body.plaintext
     parsedSignature = signed.signature.value
@@ -497,7 +460,7 @@ function verifySignedMessage(
     signatureBytes = signed.signature.value
     if (signed.signature.algorithm !== request.algorithm) return { valid: false }
     const valid = verifySignedBody({
-      provider: dsaProvider(request.algorithm),
+      provider: providers.dsa87,
       body: signed.body,
       signature: signed.signature,
       senderPublicKey: request.senderPublicKey,

@@ -18,8 +18,8 @@ export interface EncryptPqArgs {
   // Recipient: imported bundle that supplies the recipient KEM public key and keyId.
   recipient: PqPublicBundleRecord
   plaintext: Uint8Array
-  // Signed mode only: the local identity (signing side) plus the Vault key.
-  sign?: {
+  // Local identity (signing side) plus the Vault key.
+  sign: {
     identity: PostQuantumIdentity
     vaultKey: CryptoKey
   }
@@ -45,24 +45,23 @@ export async function encryptPq(args: EncryptPqArgs): Promise<MlKemMessageEnvelo
       // filters first, so this is the backstop for any other caller.
       throw new AppError("KEY_NOT_FOUND")
     }
-    if (args.sign !== undefined && args.sign.identity.status !== "active") {
+    if (args.sign.identity.status !== "active") {
       throw new AppError("ENCRYPTION_FAILED")
     }
 
-    const signingAlgorithm = args.sign?.identity.signing.algorithm
-    const suite = resolveSuite(args.recipient.kem.algorithm, signingAlgorithm)
+    const suite = resolveSuite(
+      args.recipient.kem.algorithm,
+      args.sign.identity.signing.algorithm,
+    )
     assertActiveSuite(suite)
-    const sign =
-      args.sign === undefined
-        ? undefined
-        : {
-            senderSigningKeyId: args.sign.identity.signing.keyId,
-            algorithm: args.sign.identity.signing.algorithm,
-            vaultKey: args.sign.vaultKey,
-            identityId: args.sign.identity.id,
-            encryptedSeed: args.sign.identity.signing.encryptedSeed,
-            storedPublicKey: args.sign.identity.signing.publicKey,
-          }
+    const sign = {
+      senderSigningKeyId: args.sign.identity.signing.keyId,
+      algorithm: args.sign.identity.signing.algorithm,
+      vaultKey: args.sign.vaultKey,
+      identityId: args.sign.identity.id,
+      encryptedSeed: args.sign.identity.signing.encryptedSeed,
+      storedPublicKey: args.sign.identity.signing.publicKey,
+    }
 
     return await args.client.encryptPqMessage({
       suite,
@@ -71,7 +70,7 @@ export async function encryptPq(args: EncryptPqArgs): Promise<MlKemMessageEnvelo
       plaintext: args.plaintext,
       messageId: randomBytes(MESSAGE_ID_BYTES),
       createdAt: args.now,
-      ...(sign === undefined ? {} : { sign }),
+      sign,
     })
   } catch (error) {
     throw toAppError(error, "ENCRYPTION_FAILED")

@@ -62,10 +62,16 @@ Two registry sections:
   `crypto-noble` unit: changelog + FIPS errata read, KAT vectors
   (`test:pq-vectors`) and goldens green, security-review §1 updated — in one
   change. Never as a routine `deps` bump.
-- **Append-only allowlists.** Boot allowlist, profile/wire vocabulary, and
-  legacy normalization keep every historical id. Removing one bricks stored
-  preferences and can force `wipeOnOnline` → data wipe. When in doubt, add,
-  never delete.
+- **Append-only display-preference reads.** The boot allowlist and legacy
+  normalization for numeric density/interval preferences keep every historical
+  value. Removing one bricks stored preferences and can force `wipeOnOnline` →
+  data wipe. When in doubt, add, never delete.
+- **Single-active crypto vocabulary.** Profile, algorithm, and wire-suite ids
+  hold only what the app currently produces; every removed id must be rejected
+  at each boundary, with the negative tests that prove it. Widening a union
+  back to a retired id is the violation here. (Policy changed 2026-08-01 by
+  owner request, no-compatibility vocabulary purge; superseded the former
+  append-only vocabulary rule.)
 - **No self-certified vectors.** ACVP expected values come from upstream NIST
   data only — never regenerated from our own implementation.
 - **Absolute dates.** Every dated claim written during a sweep uses YYYY-MM-DD,

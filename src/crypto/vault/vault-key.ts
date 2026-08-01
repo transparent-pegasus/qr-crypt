@@ -6,7 +6,6 @@
 //     "check for existence → add" in one readwrite transaction (never overwrite with put).
 //   - The side that loses the race discards its generated key and reloads the stored key.
 //   - Never overwrite the key, because doing so creates unrecoverable identities.
-import type { EncryptedSecret } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { isVaultKey } from "@/crypto/vault/is-vault-key"
 import { getDb, STORE_APP_METADATA, type KeyValueRow } from "@/storage/database"
@@ -72,6 +71,3 @@ export function getOrCreateVaultKey(): Promise<CryptoKey> {
 export function dropVaultKeyCache(): void {
   vaultKeyPromise = undefined
 }
-
-// Re-export the EncryptedSecret type under vault for cryptographic-shredding references.
-export type { EncryptedSecret }

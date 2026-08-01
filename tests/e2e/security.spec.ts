@@ -3,10 +3,11 @@ import { META_UNSUPPORTED_DIRECTIVES } from "../../scripts/csp-from-headers.mjs"
 import {
   createSymmetricKey,
   encryptWithStoredKey,
+  expectNoQrArtifactStore,
   loadOnlineGate,
-  rawQrArtifacts,
   switchToOfflineApp,
 } from "./helpers"
+import { inspectPersistentSurfaces } from "./persistence-inspector"
 
 test("the cryptographic flow sends nothing externally, leaves no secrets or message artifacts, and preserves CSP", async ({
   context,
@@ -93,17 +94,11 @@ test("the cryptographic flow sends nothing externally, leaves no secrets or mess
   })
 
   const { payload } = await encryptWithStoredKey(page, { keyName, plaintext })
-  const artifacts = await rawQrArtifacts(page)
-  expect(artifacts).toHaveLength(0)
-  expect(
-    artifacts.filter(
-      (artifact) =>
-        artifact.kind === "ciphertext" ||
-        artifact.payload?.startsWith("OCM1:") ||
-        artifact.payload?.startsWith("OCM2:") ||
-        artifact.payload?.startsWith("OCF2:"),
-    ),
-  ).toHaveLength(0)
+  await expectNoQrArtifactStore(page)
+  const report = await inspectPersistentSurfaces(page, [
+    { marker: "ciphertext-payload", text: payload },
+  ])
+  expect(report.matches).toEqual([])
 
   const appOrigin = new URL(page.url()).origin
   const externalRequests = requestUrls.filter((url) => {

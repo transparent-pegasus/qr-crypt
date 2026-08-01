@@ -1,16 +1,17 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { readBootDecision } from "@/app/boot/boot-controller"
-import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
-import { createSymmetricKeyRecord } from "@/crypto/key-generation"
+import { openSymMessage, sealSymMessage } from "@/crypto/aes-gcm"
+import {
+  createSymmetricKeyRecord,
+  rotateSymmetricKeyRecord,
+} from "@/crypto/key-generation"
 import { generateKeyId } from "@/crypto/random"
 import { toBase64Url } from "@/lib/base64url"
 import { bytesToHex, utf8ToBytes } from "@/lib/bytes"
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
   DEFAULT_GENERATED_DISPLAY_PAIR,
-  type PqProfileId,
   type StoredKeyRecord,
-  type UiAlgorithm,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
@@ -28,13 +29,20 @@ import {
   clearAllKeys,
   deleteKeyRecord,
   findKeyByFingerprint,
+  getActiveKeyRecord,
   getKeyRecord,
   listKeyRecords,
   markKeyUsed,
   renameKeyRecord,
   saveKeyRecord,
+  saveSymmetricRotation,
 } from "@/storage/key-repository"
-import { getPreferences, updatePreferences } from "@/storage/preferences-repository"
+import {
+  defaultPreferences,
+  getPreferences,
+  updatePreferences,
+} from "@/storage/preferences-repository"
+import { LEGACY_RSA_ID, legacyRsaRecord } from "../fixtures/legacy-rsa-record"
 
 const NOW = 1_700_000_000_000
 const HISTORICAL_DISPLAY_ROWS = [
@@ -53,6 +61,20 @@ const HISTORICAL_DISPLAY_ROWS = [
   {
     label: "a missing density member",
     value: { frameIntervalMs: 1_000 },
+  },
+] as const
+const RETIRED_STORED_PREFERENCES = [
+  {
+    label: "requireSignature",
+    value: { requireSignature: true },
+  },
+  {
+    label: "defaultPqProfile",
+    value: { defaultPqProfile: "balanced" },
+  },
+  {
+    label: "the unsigned UI algorithm",
+    value: { defaultAlgorithm: "MLKEM1024_A256GCM" },
   },
 ] as const
 
@@ -138,6 +160,14 @@ describe("database creation", () => {
 })
 
 describe("key repository", () => {
+  it("admits only symmetric stored-key records at the type boundary", () => {
+    type HasRetiredKind =
+      Exclude<StoredKeyRecord["kind"], "symmetric"> extends never ? false : true
+    const hasRetiredKind: HasRetiredKind = false
+
+    expect(hasRetiredKind).toBe(false)
+  })
+
   it("supports CRUD, lookup, atomic usage increments, and CryptoKey reuse after reopen", async () => {
     const first = await createSymmetricKeyRecord("鍵A", NOW)
     const second = await createSymmetricKeyRecord("鍵B", NOW + 1)
@@ -155,9 +185,8 @@ describe("key repository", () => {
     expect(used?.useCount).toBe(5)
     expect(used?.lastUsedAt).toBe(NOW + 2)
 
-    const beforeClose = await encryptWithAesKey({
-      key: first.symmetricKey!,
-      keyId: first.id,
+    const beforeClose = await sealSymMessage({
+      record: first,
       plaintext: utf8ToBytes("再起動後"),
       now: NOW + 3,
     })
@@ -165,8 +194,8 @@ describe("key repository", () => {
     const restored = await getKeyRecord(first.id)
     expect(restored?.symmetricKey).toBeDefined()
     expect(
-      await decryptWithAesKey({
-        key: restored!.symmetricKey!,
+      await openSymMessage({
+        record: restored!,
         envelope: beforeClose,
       }),
     ).toEqual(utf8ToBytes("再起動後"))
@@ -204,7 +233,7 @@ describe("key repository", () => {
       id: generateKeyId(),
       fingerprint: "f".repeat(64),
       algorithm: "AES-ECB",
-    } as StoredKeyRecord
+    } as unknown as StoredKeyRecord
     await (await getDb()).add(STORE_KEYS, malformed)
     expect((await listKeyRecords()).map((record) => record.id)).not.toContain(
       malformed.id,
@@ -213,13 +242,153 @@ describe("key repository", () => {
       code: "STORAGE_FAILED",
     })
   })
+
+  it("silently omits a legacy RSA row from the key list without repairing it", async () => {
+    const legacyRow = await legacyRsaRecord()
+    const database = await getDb()
+    await database.add(STORE_KEYS, legacyRow as never)
+
+    const listed = await listKeyRecords()
+    const persisted = await database.get(STORE_KEYS, LEGACY_RSA_ID)
+
+    expect({
+      listedNames: listed.map(({ name }) => name),
+      storedRows: await database.count(STORE_KEYS),
+      persistedKind: (persisted as { kind?: unknown } | undefined)?.kind,
+      persistedAlgorithm: (persisted as { algorithm?: unknown } | undefined)?.algorithm,
+    }).toEqual({
+      listedNames: [],
+      storedRows: 1,
+      persistedKind: "rsa-key-pair",
+      persistedAlgorithm: "RSA-OAEP-3072",
+    })
+  })
+})
+
+describe("symmetric key rotation persistence", () => {
+  it("stores the successor and rotated predecessor together", async () => {
+    const current = await createSymmetricKeyRecord("persisted lineage", NOW)
+    await saveKeyRecord(current)
+    const rotation = await rotateSymmetricKeyRecord(current, NOW + 1)
+
+    await saveSymmetricRotation(rotation)
+
+    expect(await getKeyRecord(rotation.previous.id)).toMatchObject({
+      id: current.id,
+      fingerprint: current.fingerprint,
+      status: "rotated",
+      rotatedAt: NOW + 1,
+    })
+    expect(await getKeyRecord(rotation.next.id)).toMatchObject({
+      id: rotation.next.id,
+      fingerprint: rotation.next.fingerprint,
+      status: "active",
+      rotatedFromId: current.id,
+      createdAt: NOW + 1,
+    })
+    expect(await listKeyRecords()).toHaveLength(2)
+    expect(await getActiveKeyRecord(rotation.previous.id)).toBeUndefined()
+    expect(await getActiveKeyRecord(rotation.next.id)).toMatchObject({
+      id: rotation.next.id,
+      status: "active",
+    })
+  })
+
+  it("commits exactly one of two rotations derived from the same stale row", async () => {
+    const current = await createSymmetricKeyRecord("competing rotations", NOW)
+    await saveKeyRecord(current)
+    const rotations = await Promise.all([
+      rotateSymmetricKeyRecord(current, NOW + 1),
+      rotateSymmetricKeyRecord(current, NOW + 1),
+    ])
+
+    const settled = await Promise.allSettled(
+      rotations.map((rotation) => saveSymmetricRotation(rotation)),
+    )
+
+    expect(settled.filter(({ status }) => status === "fulfilled")).toHaveLength(1)
+    expect(settled.find(({ status }) => status === "rejected")).toMatchObject({
+      status: "rejected",
+      reason: { code: "STORAGE_FAILED", message: "STORAGE_FAILED" },
+    })
+    const stored = await listKeyRecords()
+    const active = stored.filter(({ status }) => status === "active")
+    expect(stored).toHaveLength(2)
+    expect(active).toHaveLength(1)
+    expect(rotations.map(({ next }) => next.id)).toContain(active[0]?.id)
+    expect(stored.filter(({ status }) => status === "rotated")).toMatchObject([
+      { id: current.id, fingerprint: current.fingerprint },
+    ])
+  })
+
+  it("rejects a stale predecessor already rotated in storage without partial writes", async () => {
+    const current = await createSymmetricKeyRecord("stale predecessor", NOW)
+    await saveKeyRecord(current)
+    const committed = await rotateSymmetricKeyRecord(current, NOW + 1)
+    const stale = await rotateSymmetricKeyRecord(current, NOW + 2)
+    await saveSymmetricRotation(committed)
+    const before = (await listKeyRecords()).map(
+      ({ id, fingerprint, status, rotatedFromId, rotatedAt }) => ({
+        id,
+        fingerprint,
+        status,
+        rotatedFromId,
+        rotatedAt,
+      }),
+    )
+
+    await expect(saveSymmetricRotation(stale)).rejects.toMatchObject({
+      code: "STORAGE_FAILED",
+      message: "STORAGE_FAILED",
+    })
+
+    expect(
+      (await listKeyRecords()).map(
+        ({ id, fingerprint, status, rotatedFromId, rotatedAt }) => ({
+          id,
+          fingerprint,
+          status,
+          rotatedFromId,
+          rotatedAt,
+        }),
+      ),
+    ).toEqual(before)
+    expect(await getKeyRecord(stale.next.id)).toBeUndefined()
+  })
+
+  it("rolls back the predecessor write when adding the successor fails", async () => {
+    const current = await createSymmetricKeyRecord("atomic rollback", NOW)
+    await saveKeyRecord(current)
+    const rotation = await rotateSymmetricKeyRecord(current, NOW + 1)
+    const fingerprintConflict: StoredKeyRecord = {
+      ...rotation.next,
+      id: generateKeyId(),
+      name: "conflicting successor fingerprint",
+      rotatedFromId: undefined,
+    }
+    await saveKeyRecord(fingerprintConflict)
+
+    await expect(saveSymmetricRotation(rotation)).rejects.toMatchObject({
+      code: "STORAGE_FAILED",
+      message: "STORAGE_FAILED",
+    })
+
+    expect(await getKeyRecord(current.id)).toMatchObject({
+      status: "active",
+      rotatedAt: undefined,
+    })
+    expect(await getKeyRecord(rotation.next.id)).toBeUndefined()
+    expect(await getKeyRecord(fingerprintConflict.id)).toMatchObject({
+      status: "active",
+      fingerprint: rotation.next.fingerprint,
+    })
+  })
 })
 
 describe("preferences and plaintext non-persistence", () => {
   it("uses env defaults and validates persisted updates", async () => {
     expect(await getPreferences()).toMatchObject({
       defaultAlgorithm: env.defaultAlgorithm,
-      qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
       frameBytes: DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes,
@@ -228,13 +397,11 @@ describe("preferences and plaintext non-persistence", () => {
     expect(
       await updatePreferences({
         defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM",
-        qrErrorCorrection: "M",
         autoClearPlaintextAfterEncrypt: false,
         backgroundClearEnabled: false,
       }),
     ).toMatchObject({
       defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM",
-      qrErrorCorrection: "M",
       autoClearPlaintextAfterEncrypt: false,
       backgroundClearEnabled: false,
     })
@@ -247,12 +414,11 @@ describe("preferences and plaintext non-persistence", () => {
       await getDb()
     ).put(STORE_PREFERENCES, {
       key: "preferences",
-      value: { qrErrorCorrection: "H", backgroundClearSeconds: 12 },
+      value: { backgroundClearSeconds: 12 },
     })
     const migrated = await getPreferences()
     expect(migrated).toMatchObject({
       defaultAlgorithm: env.defaultAlgorithm,
-      qrErrorCorrection: "H",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
     })
@@ -285,36 +451,48 @@ describe("preferences and plaintext non-persistence", () => {
     }
   })
 
-  it("normalizes legacy PQ/RSA preferences while boot preserves wipeOnOnline=false", async () => {
-    const database = await getDb()
-    await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
-    const cases = [
-      ["MLKEM768_A256GCM", "MLKEM1024_A256GCM"],
-      ["MLKEM768_MLDSA65_A256GCM", "MLKEM1024_MLDSA87_A256GCM"],
-      ["RSA-HYBRID", "A256GCM"],
-    ] as const
-
-    for (const [legacyAlgorithm, expectedAlgorithm] of cases) {
+  it.each(RETIRED_STORED_PREFERENCES)(
+    "ignores stored $label and merges every remaining value over current defaults",
+    async ({ value }) => {
+      const database = await getDb()
       await database.put(STORE_PREFERENCES, {
         key: "preferences",
         value: {
-          defaultAlgorithm: legacyAlgorithm,
-          defaultPqProfile: "balanced",
+          ...value,
           wipeOnOnline: false,
         },
       })
 
-      await expect(getPreferences()).resolves.toMatchObject({
-        defaultAlgorithm: expectedAlgorithm,
-        defaultPqProfile: "maximum",
+      const preferences = await getPreferences()
+      expect(preferences).toEqual({
+        ...defaultPreferences(),
         wipeOnOnline: false,
       })
-      await expect(readBootDecision()).resolves.toMatchObject({
-        preferencesReadFailed: false,
-        sensitiveDataExists: true,
+      expect(preferences).not.toHaveProperty("requireSignature")
+      expect(preferences).not.toHaveProperty("defaultPqProfile")
+    },
+  )
+
+  it("normalizes the legacy RSA preference while boot preserves wipeOnOnline=false", async () => {
+    const database = await getDb()
+    await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
+    await database.put(STORE_PREFERENCES, {
+      key: "preferences",
+      value: {
+        defaultAlgorithm: "RSA-HYBRID",
         wipeOnOnline: false,
-      })
-    }
+      },
+    })
+
+    await expect(getPreferences()).resolves.toMatchObject({
+      defaultAlgorithm: "A256GCM",
+      wipeOnOnline: false,
+    })
+    await expect(readBootDecision()).resolves.toMatchObject({
+      preferencesReadFailed: false,
+      sensitiveDataExists: true,
+      wipeOnOnline: false,
+    })
   })
 
   it.each(HISTORICAL_DISPLAY_ROWS)(
@@ -340,10 +518,10 @@ describe("preferences and plaintext non-persistence", () => {
         wipeOnOnline: false,
       })
       await expect(
-        updatePreferences({ qrErrorCorrection: "M" }),
+        updatePreferences({ backgroundClearEnabled: false }),
       ).resolves.toMatchObject({
         ...DEFAULT_GENERATED_DISPLAY_PAIR,
-        qrErrorCorrection: "M",
+        backgroundClearEnabled: false,
         wipeOnOnline: false,
       })
       expect(await database.count(STORE_KEYS)).toBe(1)
@@ -392,19 +570,20 @@ describe("preferences and plaintext non-persistence", () => {
     },
   )
 
-  it("rejects legacy algorithm and balanced profile injection through updates", async () => {
-    for (const defaultAlgorithm of ["MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"]) {
-      await expect(
-        updatePreferences({
-          defaultAlgorithm: defaultAlgorithm as unknown as UiAlgorithm,
-        }),
-      ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
-    }
-    await expect(
-      updatePreferences({
-        defaultPqProfile: "balanced" as unknown as PqProfileId,
-      }),
-    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+  it.each([
+    ["MLKEM768_A256GCM", { defaultAlgorithm: "MLKEM768_A256GCM" }],
+    [
+      "MLKEM768_MLDSA65_A256GCM",
+      { defaultAlgorithm: "MLKEM768_MLDSA65_A256GCM" },
+    ],
+    ["MLKEM1024_A256GCM", { defaultAlgorithm: "MLKEM1024_A256GCM" }],
+    ["requireSignature", { requireSignature: true }],
+    ["defaultPqProfile=balanced", { defaultPqProfile: "balanced" }],
+    ["defaultPqProfile=maximum", { defaultPqProfile: "maximum" }],
+  ] as const)("rejects removed preference %s through updates", async (_label, patch) => {
+    await expect(updatePreferences(patch as never)).rejects.toMatchObject({
+      code: "STORAGE_FAILED",
+    })
   })
 
   it("never persists plaintext and has no QR artifact store", async () => {
@@ -412,9 +591,8 @@ describe("preferences and plaintext non-persistence", () => {
     const plaintext = utf8ToBytes(secret)
     const aesRecord = await createSymmetricKeyRecord("AES保管", NOW)
     await saveKeyRecord(aesRecord)
-    await encryptWithAesKey({
-      key: aesRecord.symmetricKey!,
-      keyId: aesRecord.id,
+    await sealSymMessage({
+      record: aesRecord,
       plaintext,
       now: NOW + 2,
     })

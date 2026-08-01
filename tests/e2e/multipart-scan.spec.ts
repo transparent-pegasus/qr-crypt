@@ -76,15 +76,12 @@ test("routes an injected decoder stream through the UI handler and imports a shu
     scanDialog.getByRole("button", { name: "Discard scan state", exact: true }),
   ).toBeVisible()
 
-  // The first multipart frame locks this run; an otherwise valid single QR is rejected.
+  // The first multipart frame locks this run. A single payload is refused as an
+  // unaccepted kind now that frames are the only thing this screen scans.
   await emitInjectedQr(page, frames[0]!)
   await expect(page.getByText(`Received 1 / ${frames.length}`, { exact: true })).toBeVisible()
   await emitInjectedQr(page, "OCM1:competing-single")
-  await expect(
-    page.getByText(
-      "A multi-frame QR scan is in progress. Scan a single QR code after completion or after discarding the scan state.",
-    ),
-  ).toBeVisible()
+  await expect(page.getByText(/This QR code is not accepted/)).toBeVisible()
   let snapshot = await injectedScanSnapshot(page)
   expect(snapshot.at(-1)).toMatchObject({ active: true, once: false, emissions: 2 })
 
@@ -103,7 +100,6 @@ test("routes an injected decoder stream through the UI handler and imports a shu
   await page.getByRole("button", { name: "Start camera" }).click()
   await expect(page.getByText("QR codes can be read in any order")).toBeVisible()
 
-  // Restart with the last frame, repeat it, then finish in reverse order.
   const lastIndex = frames.length - 1
   await emitInjectedQr(page, frames[lastIndex]!)
   await expect(page.getByText(`Received 1 / ${frames.length}`, { exact: true })).toBeVisible()

@@ -22,35 +22,33 @@ function client(): PqCryptoClient {
 async function identity(
   pq: PqCryptoClient,
   fill: number,
-  profile: "balanced" | "maximum" = "maximum",
 ): Promise<{ identity: PostQuantumIdentity; vaultKey: CryptoKey }> {
   const vaultKey = await getOrCreateVaultKey()
   const identityId = keyId(fill)
   const kemKeyId = keyId(fill + 1)
   const signingKeyId = keyId(fill + 2)
   const generated = await pq.generateIdentityKeys({
-    profile,
+    profile: "maximum",
     vaultKey,
     identityId,
     kemKeyId,
     signingKeyId,
   })
-  const maximum = profile === "maximum"
   return {
     vaultKey,
     identity: {
       id: identityId,
       name: `identity-${fill}`,
-      profile,
+      profile: "maximum",
       kem: {
-        algorithm: maximum ? "ML-KEM-1024" : "ML-KEM-768",
+        algorithm: "ML-KEM-1024",
         keyId: kemKeyId,
         publicKey: generated.kem.publicKey,
         encryptedSeed: generated.kem.encryptedSeed,
         fingerprint: "test-kem",
       },
       signing: {
-        algorithm: maximum ? "ML-DSA-87" : "ML-DSA-65",
+        algorithm: "ML-DSA-87",
         keyId: signingKeyId,
         publicKey: generated.signing.publicKey,
         encryptedSeed: generated.signing.encryptedSeed,
@@ -76,7 +74,7 @@ describe("in-process PQ Worker handler", () => {
     const pq = client()
     await expect(
       pq.generateIdentityKeys({
-        profile: "balanced",
+        profile: "balanced" as never,
         vaultKey: await getOrCreateVaultKey(),
         identityId: keyId(1),
         kemKeyId: keyId(2),
@@ -142,39 +140,6 @@ describe("in-process PQ Worker handler", () => {
         signature,
       }),
     ).resolves.toBe(false)
-  })
-
-  it("encrypts and opens an unsigned envelope", async () => {
-    const pq = client()
-    const generated = await identity(pq, 31)
-    const plaintext = new TextEncoder().encode("unsigned worker round trip")
-    const messageId = new Uint8Array(16).fill(0x41)
-    const createdAt = 1_700_000_000_001
-    const envelope = await pq.encryptPqMessage({
-      suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
-      recipientKemKeyId: generated.identity.kem.keyId,
-      recipientKemPublicKey: generated.identity.kem.publicKey,
-      plaintext,
-      messageId,
-      createdAt,
-    })
-    const opened = await pq.openPqEnvelope({
-      envelope,
-      recipient: {
-        identityId: generated.identity.id,
-        kemAlgorithm: generated.identity.kem.algorithm,
-        kemKeyId: generated.identity.kem.keyId,
-        encryptedKemSeed: generated.identity.kem.encryptedSeed,
-        storedKemPublicKey: generated.identity.kem.publicKey,
-        vaultKey: generated.vaultKey,
-      },
-    })
-    expect(opened).toEqual({
-      kind: "unsigned",
-      plaintext,
-      messageId,
-      createdAt,
-    })
   })
 
   it("runs sign-then-encrypt and releases plaintext only after verification", async () => {

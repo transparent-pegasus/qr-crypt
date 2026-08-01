@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { expect, test, type Download, type Locator } from "@playwright/test"
 import {
-  SIGNED_PQ_ALGORITHM_LABEL,
+  PQ_ALGORITHM_LABEL,
   chooseOption,
   collectAnimatedFramePayloads,
   createPqIdentity,
@@ -63,14 +63,14 @@ async function animatedFrameCount(scope: Locator): Promise<number> {
   return Number(match[1])
 }
 
-test("a one-QR encryption downloads one PNG with no SVG affordance", async ({
+test("a one-frame symmetric encryption downloads its OCF2 QR as one PNG with no SVG affordance", async ({
   context,
   page,
 }) => {
   const keyName = "出力確認鍵"
   await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, keyName)
-  const { payload } = await encryptWithStoredKey(page, {
+  const { framePayload } = await encryptWithStoredKey(page, {
     keyName,
     plaintext: "ダウンロードしたQRを再読取する日本語平文",
   })
@@ -88,7 +88,7 @@ test("a one-QR encryption downloads one PNG with no SVG affordance", async ({
   await downloadButton.click()
   const pngDownload = await pngDownloadPromise
   expect(pngDownload.suggestedFilename()).toMatch(/^[^/\\]+-[A-Za-z0-9_-]{8}\.png$/)
-  expect(decodePng(await downloadBuffer(pngDownload))).toBe(payload)
+  expect(decodePng(await downloadBuffer(pngDownload))).toBe(framePayload)
 })
 
 test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no SVG affordance", async ({
@@ -107,7 +107,7 @@ test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no
   await dialog
     .getByRole("button", { name: "Show secret-key QR", exact: true })
     .click()
-  dialog = page.getByRole("dialog", { name: "Symmetric-key QR" })
+  dialog = page.getByRole("dialog", { name: "Shared-key QR" })
   await dialog
     .getByRole("checkbox", { name: "I understand the risk" })
     .check()
@@ -124,7 +124,7 @@ test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no
   expect(secretPng.suggestedFilename()).toMatch(
     /^一覧出力秘密鍵-[A-Za-z0-9_-]{8}\.png$/,
   )
-  expect(decodePng(await downloadBuffer(secretPng))).toMatch(/^OCK1:/)
+  expect(decodePng(await downloadBuffer(secretPng))).toMatch(/^OCF2:/)
 
   await dialog.getByRole("button", { name: "Back to details" }).click()
   await page
@@ -271,7 +271,7 @@ test("measures a maximum 120000-byte signed PQ message through ZIP production", 
   await chooseOption(
     page,
     "Cryptographic algorithm",
-    SIGNED_PQ_ALGORITHM_LABEL,
+    PQ_ALGORITHM_LABEL,
   )
   await chooseOption(page, "Recipient ML-KEM public key", /^Verified: /)
   await chooseOption(page, "My ML-DSA signing identity", identityName)

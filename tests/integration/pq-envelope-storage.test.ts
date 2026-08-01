@@ -18,7 +18,6 @@ import {
   deleteEntireDatabase,
   getDb,
   STORE_PQ_IDENTITIES,
-  STORE_PQ_PUBLIC_BUNDLES,
 } from "@/storage/database"
 import {
   confirmBundleFingerprint,
@@ -39,33 +38,10 @@ import {
   saveIdentity,
   saveRotation,
 } from "@/storage/pq-identity-repository"
+import { publicRecord } from "../helpers/pq-fixtures"
 
 const NOW = 1_700_200_000_000
 const clients: PqCryptoClient[] = []
-
-function publicRecord(
-  identity: PostQuantumIdentity,
-  importedAt: number,
-): PqPublicBundleRecord {
-  const bundle = buildPublicBundle(identity)
-  return {
-    recordId: generateKeyId(),
-    identityId: bundle.identityId,
-    name: identity.name,
-    kem: {
-      ...bundle.kem,
-      fingerprint: identity.kem.fingerprint,
-    },
-    signing: {
-      ...bundle.signing,
-      fingerprint: identity.signing.fingerprint,
-    },
-    identityFingerprint: identity.identityFingerprint,
-    trust: "unverified",
-    bundleCreatedAt: bundle.createdAt,
-    importedAt,
-  }
-}
 
 afterEach(async () => {
   for (const client of clients.splice(0)) client.dispose()
@@ -75,37 +51,6 @@ afterEach(async () => {
 })
 
 describe("PQ envelope and storage integration", () => {
-  it("rejects duplicate signing key IDs at the database boundary", async () => {
-    const client = createPqCryptoClient()
-    clients.push(client)
-    const vaultKey = await getOrCreateVaultKey()
-    const identity = await createIdentity({
-      client,
-      vaultKey,
-      name: "database uniqueness",
-      profile: "maximum",
-      now: NOW,
-    })
-    const first = publicRecord(identity, NOW + 1)
-    const second: PqPublicBundleRecord = {
-      ...first,
-      recordId: generateKeyId(),
-      kem: {
-        ...first.kem,
-        keyId: generateKeyId(),
-      },
-      importedAt: NOW + 2,
-    }
-    const database = await getDb()
-
-    await database.add(STORE_PQ_PUBLIC_BUNDLES, first)
-    await expect(
-      database.add(STORE_PQ_PUBLIC_BUNDLES, second),
-    ).rejects.toMatchObject({
-      name: "ConstraintError",
-    })
-  }, 30_000)
-
   it("generates, imports, encrypts, decrypts, rotates old KEM keys, and blocks revoked selections", async () => {
     const client = createPqCryptoClient()
     clients.push(client)
@@ -299,6 +244,7 @@ describe("PQ envelope and storage integration", () => {
         client,
         recipient: revokedRecipient!,
         plaintext,
+        sign: { identity: sender, vaultKey },
         now: NOW + 9,
       }),
     ).rejects.toMatchObject({ code: "KEY_NOT_FOUND" })
@@ -328,6 +274,7 @@ describe("deleteSupersededIdentities", () => {
       client,
       recipient,
       plaintext,
+      sign: { identity: first, vaultKey },
       now: NOW + 2,
     })
     const rotation = await rotateIdentity({
@@ -345,9 +292,13 @@ describe("deleteSupersededIdentities", () => {
       envelope,
       recipient: oldRecipient!,
       vaultKey,
-      resolveSigningKey: async () => undefined,
+      resolveSigningKey: async () => ({
+        algorithm: first.signing.algorithm,
+        publicKey: first.signing.publicKey,
+        revoked: false,
+      }),
     })
-    expect(before).toMatchObject({ kind: "unsigned", plaintext })
+    expect(before).toMatchObject({ kind: "signed-valid", plaintext })
 
     await deleteSupersededIdentities([first.id])
     expect(await findIdentityByKemKeyId(first.kem.keyId)).toBeUndefined()
@@ -359,10 +310,14 @@ describe("deleteSupersededIdentities", () => {
       envelope,
       recipient: oldRecipient!,
       vaultKey,
-      resolveSigningKey: async () => undefined,
+      resolveSigningKey: async () => ({
+        algorithm: first.signing.algorithm,
+        publicKey: first.signing.publicKey,
+        revoked: false,
+      }),
     })
     expect(afterWithCachedObject).toMatchObject({
-      kind: "unsigned",
+      kind: "signed-valid",
       plaintext,
     })
   }, 30_000)

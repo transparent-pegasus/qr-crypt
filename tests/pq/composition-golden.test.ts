@@ -302,33 +302,36 @@ describe("signed composition golden", () => {
   it("rejects all outer cryptographic field mutations", async () => {
     const fixture = await compositionFixture()
     try {
-      const mutations: Array<(envelope: MlKemMessageEnvelopeV2) => void> = [
-        (envelope) => {
+      const mutations: Array<{
+        mutate: (envelope: MlKemMessageEnvelopeV2) => void
+        code: "DECRYPTION_FAILED" | "UNSUPPORTED_ALGORITHM"
+      }> = [
+        { mutate: (envelope) => {
           envelope.kemCiphertext[0] = envelope.kemCiphertext[0]! ^ 1
-        },
-        (envelope) => {
+        }, code: "DECRYPTION_FAILED" },
+        { mutate: (envelope) => {
           envelope.hkdfSalt[0] = envelope.hkdfSalt[0]! ^ 1
-        },
-        (envelope) => {
+        }, code: "DECRYPTION_FAILED" },
+        { mutate: (envelope) => {
           envelope.iv[0] = envelope.iv[0]! ^ 1
-        },
-        (envelope) => {
+        }, code: "DECRYPTION_FAILED" },
+        { mutate: (envelope) => {
           const last = envelope.ciphertext.byteLength - 1
           envelope.ciphertext[last] = envelope.ciphertext[last]! ^ 1
-        },
-        (envelope) => {
-          envelope.suite = "ML-KEM-1024+HKDF-SHA256+A256GCM"
-        },
-        (envelope) => {
+        }, code: "DECRYPTION_FAILED" },
+        { mutate: (envelope) => {
+          envelope.suite = "ML-KEM-1024+HKDF-SHA256+A256GCM" as never
+        }, code: "UNSUPPORTED_ALGORITHM" },
+        { mutate: (envelope) => {
           envelope.recipientKemKeyId = OTHER_KEY_ID
-        },
+        }, code: "DECRYPTION_FAILED" },
       ]
-      for (const mutate of mutations) {
+      for (const { mutate, code } of mutations) {
         const tampered = cloneEnvelope(fixture.envelope)
         mutate(tampered)
         await expect(
           fixture.client.openPqEnvelope(recipient(fixture, tampered)),
-        ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
+        ).rejects.toMatchObject({ code })
       }
     } finally {
       fixture.client.dispose()

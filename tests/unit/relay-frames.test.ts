@@ -1,101 +1,240 @@
-import { describe, expect, it } from "vitest"
-import { buildAad } from "@/crypto/envelope"
+import { describe, expect, expectTypeOf, it } from "vitest"
+import {
+  encodeCanonicalCbor,
+  encodeMlKemEnvelopeV2,
+  encodeSymMessageEnvelopeV2,
+  type CanonicalCborValue,
+} from "@/crypto/pq/canonical-cbor"
 import { toBase64Url } from "@/lib/base64url"
-import { decodePayload, encodeEnvelopeToPayload } from "@/qr/payload"
+import { FRAME_BYTES_MAX, PROTOCOL_MAX_FRAMES } from "@/lib/limits"
+import { encodeFrameToPayload } from "@/qr/payload-v2"
 import {
   acceptRelayCapture,
   EMPTY_RELAY_CAPTURE,
-  parseRelayMessage,
-} from "@/qr/relay-frames"
-import { Encoder } from "cbor-x"
-import { encodePublicIdentityBundleV2 } from "@/crypto/pq/canonical-cbor"
-import { FRAME_BYTES_MAX, PROTOCOL_MAX_FRAMES } from "@/lib/limits"
-import { relayMessageEcLevel } from "@/qr/encode"
-import { TransferAssembler } from "@/qr/multipart/assemble"
-import { splitIntoFrames } from "@/qr/multipart/split"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
-import {
   parseRelayFrameSet,
   parseRelayText,
   RELAY_TEXT_MAX_CHARS,
+  type RelayCapture,
+  type RelayFrameSet,
+  type RelayParseErrorCode,
 } from "@/qr/relay-frames"
-import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
-import {
-  OCK1_SYMMETRIC_KEY,
-  OCM1_MESSAGE_33,
-  OCM1_MESSAGE_44,
-} from "../fixtures/relay-v1"
+import type {
+  MlKemMessageEnvelopeV2,
+  QrFrameV2,
+  SymMessageEnvelopeV2,
+  V2ArtifactType,
+} from "@/schemas/domain"
+import { OCM1_MESSAGE_33, OCM1_MESSAGE_44 } from "../fixtures/relay-legacy"
 
+const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 const TRANSFER_ID = new Uint8Array(16).fill(0x11)
 
-function frame(frameIndex: number, overrides: Partial<QrFrameV2> = {}): QrFrameV2 {
+function pqMessageEnvelope(): MlKemMessageEnvelopeV2 {
   return {
     version: 2,
+    type: "pq-message",
+    suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
+    recipientKemKeyId: KEY_ID,
+    kemCiphertext: new Uint8Array(1_568).fill(0x31),
+    hkdfSalt: new Uint8Array(32).fill(0x32),
+    iv: new Uint8Array(12).fill(0x33),
+    ciphertext: new Uint8Array(16).fill(0x34),
+  }
+}
+
+function symMessageEnvelope(): SymMessageEnvelopeV2 {
+  return {
+    version: 2,
+    type: "sym-message",
+    suite: "HKDF-SHA256+A256GCM",
+    keyId: KEY_ID,
+    createdAt: 1_700_000_000_000,
+    hkdfSalt: new Uint8Array(32).fill(0x41),
+    iv: new Uint8Array(12).fill(0x42),
+    ciphertext: new Uint8Array(16).fill(0x43),
+  }
+}
+
+const PQ_MESSAGE_BYTES = encodeMlKemEnvelopeV2(pqMessageEnvelope())
+const SYM_MESSAGE_BYTES = encodeSymMessageEnvelopeV2(symMessageEnvelope())
+
+function artifactFrames(
+  artifactType: "pq-message" | "sym-message",
+  artifactBytes: Uint8Array,
+  options: { frameBytes?: number; transferId?: Uint8Array } = {},
+): QrFrameV2[] {
+  const frameBytes = options.frameBytes ?? FRAME_BYTES_MAX
+  const frameCount = Math.ceil(artifactBytes.byteLength / frameBytes)
+  const transferId = options.transferId ?? TRANSFER_ID
+  return Array.from({ length: frameCount }, (_, frameIndex) => ({
+    version: 2,
     type: "qr-frame",
-    transferId: Uint8Array.from(TRANSFER_ID),
-    artifactType: "pq-message",
+    transferId: Uint8Array.from(transferId),
+    artifactType,
     frameIndex,
-    frameCount: 2,
-    totalByteLength: 2,
-    chunk: new Uint8Array([frameIndex + 1]),
+    frameCount,
+    totalByteLength: artifactBytes.byteLength,
+    chunk: artifactBytes.slice(
+      frameIndex * frameBytes,
+      Math.min((frameIndex + 1) * frameBytes, artifactBytes.byteLength),
+    ),
+  }))
+}
+
+const PQ_FRAMES = artifactFrames("pq-message", PQ_MESSAGE_BYTES)
+const SYM_FRAMES = artifactFrames("sym-message", SYM_MESSAGE_BYTES)
+
+function cloneFrame(frame: QrFrameV2, overrides: Partial<QrFrameV2> = {}): QrFrameV2 {
+  return {
+    ...frame,
+    transferId: Uint8Array.from(frame.transferId),
+    chunk: Uint8Array.from(frame.chunk),
     ...overrides,
   }
 }
 
-function payload(frameIndex: number, overrides: Partial<QrFrameV2> = {}): string {
-  return encodeFrameToPayload(frame(frameIndex, overrides))
+function pqFrame(frameIndex: number, overrides: Partial<QrFrameV2> = {}): QrFrameV2 {
+  const source = PQ_FRAMES[frameIndex]
+  if (source === undefined) throw new Error(`missing PQ frame ${frameIndex}`)
+  return cloneFrame(source, overrides)
 }
 
-describe("relay frame-set parser", () => {
-  it("matches shared transfer metadata by bytes and every scalar field", async () => {
-    type FrameMatcher = (
-      metadata: {
-        transferId: Uint8Array
-        artifactType: V2ArtifactType
-        frameCount: number
-        totalByteLength: number
-      },
-      candidate: QrFrameV2,
-    ) => boolean
-    const transferState = (await import(
-      "@/qr/multipart/transfer-state"
-    )) as unknown as Record<string, unknown>
-    const frameMatchesMetadata = transferState["frameMatchesMetadata"] as
-      | FrameMatcher
-      | undefined
+function pqPayload(frameIndex: number, overrides: Partial<QrFrameV2> = {}): string {
+  return encodeFrameToPayload(pqFrame(frameIndex, overrides))
+}
 
-    expect(frameMatchesMetadata).toBeTypeOf("function")
-    if (frameMatchesMetadata === undefined) return
+function symPayload(overrides: Partial<QrFrameV2> = {}): string {
+  const source = SYM_FRAMES[0]
+  if (source === undefined) throw new Error("missing symmetric frame")
+  return encodeFrameToPayload(cloneFrame(source, overrides))
+}
 
-    const metadata = {
-      transferId: Uint8Array.from(TRANSFER_ID),
-      artifactType: "pq-message" as const,
-      frameCount: 2,
-      totalByteLength: 2,
-    }
-    expect(frameMatchesMetadata(metadata, frame(0))).toBe(true)
-    expect(
-      frameMatchesMetadata(metadata, frame(0, { transferId: new Uint8Array(16) })),
-    ).toBe(false)
-    expect(
-      frameMatchesMetadata(metadata, frame(0, { artifactType: "pq-public-identity" })),
-    ).toBe(false)
-    expect(frameMatchesMetadata(metadata, frame(0, { frameCount: 3 }))).toBe(false)
-    expect(
-      frameMatchesMetadata(metadata, frame(0, { totalByteLength: 3 })),
-    ).toBe(false)
+function payloads(frames: readonly QrFrameV2[]): string[] {
+  return frames.map(encodeFrameToPayload)
+}
+
+function invalidMessageFrames(artifactType: "pq-message" | "sym-message"): string[] {
+  const bytes = encodeCanonicalCbor({ version: 2, type: artifactType })
+  return payloads(
+    artifactFrames(artifactType, bytes, {
+      frameBytes: Math.ceil(bytes.byteLength / 2),
+      transferId: new Uint8Array(16).fill(artifactType === "pq-message" ? 0x51 : 0x52),
+    }),
+  )
+}
+
+function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
+  const output = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0))
+  let offset = 0
+  for (const part of parts) {
+    output.set(part, offset)
+    offset += part.byteLength
+  }
+  return output
+}
+
+function nonCanonicalFramePayload(frame: QrFrameV2): string {
+  const entries: readonly [string, CanonicalCborValue][] = [
+    ["version", frame.version],
+    ["type", frame.type],
+    ["transferId", frame.transferId],
+    ["artifactType", frame.artifactType],
+    ["frameIndex", frame.frameIndex],
+    ["frameCount", frame.frameCount],
+    ["totalByteLength", frame.totalByteLength],
+    ["chunk", frame.chunk],
+  ]
+  const encodedEntries = entries.map(([key, value]) =>
+    encodeCanonicalCbor({ [key]: value }).subarray(1),
+  )
+  return `OCF2:${toBase64Url(concatBytes([Uint8Array.of(0xa8), ...encodedEntries]))}`
+}
+
+type ExpectedRelayParseErrorCode =
+  | "empty"
+  | "frame-count"
+  | "input-size"
+  | "invalid-frame"
+  | "kind-mismatch"
+  | "length"
+  | "mismatch"
+  | "outer-type"
+  | "prefix"
+
+type ExpectedRelayCapture = { kind: null } | { kind: "frames"; set: RelayFrameSet }
+
+interface RelayContractModule {
+  RELAY_ARTIFACT_TYPES?: ReadonlySet<V2ArtifactType>
+  validateRelayArtifact?: (
+    artifactType: "pq-message" | "sym-message",
+    bytes: Uint8Array,
+  ) => void
+}
+
+async function relayContract(): Promise<RelayContractModule> {
+  return (await import("@/qr/relay-frames")) as RelayContractModule
+}
+
+describe("relay contract surface", () => {
+  it("narrows the public error and capture unions to frames only", () => {
+    expectTypeOf<RelayParseErrorCode>().toEqualTypeOf<ExpectedRelayParseErrorCode>()
+    expectTypeOf<RelayCapture>().toEqualTypeOf<ExpectedRelayCapture>()
   })
 
-  it("joins out-of-order frames in index order and treats exact duplicates idempotently", () => {
-    const first = payload(0)
-    const second = payload(1)
+  it("exports exactly the two message artifact types", async () => {
+    const { RELAY_ARTIFACT_TYPES } = await relayContract()
+    expect(RELAY_ARTIFACT_TYPES).toEqual(
+      new Set<V2ArtifactType>(["pq-message", "sym-message"]),
+    )
+  })
+
+  it.each([
+    ["pq-message", PQ_MESSAGE_BYTES],
+    ["sym-message", SYM_MESSAGE_BYTES],
+  ] as const)("validates a canonical %s artifact", async (artifactType, bytes) => {
+    const { validateRelayArtifact } = await relayContract()
+    expect(validateRelayArtifact).toBeTypeOf("function")
+    if (validateRelayArtifact === undefined) return
+    expect(() => validateRelayArtifact(artifactType, bytes)).not.toThrow()
+  })
+
+  it.each(["pq-message", "sym-message"] as const)(
+    "maps an invalid completed %s artifact to INVALID_QR_PAYLOAD",
+    async (artifactType) => {
+      const { validateRelayArtifact } = await relayContract()
+      expect(validateRelayArtifact).toBeTypeOf("function")
+      if (validateRelayArtifact === undefined) return
+      const bytes = encodeCanonicalCbor({ version: 2, type: artifactType })
+      expect(() => validateRelayArtifact(artifactType, bytes)).toThrowError(
+        expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+      )
+    },
+  )
+})
+
+describe("relay frame-set parser", () => {
+  it("accepts canonical pq-message and sym-message frame sets", () => {
+    expect(PQ_FRAMES).toHaveLength(2)
+    expect(SYM_FRAMES).toHaveLength(1)
+
+    for (const frames of [PQ_FRAMES, SYM_FRAMES]) {
+      const originals = payloads(frames)
+      const parsed = parseRelayFrameSet(originals)
+      expect(parsed.ok).toBe(true)
+      if (!parsed.ok) continue
+      expect(parsed.set.metadata?.artifactType).toBe(frames[0]?.artifactType)
+    }
+  })
+
+  it("orders out-of-order PQ frames and treats an exact duplicate idempotently", () => {
+    const first = pqPayload(0)
+    const second = pqPayload(1)
     const parsed = parseRelayFrameSet([second, first, second])
     expect(parsed.ok).toBe(true)
     if (!parsed.ok) return
     expect([...parsed.set.entries.keys()].sort()).toEqual([0, 1])
 
-    const text = `${second}\r\n${first}\r\n`
-    const roundTrip = parseRelayText(text)
+    const roundTrip = parseRelayText(`${second}\r\n${first}\r\n`)
     expect(roundTrip).toMatchObject({ ok: true, kind: "frames" })
     if (!roundTrip.ok || roundTrip.kind !== "frames") return
     expect(roundTrip.originals).toEqual([first, second])
@@ -103,14 +242,17 @@ describe("relay frame-set parser", () => {
   })
 
   it.each([
-    ["OCP2:", "OCP2:AA"],
-    ["OCS2:", "OCS2:AA"],
-    ["OCI2:", "OCI2:AA"],
-    ["OCM2:", "OCM2:AA"],
-    ["v1", "OCM1:AA"],
+    ["retired OCM1", OCM1_MESSAGE_33],
+    ["bare OCA2", "OCA2:AA"],
+    ["bare OCM2", "OCM2:AA"],
+    ["bare OCK2", "OCK2:AA"],
+    ["bare OCP2", "OCP2:AA"],
+    ["bare OCS2", "OCS2:AA"],
+    ["bare OCI2", "OCI2:AA"],
+    ["reserved OCB2", "OCB2:AA"],
     ["foreign", "https://example.invalid/"],
-  ])("rejects the non-OCF2 %s prefix without changing state", (_label, input) => {
-    const initial = parseRelayFrameSet([payload(0)])
+  ])("rejects %s as a foreign prefix without changing state", (_label, input) => {
+    const initial = parseRelayFrameSet([pqPayload(0)])
     expect(initial.ok).toBe(true)
     if (!initial.ok) return
     expect(parseRelayFrameSet([input], initial.set)).toEqual({
@@ -121,63 +263,66 @@ describe("relay frame-set parser", () => {
   })
 
   it.each([
+    "symmetric-key",
+    "pq-public-identity",
     "pq-kem-public-key",
     "pq-dsa-public-key",
-    "pq-public-identity",
     "encrypted-seed-backup",
-  ] satisfies V2ArtifactType[])("rejects outer artifact type %s", (artifactType) => {
-    expect(parseRelayFrameSet([payload(0, { artifactType })])).toEqual({
+  ] satisfies V2ArtifactType[])('rejects wrong outer type "%s"', (artifactType) => {
+    const original = encodeFrameToPayload({
+      version: 2,
+      type: "qr-frame",
+      transferId: Uint8Array.from(TRANSFER_ID),
+      artifactType,
+      frameIndex: 0,
+      frameCount: 1,
+      totalByteLength: 1,
+      chunk: Uint8Array.of(1),
+    })
+    expect(parseRelayFrameSet([original])).toEqual({
       ok: false,
       code: "outer-type",
+    })
+  })
+
+  it("reports pq-message and sym-message frames in one session as a mismatch", () => {
+    expect(parseRelayFrameSet([pqPayload(0), symPayload()])).toEqual({
+      ok: false,
+      code: "mismatch",
     })
   })
 
   it.each([
     [
       "transferId",
-      {
-        transferId: new Uint8Array(16).fill(0x33),
-      } satisfies Partial<QrFrameV2>,
-      "mismatch",
+      { transferId: new Uint8Array(16).fill(0x33) } satisfies Partial<QrFrameV2>,
     ],
-    [
-      "artifactType",
-      {
-        artifactType: "pq-public-identity",
-      } satisfies Partial<QrFrameV2>,
-      "outer-type",
-    ],
-    [
-      "frameCount",
-      {
-        frameCount: 3,
-      } satisfies Partial<QrFrameV2>,
-      "mismatch",
-    ],
+    ["frameCount", { frameCount: 3 } satisfies Partial<QrFrameV2>],
     [
       "totalByteLength",
-      {
-        totalByteLength: 3,
-      } satisfies Partial<QrFrameV2>,
-      "mismatch",
+      { totalByteLength: PQ_MESSAGE_BYTES.byteLength + 1 } satisfies Partial<QrFrameV2>,
     ],
-  ] as const)("rejects a %s metadata mismatch atomically", (_label, overrides, code) => {
-    const initial = parseRelayFrameSet([payload(0)])
+  ] as const)("rejects a %s metadata mismatch atomically", (_label, overrides) => {
+    const initial = parseRelayFrameSet([pqPayload(0)])
     expect(initial.ok).toBe(true)
     if (!initial.ok) return
     const before = initial.set
-    const result = parseRelayFrameSet([payload(1), payload(1, overrides)], before)
-    expect(result).toEqual({ ok: false, code })
+    expect(parseRelayFrameSet([pqPayload(1, overrides)], before)).toEqual({
+      ok: false,
+      code: "mismatch",
+    })
     expect(before.entries.size).toBe(1)
-    expect(before.receivedByteLength).toBe(1)
+    expect(before.receivedByteLength).toBe(PQ_FRAMES[0]?.chunk.byteLength)
   })
 
-  it("rejects a conflicting occupied index without overwriting it", () => {
-    const original = payload(0)
+  it("rejects a conflicting duplicate without overwriting the accepted frame", () => {
+    const original = pqPayload(0)
     const initial = parseRelayFrameSet([original])
     expect(initial.ok).toBe(true)
     if (!initial.ok) return
-    const conflict = payload(0, { chunk: new Uint8Array([0x7f]) })
+    const changedChunk = Uint8Array.from(PQ_FRAMES[0]!.chunk)
+    changedChunk[0] = changedChunk[0]! ^ 0xff
+    const conflict = pqPayload(0, { chunk: changedChunk })
     expect(parseRelayFrameSet([conflict], initial.set)).toEqual({
       ok: false,
       code: "mismatch",
@@ -188,44 +333,87 @@ describe("relay frame-set parser", () => {
   it.each([
     [
       "declared total above frame capacity",
-      [payload(0, { totalByteLength: FRAME_BYTES_MAX * 2 + 1 })],
-    ],
-    [
-      "single-frame chunk/total mismatch",
       [
-        payload(0, {
-          frameCount: 1,
+        encodeFrameToPayload({
+          version: 2,
+          type: "qr-frame",
+          transferId: Uint8Array.from(TRANSFER_ID),
+          artifactType: "pq-message",
           frameIndex: 0,
-          totalByteLength: 2,
-          chunk: new Uint8Array([1]),
+          frameCount: 2,
+          totalByteLength: FRAME_BYTES_MAX * 2 + 1,
+          chunk: Uint8Array.of(1),
         }),
       ],
     ],
     [
-      "running sum above a too-small total",
-      [payload(0, { totalByteLength: 1 }), payload(1, { totalByteLength: 1 })],
+      "single-frame chunk/total mismatch",
+      [
+        encodeFrameToPayload({
+          version: 2,
+          type: "qr-frame",
+          transferId: Uint8Array.from(TRANSFER_ID),
+          artifactType: "pq-message",
+          frameIndex: 0,
+          frameCount: 1,
+          totalByteLength: 2,
+          chunk: Uint8Array.of(1),
+        }),
+      ],
     ],
     [
-      "completed sum below a declared total",
-      [payload(0, { totalByteLength: 3 }), payload(1, { totalByteLength: 3 })],
+      "completed sum below its declared total",
+      [
+        encodeFrameToPayload({
+          version: 2,
+          type: "qr-frame",
+          transferId: Uint8Array.from(TRANSFER_ID),
+          artifactType: "pq-message",
+          frameIndex: 0,
+          frameCount: 2,
+          totalByteLength: 3,
+          chunk: Uint8Array.of(1),
+        }),
+        encodeFrameToPayload({
+          version: 2,
+          type: "qr-frame",
+          transferId: Uint8Array.from(TRANSFER_ID),
+          artifactType: "pq-message",
+          frameIndex: 1,
+          frameCount: 2,
+          totalByteLength: 3,
+          chunk: Uint8Array.of(2),
+        }),
+      ],
     ],
-  ])("rejects %s", (_label, inputs) => {
-    expect(parseRelayFrameSet(inputs)).toEqual({
+  ])("rejects %s", (_label, originals) => {
+    expect(parseRelayFrameSet(originals)).toEqual({
       ok: false,
       code: "length",
     })
   })
 
-  it("rejects 129 non-empty lines and oversized raw text before decoding", () => {
-    const valid = payload(0)
-    expect(
-      parseRelayText(
-        Array.from({ length: PROTOCOL_MAX_FRAMES + 1 }, () => valid).join("\n"),
-      ),
-    ).toEqual({
+  it("rejects a structurally valid but non-canonical OCF2 frame", () => {
+    expect(parseRelayFrameSet([nonCanonicalFramePayload(pqFrame(0))])).toEqual({
+      ok: false,
+      code: "invalid-frame",
+    })
+  })
+
+  it("reports missing indexes for an incomplete playback set", () => {
+    expect(parseRelayText(pqPayload(1))).toEqual({
       ok: false,
       code: "frame-count",
+      missingIndexes: [0],
     })
+  })
+
+  it("rejects 129 non-empty lines and oversized raw text before decoding", () => {
+    expect(
+      parseRelayText(
+        Array.from({ length: PROTOCOL_MAX_FRAMES + 1 }, () => pqPayload(0)).join("\n"),
+      ),
+    ).toEqual({ ok: false, code: "frame-count" })
     expect(parseRelayText("x".repeat(RELAY_TEXT_MAX_CHARS + 1))).toEqual({
       ok: false,
       code: "input-size",
@@ -234,389 +422,85 @@ describe("relay frame-set parser", () => {
     expect(RELAY_TEXT_MAX_CHARS).toBe(213_120)
   })
 
-  it("accepts header-declared message frames around a public artifact but the offline assembler rejects the inner type", async () => {
-    const keyId = "AAECAwQFBgcICQoLDA0ODw"
-    const publicArtifact = encodePublicIdentityBundleV2({
-      version: 2,
-      type: "pq-public-identity",
-      identityId: keyId,
-      kem: {
-        algorithm: "ML-KEM-1024",
-        keyId,
-        publicKey: new Uint8Array(1_568).fill(0x51),
-      },
-      signing: {
-        algorithm: "ML-DSA-87",
-        keyId,
-        publicKey: new Uint8Array(2_592).fill(0x52),
-      },
-      createdAt: 1_700_000_000_000,
-    })
-    const relabeledFrames = await splitIntoFrames({
-      artifactType: "pq-message",
-      artifactBytes: publicArtifact,
-      frameBytes: 200,
-    })
-    const originals = relabeledFrames.map(encodeFrameToPayload)
-    expect(parseRelayFrameSet(originals).ok).toBe(true)
-    const roundTrip = parseRelayText(originals.join("\n"))
-    expect(roundTrip).toMatchObject({ ok: true, kind: "frames" })
-    if (!roundTrip.ok || roundTrip.kind !== "frames") return
-    expect(roundTrip.frames.map(encodeFrameToPayload)).toEqual(originals)
-    expect(roundTrip.originals).toEqual(originals)
-
-    const assembler = new TransferAssembler({ transferTimeoutMinutes: 10 })
-    let state = assembler.state()
-    for (const original of originals) state = await assembler.add(original)
-    expect(state).toEqual({ kind: "error", code: "INVALID_QR_PAYLOAD" })
-  })
-})
-
-const V1_KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
-const V1_CREATED_AT = 1_700_000_000_000
-
-function messageEnvelope(plaintextBytes = 32) {
-  return {
-    v: 1,
-    type: "message",
-    algorithm: "A256GCM",
-    keyId: V1_KEY_ID,
-    createdAt: V1_CREATED_AT,
-    iv: new Uint8Array(12).fill(0x22),
-    ciphertext: new Uint8Array(plaintextBytes + 16).fill(0x33),
-    aad: buildAad({
-      v: 1,
-      type: "message",
-      algorithm: "A256GCM",
-      keyId: V1_KEY_ID,
-      createdAt: V1_CREATED_AT,
-    }),
-  } as const
-}
-
-function messagePayload(plaintextBytes = 32): string {
-  return encodeEnvelopeToPayload(messageEnvelope(plaintextBytes))
-}
-
-const relayEncoder = new Encoder({ useRecords: false, tagUint8Array: false })
-
-// Same fields, different CBOR map key order. decodePayload accepts it because
-// qr-protocol.md §2 assigns no meaning to field order; the relay must still
-// refuse it, because encodeEnvelopeToPayload canonicalises through
-// orderedEnvelope and the re-encode no longer equals the input.
-function nonCanonicalMessagePayload(): string {
-  const envelope = messageEnvelope()
-  const permuted = {
-    aad: envelope.aad,
-    ciphertext: envelope.ciphertext,
-    iv: envelope.iv,
-    createdAt: envelope.createdAt,
-    keyId: envelope.keyId,
-    algorithm: envelope.algorithm,
-    type: envelope.type,
-    v: envelope.v,
-  }
-  return `OCM1:${toBase64Url(relayEncoder.encode(permuted))}`
-}
-
-describe("relay message acceptance", () => {
-  it("pins the production-generated relay fixtures shared with UI and e2e", () => {
-    expect([
-      OCM1_MESSAGE_33.length,
-      OCM1_MESSAGE_44.length,
-      OCK1_SYMMETRIC_KEY.length,
-    ]).toEqual([311, 311, 177])
-    for (const original of [OCM1_MESSAGE_33, OCM1_MESSAGE_44]) {
-      expect(parseRelayMessage(original)).toEqual({
-        ok: true,
-        payload: original,
+  it.each(["pq-message", "sym-message"] as const)(
+    "rejects completed canonical %s bytes that fail the strict message schema",
+    (artifactType) => {
+      const originals = invalidMessageFrames(artifactType)
+      expect(parseRelayFrameSet(originals)).toEqual({
+        ok: false,
+        code: "invalid-frame",
       })
-    }
-    expect(decodePayload(OCK1_SYMMETRIC_KEY).kind).toBe("symmetric-key")
-    expect(parseRelayMessage(OCK1_SYMMETRIC_KEY)).toEqual({
-      ok: false,
-      code: "prefix",
-    })
-  })
-
-  it("accepts a canonical OCM1 payload and returns it verbatim", () => {
-    const original = messagePayload()
-    expect(parseRelayMessage(original)).toEqual({ ok: true, payload: original })
-  })
-
-  it("refuses a semantically valid but non-canonical CBOR ordering", () => {
-    const permuted = nonCanonicalMessagePayload()
-    // Prove the fixture really is a decodable message, so the rejection below
-    // can only come from the exact re-encode check.
-    expect(decodePayload(permuted).kind).toBe("message")
-    expect(permuted).not.toBe(messagePayload())
-    expect(parseRelayMessage(permuted)).toEqual({
-      ok: false,
-      code: "invalid-message",
-    })
-  })
-
-  it("refuses a trailing CBOR item after a valid envelope", () => {
-    const bytes = relayEncoder.encode(messageEnvelope())
-    const trailing = relayEncoder.encode(1)
-    const joined = new Uint8Array(bytes.byteLength + trailing.byteLength)
-    joined.set(bytes, 0)
-    joined.set(trailing, bytes.byteLength)
-    // Rejected by decodeMultiple's single-item enforcement, not by the
-    // round-trip check — a different guard, worth pinning separately.
-    expect(parseRelayMessage(`OCM1:${toBase64Url(joined)}`)).toEqual({
-      ok: false,
-      code: "invalid-message",
-    })
-  })
+      expect(parseRelayText(originals.join("\n"))).toEqual({
+        ok: false,
+        code: "invalid-frame",
+      })
+    },
+  )
 })
 
-describe("relay acceptance boundary", () => {
-  const forbidden = () => [
-    ["canonical OCK1 symmetric key", OCK1_SYMMETRIC_KEY],
-    ["OCP1 public key", "OCP1:AA"],
-    ["OCB1 reserved backup", "OCB1:AA"],
-    ["OCM2 pq message", "OCM2:AA"],
-    ["OCP2 kem public key", "OCP2:AA"],
-    ["OCS2 dsa public key", "OCS2:AA"],
-    ["OCI2 public identity", "OCI2:AA"],
-    ["OCB2 seed backup", "OCB2:AA"],
-    ["foreign", "https://example.invalid/"],
-  ]
+describe("relay capture and playback boundaries", () => {
+  it("accepts a complete symmetric message frame for capture and playback", () => {
+    const original = symPayload()
+    const captured = acceptRelayCapture(original, EMPTY_RELAY_CAPTURE)
+    expect(captured).toMatchObject({
+      ok: true,
+      capture: { kind: "frames" },
+    })
+    expect(parseRelayText(original)).toMatchObject({
+      ok: true,
+      kind: "frames",
+      originals: [original],
+    })
+  })
 
-  it.each(forbidden())(
-    "refuses %s at the capture boundary from an idle session",
-    (_label, input) => {
-      expect(acceptRelayCapture(input, EMPTY_RELAY_CAPTURE)).toEqual({
+  it.each([OCM1_MESSAGE_33, OCM1_MESSAGE_44])(
+    "refuses retired OCM1 as a foreign prefix at both boundaries",
+    (legacy) => {
+      expect(acceptRelayCapture(legacy, EMPTY_RELAY_CAPTURE)).toEqual({
         ok: false,
         code: "prefix",
       })
+      expect(parseRelayText(legacy)).toEqual({ ok: false, code: "prefix" })
     },
   )
 
-  it.each(forbidden())(
-    "refuses %s at the capture boundary during a message session",
-    (_label, input) => {
-      const started = acceptRelayCapture(messagePayload(), EMPTY_RELAY_CAPTURE)
-      expect(started).toMatchObject({ ok: true })
-      if (!started.ok) return
-      // A forbidden prefix is a prefix error, never a kind mismatch: a kind
-      // mismatch means "this is the other allowed kind", which these are not.
-      expect(acceptRelayCapture(input, started.capture)).toEqual({
+  it.each(["OCA2:AA", "OCM2:AA", "OCK2:AA", "OCP2:AA", "OCS2:AA", "OCI2:AA"])(
+    "refuses bare v2 payload %s at both boundaries",
+    (bare) => {
+      expect(acceptRelayCapture(bare, EMPTY_RELAY_CAPTURE)).toEqual({
         ok: false,
         code: "prefix",
       })
-      expect(started.capture).toMatchObject({ kind: "message" })
+      expect(parseRelayText(bare)).toEqual({ ok: false, code: "prefix" })
     },
   )
 
-  it.each(forbidden())(
-    "refuses %s at the capture boundary during a frame session",
-    (_label, input) => {
-      const started = acceptRelayCapture(payload(0), EMPTY_RELAY_CAPTURE)
-      expect(started).toMatchObject({ ok: true })
-      if (!started.ok) return
-      expect(acceptRelayCapture(input, started.capture)).toEqual({
-        ok: false,
-        code: "prefix",
-      })
-      expect(started.capture).toMatchObject({ kind: "frames" })
-    },
-  )
-
-  it.each(forbidden())(
-    "refuses %s at the playback boundary",
-    (_label, input) => {
-      expect(parseRelayText(input)).toEqual({ ok: false, code: "prefix" })
-    },
-  )
-
-  it("refuses an OCF2 frame whose outer header is not pq-message, at both boundaries", () => {
-    const relabeled = payload(0, { artifactType: "pq-public-identity" })
-    expect(acceptRelayCapture(relabeled, EMPTY_RELAY_CAPTURE)).toEqual({
-      ok: false,
-      code: "outer-type",
-    })
-    expect(parseRelayText(relabeled)).toEqual({ ok: false, code: "outer-type" })
-  })
-})
-
-describe("relay capture session kind", () => {
-  it("fixes the kind on the first accepted payload and refuses the other kind", () => {
-    const message = messagePayload()
-    expect(EMPTY_RELAY_CAPTURE.kind).toBeNull()
-
-    const accepted = acceptRelayCapture(message, EMPTY_RELAY_CAPTURE)
-    expect(accepted).toMatchObject({ ok: true })
-    if (!accepted.ok || accepted.capture.kind !== "message") return
-    expect(accepted.capture.payload).toBe(message)
-
-    expect(acceptRelayCapture(payload(0), accepted.capture)).toEqual({
-      ok: false,
-      code: "kind-mismatch",
-    })
-    expect(accepted.capture.payload).toBe(message)
-  })
-
-  it("refuses an OCM1 once frames have been accepted", () => {
-    const frames = acceptRelayCapture(payload(0), EMPTY_RELAY_CAPTURE)
-    expect(frames).toMatchObject({ ok: true })
-    if (!frames.ok || frames.capture.kind !== "frames") return
-    expect(acceptRelayCapture(messagePayload(), frames.capture)).toEqual({
-      ok: false,
-      code: "kind-mismatch",
-    })
-    expect(frames.capture.set.entries.size).toBe(1)
-  })
-
-  it("validates an other-kind candidate before reporting a session mismatch", () => {
-    const frames = acceptRelayCapture(payload(0), EMPTY_RELAY_CAPTURE)
-    expect(frames).toMatchObject({ ok: true })
-    if (!frames.ok) return
-    expect(acceptRelayCapture("OCM1:AA", frames.capture)).toEqual({
-      ok: false,
-      code: "invalid-message",
-    })
-
-    const message = acceptRelayCapture(messagePayload(), EMPTY_RELAY_CAPTURE)
-    expect(message).toMatchObject({ ok: true })
-    if (!message.ok) return
-    expect(acceptRelayCapture("OCF2:AA", message.capture)).toEqual({
-      ok: false,
-      code: "invalid-frame",
-    })
-    expect(
-      acceptRelayCapture(
-        payload(0, { artifactType: "pq-public-identity" }),
-        message.capture,
-      ),
-    ).toEqual({
-      ok: false,
-      code: "outer-type",
-    })
-  })
-
-  it("re-accepts the identical OCM1 idempotently but refuses a different one", () => {
-    const message = messagePayload()
-    const first = acceptRelayCapture(message, EMPTY_RELAY_CAPTURE)
-    expect(first).toMatchObject({ ok: true })
-    if (!first.ok) return
-
-    const again = acceptRelayCapture(message, first.capture)
-    expect(again).toMatchObject({ ok: true })
-    if (!again.ok || again.capture.kind !== "message") return
-    expect(again.capture.payload).toBe(message)
-
-    const other = messagePayload(64)
-    expect(other).not.toBe(message)
-    expect(acceptRelayCapture(other, first.capture)).toEqual({
+  it("preserves an accepted PQ session when a symmetric frame mismatches", () => {
+    const started = acceptRelayCapture(pqPayload(0), EMPTY_RELAY_CAPTURE)
+    expect(started).toMatchObject({ ok: true, capture: { kind: "frames" } })
+    if (!started.ok) return
+    expect(acceptRelayCapture(symPayload(), started.capture)).toEqual({
       ok: false,
       code: "mismatch",
     })
+    expect(started.capture).toMatchObject({ kind: "frames" })
   })
 
-  it("parses a single OCM1 line and refuses a mixed or repeated set", () => {
-    const message = messagePayload()
-    expect(parseRelayText(message)).toEqual({
-      ok: true,
-      kind: "message",
-      payload: message,
-    })
-    expect(parseRelayText(`${message}\r\n`)).toEqual({
-      ok: true,
-      kind: "message",
-      payload: message,
-    })
-    expect(parseRelayText(`${message}\n${payload(0)}`)).toEqual({
-      ok: false,
-      code: "kind-mismatch",
-    })
-    expect(parseRelayText(`${message}\n${message}`)).toEqual({
-      ok: false,
-      code: "message-count",
-    })
-  })
-
-  it("reports message-count before decoding a malformed second OCM1 line", () => {
-    expect(parseRelayText(`${messagePayload()}\nOCM1:AA`)).toEqual({
-      ok: false,
-      code: "message-count",
-    })
-  })
-
-  it("reports message-count before decoding a malformed first OCM1 line", () => {
-    expect(parseRelayText(`OCM1:AA\n${messagePayload()}`)).toEqual({
-      ok: false,
-      code: "message-count",
-    })
-  })
-
-  it("reports kind-mismatch from prefixes before decoding a malformed OCF2 line", () => {
-    expect(parseRelayText(`${messagePayload()}\nOCF2:AA`)).toEqual({
-      ok: false,
-      code: "kind-mismatch",
-    })
-  })
-
-  it("reports frame-count before decoding an over-limit frame set", () => {
-    const lines = Array.from(
-      { length: PROTOCOL_MAX_FRAMES + 1 },
-      (_, index) => (index === PROTOCOL_MAX_FRAMES ? "OCF2:AA" : payload(0)),
-    )
-    expect(parseRelayText(lines.join("\n"))).toEqual({
-      ok: false,
-      code: "frame-count",
-    })
-  })
-
-  it("reports message-count for a large OCM1-prefixed paste without decoding it", () => {
-    const lines = Array.from(
-      { length: PROTOCOL_MAX_FRAMES },
-      () => "OCM1:AA",
-    )
-    expect(parseRelayText(lines.join("\n"))).toEqual({
-      ok: false,
-      code: "message-count",
-    })
-  })
-
-  it("gives unknown prefixes precedence and decides allowed-prefix kind conflicts before decoding", () => {
-    const message = messagePayload()
-    expect(
-      parseRelayText(`OCM1:AA\nhttps://example.invalid/`),
-    ).toEqual({
-      ok: false,
-      code: "prefix",
-    })
-    expect(parseRelayText(`${message}\nOCF2:AA`)).toEqual({
-      ok: false,
-      code: "kind-mismatch",
-    })
-    expect(parseRelayText(`OCM1:AA\n${payload(0)}`)).toEqual({
-      ok: false,
-      code: "kind-mismatch",
-    })
-    expect(
-      parseRelayText(
-        `${message}\n${payload(0, { artifactType: "pq-public-identity" })}`,
-      ),
-    ).toEqual({
-      ok: false,
-      code: "kind-mismatch",
-    })
-  })
-})
-
-describe("relay playback error-correction ladder", () => {
-  // Pure length classification against QR_BYTE_CAPACITY; it does not encode a QR.
-  it.each([
-    [1, "Q"],
-    [1_663, "Q"],
-    [1_664, "M"],
-    [2_331, "M"],
-    [2_332, "L"],
-    [2_953, "L"],
-  ] as const)("classifies a %i-character payload as %s", (length, ecLevel) => {
-    expect(relayMessageEcLevel("A".repeat(length))).toBe(ecLevel)
-  })
+  it.each(["pq-message", "sym-message"] as const)(
+    "does not commit a completed invalid %s capture",
+    (artifactType) => {
+      const originals = invalidMessageFrames(artifactType)
+      let capture: RelayCapture = EMPTY_RELAY_CAPTURE
+      for (const original of originals.slice(0, -1)) {
+        const accepted = acceptRelayCapture(original, capture)
+        expect(accepted.ok).toBe(true)
+        if (!accepted.ok) return
+        capture = accepted.capture
+      }
+      expect(acceptRelayCapture(originals.at(-1)!, capture)).toEqual({
+        ok: false,
+        code: "invalid-frame",
+      })
+    },
+  )
 })

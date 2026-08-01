@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import {
   Camera,
-  CameraOff,
   RefreshCw,
   ScanLine,
   Trash2,
@@ -18,15 +17,11 @@ import {
 } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import {
-  acceptedPayloadLabel,
-  actualPayloadLabel,
   deliveryError,
   localized,
   localizedErrorCode,
-  targetForPayload,
   type LocalizedText,
   type QrScannerPanelProps,
-  type ScannerTarget,
 } from "@/components/qr-scanner-shared"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -40,11 +35,10 @@ interface ScannerRun {
   id: number
   abortController: AbortController
   handle: QrScanHandle | null
-  session: MultipartScanSession | undefined
+  session: MultipartScanSession
   cancelled: boolean
   errorReported: boolean
   emitted: boolean
-  multipartLocked: boolean
 }
 
 const IDLE_TRANSFER_STATE: TransferState = { kind: "idle" }
@@ -55,25 +49,19 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const readinessRef = useRef(readiness)
   const readyAtMountRef = useRef(readiness === "ready")
   const {
-    singleTargets,
-    onSingleScan,
     cameraAvailable = true,
     title: titleProp,
     autoStart = false,
     stopHint: stopHintProp,
   } = props
   const title = titleProp ?? t("scanner.defaultTitle")
-  const stopHint = stopHintProp ?? t("scanner.stopHint.default")
   const multipart = props.multipart
-  const multipartSession = multipart?.session
-  const resolvedStopHint =
-    multipart === undefined ? stopHint : t("scanner.stopHint.multipart")
+  const multipartSession = multipart.session
+  const resolvedStopHint = stopHintProp ?? t("scanner.stopHint.multipart")
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const mountedRef = useRef(true)
   const cameraAvailableRef = useRef(cameraAvailable)
-  const singleTargetsRef = useRef(singleTargets)
-  const onSingleScanRef = useRef(onSingleScan)
   const multipartRef = useRef(multipart)
   const activeRunRef = useRef<ScannerRun | null>(null)
   const nextRunIdRef = useRef(0)
@@ -81,7 +69,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   const cameraModeRef = useRef<ScannerMode>("idle")
   const cameraStateRef = useRef<CameraScanState>("idle")
   const [transferState, setTransferState] = useState<TransferState>(
-    () => multipartSession?.state() ?? IDLE_TRANSFER_STATE,
+    () => multipartSession.state(),
   )
   const previousTransferKindRef = useRef<TransferState["kind"]>(
     transferState.kind,
@@ -109,12 +97,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   useEffect(() => {
     cameraAvailableRef.current = cameraAvailable
   }, [cameraAvailable])
-  useEffect(() => {
-    singleTargetsRef.current = singleTargets
-  }, [singleTargets])
-  useEffect(() => {
-    onSingleScanRef.current = onSingleScan
-  }, [onSingleScan])
   useEffect(() => {
     multipartRef.current = multipart
   }, [multipart])
@@ -182,8 +164,8 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
 
     const runId = ++nextRunIdRef.current
     const configuration = multipartRef.current
-    const session = configuration?.session
-    const sessionState = session?.state() ?? IDLE_TRANSFER_STATE
+    const session = configuration.session
+    const sessionState = session.state()
     if (sessionState.kind === "error") {
       publishTransferState(sessionState)
       setError(localizedErrorCode(sessionState.code))
@@ -198,7 +180,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       cancelled: false,
       errorReported: false,
       emitted: false,
-      multipartLocked: sessionState.kind === "collecting",
     }
 
     const deliver = (
@@ -225,7 +206,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       startLockedRef.current = true
       publishTransferState(sessionState)
       setIntegrityConfirmed(true)
-      if (!session?.claimCompletion()) {
+      if (!session.claimCompletion()) {
         run.emitted = true
         cancelRun(run, "idle")
         publishCameraMode("idle")
@@ -234,7 +215,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       }
       deliver(
         () =>
-          multipartRef.current?.onComplete({
+          multipartRef.current.onComplete({
             artifactType: sessionState.artifactType,
             artifactBytes: sessionState.artifactBytes,
           }),
@@ -259,20 +240,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     setError(null)
     setCameraStatus(localized("scanner.status.preparing"))
 
-    const finishSingleScan = (target: ScannerTarget, payload: string) => {
-      if (
-        run.cancelled ||
-        run.emitted ||
-        activeRunRef.current !== run
-      ) {
-        return
-      }
-      deliver(
-        () => onSingleScanRef.current(target, payload),
-        localized("scanner.status.qrRead"),
-      )
-    }
-
     const finishMultipartScan = (
       currentSession: MultipartScanSession,
       next: Extract<TransferState, { kind: "complete" }>,
@@ -288,7 +255,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       }
       deliver(
         () =>
-          multipartRef.current?.onComplete({
+          multipartRef.current.onComplete({
             artifactType: next.artifactType,
             artifactBytes: next.artifactBytes,
           }),
@@ -305,79 +272,48 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         return
       }
 
-      if (payload.startsWith("OCF2:")) {
-        if (run.session === undefined) {
-          setError(localized("scanner.error.multipartNotAccepted"))
-          setCameraStatus(localized("scanner.status.multipartRejected"))
-          return
-        }
-
-        // Exclude races with single-payload delivery even before the add() promise settles.
-        run.multipartLocked = true
-        setError(null)
-        setIntegrityConfirmed(false)
-        setCameraStatus(localized("scanner.status.multipartReading"))
-        void run.session
-          .add(payload)
-          .then((next) => {
-            if (run.cancelled || activeRunRef.current !== run) return
-            publishTransferState(next)
-            if (next.kind === "error") {
-              setError(localizedErrorCode(next.code))
-              setCameraStatus(localized("scanner.status.multipartError"))
-              return
-            }
-            if (next.kind === "idle") {
-              run.multipartLocked = false
-              cancelRun(run, "idle")
-              publishCameraMode("idle")
-              setError(localized("scanner.error.expiredDiscarded"))
-              setCameraStatus(localized("scanner.status.stateDiscarded"))
-              return
-            }
-            if (next.kind === "collecting") {
-              setCameraStatus(
-                localized("scanner.status.multipartReadingUnordered"),
-              )
-              return
-            }
-            finishMultipartScan(run.session!, next)
-          })
-          .catch((caught: unknown) => {
-            if (run.cancelled || activeRunRef.current !== run) return
-            setError(localizedErrorCode(deliveryError(caught).code))
-            setCameraStatus(localized("scanner.status.multipartError"))
-          })
-        return
-      }
-
-      const target = targetForPayload(payload)
-      if (target !== null && run.multipartLocked) {
-        setError(localized("scanner.error.singleWhileMultipart"))
-        setCameraStatus(
-          localized("scanner.status.singleRejectedDuringMultipart"),
-        )
-        return
-      }
-      if (
-        target === null ||
-        !singleTargetsRef.current.includes(target)
-      ) {
+      if (!payload.startsWith("OCF2:")) {
         setError(
           localized("scanner.mismatch", {
-            actual: actualPayloadLabel(payload, t),
-            accepted: acceptedPayloadLabel(
-              singleTargetsRef.current,
-              run.session !== undefined,
-              t,
-            ),
+            actual: t("scanner.payloadLabel.foreign"),
+            accepted: t("scanner.acceptedLabel.multipart"),
           }),
         )
         setCameraStatus(localized("scanner.status.unacceptedRejected"))
         return
       }
 
-      finishSingleScan(target, payload)
+      setError(null)
+      setIntegrityConfirmed(false)
+      setCameraStatus(localized("scanner.status.multipartReading"))
+      void run.session
+        .add(payload)
+        .then((next) => {
+          if (run.cancelled || activeRunRef.current !== run) return
+          publishTransferState(next)
+          if (next.kind === "error") {
+            setError(localizedErrorCode(next.code))
+            setCameraStatus(localized("scanner.status.multipartError"))
+            return
+          }
+          if (next.kind === "idle") {
+            cancelRun(run, "idle")
+            publishCameraMode("idle")
+            setError(localized("scanner.error.expiredDiscarded"))
+            setCameraStatus(localized("scanner.status.stateDiscarded"))
+            return
+          }
+          if (next.kind === "collecting") {
+            setCameraStatus(localized("scanner.status.multipartReadingUnordered"))
+            return
+          }
+          finishMultipartScan(run.session, next)
+        })
+        .catch((caught: unknown) => {
+          if (run.cancelled || activeRunRef.current !== run) return
+          setError(localizedErrorCode(deliveryError(caught).code))
+          setCameraStatus(localized("scanner.status.multipartError"))
+        })
     }
 
     const onCameraError = (
@@ -423,11 +359,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         }
         run.handle = handle
         cameraStateRef.current = "playing"
-        setCameraStatus(
-          run.session === undefined
-            ? localized("scanner.status.alignInFrame")
-            : localized("scanner.status.readUnordered"),
-        )
+        setCameraStatus(localized("scanner.status.readUnordered"))
       })
       .catch((caught: unknown) => {
         if (
@@ -454,19 +386,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     t,
   ])
 
-  const stopCamera = useCallback(() => {
-    const run = activeRunRef.current
-    if (run === null) return
-    cancelRun(run, "idle")
-    publishCameraMode("stopped")
-    setError(localized("scanner.error.stopped"))
-    setCameraStatus(localized("scanner.status.stopped"))
-  }, [cancelRun, publishCameraMode])
-
   const discardTransfer = useCallback(() => {
     nextRunIdRef.current += 1
-    const session = multipartRef.current?.session
-    session?.discard()
+    multipartRef.current.session.discard()
     const run = activeRunRef.current
     if (run !== null) cancelRun(run, "idle")
     publishTransferState(IDLE_TRANSFER_STATE)
@@ -531,7 +453,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     previousSessionRef.current = multipartSession
     const run = activeRunRef.current
     if (run !== null) cancelRun(run, "idle")
-    const next = multipartSession?.state() ?? IDLE_TRANSFER_STATE
+    const next = multipartSession.state()
     nextRunIdRef.current += 1
     publishTransferState(next)
     publishCameraMode("idle")
@@ -548,7 +470,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   ])
 
   useEffect(() => {
-    if (multipartSession === undefined) return
     const timer = window.setInterval(() => {
       const previousKind = previousTransferKindRef.current
       const next = multipartSession.state()
@@ -723,11 +644,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           </p>
         )}
 
-        {multipart !== undefined && (
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {t("scanner.sha256Notice")}
-          </p>
-        )}
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {t("scanner.sha256Notice")}
+        </p>
 
         {error && (
           <Alert variant="destructive" role="alert">
@@ -736,30 +655,16 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           </Alert>
         )}
 
-        {multipart !== undefined ? (
-          <Button
-            type="button"
-            variant="destructive"
-            className="h-11 w-full cursor-pointer focus-visible:ring-2"
-            disabled={cameraMode === "delivering"}
-            onClick={discardTransfer}
-          >
-            <Trash2 aria-hidden="true" />
-            {t("scanner.button.discard")}
-          </Button>
-        ) : (
-          cameraMode === "running" && (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-full cursor-pointer focus-visible:ring-2"
-              onClick={stopCamera}
-            >
-              <CameraOff aria-hidden="true" />
-              {t("scanner.button.stopCamera")}
-            </Button>
-          )
-        )}
+        <Button
+          type="button"
+          variant="destructive"
+          className="h-11 w-full cursor-pointer focus-visible:ring-2"
+          disabled={cameraMode === "delivering"}
+          onClick={discardTransfer}
+        >
+          <Trash2 aria-hidden="true" />
+          {t("scanner.button.discard")}
+        </Button>
       </CardContent>
     </Card>
   )

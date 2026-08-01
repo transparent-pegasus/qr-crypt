@@ -60,17 +60,44 @@ const storedKeyBaseSchema = z
   .object({
     id: keyIdSchema,
     name: keyNameSchema,
-    kind: z.enum(["symmetric", "rsa-key-pair", "public-key"]),
-    algorithm: z.string().min(1),
+    kind: z.literal("symmetric"),
+    algorithm: z.literal("A256GCM"),
     fingerprint: fingerprintSchema,
     createdAt: timestampSchema,
     lastUsedAt: timestampSchema.optional(),
     useCount: z.number().int().nonnegative(),
-    publicKey: z.custom<CryptoKey>(isCryptoKey).optional(),
-    privateKey: z.custom<CryptoKey>(isCryptoKey).optional(),
-    symmetricKey: z.custom<CryptoKey>(isCryptoKey).optional(),
+    status: z.enum(["active", "rotated"]),
+    rotatedFromId: keyIdSchema.optional(),
+    rotatedAt: timestampSchema.optional(),
+    symmetricKey: z.custom<CryptoKey>(isCryptoKey),
   })
   .strict()
+  .superRefine((record, context) => {
+    if (record.rotatedFromId === record.id) {
+      context.addIssue({
+        code: "custom",
+        path: ["rotatedFromId"],
+        message: "key cannot rotate from itself",
+      })
+    }
+    if (
+      (record.status === "active" && record.rotatedAt !== undefined) ||
+      (record.status === "rotated" && record.rotatedAt === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "invalid status date",
+      })
+    }
+    if (record.rotatedAt !== undefined && record.rotatedAt < record.createdAt) {
+      context.addIssue({
+        code: "custom",
+        path: ["rotatedAt"],
+        message: "rotation predates key",
+      })
+    }
+  })
 
 function hasExactUsages(key: CryptoKey, expected: readonly KeyUsage[]): boolean {
   return (
@@ -90,59 +117,9 @@ function isAesKey(key: CryptoKey): boolean {
   )
 }
 
-function isRsaKey(key: CryptoKey, type: "public" | "private"): boolean {
-  const algorithm = key.algorithm as RsaHashedKeyAlgorithm
-  const exponent = algorithm.publicExponent
-  const expectedUsages =
-    type === "public"
-      ? (["encrypt", "wrapKey"] as const)
-      : (["decrypt", "unwrapKey"] as const)
-  return (
-    key.type === type &&
-    algorithm.name === "RSA-OAEP" &&
-    algorithm.modulusLength === 3072 &&
-    exponent instanceof Uint8Array &&
-    exponent.length === 3 &&
-    exponent[0] === 1 &&
-    exponent[1] === 0 &&
-    exponent[2] === 1 &&
-    algorithm.hash.name === "SHA-256" &&
-    (type === "public" ? key.extractable : !key.extractable) &&
-    hasExactUsages(key, expectedUsages)
-  )
-}
-
 export function validateStoredKeyRecord(value: unknown): StoredKeyRecord {
   const record = storedKeyBaseSchema.parse(value)
-  const valid = (() => {
-    switch (record.kind) {
-      case "symmetric":
-        return (
-          record.algorithm === "A256GCM" &&
-          record.symmetricKey !== undefined &&
-          isAesKey(record.symmetricKey) &&
-          record.publicKey === undefined &&
-          record.privateKey === undefined
-        )
-      case "rsa-key-pair":
-        return (
-          record.algorithm === "RSA-OAEP-3072" &&
-          record.publicKey !== undefined &&
-          isRsaKey(record.publicKey, "public") &&
-          (record.privateKey === undefined || isRsaKey(record.privateKey, "private")) &&
-          record.symmetricKey === undefined
-        )
-      case "public-key":
-        return (
-          record.algorithm === "RSA-OAEP-3072" &&
-          record.publicKey !== undefined &&
-          isRsaKey(record.publicKey, "public") &&
-          record.privateKey === undefined &&
-          record.symmetricKey === undefined
-        )
-    }
-  })()
-  if (!valid) throw new Error("invalid key record")
+  if (!isAesKey(record.symmetricKey)) throw new Error("invalid key record")
   return record as StoredKeyRecord
 }
 
@@ -163,53 +140,31 @@ const signingEncryptedSeedSchema = z
   })
   .strict()
 
-const kemMaterialSchema = z.discriminatedUnion("algorithm", [
-  z
-    .object({
-      algorithm: z.literal("ML-KEM-768"),
-      keyId: keyIdSchema,
-      publicKey: bytes(KEM_SIZES["ML-KEM-768"].publicKeyBytes),
-      encryptedSeed: kemEncryptedSeedSchema,
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-  z
-    .object({
-      algorithm: z.literal("ML-KEM-1024"),
-      keyId: keyIdSchema,
-      publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
-      encryptedSeed: kemEncryptedSeedSchema,
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-])
+const kemMaterialSchema = z
+  .object({
+    algorithm: z.literal("ML-KEM-1024"),
+    keyId: keyIdSchema,
+    publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
+    encryptedSeed: kemEncryptedSeedSchema,
+    fingerprint: fingerprintSchema,
+  })
+  .strict()
 
-const signingMaterialSchema = z.discriminatedUnion("algorithm", [
-  z
-    .object({
-      algorithm: z.literal("ML-DSA-65"),
-      keyId: keyIdSchema,
-      publicKey: bytes(DSA_SIZES["ML-DSA-65"].publicKeyBytes),
-      encryptedSeed: signingEncryptedSeedSchema,
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-  z
-    .object({
-      algorithm: z.literal("ML-DSA-87"),
-      keyId: keyIdSchema,
-      publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
-      encryptedSeed: signingEncryptedSeedSchema,
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-])
+const signingMaterialSchema = z
+  .object({
+    algorithm: z.literal("ML-DSA-87"),
+    keyId: keyIdSchema,
+    publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
+    encryptedSeed: signingEncryptedSeedSchema,
+    fingerprint: fingerprintSchema,
+  })
+  .strict()
 
 const postQuantumIdentitySchema = z
   .object({
     id: keyIdSchema,
     name: keyNameSchema,
-    profile: z.enum(["balanced", "maximum"]),
+    profile: z.literal("maximum"),
     kem: kemMaterialSchema,
     signing: signingMaterialSchema,
     identityFingerprint: fingerprintSchema,
@@ -222,16 +177,6 @@ const postQuantumIdentitySchema = z
   })
   .strict()
   .superRefine((identity, context) => {
-    const profileMatches =
-      (identity.profile === "balanced" &&
-        identity.kem.algorithm === "ML-KEM-768" &&
-        identity.signing.algorithm === "ML-DSA-65") ||
-      (identity.profile === "maximum" &&
-        identity.kem.algorithm === "ML-KEM-1024" &&
-        identity.signing.algorithm === "ML-DSA-87")
-    if (!profileMatches) {
-      context.addIssue({ code: "custom", path: ["profile"], message: "profile mismatch" })
-    }
     if (new Set([identity.id, identity.kem.keyId, identity.signing.keyId]).size !== 3) {
       context.addIssue({ code: "custom", path: ["id"], message: "key IDs must differ" })
     }
@@ -274,43 +219,23 @@ export function validatePostQuantumIdentity(value: unknown): PostQuantumIdentity
   return postQuantumIdentitySchema.parse(value) as PostQuantumIdentity
 }
 
-const bundleKemSchema = z.discriminatedUnion("algorithm", [
-  z
-    .object({
-      algorithm: z.literal("ML-KEM-768"),
-      keyId: keyIdSchema,
-      publicKey: bytes(KEM_SIZES["ML-KEM-768"].publicKeyBytes),
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-  z
-    .object({
-      algorithm: z.literal("ML-KEM-1024"),
-      keyId: keyIdSchema,
-      publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-])
+const bundleKemSchema = z
+  .object({
+    algorithm: z.literal("ML-KEM-1024"),
+    keyId: keyIdSchema,
+    publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
+    fingerprint: fingerprintSchema,
+  })
+  .strict()
 
-const bundleSigningSchema = z.discriminatedUnion("algorithm", [
-  z
-    .object({
-      algorithm: z.literal("ML-DSA-65"),
-      keyId: keyIdSchema,
-      publicKey: bytes(DSA_SIZES["ML-DSA-65"].publicKeyBytes),
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-  z
-    .object({
-      algorithm: z.literal("ML-DSA-87"),
-      keyId: keyIdSchema,
-      publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-])
+const bundleSigningSchema = z
+  .object({
+    algorithm: z.literal("ML-DSA-87"),
+    keyId: keyIdSchema,
+    publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
+    fingerprint: fingerprintSchema,
+  })
+  .strict()
 
 const pqPublicBundleRecordSchema = z
   .object({
@@ -329,17 +254,6 @@ const pqPublicBundleRecordSchema = z
   })
   .strict()
   .superRefine((record, context) => {
-    const algorithmsMatch =
-      (record.kem.algorithm === "ML-KEM-768" &&
-        record.signing.algorithm === "ML-DSA-65") ||
-      (record.kem.algorithm === "ML-KEM-1024" && record.signing.algorithm === "ML-DSA-87")
-    if (!algorithmsMatch) {
-      context.addIssue({
-        code: "custom",
-        path: ["signing", "algorithm"],
-        message: "profile mismatch",
-      })
-    }
     if (
       (record.trust === "unverified" && record.trustConfirmedAt !== undefined) ||
       (record.trust === "fingerprint-confirmed" && record.trustConfirmedAt === undefined)

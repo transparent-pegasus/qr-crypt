@@ -10,7 +10,6 @@ import {
   decodePublicIdentityBundleV2,
   decodeQrFrameV2,
   decodeSignedMessageV2,
-  decodeUnsignedMessageBodyV2,
   encodeCanonicalCbor,
   encodeMlKemAadV2,
   encodeMlKemEnvelopeV2,
@@ -18,7 +17,7 @@ import {
   encodeQrFrameV2,
   signingTargetBytes,
 } from "@/crypto/pq/canonical-cbor"
-import { assertActiveSuite, resolveSuite, suiteComponents } from "@/crypto/pq/suites"
+import { resolveSuite, suiteComponents } from "@/crypto/pq/suites"
 import { bytesToHex, sha256Hex } from "@/lib/bytes"
 import {
   MAX_ARTIFACT_BYTES_ABSOLUTE,
@@ -73,11 +72,7 @@ function exactSizeCanonicalMap(
 // ---------------------------------------------------------------------------
 
 const AAD_GOLDEN_HEX =
-  "a564747970656a70712d6d657373616765657375697465781e4d4c2d4b454d2d3736382b" +
-  "484b44462d5348413235362b4132353647434d6776657273696f6e0271726563697069656e" +
-  "744b656d4b657949647641414543417751464267634943516f4c4441304f4477736b656d43" +
-  "69706865727465787453686132353658202222222222222222222222222222222222222222" +
-  "222222222222222222222222"
+  "a564747970656a70712d6d65737361676565737569746578294d4c2d4b454d2d313032342b4d4c2d4453412d38372b484b44462d5348413235362b4132353647434d6776657273696f6e0271726563697069656e744b656d4b657949647641414543417751464267634943516f4c4441304f4477736b656d4369706865727465787453686132353658202222222222222222222222222222222222222222222222222222222222222222"
 
 const TINY_FRAME_GOLDEN_HEX =
   "a864747970656871722d6672616d65656368756e6b44aabbccdd6776657273696f6e026a66" +
@@ -96,9 +91,9 @@ function fixtureEnvelope(): MlKemMessageEnvelopeV2 {
   return {
     version: 2,
     type: "pq-message",
-    suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+    suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: KEY_ID,
-    kemCiphertext: new Uint8Array(1088).fill(0x33),
+    kemCiphertext: new Uint8Array(1568).fill(0x33),
     hkdfSalt: new Uint8Array(32).fill(0x44),
     iv: new Uint8Array(12).fill(0x55),
     ciphertext: new Uint8Array(20).fill(0x66),
@@ -123,7 +118,7 @@ describe("canonical-cbor goldens", () => {
     const bytes = encodeMlKemAadV2({
       version: 2,
       type: "pq-message",
-      suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: KEY_ID,
       kemCiphertextSha256: new Uint8Array(32).fill(0x22),
     })
@@ -134,7 +129,7 @@ describe("canonical-cbor goldens", () => {
     const reordered = {
       kemCiphertextSha256: new Uint8Array(32).fill(0x22),
       recipientKemKeyId: KEY_ID,
-      suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       version: 2,
       type: "pq-message",
     }
@@ -143,14 +138,13 @@ describe("canonical-cbor goldens", () => {
 
   it("matches the frozen envelope encoding length and SHA-256", async () => {
     const bytes = encodeMlKemEnvelopeV2(fixtureEnvelope())
-    expect(bytes.byteLength).toBe(1301)
+    expect(bytes.byteLength).toBe(1792)
     expect(await sha256Hex(bytes)).toBe(
-      "53b5af7642d5394156ef4eacfac829181a682e067d9c1fbc8297206117cea924",
+      "d121c8ad34a2043f7c43f3c4b8cafedb974feaea3134040248a93a211acfee82",
     )
     // Also pin the first 48 bytes: map header a8 and iv/type/suite ordering.
     expect(bytesToHex(bytes.subarray(0, 48))).toBe(
-      "a86269764c55555555555555555555555564747970656a70712d6d657373616765657375" +
-        "697465781e4d4c2d4b454d2d",
+      "a86269764c55555555555555555555555564747970656a70712d6d65737361676565737569746578294d4c2d4b454d2d",
     )
   })
 
@@ -181,39 +175,27 @@ describe("canonical-cbor goldens", () => {
       identityId: KEY_ID,
       name: "テスト",
       kem: {
-        algorithm: "ML-KEM-768",
+        algorithm: "ML-KEM-1024",
         keyId: KEY_ID,
-        publicKey: new Uint8Array(1184).fill(0x0a),
+        publicKey: new Uint8Array(1568).fill(0x0a),
       },
       signing: {
-        algorithm: "ML-DSA-65",
+        algorithm: "ML-DSA-87",
         keyId: KEY_ID,
-        publicKey: new Uint8Array(1952).fill(0x0b),
+        publicKey: new Uint8Array(2592).fill(0x0b),
       },
       createdAt: 1_700_000_000_000,
     })
-    expect(bytes.byteLength).toBe(3377)
+    expect(bytes.byteLength).toBe(4402)
     expect(await sha256Hex(bytes)).toBe(
-      "db7231d753096cc2847e87767040772ca7daef5f726104549d75f1359429925c",
+      "0d42425365c8f001bf846d158e46d2532bc20973cf1e431e4484f292e222c326",
     )
     expect(decodePublicIdentityBundleV2(bytes).name).toBe("テスト")
   })
 
-  it("round-trips the envelope and unsigned body identically", () => {
+  it("round-trips the envelope identically", () => {
     const envelope = fixtureEnvelope()
     expect(decodeMlKemEnvelopeV2(encodeMlKemEnvelopeV2(envelope))).toEqual(envelope)
-    const body = {
-      version: 2 as const,
-      messageId: new Uint8Array(16).fill(0x07),
-      createdAt: 1_700_000_000_000,
-      recipientKemKeyId: KEY_ID,
-      plaintext: new Uint8Array([0x01]),
-    }
-    expect(
-      decodeUnsignedMessageBodyV2(
-        encodeCanonicalCbor(body as unknown as Parameters<typeof encodeCanonicalCbor>[0]),
-      ),
-    ).toEqual(body)
   })
 })
 
@@ -257,18 +239,6 @@ describe("canonical-cbor rejections", () => {
       broken as unknown as Parameters<typeof encodeCanonicalCbor>[0],
     )
     expectCode(() => decodeMlKemEnvelopeV2(bytes), "INVALID_QR_PAYLOAD")
-  })
-
-  it("rejects an unsigned body containing senderSigningKeyId", () => {
-    const bytes = encodeCanonicalCbor({
-      version: 2,
-      messageId: new Uint8Array(16),
-      createdAt: 1,
-      recipientKemKeyId: KEY_ID,
-      plaintext: new Uint8Array([0x01]),
-      senderSigningKeyId: KEY_ID,
-    } as unknown as Parameters<typeof encodeCanonicalCbor>[0])
-    expectCode(() => decodeUnsignedMessageBodyV2(bytes), "INVALID_QR_PAYLOAD")
   })
 
   it("rejects a signed message with a missing signature", () => {
@@ -441,15 +411,15 @@ describe("suite contract", () => {
     }
   })
 
-  it("recognizes 768 wire values in the codec and rejects them under active policy", () => {
-    const envelope = fixtureEnvelope()
-    expect(decodeMlKemEnvelopeV2(encodeMlKemEnvelopeV2(envelope))).toEqual(envelope)
-    expectCode(() => assertActiveSuite(envelope.suite), "UNSUPPORTED_ALGORITHM")
-  })
-
-  it("rejects mixed-profile combinations", () => {
-    expectCode(() => resolveSuite("ML-KEM-768", "ML-DSA-87"), "UNSUPPORTED_ALGORITHM")
-    expectCode(() => resolveSuite("ML-KEM-1024", "ML-DSA-65"), "UNSUPPORTED_ALGORITHM")
+  it("rejects retired algorithm combinations", () => {
+    expectCode(
+      () => resolveSuite("ML-KEM-768" as never, "ML-DSA-87"),
+      "UNSUPPORTED_ALGORITHM",
+    )
+    expectCode(
+      () => resolveSuite("ML-KEM-1024", "ML-DSA-65" as never),
+      "UNSUPPORTED_ALGORITHM",
+    )
   })
 
   it("matches MAX_FRAME_PAYLOAD_CHARS to QR v40 EC-Q capacity", () => {

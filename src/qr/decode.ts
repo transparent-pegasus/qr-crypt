@@ -40,8 +40,6 @@ export type {
   CameraFailureState,
   CameraScanState,
   QrScanHandle,
-  ReaderModuleState,
-  StartQrScanOptions,
 } from "@/qr/camera/types"
 
 // Fetch and compile the reader ahead of any tap. The shared readiness gate awaits this

@@ -59,14 +59,12 @@ function verifyRequest() {
   }
 }
 
-function openRequest(signed: boolean): OpenPqEnvelopeRequest {
+function openRequest(): OpenPqEnvelopeRequest {
   return {
     envelope: {
       version: 2,
       type: "pq-message",
-      suite: signed
-        ? "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
-        : "ML-KEM-1024+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: KEY_ID,
       kemCiphertext: new Uint8Array(1568),
       hkdfSalt: new Uint8Array(32),
@@ -194,9 +192,9 @@ describe("browser PQ Worker RPC client", () => {
     expect(worker.terminated).toBe(true)
   })
 
-  it("rejects an unsigned open response missing messageId", async () => {
+  it("rejects a retired unsigned open response missing messageId", async () => {
     await expectResponseRejected(
-      (client) => client.openPqEnvelope(openRequest(false)),
+      (client) => client.openPqEnvelope(openRequest()),
       {
         kind: "unsigned",
         plaintext: new Uint8Array([1]),
@@ -217,9 +215,9 @@ describe("browser PQ Worker RPC client", () => {
     )
   })
 
-  it("rejects an unsigned open response with a non-integer createdAt", async () => {
+  it("rejects a retired unsigned open response with a non-integer createdAt", async () => {
     await expectResponseRejected(
-      (client) => client.openPqEnvelope(openRequest(false)),
+      (client) => client.openPqEnvelope(openRequest()),
       {
         kind: "unsigned",
         plaintext: new Uint8Array([1]),
@@ -242,7 +240,7 @@ describe("browser PQ Worker RPC client", () => {
 
   it("rejects a signed open response carrying receipt fields", async () => {
     await expectResponseRejected(
-      (client) => client.openPqEnvelope(openRequest(true)),
+      (client) => client.openPqEnvelope(openRequest()),
       {
         kind: "signed",
         signedMessageBytes: new Uint8Array([1]),

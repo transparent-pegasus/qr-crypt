@@ -239,24 +239,14 @@ function optionalIntegerInRange(
 }
 
 function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
-  const algorithms = [
-    "A256GCM",
-    "RSA-HYBRID",
-    "MLKEM768_A256GCM",
-    "MLKEM768_MLDSA65_A256GCM",
-    "MLKEM1024_A256GCM",
-    "MLKEM1024_MLDSA87_A256GCM",
-  ]
-  const profiles = ["balanced", "maximum"]
-  const correctionLevels = ["L", "M", "Q", "H"]
+  // Retired identifiers stay READABLE here even though nothing produces them
+  // any more: an unreadable stored preference forces wipeOnOnline true, and a
+  // later network-confirmed contact would then wipe user data. Rejecting the
+  // vocabulary is the repository's job, not boot's.
+  const algorithms = ["A256GCM", "RSA-HYBRID", "MLKEM1024_MLDSA87_A256GCM"]
   return (
     (value.defaultAlgorithm === undefined ||
       algorithms.includes(value.defaultAlgorithm as string)) &&
-    (value.defaultPqProfile === undefined ||
-      profiles.includes(value.defaultPqProfile as string)) &&
-    optionalBoolean(value.requireSignature) &&
-    (value.qrErrorCorrection === undefined ||
-      correctionLevels.includes(value.qrErrorCorrection as string)) &&
     optionalBoolean(value.autoClearPlaintextAfterEncrypt) &&
     optionalBoolean(value.backgroundClearEnabled) &&
     isBootReadableFrameBytes(value.frameBytes) &&
@@ -527,8 +517,7 @@ export function createBootController(
     networkTransitionHandled = false
   }
 
-  const isDestructiveTerminal = () =>
-    state.kind === "wiping" || state.kind === "wiped" || state.kind === "partial-failure"
+  const isDestructiveTerminal = () => destructive(state)
 
   const relayEligibleFrom = (decision: BootDecisionSnapshot): boolean =>
     decision.cleanOrigin === "confirmed-clean" && !decision.sensitiveDataExists

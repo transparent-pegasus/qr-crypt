@@ -76,4 +76,32 @@ describe("about page i18n", () => {
     }
     expect(links).toHaveLength(Object.keys(messages.LOCALES).length + 1)
   })
+
+  it("pins the approved mode names and bodies in English and Japanese", async () => {
+    // Key parity alone cannot catch stale wording; pin the approved strings so a
+    // rewrite that reintroduces algorithm names or a duration framing fails until
+    // both locales are updated together.
+    const doc = await parseDocument(html)
+    const english = (key: string) =>
+      doc.querySelector(`[data-i18n="${key}"]`)?.textContent?.replace(/\s+/g, " ").trim()
+
+    expect(english("locks.aes.name")).toBe("Shared-key mode")
+    expect(english("locks.aes.body")).toBe(
+      "Encrypts a message with a secret the two of you shared in person. The data stays small, so a message travels in few QR codes. Each encryption derives a different AES-256-GCM key with HKDF.",
+    )
+    expect(english("locks.pq.name")).toBe("Public-key mode")
+    expect(english("locks.pq.body")).toBe(
+      "Establishes the message secret from the recipient's public key and verifies the sender's signature, so no sender has to hold a secret that can decrypt. It uses ML-KEM for the key establishment and ML-DSA to confirm the sender. The body itself is encrypted with AES-256-GCM, the same as shared-key mode; the signature and public-key data make the message larger.",
+    )
+
+    const ja = messages.LOCALES.ja?.strings ?? {}
+    expect(ja["locks.aes.name"]).toBe("共有鍵モード")
+    expect(ja["locks.aes.body"]).toBe(
+      "対面で共有した秘密を使用してメッセージを暗号化します。データ量が小さく、少ないQRコードで送受信できます。暗号化ごとにHKDFで異なるAES-256-GCM鍵を導出します。",
+    )
+    expect(ja["locks.pq.name"]).toBe("公開鍵モード")
+    expect(ja["locks.pq.body"]).toBe(
+      "受信者の公開鍵を使用してメッセージ用の秘密を確立し、送信者の署名を検証します。送信者に復号用の共有秘密を持たせずに済みます。ML-KEMによる鍵確立とML-DSAによる送信者確認を使用します。本文の暗号化には、共有鍵モードと同じくAES-256-GCMを使用します。署名と公開鍵データのため、メッセージは大きくなります。",
+    )
+  })
 })

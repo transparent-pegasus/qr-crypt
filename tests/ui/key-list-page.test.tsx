@@ -9,11 +9,18 @@ import { AppError } from "@/crypto/errors"
 import { formatDateTime } from "@/features/presentation"
 import { LanguageProvider } from "@/i18n"
 import { translate } from "@/i18n/messages"
-import { decodeFramePayload } from "@/qr/payload-v2"
-import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
+import { FRAME_BYTES_VALUES } from "@/lib/limits"
+import { buildV2Payload, decodeFramePayload } from "@/qr/payload-v2"
+import type {
+  PostQuantumIdentity,
+  PqPublicBundleRecord,
+  StoredKeyRecord,
+} from "@/schemas/domain"
 import { deferred } from "../helpers/deferred"
 import {
   confirmBundleFingerprint,
+  buildSymmetricKeyEnvelopeV2,
+  copyTextToClipboard,
   deleteBundle,
   deleteIdentity,
   deleteKeyRecord,
@@ -22,17 +29,25 @@ import {
   fakeFeatures,
   fakeIdentities,
   fakeKeys,
+  encodeSymmetricKeyEnvelopeV2,
+  getActiveKeyRecord,
   listIdentities,
   listKeyRecords,
   renameIdentity,
   renameKeyRecord,
   renderQrDataUrl,
+  qrPngBlob,
   revokeBundle,
   revokeIdentity,
+  rotateSymmetricKeyRecord,
   saveRotation,
+  saveSymmetricRotation,
+  sealSymMessage,
   splitIntoFrames,
+  triggerDownload,
   updatePreferences,
 } from "./helpers/fakes"
+import { expectSingleAlertCancelWithoutClose } from "./helpers/dialog-assertions"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 let KeyDetailDialog: typeof import("@/components/key-detail-dialog").KeyDetailDialog
@@ -45,16 +60,6 @@ function rowFor(text: string): HTMLButtonElement {
   const row = screen.getByText(text).closest("button")
   if (!(row instanceof HTMLButtonElement)) throw new Error(`row not found: ${text}`)
   return row
-}
-
-function expectSingleAlertCancelWithoutClose(dialog: HTMLElement): void {
-  expect(
-    within(dialog).getAllByRole("button", { name: "Cancel" }),
-  ).toHaveLength(1)
-  expect(
-    within(dialog).queryByRole("button", { name: "Close" }),
-  ).toBeNull()
-  expect(dialog.querySelector("svg.lucide-x")).toBeNull()
 }
 
 async function renderKeyList(): Promise<void> {
@@ -98,10 +103,14 @@ function SensitiveStateProbe() {
   return <output data-testid="secret-visible">{String(secretVisible)}</output>
 }
 
-function SymmetricDetailHarness() {
+function SymmetricDetailHarness({
+  record = ock2Record(),
+}: {
+  record?: StoredKeyRecord
+}) {
   const [selection, setSelection] = useState<KeySelection | null>({
     kind: "symmetric",
-    id: fakeKeys[0]!.id,
+    id: record.id,
   })
   return (
     <>
@@ -110,7 +119,7 @@ function SymmetricDetailHarness() {
         selection={selection}
         identity={undefined}
         previous={undefined}
-        symmetric={selection === null ? undefined : fakeKeys[0]}
+        symmetric={selection === null ? undefined : record}
         onOpenChange={(open) => {
           if (!open) setSelection(null)
         }}
@@ -118,6 +127,15 @@ function SymmetricDetailHarness() {
       />
     </>
   )
+}
+
+function ock2Record(overrides: Partial<StoredKeyRecord> = {}): StoredKeyRecord {
+  return {
+    ...fakeKeys[0]!,
+    id: "A".repeat(22),
+    status: "active",
+    ...overrides,
+  }
 }
 
 describe("key list page", () => {
@@ -154,7 +172,7 @@ describe("key list page", () => {
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
     expect(screen.getByText(/Post-quantum identity ·/)).toBeInTheDocument()
     expect(screen.getByText("共通鍵A")).toBeInTheDocument()
-    expect(screen.getByText(/Symmetric key ·/)).toBeInTheDocument()
+    expect(screen.getByText(/Shared key ·/)).toBeInTheDocument()
     // Both badges report lifecycle state, never key type.
     expect(within(rows[0]!).getByText("Active")).toBeInTheDocument()
     expect(within(rows[1]!).getByText("Active")).toBeInTheDocument()
@@ -175,9 +193,9 @@ describe("key list page", () => {
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
       "All",
       "Post-quantum identity",
-      "Symmetric key",
+      "Shared key",
     ])
-    await user.click(screen.getByRole("option", { name: "Symmetric key" }))
+    await user.click(screen.getByRole("option", { name: "Shared key" }))
     expect(screen.getByText("共通鍵A")).toBeInTheDocument()
     expect(screen.queryByText("自分のPQ ID")).not.toBeInTheDocument()
 
@@ -209,7 +227,6 @@ describe("key list page", () => {
         }),
       ),
     ).toBeInTheDocument()
-    // The three fingerprints left the row entirely.
     expect(screen.queryByText(bundle.identityFingerprint)).toBeNull()
     expect(screen.queryByText(bundle.kem.fingerprint)).toBeNull()
     expect(screen.queryByText(bundle.signing.fingerprint)).toBeNull()
@@ -341,6 +358,7 @@ describe("key list page", () => {
 
   it("shows QR views in the same dialog and never offers QR persistence", async () => {
     const user = userEvent.setup()
+    fakeKeys[0] = ock2Record()
     const firstQrRender = deferred<string>()
     renderQrDataUrl.mockImplementationOnce(() => firstQrRender.promise)
     await renderKeyList()
@@ -431,15 +449,23 @@ describe("key list page", () => {
     await user.click(rowFor("共通鍵A"))
     dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
-    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
-    const symmetricFullscreenTriggers = within(dialog).getAllByRole("button", {
+    dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
+    expect(within(dialog).queryByRole("img")).toBeNull()
+    expect(
+      within(dialog).queryByRole("button", { name: "View full screen" }),
+    ).toBeNull()
+    expect(within(dialog).queryByRole("button", { name: "Download" })).toBeNull()
+    expect(within(dialog).queryByRole("button", { name: "Copy" })).toBeNull()
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
+    )
+    const symmetricFullscreen = await within(dialog).findByRole("button", {
       name: "View full screen",
     })
-    expect(symmetricFullscreenTriggers).toHaveLength(1)
-    await waitFor(() => expect(symmetricFullscreenTriggers[0]).toBeEnabled())
-    await user.click(symmetricFullscreenTriggers[0]!)
+    await waitFor(() => expect(symmetricFullscreen).toBeEnabled())
+    await user.click(symmetricFullscreen)
     fullscreen = await screen.findByRole("dialog", {
-      name: /View Symmetric-key QR full screen/,
+      name: /View Shared-key QR full screen/,
     })
     expect(within(fullscreen).getByText("Sensitive information")).toBeInTheDocument()
     expect(fullscreen.querySelector("svg.lucide-triangle-alert")).toHaveAttribute(
@@ -448,19 +474,125 @@ describe("key list page", () => {
     )
     expect(within(fullscreen).queryByRole("button", { name: "Download" })).toBeNull()
     await user.keyboard("{Escape}")
-    expect(screen.getByRole("dialog", { name: "Symmetric-key QR" })).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "Shared-key QR" })).toBeInTheDocument()
     expect(within(dialog).getByText("Sensitive information")).toBeInTheDocument()
     const download = within(dialog).getByRole("button", { name: "Download" })
     const copy = within(dialog).getByRole("button", { name: "Copy" })
-    expect(download).toBeDisabled()
-    expect(copy).toBeDisabled()
+    expect(download).toBeEnabled()
+    expect(copy).toBeEnabled()
     expect(within(dialog).queryByRole("button", { name: /SVG/i })).toBeNull()
+    expect(within(dialog).queryByText(/Saved/)).toBeNull()
+  })
+
+  it("shares an active symmetric key as one static OCF2 frame while copying bare OCK2", async () => {
+    const user = userEvent.setup()
+    fakeKeys[0] = ock2Record()
+    await renderKeyList()
+
+    await user.click(rowFor("共通鍵A"))
+    const dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
+    await user.click(
+      within(dialog).getByRole("button", { name: "Show secret-key QR" }),
+    )
     await user.click(
       within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
     )
-    expect(download).toBeEnabled()
-    expect(copy).toBeEnabled()
-    expect(within(dialog).queryByText(/Saved/)).toBeNull()
+
+    await waitFor(() => expect(encodeSymmetricKeyEnvelopeV2).toHaveBeenCalledOnce())
+    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledOnce())
+    expect(buildSymmetricKeyEnvelopeV2).toHaveBeenCalledWith(fakeKeys[0])
+    const splitArgs = splitIntoFrames.mock.calls[0]![0]
+    expect(splitArgs).toMatchObject({
+      artifactType: "symmetric-key",
+      frameBytes: FRAME_BYTES_VALUES.find(
+        (candidate) => candidate >= splitArgs.artifactBytes.byteLength,
+      ),
+    })
+    expect(splitArgs.artifactBytes).toEqual(
+      encodeSymmetricKeyEnvelopeV2.mock.results[0]?.value,
+    )
+
+    await waitFor(() =>
+      expect(
+        renderQrDataUrl.mock.calls.some(([payload]) => payload.startsWith("OCF2:")),
+      ).toBe(true),
+    )
+    const framePayload = renderQrDataUrl.mock.calls.find(([payload]) =>
+      payload.startsWith("OCF2:"),
+    )![0]
+    const frame = decodeFramePayload(framePayload)
+    expect(frame).toMatchObject({
+      artifactType: "symmetric-key",
+      frameIndex: 0,
+      frameCount: 1,
+      totalByteLength: splitArgs.artifactBytes.byteLength,
+    })
+    expect(frame.chunk).toEqual(splitArgs.artifactBytes)
+    expect(within(dialog).getAllByRole("img")).toHaveLength(1)
+    expect(within(dialog).queryByRole("button", { name: "Pause" })).toBeNull()
+
+    await user.click(within(dialog).getByRole("button", { name: "Copy" }))
+    await waitFor(() =>
+      expect(copyTextToClipboard).toHaveBeenCalledWith(
+        buildV2Payload("symmetric-key", splitArgs.artifactBytes),
+      ),
+    )
+    await user.click(within(dialog).getByRole("button", { name: "Download" }))
+    await waitFor(() =>
+      expect(qrPngBlob).toHaveBeenCalledWith(framePayload, expect.any(Object)),
+    )
+    expect(triggerDownload).toHaveBeenCalledOnce()
+  })
+
+  it("offers no sharing action for a rotated symmetric predecessor", async () => {
+    const rotated = ock2Record({
+      status: "rotated",
+      rotatedAt: 1_724_000_000_000,
+    })
+    render(
+      <LanguageProvider initialLanguage="en">
+        <AppProviders features={fakeFeatures} pwaHook={undefined}>
+          <SymmetricDetailHarness record={rotated} />
+        </AppProviders>
+      </LanguageProvider>,
+    )
+
+    const dialog = await screen.findByRole("dialog", { name: rotated.name })
+    expect(within(dialog).getByText("Rotated")).toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole("button", { name: "Show secret-key QR" }),
+    ).toBeNull()
+    expect(buildSymmetricKeyEnvelopeV2).not.toHaveBeenCalled()
+  })
+
+  it("zeroizes OCK2 artifact bytes when the symmetric QR view is left", async () => {
+    const user = userEvent.setup()
+    const record = ock2Record()
+    render(
+      <LanguageProvider initialLanguage="en">
+        <AppProviders features={fakeFeatures} pwaHook={undefined}>
+          <SymmetricDetailHarness record={record} />
+        </AppProviders>
+      </LanguageProvider>,
+    )
+
+    let dialog = await screen.findByRole("dialog", { name: record.name })
+    await user.click(
+      within(dialog).getByRole("button", { name: "Show secret-key QR" }),
+    )
+    dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
+    )
+    await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledOnce())
+    const artifactBytes = splitIntoFrames.mock.calls[0]![0].artifactBytes
+    expect(artifactBytes.some((byte) => byte !== 0)).toBe(true)
+
+    await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
+    await waitFor(() => expect(artifactBytes).toEqual(new Uint8Array(artifactBytes.length)))
+    expect(
+      screen.queryByRole("dialog", { name: "Shared-key QR" }),
+    ).not.toBeInTheDocument()
   })
 
   it("keeps identity fullscreen open while compatibility mode re-splits and restarts at frame one", async () => {
@@ -642,7 +774,10 @@ describe("key list page", () => {
     expect(screen.getByTestId("secret-visible")).toHaveTextContent("false")
     let dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
-    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
+    )
     await waitFor(() =>
       expect(screen.getByTestId("secret-visible")).toHaveTextContent("true"),
     )
@@ -651,7 +786,7 @@ describe("key list page", () => {
     )
     expect(screen.getByTestId("secret-visible")).toHaveTextContent("true")
     await user.keyboard("{Escape}")
-    expect(screen.getByRole("dialog", { name: "Symmetric-key QR" })).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "Shared-key QR" })).toBeInTheDocument()
     expect(screen.getByTestId("secret-visible")).toHaveTextContent("true")
 
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
@@ -689,6 +824,110 @@ describe("key list page", () => {
     expect(
       within(dialog).queryByRole("button", { name: "Rotate" }),
     ).not.toBeInTheDocument()
+  })
+
+  it("rotates a symmetric key, groups its lineage, and offers only the new head for encryption", async () => {
+    const user = userEvent.setup()
+    const original = fakeKeys[0]!
+    await renderKeyList()
+    await user.click(rowFor(original.name))
+    let dialog = await screen.findByRole("dialog", { name: original.name })
+
+    await user.click(within(dialog).getByRole("button", { name: "Rotate" }))
+
+    await waitFor(() => expect(saveSymmetricRotation).toHaveBeenCalledOnce())
+    expect(getActiveKeyRecord).toHaveBeenCalledWith(original.id)
+    expect(rotateSymmetricKeyRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ id: original.id, status: "active" }),
+      expect.any(Number),
+    )
+    expect(getActiveKeyRecord.mock.invocationCallOrder[0]).toBeLessThan(
+      rotateSymmetricKeyRecord.mock.invocationCallOrder[0]!,
+    )
+    expect(rotateSymmetricKeyRecord.mock.invocationCallOrder[0]).toBeLessThan(
+      saveSymmetricRotation.mock.invocationCallOrder[0]!,
+    )
+    expect(
+      await screen.findByText("The shared key was rotated"),
+    ).toBeInTheDocument()
+
+    const generations = fakeKeys.filter(
+      (record) => record.kind === "symmetric" && record.name === original.name,
+    )
+    expect(generations).toHaveLength(2)
+    const head = generations.find((record) => record.status === "active")
+    const previous = generations.find((record) => record.status === "rotated")
+    expect(head).toMatchObject({ rotatedFromId: original.id })
+    expect(previous).toMatchObject({ id: original.id })
+
+    dialog = await screen.findByRole("dialog", { name: original.name })
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+    const matchingRows = within(screen.getByRole("tabpanel"))
+      .getAllByRole("button")
+      .filter((row) => row.textContent?.includes(original.name))
+    expect(matchingRows).toHaveLength(1)
+    expect(matchingRows[0]).toHaveTextContent("Active")
+    expect(matchingRows[0]).toHaveTextContent(
+      "1 older generation(s) can still decrypt",
+    )
+
+    await user.click(screen.getByRole("link", { name: "Encrypt" }))
+    await user.click(await screen.findByLabelText("Key"))
+    const headOptions = await screen.findAllByRole("option", {
+      name: original.name,
+    })
+    expect(headOptions).toHaveLength(1)
+    expect(head?.id).not.toBe(original.id)
+    await user.click(headOptions[0]!)
+    await user.type(screen.getByLabelText("Plaintext"), "new head only")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    await waitFor(() =>
+      expect(sealSymMessage).toHaveBeenCalledWith({
+        record: head,
+        plaintext: new TextEncoder().encode("new head only"),
+        now: expect.any(Number),
+      }),
+    )
+  })
+
+  it("re-resolves a symmetric record before rotation and rejects an already-rotated stale view", async () => {
+    const user = userEvent.setup()
+    const displayed = ock2Record({ name: "Stale symmetric key" })
+    fakeKeys.splice(0, fakeKeys.length, displayed)
+    render(
+      <LanguageProvider initialLanguage="en">
+        <AppProviders features={fakeFeatures} pwaHook={undefined}>
+          <SymmetricDetailHarness record={displayed} />
+        </AppProviders>
+      </LanguageProvider>,
+    )
+    const dialog = await screen.findByRole("dialog", { name: displayed.name })
+
+    const rotatedAt = displayed.createdAt + 1_000
+    const concurrentHead = ock2Record({
+      id: "C".repeat(22),
+      name: displayed.name,
+      createdAt: rotatedAt,
+      rotatedFromId: displayed.id,
+    })
+    fakeKeys.splice(
+      0,
+      fakeKeys.length,
+      concurrentHead,
+      { ...displayed, status: "rotated", rotatedAt },
+    )
+
+    await user.click(within(dialog).getByRole("button", { name: "Rotate" }))
+
+    await waitFor(() => expect(getActiveKeyRecord).toHaveBeenCalledWith(displayed.id))
+    expect(rotateSymmetricKeyRecord).not.toHaveBeenCalled()
+    expect(saveSymmetricRotation).not.toHaveBeenCalled()
+    expect(fakeKeys.filter((record) => record.status === "active")).toEqual([
+      concurrentHead,
+    ])
+    expect(
+      await within(dialog).findByText("The storage operation failed."),
+    ).toBeInTheDocument()
   })
 
   it("hides retained-generation warnings and discard controls when none exist", async () => {
@@ -882,30 +1121,6 @@ describe("key list page", () => {
     expect(within(dialog).queryByText("rotated")).not.toBeInTheDocument()
   })
 
-  it("keeps the discard fake all-or-nothing and ignores duplicate or missing ids", async () => {
-    const rotation = await seedRotation(1_724_000_000_000)
-    const snapshot = [...fakeIdentities]
-
-    await expect(
-      deleteSupersededIdentities([
-        rotation.previous.id,
-        rotation.next.id,
-        rotation.previous.id,
-        "M".repeat(22),
-      ]),
-    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
-    expect(fakeIdentities).toEqual(snapshot)
-
-    await expect(
-      deleteSupersededIdentities([
-        rotation.previous.id,
-        rotation.previous.id,
-        "M".repeat(22),
-      ]),
-    ).resolves.toBeUndefined()
-    expect(fakeIdentities.map(({ id }) => id)).toEqual([rotation.next.id])
-  })
-
   it("closes automatically when the selected symmetric key is deleted", async () => {
     const user = userEvent.setup()
     await renderKeyList()
@@ -929,8 +1144,8 @@ describe("key list page", () => {
     const user = userEvent.setup()
     await renderKeyList()
     await user.click(screen.getByRole("button", { name: "Create a key" }))
-    await user.type(await screen.findByLabelText("Symmetric-key name"), "作って消す鍵")
-    await user.click(screen.getByRole("button", { name: "Create a symmetric key" }))
+    await user.type(await screen.findByLabelText("Shared-key name"), "作って消す鍵")
+    await user.click(screen.getByRole("button", { name: "Create a shared key" }))
 
     // Creation swaps the same modal over to the new key's detail.
     const dialog = await screen.findByRole("dialog", { name: "作って消す鍵" })
@@ -944,7 +1159,7 @@ describe("key list page", () => {
     await user.click(within(confirmation).getByRole("button", { name: "Delete" }))
 
     await waitFor(() => expect(screen.queryAllByRole("dialog")).toHaveLength(0))
-    expect(screen.queryByLabelText("Symmetric-key name")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Shared-key name")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Create a key" })).toBeInTheDocument()
   })
 
@@ -1005,14 +1220,14 @@ describe("key list page", () => {
     listKeyRecords.mockRejectedValueOnce(new Error("key read failed"))
     await renderKeyList()
     expect(
-      await screen.findByText("Symmetric keys could not be loaded"),
+      await screen.findByText("Shared keys could not be loaded"),
     ).toBeInTheDocument()
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
   })
 
   it("labels unsupported profiles and restricts them to deletion", async () => {
     const user = userEvent.setup()
-    fakeIdentities[0] = { ...fakeIdentities[0]!, profile: "balanced" }
+    fakeIdentities[0] = { ...fakeIdentities[0]!, profile: "balanced" as never }
     await renderKeyList()
     expect(await screen.findByText("Unsupported (legacy profile)")).toBeInTheDocument()
     await user.click(rowFor("自分のPQ ID"))
