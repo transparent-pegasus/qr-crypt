@@ -37,11 +37,65 @@ export async function createSymmetricKeyRecord(
       createdAt: now,
       useCount: 0,
       status: "active",
+      rotatedAt: undefined,
       symmetricKey,
     }
   } catch (error) {
     throw toAppError(error, "ENCRYPTION_FAILED")
   }
+}
+
+export interface RotatedSymmetricKey {
+  next: StoredKeyRecord
+  previous: StoredKeyRecord
+}
+
+export async function rotateSymmetricKeyRecord(
+  current: StoredKeyRecord,
+  now: number,
+): Promise<RotatedSymmetricKey> {
+  try {
+    if (
+      current.kind !== "symmetric" ||
+      current.symmetricKey === undefined ||
+      current.status !== "active" ||
+      now < current.createdAt
+    ) {
+      throw new AppError("ENCRYPTION_FAILED")
+    }
+    const created = await createSymmetricKeyRecord(current.name, now)
+    return {
+      next: { ...created, rotatedFromId: current.id },
+      previous: { ...current, status: "rotated", rotatedAt: now },
+    }
+  } catch (error) {
+    throw toAppError(error, "ENCRYPTION_FAILED")
+  }
+}
+
+export function groupSymmetricKeys(
+  records: StoredKeyRecord[],
+): { head: StoredKeyRecord; previous: StoredKeyRecord[] }[] {
+  const byId = new Map(records.map((record) => [record.id, record]))
+  const superseded = new Set(
+    records
+      .map((record) => record.rotatedFromId)
+      .filter((id): id is string => id !== undefined),
+  )
+  return records
+    .filter((record) => !superseded.has(record.id))
+    .map((head) => {
+      const previous: StoredKeyRecord[] = []
+      const visited = new Set([head.id])
+      for (let cursor = head.rotatedFromId; cursor !== undefined;) {
+        const generation = byId.get(cursor)
+        if (generation === undefined || visited.has(generation.id)) break
+        visited.add(generation.id)
+        previous.push(generation)
+        cursor = generation.rotatedFromId
+      }
+      return { head, previous }
+    })
 }
 
 export async function importSymmetricKeyRecord(
@@ -61,6 +115,7 @@ export async function importSymmetricKeyRecord(
       createdAt: now,
       useCount: 0,
       status: "active",
+      rotatedAt: undefined,
       symmetricKey,
     }
   } catch (error) {
@@ -106,6 +161,7 @@ export async function importSymmetricKeyRecordV2(
       createdAt: now,
       useCount: 0,
       status: "active",
+      rotatedAt: undefined,
       symmetricKey,
     }
   } catch (error) {

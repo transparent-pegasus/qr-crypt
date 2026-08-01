@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { readBootDecision } from "@/app/boot/boot-controller"
 import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
-import { createSymmetricKeyRecord } from "@/crypto/key-generation"
+import {
+  createSymmetricKeyRecord,
+  rotateSymmetricKeyRecord,
+} from "@/crypto/key-generation"
 import { generateKeyId } from "@/crypto/random"
 import { toBase64Url } from "@/lib/base64url"
 import { bytesToHex, utf8ToBytes } from "@/lib/bytes"
@@ -28,11 +31,13 @@ import {
   clearAllKeys,
   deleteKeyRecord,
   findKeyByFingerprint,
+  getActiveKeyRecord,
   getKeyRecord,
   listKeyRecords,
   markKeyUsed,
   renameKeyRecord,
   saveKeyRecord,
+  saveSymmetricRotation,
 } from "@/storage/key-repository"
 import { getPreferences, updatePreferences } from "@/storage/preferences-repository"
 
@@ -211,6 +216,126 @@ describe("key repository", () => {
     )
     await expect(getKeyRecord(malformed.id)).rejects.toMatchObject({
       code: "STORAGE_FAILED",
+    })
+  })
+})
+
+describe("symmetric key rotation persistence", () => {
+  it("stores the successor and rotated predecessor together", async () => {
+    const current = await createSymmetricKeyRecord("persisted lineage", NOW)
+    await saveKeyRecord(current)
+    const rotation = await rotateSymmetricKeyRecord(current, NOW + 1)
+
+    await saveSymmetricRotation(rotation)
+
+    expect(await getKeyRecord(rotation.previous.id)).toMatchObject({
+      id: current.id,
+      fingerprint: current.fingerprint,
+      status: "rotated",
+      rotatedAt: NOW + 1,
+    })
+    expect(await getKeyRecord(rotation.next.id)).toMatchObject({
+      id: rotation.next.id,
+      fingerprint: rotation.next.fingerprint,
+      status: "active",
+      rotatedFromId: current.id,
+      createdAt: NOW + 1,
+    })
+    expect(await listKeyRecords()).toHaveLength(2)
+    expect(await getActiveKeyRecord(rotation.previous.id)).toBeUndefined()
+    expect(await getActiveKeyRecord(rotation.next.id)).toMatchObject({
+      id: rotation.next.id,
+      status: "active",
+    })
+  })
+
+  it("commits exactly one of two rotations derived from the same stale row", async () => {
+    const current = await createSymmetricKeyRecord("competing rotations", NOW)
+    await saveKeyRecord(current)
+    const rotations = await Promise.all([
+      rotateSymmetricKeyRecord(current, NOW + 1),
+      rotateSymmetricKeyRecord(current, NOW + 1),
+    ])
+
+    const settled = await Promise.allSettled(
+      rotations.map((rotation) => saveSymmetricRotation(rotation)),
+    )
+
+    expect(settled.filter(({ status }) => status === "fulfilled")).toHaveLength(1)
+    expect(settled.find(({ status }) => status === "rejected")).toMatchObject({
+      status: "rejected",
+      reason: { code: "STORAGE_FAILED", message: "STORAGE_FAILED" },
+    })
+    const stored = await listKeyRecords()
+    const active = stored.filter(({ status }) => status === "active")
+    expect(stored).toHaveLength(2)
+    expect(active).toHaveLength(1)
+    expect(rotations.map(({ next }) => next.id)).toContain(active[0]?.id)
+    expect(stored.filter(({ status }) => status === "rotated")).toMatchObject([
+      { id: current.id, fingerprint: current.fingerprint },
+    ])
+  })
+
+  it("rejects a stale predecessor already rotated in storage without partial writes", async () => {
+    const current = await createSymmetricKeyRecord("stale predecessor", NOW)
+    await saveKeyRecord(current)
+    const committed = await rotateSymmetricKeyRecord(current, NOW + 1)
+    const stale = await rotateSymmetricKeyRecord(current, NOW + 2)
+    await saveSymmetricRotation(committed)
+    const before = (await listKeyRecords()).map(
+      ({ id, fingerprint, status, rotatedFromId, rotatedAt }) => ({
+        id,
+        fingerprint,
+        status,
+        rotatedFromId,
+        rotatedAt,
+      }),
+    )
+
+    await expect(saveSymmetricRotation(stale)).rejects.toMatchObject({
+      code: "STORAGE_FAILED",
+      message: "STORAGE_FAILED",
+    })
+
+    expect(
+      (await listKeyRecords()).map(
+        ({ id, fingerprint, status, rotatedFromId, rotatedAt }) => ({
+          id,
+          fingerprint,
+          status,
+          rotatedFromId,
+          rotatedAt,
+        }),
+      ),
+    ).toEqual(before)
+    expect(await getKeyRecord(stale.next.id)).toBeUndefined()
+  })
+
+  it("rolls back the predecessor write when adding the successor fails", async () => {
+    const current = await createSymmetricKeyRecord("atomic rollback", NOW)
+    await saveKeyRecord(current)
+    const rotation = await rotateSymmetricKeyRecord(current, NOW + 1)
+    const fingerprintConflict: StoredKeyRecord = {
+      ...rotation.next,
+      id: generateKeyId(),
+      name: "conflicting successor fingerprint",
+      rotatedFromId: undefined,
+    }
+    await saveKeyRecord(fingerprintConflict)
+
+    await expect(saveSymmetricRotation(rotation)).rejects.toMatchObject({
+      code: "STORAGE_FAILED",
+      message: "STORAGE_FAILED",
+    })
+
+    expect(await getKeyRecord(current.id)).toMatchObject({
+      status: "active",
+      rotatedAt: undefined,
+    })
+    expect(await getKeyRecord(rotation.next.id)).toBeUndefined()
+    expect(await getKeyRecord(fingerprintConflict.id)).toMatchObject({
+      status: "active",
+      fingerprint: rotation.next.fingerprint,
     })
   })
 })

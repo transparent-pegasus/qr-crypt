@@ -31,8 +31,8 @@ export interface StoredKeyRecord {
   lastUsedAt?: number
   useCount: number
   status: SymmetricKeyStatus
-  rotatedFromId?: string
-  rotatedAt?: number
+  rotatedFromId?: string | undefined
+  rotatedAt?: number | undefined
   publicKey?: CryptoKey
   privateKey?: CryptoKey
   symmetricKey?: CryptoKey

@@ -5,7 +5,9 @@ import { fingerprintAesKey } from "@/crypto/fingerprint"
 import {
   buildSymmetricKeyEnvelopeV2,
   createSymmetricKeyRecord,
+  groupSymmetricKeys,
   importSymmetricKeyRecordV2,
+  rotateSymmetricKeyRecord,
 } from "@/crypto/key-generation"
 import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
 import {
@@ -207,21 +209,17 @@ describe("sym-v2 sealing and opening", () => {
     })
   })
 
-  it("blocks sealing with a rotated record but still opens its messages", async () => {
+  it("blocks sealing after rotation but still opens a message sealed before it", async () => {
     const { record, plaintext, envelope } = await sealedFixture()
-    const rotated: StoredKeyRecord = {
-      ...record,
-      status: "rotated",
-      rotatedAt: NOW + 2,
-    }
+    const { previous } = await rotateSymmetricKeyRecord(record, NOW + 2)
 
     await expect(
-      sealSymMessage({ record: rotated, plaintext, now: NOW + 3 }),
+      sealSymMessage({ record: previous, plaintext, now: NOW + 3 }),
     ).rejects.toMatchObject({
       code: "ENCRYPTION_FAILED",
       message: "ENCRYPTION_FAILED",
     })
-    expect(await openSymMessage({ record: rotated, envelope })).toEqual(plaintext)
+    expect(await openSymMessage({ record: previous, envelope })).toEqual(plaintext)
   })
 
   it("derives a non-extractable message key", async () => {
@@ -241,6 +239,123 @@ describe("sym-v2 sealing and opening", () => {
     const derivedKey = await result.value
     expect(derivedKey.extractable).toBe(false)
     await expect(crypto.subtle.exportKey("raw", derivedKey)).rejects.toThrow()
+  })
+})
+
+describe("symmetric key rotation", () => {
+  it("creates a new active key and marks its predecessor rotated", async () => {
+    const current = await createSymmetricKeyRecord("lineage name", NOW)
+
+    const { next, previous } = await rotateSymmetricKeyRecord(current, NOW + 1)
+
+    expect(next).toMatchObject({
+      name: current.name,
+      kind: "symmetric",
+      algorithm: "A256GCM",
+      createdAt: NOW + 1,
+      useCount: 0,
+      status: "active",
+      rotatedFromId: current.id,
+    })
+    expect(next.id).not.toBe(current.id)
+    expect(next.fingerprint).not.toBe(current.fingerprint)
+    expect(next.symmetricKey).not.toBe(current.symmetricKey)
+    expect(previous).toMatchObject({
+      id: current.id,
+      name: current.name,
+      fingerprint: current.fingerprint,
+      createdAt: current.createdAt,
+      status: "rotated",
+      rotatedAt: NOW + 1,
+    })
+    expect(previous.symmetricKey).toBe(current.symmetricKey)
+  })
+
+  it("rejects rotating a record that is already rotated", async () => {
+    const current = await createSymmetricKeyRecord("rotate once", NOW)
+    const { previous } = await rotateSymmetricKeyRecord(current, NOW + 1)
+
+    await expect(
+      rotateSymmetricKeyRecord(previous, NOW + 2),
+    ).rejects.toMatchObject({
+      code: "ENCRYPTION_FAILED",
+      message: "ENCRYPTION_FAILED",
+    })
+  })
+
+  it("rejects a rotation timestamp earlier than the key creation", async () => {
+    const current = await createSymmetricKeyRecord("time order", NOW)
+
+    await expect(
+      rotateSymmetricKeyRecord(current, NOW - 1),
+    ).rejects.toMatchObject({
+      code: "ENCRYPTION_FAILED",
+      message: "ENCRYPTION_FAILED",
+    })
+  })
+
+  it("groups one head per lineage with newest predecessors first", async () => {
+    const first = await createSymmetricKeyRecord("three generations", NOW)
+    const firstRotation = await rotateSymmetricKeyRecord(first, NOW + 1)
+    const secondRotation = await rotateSymmetricKeyRecord(
+      firstRotation.next,
+      NOW + 2,
+    )
+    const independent = await createSymmetricKeyRecord("independent", NOW + 3)
+
+    const groups = groupSymmetricKeys([
+      firstRotation.previous,
+      independent,
+      secondRotation.next,
+      secondRotation.previous,
+    ])
+
+    expect(groups).toHaveLength(2)
+    expect(groups.map(({ head }) => head.id)).toEqual(
+      expect.arrayContaining([secondRotation.next.id, independent.id]),
+    )
+    const lineage = groups.find(({ head }) => head.id === secondRotation.next.id)
+    expect(lineage?.head).toBe(secondRotation.next)
+    expect(lineage?.previous.map(({ id }) => id)).toEqual([
+      secondRotation.previous.id,
+      firstRotation.previous.id,
+    ])
+    expect(groups.find(({ head }) => head.id === independent.id)?.previous).toEqual(
+      [],
+    )
+  })
+
+  it("stops walking when rotatedFromId contains a cycle", async () => {
+    const [firstRecord, secondRecord, headRecord] = await Promise.all([
+      createSymmetricKeyRecord("cycle", NOW),
+      createSymmetricKeyRecord("cycle", NOW + 1),
+      createSymmetricKeyRecord("cycle", NOW + 2),
+    ])
+    const first: StoredKeyRecord = {
+      ...firstRecord,
+      status: "rotated",
+      rotatedFromId: secondRecord.id,
+      rotatedAt: NOW + 3,
+    }
+    const second: StoredKeyRecord = {
+      ...secondRecord,
+      status: "rotated",
+      rotatedFromId: firstRecord.id,
+      rotatedAt: NOW + 3,
+    }
+    const head: StoredKeyRecord = {
+      ...headRecord,
+      rotatedFromId: first.id,
+    }
+
+    const groups = groupSymmetricKeys([first, second, head])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.head).toBe(head)
+    expect(groups[0]?.previous.map(({ id }) => id)).toEqual([
+      first.id,
+      second.id,
+    ])
   })
 })
 
