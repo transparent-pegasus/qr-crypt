@@ -6,8 +6,12 @@ the following two categories. The current operational review scope is the
 single active post-quantum suite `ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM`
 (signing mandatory) plus the symmetric suite `HKDF-SHA256+A256GCM`
 (`sym-message` / `symmetric-key`). Removed vocabulary (unsigned suites,
-ML-KEM-768 / ML-DSA-65 / `balanced`, v1 prefixes, RSA) is rejected at every
-boundary — there is no retained four-suite wire/codec contract.
+ML-KEM-768 / ML-DSA-65 / `balanced`, v1 prefixes, RSA) is absent from active
+domain unions, writes, and cryptographic and wire dispatch — there is no
+retained four-suite wire/codec contract. Boot alone keeps a read-only
+`RSA-HYBRID` preference exception so an old stored value cannot make
+`wipeOnOnline=false` unreadable; repository normalization replaces it with
+`A256GCM`, and no RSA operation remains.
 
 - **implementation-complete**: The state in which the in-repository
   implementation, tests, and documentation are complete. It can be reached with
@@ -17,9 +21,10 @@ boundary — there is no retained four-suite wire/codec contract.
     OCP2/OCS2/OCF2, and OCA2/OCK2 paths pass composition/integration/UI tests.
   - Negative tests reject removed vocabulary (v1 prefixes, unsigned suite
     strings, 768/65, `balanced`) before any cryptographic processing.
-  - Settings / preference loads that still carry removed algorithm or profile
-    fields normalize to the single-active defaults while preserving
-    `wipeOnOnline=false` when that flag was set.
+  - Boot can read the retired `RSA-HYBRID` algorithm solely to preserve an old
+    `wipeOnOnline=false`, after which the repository returns the active
+    `A256GCM` default. Removed `defaultPqProfile` and `requireSignature` fields
+    are ignored and omitted rather than restored.
   - `tests/pq/maximum-artifact-size.golden.test.ts` pins the canonical CBOR raw
     byte counts in the table below, the OCF2 frame counts across the internal
     100–1,000B chunk set, both exact display preference pairs and the
@@ -88,8 +93,10 @@ frames serially, so its peak memory is bounded by roughly one 1024px raster
 rather than by 127 of them, but its ~7s wall clock on desktop implies a
 materially longer wait on a phone.
 
-Boot readability is append-only; non-exact historical pairs canonicalize to the
-default 1,000B/200ms pair before strict validation. Detail:
+Numeric generated-display boot readability is append-only; non-exact
+historical pairs canonicalize to the default 1,000B/200ms pair before strict
+validation. The read-only `RSA-HYBRID` boot exception independently protects
+the stored wipe flag and normalizes to `A256GCM`. Detail:
 [boot-and-reset-v2.md](../spec/boot-and-reset-v2.md) §2.
 
 Visible dismissal follows [threat-model.md](threat-model.md) (fingerprint

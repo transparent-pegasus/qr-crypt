@@ -215,7 +215,7 @@ export interface MlKemAadV2 {
   type: "pq-message"
   suite: WireSuite
   recipientKemKeyId: string
-  kemCiphertextSha256: Uint8Array // Receiver recomputes it from kemCiphertext and compares.
+  kemCiphertextSha256: Uint8Array // Receiver recomputes it; GCM authentication binds the ciphertext.
 }
 
 export interface SymMessageEnvelopeV2 {

@@ -194,7 +194,9 @@ units:
       Re-run aube audit; refresh §5.1 advisory status for the pinned deps.
       Reconcile threat/mitigation entries (T14/T15 algorithm names) with the
       active policy in src/crypto/pq/suites.ts and boot behavior in
-      src/app/boot/. Reconcile T5's scanner bounds with qr/camera/frame-pump.ts
+      src/app/boot/, including the read-only RSA-HYBRID preference exception
+      that protects wipeOnOnline=false while repository normalization removes
+      it. Reconcile T5's scanner bounds with qr/camera/frame-pump.ts
       — decode.ts is now a thin facade and holds none of them — and T20's
       frame/paste allocation and CBOR caps with limits.ts, payload-v2.ts,
       assemble.ts, and canonical-cbor.ts. Re-check the §5 session-memory
@@ -356,8 +358,9 @@ units:
       session-memory receipt keyed by it, and that the clarification matches
       src/features/receipt-cache.ts (no wire change). Diff
       boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
-      and wipe coordinator behavior (including clearReceipts in the buffer-drop
-      inventory). Update dated statements to current state.
+      and wipe coordinator behavior, including the read-only RSA-HYBRID boot
+      exception and clearReceipts in the buffer-drop inventory. Update dated
+      statements to current state.
     verify: aube run test:pq && aube run test -- tests/ui/boot-controller.test.tsx
 
   - id: size-goldens
@@ -528,8 +531,9 @@ units:
 invariants:
   # Check-only guards. A sweep VERIFIES these; it must never "update" them
   # in the name of freshness. Violations are release blockers.
-  # boot-allowlist-append-only narrowed to display-density history below; its
-  # crypto half (RSA-HYBRID/MLKEM768_* algorithms, the "balanced" profile) is gone.
+  # boot-allowlist-append-only is split: numeric display history and the
+  # read-only RSA-HYBRID safety exception are guarded independently below.
+  # Other retired crypto/profile vocabulary is gone from active boundaries.
   # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
   - id: display-preference-reads-append-only
     files:
@@ -552,12 +556,26 @@ invariants:
       never persisted. Dropping an old value, narrowing a read range, or
       losing this pair canonicalization makes stored preferences unreadable →
       preferencesReadFailed → wipeOnOnline forced true → a later
-      network-confirmed contact can wipe user data. This carries none of the
-      retired crypto vocabulary: algorithm and profile ids are governed by
-      vocabulary-single-active and removed-vocabulary-rejected.
+      network-confirmed contact can wipe user data. Algorithm and profile ids
+      are governed separately by boot-retired-rsa-read-safety,
+      vocabulary-single-active, and removed-vocabulary-rejected.
     verify: >
       aube run test -- tests/unit/qr-density-safety.test.ts
       tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx
+  - id: boot-retired-rsa-read-safety
+    files:
+      - src/app/boot/boot-controller.ts
+      - src/storage/preferences-repository.ts
+      - tests/integration/storage.test.ts
+    rule: >
+      Boot's stored-preference read allowlist retains RSA-HYBRID solely so an
+      old preference row cannot become unreadable, force wipeOnOnline=true,
+      and expose protected data to a later network-confirmed wipe. The normal
+      repository must discard that identifier and return the active A256GCM
+      default while preserving an explicitly stored wipeOnOnline=false. No
+      active domain union, preference write, cryptographic dispatch, or wire
+      contract may restore RSA.
+    verify: aube run test -- tests/integration/storage.test.ts
   - id: vocabulary-single-active
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     files:
@@ -578,8 +596,8 @@ invariants:
       entry, and suiteComponents returns that same algorithm pair. No other
       mapping is retained.
     verify: aube run test:pq -- tests/pq/maximum-policy-boundaries.test.ts
-  # legacy-read-normalization narrowed: its crypto half (balanced, legacy
-  # algorithm strings) is gone; the numeric-preference half lives on here.
+  # Legacy numeric display normalization lives here; the read-only RSA
+  # preference safety path is guarded independently above.
   # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
   - id: display-preference-normalization
     files:
@@ -603,10 +621,14 @@ invariants:
     files:
       - tests/pq/maximum-policy-boundaries.test.ts
     rule: >
-      Decoders, validators, and storage, boot, import, and wire boundaries
-      reject all removed identifiers: v1 prefixes, ML-KEM-768, ML-DSA-65,
-      balanced, and unsigned suite strings. Negative tests retain every
-      rejection path.
+      Active decoders, validators, imports, storage writes, and wire paths
+      reject the removed identifiers enumerated here: v1 prefixes,
+      ML-KEM-768, ML-DSA-65, balanced, and unsigned suite strings. Boot rejects
+      retired algorithm values it interprets except for the separate
+      read-only RSA-HYBRID safety exception; removed preference fields are
+      ignored as unknown and omitted by the repository. Negative tests retain
+      every applicable rejection path. RSA safety is governed by
+      boot-retired-rsa-read-safety.
     verify: >
       aube run test:pq -- tests/pq/maximum-policy-boundaries.test.ts &&
       aube run test -- tests/unit/payload-qr.test.ts tests/unit/relay-frames.test.ts

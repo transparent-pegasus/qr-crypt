@@ -55,9 +55,10 @@ The algorithms themselves are the standard ones. The claim is about where they a
   available in those contexts.
 * **WebAssembly.** Camera QR scanning uses a WebAssembly decoder, and there is no
   JavaScript fallback:
-  * Where WebAssembly is disabled or blocked, the camera still opens, but the first decode
-    fails with a QR-reader-blocked message. On iPhone, the message directs the user to
-    Safari 16 or newer. Nothing can be scanned.
+  * Where WebAssembly is disabled or blocked, the reader readiness gate disables the scan
+    control and refuses camera access before `getUserMedia`. A terminal QR-reader-blocked
+    message is shown; on iPhone it directs the user to Safari 16 or newer. Nothing can be
+    scanned.
   * Where WebAssembly runs without JIT compilation (some hardened or lockdown
     configurations), decoding is expected to be much slower. How much slower has not been
     measured on real devices ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)).
@@ -140,11 +141,13 @@ forward secrecy. Rotation retains superseded generations for decryption, so ever
 addressed to an older generation remains decryptable until you explicitly discard that
 generation.
 
-A message already received in this session is flagged before its contents are shown, and
-the same message identifier arriving with different ciphertext is refused. The check is
-session-scoped: it restarts when the app reloads.
+An exact authenticated envelope already received in this session is flagged before its
+contents are shown. Post-quantum messages also refuse the same authenticated message ID
+arriving with different ciphertext. Symmetric messages carry no message ID, so their exact
+canonical envelope hash is the replay identity. The check is session-scoped: it restarts
+when the app reloads.
 
-The post-quantum suites are **experimental** and **not independently audited**. QR Crypt
+The post-quantum suite is **experimental** and **not independently audited**. QR Crypt
 adopts implementations of the FIPS 203 / FIPS 204 algorithms; that does not confer FIPS 140
 validation or an independent security assessment. Current status and blockers:
 [docs/security/security-review.md](docs/security/security-review.md).

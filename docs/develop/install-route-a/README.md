@@ -29,7 +29,7 @@ the relay mechanics (OCF2 allowlist for `pq-message` \| `sym-message`,
 assembled-artifact schema validation before playback, no AEAD on the online hop,
 no frame- or artifact-derived app persistence) — not installation integrity.
 **T21** states the residual that validation does not close: covert data inside
-otherwise valid ciphertext, salt, or padding fields.
+otherwise valid ciphertext, salt, IV, or other sender-controlled fields.
 
 ## 2. Independently authenticated inputs — mandatory
 

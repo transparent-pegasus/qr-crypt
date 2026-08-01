@@ -179,17 +179,17 @@ Windows Chrome / macOS Safari / Edge, etc. Not a mandatory release-gate target, 
 
 ### Node reference bench (development machine, not a release gate)
 
-Values from a single run of `aube bench:pq` on 2026-07-26 (Vitest 4.1.10, Linux x86_64,
+Values from a single run of `aube bench:pq` on 2026-08-02 (Vitest 4.1.10, Linux x86_64,
 Intel Core i7-10870H). `hz` is operations per second; mean is the average milliseconds per
 operation.
 
 | Operation | node hz | node mean (ms) | ui (jsdom) hz | ui (jsdom) mean (ms) |
 | --- | ---: | ---: | ---: | ---: |
-| ML-KEM-1024 keygen | 1,088.26 | 0.9189 | 1,047.13 | 0.9550 |
-| ML-KEM-1024 encapsulate | 979.24 | 1.0212 | 934.98 | 1.0695 |
-| ML-KEM-1024 decapsulate | 748.70 | 1.3356 | 729.28 | 1.3712 |
-| ML-DSA-87 sign | 88.5802 | 11.2892 | 77.1664 | 12.9590 |
-| ML-DSA-87 verify | 278.11 | 3.5957 | 270.07 | 3.7028 |
+| ML-KEM-1024 keygen | 1,112.27 | 0.8991 | 1,101.78 | 0.9076 |
+| ML-KEM-1024 encapsulate | 939.30 | 1.0646 | 901.83 | 1.1089 |
+| ML-KEM-1024 decapsulate | 762.52 | 1.3114 | 695.69 | 1.4374 |
+| ML-DSA-87 sign | 89.0465 | 11.2301 | 84.4185 | 11.8458 |
+| ML-DSA-87 verify | 290.79 | 3.4389 | 268.44 | 3.7252 |
 
 These are reference values from a development machine. They do not substitute for the
 on-device measurements above, nor for the `release-approved` determination.

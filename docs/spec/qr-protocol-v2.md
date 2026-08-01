@@ -92,7 +92,7 @@ MlKemAadV2 = {
   type: "pq-message"
   suite: WireSuite
   recipientKemKeyId: string
-  kemCiphertextSha256: bytes(32)  // receiver recomputes from the received kemCiphertext and verifies equality
+  kemCiphertextSha256: bytes(32)  // receiver recomputes it; GCM authentication binds the received kemCiphertext
 }
 ```
 
@@ -180,9 +180,11 @@ Active suites after the single-active vocabulary purge:
 | Post-quantum (`WireSuite`) | `ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM` |
 | Symmetric (`SymSuite`) | `HKDF-SHA256+A256GCM` |
 
-Every other suite string — including retired unsigned ML-KEM suites,
-`ML-KEM-768*`, `ML-DSA-65`, and the `balanced` profile — is rejected at every
-boundary as `UNSUPPORTED_ALGORITHM` or `INVALID_QR_PAYLOAD`.
+Every other suite/profile identifier — including retired unsigned ML-KEM
+suites, `ML-KEM-768*`, `ML-DSA-65`, and `balanced` — is absent from active
+domains and rejected when presented to suite/profile decoders, validators,
+imports, storage writes, or wire paths as `UNSUPPORTED_ALGORITHM` or
+`INVALID_QR_PAYLOAD`.
 
 Fixed sizes in `src/crypto/pq/profiles.ts` (bytes; maximum profile only):
 
@@ -276,7 +278,8 @@ QrFrameV2 = {
   the inner `OC?2:` string is forbidden — this avoids frame-count inflation
   from double base64url)
 - Frame string = `OCF2:<base64url(canonicalCBOR(frame))>`. EC level is
-  **fixed at Q**. A single frame string, prefix included, is **≤1663
+  **fixed at Q**; it is not a preference and has no environment variable. A
+  single frame string, prefix included, is **≤1663
   characters** (QR v40-Q). After generation, check `payloadFits(…, "Q")`;
   if it does not fit, `QR_TOO_LARGE`. At the 1,000B chunk ceiling, the
   worst-case metadata across every artifact type produces a 1,529-character
@@ -496,7 +499,8 @@ A validation failure surfaces as `relay.error.invalidFrame` and does not enable
 output. That check defeats key-material relabeling (an OCK2 / OCI2 / … body
 stuffed into message-typed frames) and non-canonical stuffing. It does **not**
 defeat a compromised sender who hides data inside otherwise valid ciphertext,
-salt, IV, or padding fields of a schema-valid message — that residual is T21.
+salt, IV, or other sender-controlled fields of a schema-valid message — that
+residual is T21.
 
 - Every displayed frame string is
   `OCF2:<unpadded-base64url(canonical CBOR frame)>`: after the 5-character

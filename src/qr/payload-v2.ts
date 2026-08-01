@@ -44,7 +44,7 @@ export interface ClassifiedV2Payload {
   prefix: string
 }
 
-// Detect a v2 prefix. Return null for non-v2 input so the caller can delegate to the v1 path.
+// Detect a v2 prefix. Return null for unrecognized input so the caller can reject it.
 export function classifyV2Payload(text: string): ClassifiedV2Payload | null {
   for (const [kind, prefix] of Object.entries(QR_PREFIX_V2) as [
     V2PayloadKind,

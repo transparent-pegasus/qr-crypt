@@ -41,8 +41,8 @@ const receipts = new Map<string, Receipt>()
 function subjectKey(subject: ReceiptSubject): string {
   switch (subject.kind) {
     case "aes":
-      // No message id exists in v1, so identity is the ciphertext itself: only a
-      // matching ciphertext hash is treated as the same receipt.
+      // This AES receipt shape has no message id, so only a matching
+      // ciphertext hash is treated as the same receipt.
       return `aes\n${subject.recipientKeyId}\n${subject.envelopeHash}`
     case "sym":
       // Sym-v2 likewise has no message id, so the authenticated envelope is its
