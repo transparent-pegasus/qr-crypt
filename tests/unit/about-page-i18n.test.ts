@@ -76,4 +76,23 @@ describe("about page i18n", () => {
     }
     expect(links).toHaveLength(Object.keys(messages.LOCALES).length + 1)
   })
+
+  it("pins the approved locks.pq name and body in English and Japanese", async () => {
+    // Key parity alone cannot catch stale wording; pin the approved design §4
+    // strings so a quantum-era framing rewrite fails until both locales match.
+    const doc = await parseDocument(html)
+    const english = (key: string) =>
+      doc.querySelector(`[data-i18n="${key}"]`)?.textContent?.replace(/\s+/g, " ").trim()
+
+    expect(english("locks.pq.name")).toBe("ML-KEM-1024 + ML-DSA-87")
+    expect(english("locks.pq.body")).toBe(
+      "With ML-KEM-1024, the sender establishes a per-message shared secret using only the recipient's public key — unlike a shared symmetric key, the secret that can decrypt messages never has to be handed to the sender. On top of that, every message carries an ML-DSA-87 signature, so the recipient can verify who sent it. The trade-off is greater processing and data overhead, so each message is split across multiple QR codes.",
+    )
+
+    const ja = messages.LOCALES.ja?.strings ?? {}
+    expect(ja["locks.pq.name"]).toBe("ML-KEM-1024 + ML-DSA-87")
+    expect(ja["locks.pq.body"]).toBe(
+      "ML-KEM-1024では、受信者の公開鍵だけを使ってメッセージごとの共有秘密を確立できるため、共通鍵方式と違い、復号に使える秘密を送信者に渡す必要がありません。さらに各メッセージにはML-DSA-87署名が付き、受信者は送信者を検証できます。その代わり処理量とデータ量が増えるため、メッセージは複数のQRコードに分割されます。",
+    )
+  })
 })
