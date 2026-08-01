@@ -295,6 +295,9 @@ describe("decrypt page v2", () => {
     expect(
       await screen.findByText(messageFor("DECRYPTION_FAILED", "en")),
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "Decryption complete" }),
+    ).not.toBeInTheDocument()
     expect(recordReceipt).not.toHaveBeenCalled()
 
     await preparePqPayload(true)
@@ -306,6 +309,9 @@ describe("decrypt page v2", () => {
     await user.click(decryptButton)
 
     expect(await screen.findByText("SIGNING_KEY_NOT_FOUND")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "Decryption complete" }),
+    ).not.toBeInTheDocument()
     expect(recordReceipt).not.toHaveBeenCalled()
   })
 

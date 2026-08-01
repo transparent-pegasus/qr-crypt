@@ -94,11 +94,11 @@ default 1,000B/200ms pair before strict validation. Detail:
 Visible dismissal follows [threat-model.md](threat-model.md) (fingerprint
 confirmation is the documented non-dismissible exception).
 
-## 1. Facts About the Adopted Libraries (as of 2026-07-29)
+## 1. Facts About the Adopted Libraries (as of 2026-08-01)
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-29: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-08-01: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
 - Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
 - FIPS errata (§3 step 1, checked 2026-07-29): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
@@ -137,7 +137,7 @@ confirmation is the documented non-dismissible exception).
   detect. Trust also continues to include the lockfile pin, npm provenance
   attestation, and recorded zxing-wasm SHA-256 rather than a zxing-wasm
   from-source rebuild
-- **Not independently audited**; no advisories at the pinned version as of 2026-07-29
+- **Not independently audited**; no advisories at the pinned version as of 2026-08-01
 - Consequence for CSP: live `script-src` / `'wasm-unsafe-eval'` facts are owned
   by [threat-model.md](threat-model.md) §2
 - Attacker-controlled camera pixels now reach a C++/Emscripten parser. See
