@@ -141,33 +141,33 @@
       <section class="band">
         <div class="wrap">
           <p class="eyebrow" data-i18n="locks.eyebrow">Encryption</p>
-          <h2 class="h2" data-i18n="locks.heading">
-            Convenience or&nbsp;long&#8209;term&nbsp;confidentiality
-          </h2>
+          <h2 class="h2" data-i18n="locks.heading">Two&nbsp;modes</h2>
           <p class="prose" data-i18n="locks.lede">
-            Choose based on how long the message needs to remain confidential.
+            Choose by who you write to and what you are willing to hand them.
           </p>
           <div class="locks">
             <article class="lock">
-              <p class="lock__name" data-i18n="locks.aes.name">AES-256</p>
-              <p class="lock__when" data-i18n="locks.aes.when">For everyday messages</p>
+              <p class="lock__name" data-i18n="locks.aes.name">Shared-key mode</p>
+              <p class="lock__when" data-i18n="locks.aes.when">
+                For one-to-one messages
+              </p>
               <p class="lock__body" data-i18n="locks.aes.body">
-                AES-256 is a widely used encryption standard. QR Crypt uses it by default.
-                Each message fits in a single QR code, and you exchange the key in person.
+                Encrypts a message with a secret the two of you shared in person. The
+                data stays small, so a message travels in few QR codes. Each encryption
+                derives a different AES-256-GCM key with HKDF.
               </p>
             </article>
             <article class="lock lock--pq">
-              <p class="lock__name" data-i18n="locks.pq.name">ML-KEM-1024 + ML-DSA-87</p>
+              <p class="lock__name" data-i18n="locks.pq.name">Public-key mode</p>
               <p class="lock__when" data-i18n="locks.pq.when">
-                For messages that must stay private for decades
+                For several senders writing to one recipient
               </p>
               <p class="lock__body" data-i18n="locks.pq.body">
-                With ML-KEM-1024, the sender establishes a per-message shared secret using only
-                the recipient's public key — unlike a shared symmetric key, the secret that can
-                decrypt messages never has to be handed to the sender. On top of that, every
-                message carries an ML-DSA-87 signature, so the recipient can verify who sent it.
-                The trade-off is greater processing and data overhead, so each message is split
-                across multiple QR codes.
+                Establishes the message secret from the recipient's public key and verifies
+                the sender's signature, so no sender has to hold a secret that can decrypt.
+                It uses ML-KEM for the key establishment and ML-DSA to confirm the sender.
+                The body itself is encrypted with AES-256-GCM, the same as shared-key mode;
+                the signature and public-key data make the message larger.
               </p>
             </article>
           </div>

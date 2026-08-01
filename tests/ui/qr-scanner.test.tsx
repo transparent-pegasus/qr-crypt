@@ -449,7 +449,7 @@ describe("QrScannerModal frame delivery", () => {
           />
           <Dialog open={followOnOpen} onOpenChange={setFollowOnOpen}>
             <DialogContent>
-              <DialogTitle>Import the symmetric key</DialogTitle>
+              <DialogTitle>Import the shared key</DialogTitle>
               <button type="button">Confirm save</button>
             </DialogContent>
           </Dialog>
@@ -466,7 +466,7 @@ describe("QrScannerModal frame delivery", () => {
     )
 
     const followOn = await screen.findByRole("dialog", {
-      name: "Import the symmetric key",
+      name: "Import the shared key",
     })
     expect(
       within(followOn).getByRole("button", { name: "Confirm save" }),

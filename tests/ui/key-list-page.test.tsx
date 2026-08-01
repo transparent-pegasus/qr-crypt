@@ -172,7 +172,7 @@ describe("key list page", () => {
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
     expect(screen.getByText(/Post-quantum identity ·/)).toBeInTheDocument()
     expect(screen.getByText("共通鍵A")).toBeInTheDocument()
-    expect(screen.getByText(/Symmetric key ·/)).toBeInTheDocument()
+    expect(screen.getByText(/Shared key ·/)).toBeInTheDocument()
     // Both badges report lifecycle state, never key type.
     expect(within(rows[0]!).getByText("Active")).toBeInTheDocument()
     expect(within(rows[1]!).getByText("Active")).toBeInTheDocument()
@@ -193,9 +193,9 @@ describe("key list page", () => {
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
       "All",
       "Post-quantum identity",
-      "Symmetric key",
+      "Shared key",
     ])
-    await user.click(screen.getByRole("option", { name: "Symmetric key" }))
+    await user.click(screen.getByRole("option", { name: "Shared key" }))
     expect(screen.getByText("共通鍵A")).toBeInTheDocument()
     expect(screen.queryByText("自分のPQ ID")).not.toBeInTheDocument()
 
@@ -449,7 +449,7 @@ describe("key list page", () => {
     await user.click(rowFor("共通鍵A"))
     dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
-    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
     expect(within(dialog).queryByRole("img")).toBeNull()
     expect(
       within(dialog).queryByRole("button", { name: "View full screen" }),
@@ -465,7 +465,7 @@ describe("key list page", () => {
     await waitFor(() => expect(symmetricFullscreen).toBeEnabled())
     await user.click(symmetricFullscreen)
     fullscreen = await screen.findByRole("dialog", {
-      name: /View Symmetric-key QR full screen/,
+      name: /View Shared-key QR full screen/,
     })
     expect(within(fullscreen).getByText("Sensitive information")).toBeInTheDocument()
     expect(fullscreen.querySelector("svg.lucide-triangle-alert")).toHaveAttribute(
@@ -474,7 +474,7 @@ describe("key list page", () => {
     )
     expect(within(fullscreen).queryByRole("button", { name: "Download" })).toBeNull()
     await user.keyboard("{Escape}")
-    expect(screen.getByRole("dialog", { name: "Symmetric-key QR" })).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "Shared-key QR" })).toBeInTheDocument()
     expect(within(dialog).getByText("Sensitive information")).toBeInTheDocument()
     const download = within(dialog).getByRole("button", { name: "Download" })
     const copy = within(dialog).getByRole("button", { name: "Copy" })
@@ -580,7 +580,7 @@ describe("key list page", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Show secret-key QR" }),
     )
-    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
     await user.click(
       within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
     )
@@ -591,7 +591,7 @@ describe("key list page", () => {
     await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
     await waitFor(() => expect(artifactBytes).toEqual(new Uint8Array(artifactBytes.length)))
     expect(
-      screen.queryByRole("dialog", { name: "Symmetric-key QR" }),
+      screen.queryByRole("dialog", { name: "Shared-key QR" }),
     ).not.toBeInTheDocument()
   })
 
@@ -774,7 +774,7 @@ describe("key list page", () => {
     expect(screen.getByTestId("secret-visible")).toHaveTextContent("false")
     let dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
-    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
     await user.click(
       within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
     )
@@ -786,7 +786,7 @@ describe("key list page", () => {
     )
     expect(screen.getByTestId("secret-visible")).toHaveTextContent("true")
     await user.keyboard("{Escape}")
-    expect(screen.getByRole("dialog", { name: "Symmetric-key QR" })).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "Shared-key QR" })).toBeInTheDocument()
     expect(screen.getByTestId("secret-visible")).toHaveTextContent("true")
 
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
@@ -848,7 +848,7 @@ describe("key list page", () => {
       saveSymmetricRotation.mock.invocationCallOrder[0]!,
     )
     expect(
-      await screen.findByText("The symmetric key was rotated"),
+      await screen.findByText("The shared key was rotated"),
     ).toBeInTheDocument()
 
     const generations = fakeKeys.filter(
@@ -1144,8 +1144,8 @@ describe("key list page", () => {
     const user = userEvent.setup()
     await renderKeyList()
     await user.click(screen.getByRole("button", { name: "Create a key" }))
-    await user.type(await screen.findByLabelText("Symmetric-key name"), "作って消す鍵")
-    await user.click(screen.getByRole("button", { name: "Create a symmetric key" }))
+    await user.type(await screen.findByLabelText("Shared-key name"), "作って消す鍵")
+    await user.click(screen.getByRole("button", { name: "Create a shared key" }))
 
     // Creation swaps the same modal over to the new key's detail.
     const dialog = await screen.findByRole("dialog", { name: "作って消す鍵" })
@@ -1159,7 +1159,7 @@ describe("key list page", () => {
     await user.click(within(confirmation).getByRole("button", { name: "Delete" }))
 
     await waitFor(() => expect(screen.queryAllByRole("dialog")).toHaveLength(0))
-    expect(screen.queryByLabelText("Symmetric-key name")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Shared-key name")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Create a key" })).toBeInTheDocument()
   })
 
@@ -1220,7 +1220,7 @@ describe("key list page", () => {
     listKeyRecords.mockRejectedValueOnce(new Error("key read failed"))
     await renderKeyList()
     expect(
-      await screen.findByText("Symmetric keys could not be loaded"),
+      await screen.findByText("Shared keys could not be loaded"),
     ).toBeInTheDocument()
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
   })

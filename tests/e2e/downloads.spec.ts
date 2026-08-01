@@ -107,7 +107,7 @@ test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no
   await dialog
     .getByRole("button", { name: "Show secret-key QR", exact: true })
     .click()
-  dialog = page.getByRole("dialog", { name: "Symmetric-key QR" })
+  dialog = page.getByRole("dialog", { name: "Shared-key QR" })
   await dialog
     .getByRole("checkbox", { name: "I understand the risk" })
     .check()
