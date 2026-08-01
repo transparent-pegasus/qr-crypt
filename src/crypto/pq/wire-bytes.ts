@@ -1,12 +1,13 @@
 // v2 byte conventions; see docs/spec/qr-protocol-v2.md §4, §7, and §8.
 // The byte strings for HKDF info, the ML-DSA context, Vault AAD, and PQ fingerprints
 // must match the hexadecimal golden fixtures in docs/spec/qr-protocol-v2.md.
-import type {
-  MlDsaAlgorithm,
-  MlKemAlgorithm,
-  PublicIdentityBundleV2,
-  VaultSecretRole,
-  WireSuite,
+import {
+  SYM_SUITE,
+  type MlDsaAlgorithm,
+  type MlKemAlgorithm,
+  type PublicIdentityBundleV2,
+  type VaultSecretRole,
+  type WireSuite,
 } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import {
@@ -19,6 +20,7 @@ import { KEY_ID_PATTERN, KEY_ID_RAW_BYTES } from "@/lib/limits"
 
 // Domain-separation labels are part of the wire protocol.
 export const PQ_MESSAGE_DOMAIN_V2 = "QR-CRYPT-MESSAGE-V2"
+export const SYM_MESSAGE_DOMAIN_V2 = "QR-CRYPT-SYM-MESSAGE-V2"
 
 // ML-DSA signing context (fixed; FIPS 204 context, at most 255B).
 export function mlDsaContextV2(): Uint8Array {
@@ -50,6 +52,18 @@ export function hkdfInfoV2(suite: WireSuite, recipientKemKeyId: string): Uint8Ar
     utf8ToBytes(suite),
     Uint8Array.of(0x00),
     keyIdRawBytes(recipientKemKeyId),
+    Uint8Array.of(0x02),
+  )
+}
+
+// Symmetric HKDF info mirrors the PQ layout under a distinct domain label.
+export function hkdfInfoSymV2(keyId: string): Uint8Array {
+  return concatBytes(
+    utf8ToBytes(SYM_MESSAGE_DOMAIN_V2),
+    Uint8Array.of(0x00),
+    utf8ToBytes(SYM_SUITE),
+    Uint8Array.of(0x00),
+    keyIdRawBytes(keyId),
     Uint8Array.of(0x02),
   )
 }

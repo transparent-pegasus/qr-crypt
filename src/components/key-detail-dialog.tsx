@@ -68,7 +68,7 @@ import { encodeEnvelopeToPayload } from "@/qr/payload"
 import {
   type PostQuantumIdentity,
   type StoredKeyRecord,
-  type StorablePqArtifactKind,
+  type StorableArtifactKind,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { keyNameSchema } from "@/schemas/key-schema"
@@ -286,7 +286,7 @@ export function KeyDetailContent({
     setError(null)
     try {
       assertUsableIdentity(target)
-      let artifactType: StorablePqArtifactKind
+      let artifactType: StorableArtifactKind
       let artifactBytes: Uint8Array
       if (kind === "bundle") {
         artifactType = "pq-public-identity"

@@ -24,17 +24,23 @@ import type {
   QrFrameV2,
   SignedMessageBodyV2,
   SignedMessageV2,
+  SymAadV2,
+  SymMessageEnvelopeV2,
+  SymmetricKeyEnvelopeV2,
   UnsignedMessageBodyV2,
 } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
 import { bytesEqual } from "@/lib/bytes"
 import {
+  AES_GCM_TAG_BYTES,
+  AES_KEY_BYTES,
   FRAME_CHUNK_MAX_BYTES,
   HKDF_SALT_BYTES,
   IV_BYTES,
   KEY_ID_PATTERN,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
+  MAX_SYM_PLAINTEXT_BYTES,
   MESSAGE_ID_BYTES,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
@@ -42,6 +48,7 @@ import { suiteComponents } from "@/crypto/pq/suites"
 import {
   ML_DSA_ALGORITHMS,
   ML_KEM_ALGORITHMS,
+  SYM_SUITE,
   V2_ARTIFACT_TYPES,
   WIRE_SUITES,
 } from "@/schemas/domain"
@@ -58,7 +65,8 @@ const MAJOR_TEXT = 3
 const MAJOR_MAP = 5
 
 // Structural allocation limits follow the largest active protocol shapes:
-// the largest single map has 8 entries (QrFrameV2 and MlKemMessageEnvelopeV2);
+// the largest single map has 8 entries (QrFrameV2, MlKemMessageEnvelopeV2,
+// and SymMessageEnvelopeV2);
 // PublicIdentityBundleV2 has 13 entries across its root and two nested key
 // maps. The longest decoded key is "senderSigningKeyId" (18 UTF-8 bytes) —
 // "kemCiphertextSha256" (19) exists only in the encode-side AAD, which is
@@ -445,6 +453,118 @@ export function encodeMlKemEnvelopeV2(envelope: MlKemMessageEnvelopeV2): Uint8Ar
 
 export function decodeMlKemEnvelopeV2(bytes: Uint8Array): MlKemMessageEnvelopeV2 {
   return guardMlKemEnvelopeV2(decodeCanonicalCbor(bytes))
+}
+
+// ---------------------------------------------------------------------------
+// SymMessageEnvelopeV2 and its reconstructed AAD
+// ---------------------------------------------------------------------------
+
+export function guardSymAadV2(value: unknown): SymAadV2 {
+  const record = guardKeys(value, [
+    "version",
+    "type",
+    "suite",
+    "keyId",
+    "createdAt",
+  ])
+  return {
+    version: guardLiteral(record["version"], 2),
+    type: guardLiteral(record["type"], "sym-message"),
+    suite: guardLiteral(record["suite"], SYM_SUITE),
+    keyId: guardKeyId(record["keyId"]),
+    createdAt: guardInt(record["createdAt"], 0, Number.MAX_SAFE_INTEGER),
+  }
+}
+
+export function encodeSymAadV2(aad: SymAadV2): Uint8Array {
+  return encodeCanonicalCbor(
+    guardSymAadV2(aad) as unknown as CanonicalCborValue,
+  )
+}
+
+export function guardSymMessageEnvelopeV2(
+  value: unknown,
+): SymMessageEnvelopeV2 {
+  const record = guardKeys(value, [
+    "version",
+    "type",
+    "suite",
+    "keyId",
+    "createdAt",
+    "hkdfSalt",
+    "iv",
+    "ciphertext",
+  ])
+  const ciphertext = guardBytes(record["ciphertext"])
+  if (
+    ciphertext.byteLength < AES_GCM_TAG_BYTES ||
+    ciphertext.byteLength > MAX_SYM_PLAINTEXT_BYTES + AES_GCM_TAG_BYTES
+  ) {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
+  return {
+    version: guardLiteral(record["version"], 2),
+    type: guardLiteral(record["type"], "sym-message"),
+    suite: guardLiteral(record["suite"], SYM_SUITE),
+    keyId: guardKeyId(record["keyId"]),
+    createdAt: guardInt(record["createdAt"], 0, Number.MAX_SAFE_INTEGER),
+    hkdfSalt: guardBytes(record["hkdfSalt"], HKDF_SALT_BYTES),
+    iv: guardBytes(record["iv"], IV_BYTES),
+    ciphertext,
+  }
+}
+
+export function encodeSymMessageEnvelopeV2(
+  envelope: SymMessageEnvelopeV2,
+): Uint8Array {
+  return encodeCanonicalCbor(
+    guardSymMessageEnvelopeV2(envelope) as unknown as CanonicalCborValue,
+  )
+}
+
+export function decodeSymMessageEnvelopeV2(
+  bytes: Uint8Array,
+): SymMessageEnvelopeV2 {
+  return guardSymMessageEnvelopeV2(decodeCanonicalCbor(bytes))
+}
+
+// ---------------------------------------------------------------------------
+// SymmetricKeyEnvelopeV2
+// ---------------------------------------------------------------------------
+
+export function guardSymmetricKeyEnvelopeV2(
+  value: unknown,
+): SymmetricKeyEnvelopeV2 {
+  const record = guardKeys(value, [
+    "version",
+    "type",
+    "algorithm",
+    "keyId",
+    "createdAt",
+    "key",
+  ])
+  return {
+    version: guardLiteral(record["version"], 2),
+    type: guardLiteral(record["type"], "symmetric-key"),
+    algorithm: guardLiteral(record["algorithm"], "A256GCM"),
+    keyId: guardKeyId(record["keyId"]),
+    createdAt: guardInt(record["createdAt"], 0, Number.MAX_SAFE_INTEGER),
+    key: guardBytes(record["key"], AES_KEY_BYTES),
+  }
+}
+
+export function encodeSymmetricKeyEnvelopeV2(
+  envelope: SymmetricKeyEnvelopeV2,
+): Uint8Array {
+  return encodeCanonicalCbor(
+    guardSymmetricKeyEnvelopeV2(envelope) as unknown as CanonicalCborValue,
+  )
+}
+
+export function decodeSymmetricKeyEnvelopeV2(
+  bytes: Uint8Array,
+): SymmetricKeyEnvelopeV2 {
+  return guardSymmetricKeyEnvelopeV2(decodeCanonicalCbor(bytes))
 }
 
 // ---------------------------------------------------------------------------

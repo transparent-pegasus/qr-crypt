@@ -12,6 +12,8 @@ import type {
   MlKemMessageEnvelopeV2,
   PublicIdentityBundleV2,
   QrFrameV2,
+  SymMessageEnvelopeV2,
+  SymmetricKeyEnvelopeV2,
 } from "@/schemas/domain"
 import { Decoder, Encoder, Tag } from "cbor-x"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -20,11 +22,15 @@ import {
   decodeKemPublicKeyEnvelopeV2,
   decodeMlKemEnvelopeV2,
   decodePublicIdentityBundleV2,
+  decodeSymMessageEnvelopeV2,
+  decodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import {
   validateMlKemEnvelopeV2,
   validatePublicIdentityBundleV2,
   validateQrFrameV2,
+  validateSymMessageEnvelopeV2,
+  validateSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/validation"
 import { fromBase64Url, toBase64Url } from "@/lib/base64url"
 import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
@@ -47,6 +53,8 @@ export type DecodedPayload =
   | { kind: "symmetric-key"; envelope: SymmetricKeyEnvelopeV1 }
   | { kind: "public-key"; envelope: PublicKeyEnvelopeV1 }
   | { kind: "pq-message"; envelope: MlKemMessageEnvelopeV2 }
+  | { kind: "sym-message"; envelope: SymMessageEnvelopeV2 }
+  | { kind: "symmetric-key"; envelope: SymmetricKeyEnvelopeV2 }
   | { kind: "pq-kem-public-key"; envelope: KemPublicKeyEnvelopeV2 }
   | { kind: "pq-dsa-public-key"; envelope: DsaPublicKeyEnvelopeV2 }
   | { kind: "pq-public-identity"; envelope: PublicIdentityBundleV2 }
@@ -189,6 +197,20 @@ function decodeV2Payload(text: string): DecodedPayload {
       return {
         kind: artifact.kind,
         envelope: validateMlKemEnvelopeV2(decodeMlKemEnvelopeV2(artifact.bytes)),
+      }
+    case "sym-message":
+      return {
+        kind: artifact.kind,
+        envelope: validateSymMessageEnvelopeV2(
+          decodeSymMessageEnvelopeV2(artifact.bytes),
+        ),
+      }
+    case "symmetric-key":
+      return {
+        kind: artifact.kind,
+        envelope: validateSymmetricKeyEnvelopeV2(
+          decodeSymmetricKeyEnvelopeV2(artifact.bytes),
+        ),
       }
     case "pq-public-identity":
       return {

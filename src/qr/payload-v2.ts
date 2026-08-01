@@ -3,8 +3,8 @@
 // build on this module.
 //
 // Policy:
-//   - OCM2/OCP2/OCS2/OCI2 are the single-payload representation (paste/file import)
-//     and the logical type.
+//   - OCM2/OCA2/OCK2/OCP2/OCS2/OCI2 are the single-payload representation
+//     (paste/file import) and the logical type.
 //   - Display always uses OCF2 (frameCount≥1). Frame chunks split raw artifact-CBOR
 //     bytes directly; re-encoding an inner string as base64url is prohibited.
 //   - OCB2 is reserved only: unconditionally rejected everywhere (never generate,
@@ -21,6 +21,8 @@ import {
 // artifactType ↔ prefix mapping; reusing v1 prefixes is prohibited.
 export const QR_PREFIX_V2 = {
   "pq-message": "OCM2:",
+  "sym-message": "OCA2:",
+  "symmetric-key": "OCK2:",
   "pq-kem-public-key": "OCP2:",
   "pq-dsa-public-key": "OCS2:",
   "pq-public-identity": "OCI2:",

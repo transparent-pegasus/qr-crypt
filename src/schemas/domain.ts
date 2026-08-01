@@ -6,12 +6,15 @@
 // crypto/pq/suites.ts.
 
 // ---------------------------------------------------------------------------
-// Algorithm IDs (v1 A256GCM + v2 PQ).
+// Algorithm IDs and suites (v1 A256GCM + v2 symmetric/PQ).
 // ---------------------------------------------------------------------------
 
 export type UiAlgorithm = "A256GCM" | "MLKEM1024_A256GCM" | "MLKEM1024_MLDSA87_A256GCM"
 
 export type WireAlgorithm = "A256GCM"
+
+export const SYM_SUITE = "HKDF-SHA256+A256GCM" as const
+export type SymSuite = typeof SYM_SUITE
 
 export type QrEcLevel = "L" | "M" | "Q" | "H"
 
@@ -229,6 +232,34 @@ export interface MlKemAadV2 {
   kemCiphertextSha256: Uint8Array // Receiver recomputes it from kemCiphertext and compares.
 }
 
+export interface SymMessageEnvelopeV2 {
+  version: 2
+  type: "sym-message"
+  suite: SymSuite
+  keyId: string
+  createdAt: number
+  hkdfSalt: Uint8Array
+  iv: Uint8Array
+  ciphertext: Uint8Array
+}
+
+export interface SymAadV2 {
+  version: 2
+  type: "sym-message"
+  suite: SymSuite
+  keyId: string
+  createdAt: number
+}
+
+export interface SymmetricKeyEnvelopeV2 {
+  version: 2
+  type: "symmetric-key"
+  algorithm: "A256GCM"
+  keyId: string
+  createdAt: number
+  key: Uint8Array
+}
+
 // ---------------------------------------------------------------------------
 // v2 decryption result. signed-key-unknown has no plaintext property;
 // the type prevents constructing one. senderSigningKeyId supports the signing-key import path.
@@ -256,20 +287,20 @@ export type PqDecryptResult =
 // v2 multipart QR frames; see docs/spec/qr-protocol-v2.md §6.
 // ---------------------------------------------------------------------------
 
-// OCP2/OCS2 single keys are also transported in frames, so the artifact vocabulary
-// includes pq-kem-public-key / pq-dsa-public-key as documented managed additions
-// (docs/spec/qr-protocol-v2.md §6).
+// Every v2 envelope type can be transported in frames; message types are not storable.
 export const V2_ARTIFACT_TYPES = [
   "pq-message",
+  "sym-message",
+  "symmetric-key",
   "pq-public-identity",
   "pq-kem-public-key",
   "pq-dsa-public-key",
   "encrypted-seed-backup",
 ] as const
 export type V2ArtifactType = (typeof V2_ARTIFACT_TYPES)[number]
-export type StorablePqArtifactKind = Exclude<
+export type StorableArtifactKind = Exclude<
   V2ArtifactType,
-  "pq-message" | "encrypted-seed-backup"
+  "pq-message" | "sym-message" | "encrypted-seed-backup"
 >
 
 export interface QrFrameV2 {

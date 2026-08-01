@@ -139,6 +139,12 @@ export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX
 export const MAX_ARTIFACT_BYTES_ABSOLUTE =
   PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES
 
+// At the maximum boundary: 1B map header + 159B fixed fields + 11B encoded
+// ciphertext key + 3B byte-string header. Ciphertext bytes are excluded.
+export const SYM_MESSAGE_OVERHEAD_BYTES = 174
+export const MAX_SYM_PLAINTEXT_BYTES =
+  FRAME_CHUNK_MAX_BYTES - SYM_MESSAGE_OVERHEAD_BYTES - AES_GCM_TAG_BYTES
+
 // Cover a complete cycle at the slowest admitted display interval. The maximum
 // signed message takes 127 × 2,000ms = 254s; deriving from the full 128-frame
 // protocol budget is conservative (256s) and rounds up to a five-minute floor.

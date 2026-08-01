@@ -302,6 +302,9 @@ export function KeyAddDialog({
     if (abandoned(opening)) return
     switch (decoded.kind) {
       case "symmetric-key": {
+        if (!("v" in decoded.envelope)) {
+          throw new AppError("INVALID_QR_PAYLOAD")
+        }
         const record = await importSymmetricKeyRecord(
           t("keys.import.symmetricDefaultName", {
             date: formatSuggestedDate(Date.now()),

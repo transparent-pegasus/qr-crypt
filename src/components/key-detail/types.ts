@@ -1,11 +1,11 @@
-import type { StorablePqArtifactKind } from "@/schemas/domain"
+import type { StorableArtifactKind } from "@/schemas/domain"
 
 export interface IdentityQrView {
   kind: "identity-qr"
   qrKind: "bundle" | "kem" | "signing"
   targetName: string
   generatedAt: number
-  artifactType: StorablePqArtifactKind
+  artifactType: StorableArtifactKind
   artifactBytes: Uint8Array
   generation: number
 }

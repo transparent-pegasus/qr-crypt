@@ -6,10 +6,13 @@ import type {
   MlKemMessageEnvelopeV2,
   PublicIdentityBundleV2,
   QrFrameV2,
+  SymMessageEnvelopeV2,
+  SymmetricKeyEnvelopeV2,
 } from "@/schemas/domain"
 import {
   ML_DSA_ALGORITHMS,
   ML_KEM_ALGORITHMS,
+  SYM_SUITE,
   V2_ARTIFACT_TYPES,
   WIRE_SUITES,
 } from "@/schemas/domain"
@@ -19,6 +22,8 @@ import {
   guardMlKemEnvelopeV2,
   guardPublicIdentityBundleV2,
   guardQrFrameV2,
+  guardSymMessageEnvelopeV2,
+  guardSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import {
   DSA_SIZES,
@@ -27,11 +32,14 @@ import {
 } from "@/crypto/pq/profiles"
 import { suiteComponents } from "@/crypto/pq/suites"
 import {
+  AES_GCM_TAG_BYTES,
+  AES_KEY_BYTES,
   FRAME_CHUNK_MAX_BYTES,
   HKDF_SALT_BYTES,
   IV_BYTES,
   KEY_ID_PATTERN,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
+  MAX_SYM_PLAINTEXT_BYTES,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
 
@@ -74,6 +82,34 @@ const mlKemEnvelopeV2Schema = z
       })
     }
   })
+
+const symMessageEnvelopeV2Schema = z
+  .object({
+    version: z.literal(2),
+    type: z.literal("sym-message"),
+    suite: z.literal(SYM_SUITE),
+    keyId,
+    createdAt: timestamp,
+    hkdfSalt: bytes(HKDF_SALT_BYTES),
+    iv: bytes(IV_BYTES),
+    ciphertext: bytes().refine(
+      (value) =>
+        value.byteLength >= AES_GCM_TAG_BYTES &&
+        value.byteLength <= MAX_SYM_PLAINTEXT_BYTES + AES_GCM_TAG_BYTES,
+    ),
+  })
+  .strict()
+
+const symmetricKeyEnvelopeV2Schema = z
+  .object({
+    version: z.literal(2),
+    type: z.literal("symmetric-key"),
+    algorithm: z.literal("A256GCM"),
+    keyId,
+    createdAt: timestamp,
+    key: bytes(AES_KEY_BYTES),
+  })
+  .strict()
 
 const publicIdentityBundleV2Schema = z
   .object({
@@ -177,6 +213,32 @@ export function validateMlKemEnvelopeV2(value: unknown): MlKemMessageEnvelopeV2 
     return parseOrInvalid<MlKemMessageEnvelopeV2>(
       mlKemEnvelopeV2Schema,
       guardMlKemEnvelopeV2(value),
+    )
+  } catch {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
+}
+
+export function validateSymMessageEnvelopeV2(
+  value: unknown,
+): SymMessageEnvelopeV2 {
+  try {
+    return parseOrInvalid<SymMessageEnvelopeV2>(
+      symMessageEnvelopeV2Schema,
+      guardSymMessageEnvelopeV2(value),
+    )
+  } catch {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
+}
+
+export function validateSymmetricKeyEnvelopeV2(
+  value: unknown,
+): SymmetricKeyEnvelopeV2 {
+  try {
+    return parseOrInvalid<SymmetricKeyEnvelopeV2>(
+      symmetricKeyEnvelopeV2Schema,
+      guardSymmetricKeyEnvelopeV2(value),
     )
   } catch {
     throw new AppError("INVALID_QR_PAYLOAD")
