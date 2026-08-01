@@ -35,15 +35,18 @@ import { AppError, toAppError } from "@/crypto/errors"
 import {
   createSymmetricKeyRecord,
   importSymmetricKeyRecord,
+  importSymmetricKeyRecordV2,
 } from "@/crypto/key-generation"
 import {
   decodeDsaPublicKeyEnvelopeV2,
   decodeKemPublicKeyEnvelopeV2,
   decodePublicIdentityBundleV2,
+  decodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import { createIdentity } from "@/crypto/pq/identity"
 import { PQ_PROFILES } from "@/crypto/pq/profiles"
 import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
+import { validateSymmetricKeyEnvelopeV2 } from "@/crypto/pq/validation"
 import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { generateKeyId } from "@/crypto/random"
@@ -295,6 +298,17 @@ export function KeyAddDialog({
     setView({ kind: "single-key", envelope, fingerprint })
   }
 
+  const beginSymmetricImport = (record: StoredKeyRecord) => {
+    setSymmetricImportName(record.name)
+    setSymmetricImportAcknowledged(false)
+    setView({ kind: "symmetric-import", record })
+  }
+
+  const symmetricImportDefaultName = () =>
+    t("keys.import.symmetricDefaultName", {
+      date: formatSuggestedDate(Date.now()),
+    })
+
   const importDecoded = async (
     decoded: ReturnType<typeof decodePayload>,
     opening: number,
@@ -302,19 +316,19 @@ export function KeyAddDialog({
     if (abandoned(opening)) return
     switch (decoded.kind) {
       case "symmetric-key": {
-        if (!("v" in decoded.envelope)) {
-          throw new AppError("INVALID_QR_PAYLOAD")
-        }
-        const record = await importSymmetricKeyRecord(
-          t("keys.import.symmetricDefaultName", {
-            date: formatSuggestedDate(Date.now()),
-          }),
-          decoded.envelope,
-          Date.now(),
-        )
-        setSymmetricImportName(record.name)
-        setSymmetricImportAcknowledged(false)
-        setView({ kind: "symmetric-import", record })
+        const record =
+          "v" in decoded.envelope
+            ? await importSymmetricKeyRecord(
+                symmetricImportDefaultName(),
+                decoded.envelope,
+                Date.now(),
+              )
+            : await importSymmetricKeyRecordV2(
+                symmetricImportDefaultName(),
+                decoded.envelope,
+                Date.now(),
+              )
+        beginSymmetricImport(record)
         return
       }
       case "pq-public-identity":
@@ -373,6 +387,19 @@ export function KeyAddDialog({
       }
       if (args.artifactType === "pq-dsa-public-key") {
         await handleSingleKey(decodeDsaPublicKeyEnvelopeV2(args.artifactBytes))
+        return
+      }
+      if (args.artifactType === "symmetric-key") {
+        const envelope = validateSymmetricKeyEnvelopeV2(
+          decodeSymmetricKeyEnvelopeV2(args.artifactBytes),
+        )
+        beginSymmetricImport(
+          await importSymmetricKeyRecordV2(
+            symmetricImportDefaultName(),
+            envelope,
+            Date.now(),
+          ),
+        )
         return
       }
       throw new AppError("INVALID_QR_PAYLOAD")

@@ -124,7 +124,7 @@ test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no
   expect(secretPng.suggestedFilename()).toMatch(
     /^一覧出力秘密鍵-[A-Za-z0-9_-]{8}\.png$/,
   )
-  expect(decodePng(await downloadBuffer(secretPng))).toMatch(/^OCK1:/)
+  expect(decodePng(await downloadBuffer(secretPng))).toMatch(/^OCF2:/)
 
   await dialog.getByRole("button", { name: "Back to details" }).click()
   await page

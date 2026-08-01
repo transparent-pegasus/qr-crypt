@@ -48,9 +48,12 @@ test("supports creation through key listing, QR display, and deletion without pe
   await dialog.getByRole("button", { name: "Show secret-key QR" }).click()
 
   dialog = page.getByRole("dialog", { name: "Symmetric-key QR", exact: true })
-  await expect(dialog.getByRole("img", { name: "Symmetric-key QR image" })).toBeVisible()
-  await expect(dialog.getByRole("button", { name: "Download", exact: true })).toBeDisabled()
+  // The acknowledgement gates the key QR itself, not just its actions: nothing
+  // renders the secret until the user confirms they accept being shown it.
+  await expect(dialog.getByRole("img", { name: "Symmetric-key QR image" })).toHaveCount(0)
+  await expect(dialog.getByRole("button", { name: "Download", exact: true })).toHaveCount(0)
   await dialog.getByRole("checkbox", { name: "I understand the risk" }).check()
+  await expect(dialog.getByRole("img", { name: "Symmetric-key QR image" })).toBeVisible()
   await expect(dialog.getByRole("button", { name: "Download", exact: true })).toBeEnabled()
   await expect(dialog.getByText(/Saved|Save key QR/)).toHaveCount(0)
   await expectNoQrArtifactStore(page)

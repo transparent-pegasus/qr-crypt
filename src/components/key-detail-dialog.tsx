@@ -37,14 +37,16 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { toAppError } from "@/crypto/errors"
-import { buildSymmetricKeyEnvelope } from "@/crypto/key-generation"
+import { AppError, toAppError } from "@/crypto/errors"
+import { buildSymmetricKeyEnvelopeV2 } from "@/crypto/key-generation"
 import {
   encodeDsaPublicKeyEnvelopeV2,
   encodeKemPublicKeyEnvelopeV2,
   encodePublicIdentityBundleV2,
+  encodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import { buildPublicBundle, rotateIdentity } from "@/crypto/pq/identity"
+import { zeroize } from "@/crypto/pq/zeroize"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { formatDateTime } from "@/features/presentation"
 import { useCompatibilityMode } from "@/hooks/use-compatibility-mode"
@@ -56,15 +58,19 @@ import {
   useLocalizedMessage,
   type LocalizedMessage,
 } from "@/i18n"
-import { FRAME_BYTES_MAX, minimumFrameBytesForArtifact } from "@/lib/limits"
-import { ecLevelFor } from "@/qr/encode"
+import {
+  FRAME_BYTES_MAX,
+  minimumFrameBytesForArtifact,
+  singleFrameBytesFor,
+} from "@/lib/limits"
 import {
   buildExportFileName,
   copyTextToClipboard,
   qrPngBlob,
   triggerDownload,
 } from "@/qr/export-image"
-import { encodeEnvelopeToPayload } from "@/qr/payload"
+import { splitIntoFrames } from "@/qr/multipart/split"
+import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
 import {
   type PostQuantumIdentity,
   type StoredKeyRecord,
@@ -185,6 +191,7 @@ export function KeyDetailContent({
   const [qrReady, setQrReady] = useState(false)
   const [qrHost, setQrHost] = useState<HTMLDivElement | null>(null)
   const qrGenerationRef = useRef(0)
+  const symmetricArtifactRef = useRef<Uint8Array | null>(null)
   const presentedError = error ?? compatibilityError ?? preferencesError
   const localizedError = useLocalizedMessage(presentedError)
   const record = resolveKeyDetailRecord(selection, identity, symmetric)
@@ -195,6 +202,10 @@ export function KeyDetailContent({
   })
   const setQrHostRef = useCallback((node: HTMLDivElement | null) => {
     setQrHost(node)
+  }, [])
+  const clearSymmetricArtifact = useCallback(() => {
+    zeroize(symmetricArtifactRef.current ?? undefined)
+    symmetricArtifactRef.current = null
   }, [])
   const submitRename = async () => {
     if (selection === null) return
@@ -237,9 +248,10 @@ export function KeyDetailContent({
   useEffect(
     () => () => {
       qrGenerationRef.current += 1
+      clearSymmetricArtifact()
       setSensitiveSession({ cryptoBusy: false, secretVisible: false })
     },
-    [setSensitiveSession],
+    [clearSymmetricArtifact, setSensitiveSession],
   )
   useEffect(() => {
     const source = selection === null ? "" : `${selection.kind}:${selection.id}`
@@ -248,6 +260,7 @@ export function KeyDetailContent({
     sourceRef.current = { selection: source, record }
     if (!changed) return
     qrGenerationRef.current += 1
+    clearSymmetricArtifact()
     setFullscreenOpen(false)
     setQrReady(false)
     setView({ kind: "detail" })
@@ -262,6 +275,7 @@ export function KeyDetailContent({
     // is also the reset the dismissed dialog relies on.
   }, [
     record,
+    clearSymmetricArtifact,
     resetCompatibilityMode,
     selection,
     setFullscreenOpen,
@@ -270,6 +284,7 @@ export function KeyDetailContent({
 
   const leaveQrView = () => {
     qrGenerationRef.current += 1
+    clearSymmetricArtifact()
     setFullscreenOpen(false)
     setQrReady(false)
     setView({ kind: "detail" })
@@ -340,20 +355,45 @@ export function KeyDetailContent({
   const showSymmetricQr = async (target: StoredKeyRecord) => {
     const generation = qrGenerationRef.current + 1
     qrGenerationRef.current = generation
+    let artifactBytes: Uint8Array | undefined
     setQrReady(false)
     setBusy(true)
     setError(null)
     try {
-      const envelope = await buildSymmetricKeyEnvelope(target)
+      const envelope = await buildSymmetricKeyEnvelopeV2(target)
+      try {
+        artifactBytes = encodeSymmetricKeyEnvelopeV2(envelope)
+      } finally {
+        zeroize(envelope.key)
+      }
+      const frames = await splitIntoFrames({
+        artifactType: "symmetric-key",
+        artifactBytes,
+        frameBytes: singleFrameBytesFor(artifactBytes.byteLength),
+      })
+      if (frames.length !== 1 || frames[0] === undefined) {
+        for (const frame of frames) zeroize(frame.chunk)
+        throw new AppError("QR_TOO_LARGE")
+      }
+      let framePayload: string
+      try {
+        framePayload = encodeFrameToPayload(frames[0])
+      } finally {
+        zeroize(frames[0].chunk)
+      }
       if (qrGenerationRef.current !== generation) return
+      clearSymmetricArtifact()
+      symmetricArtifactRef.current = artifactBytes
       setView({
         kind: "symmetric-qr",
-        payload: encodeEnvelopeToPayload(envelope),
+        payload: framePayload,
         acknowledged: false,
       })
+      artifactBytes = undefined
     } catch (caught) {
-      setError(toAppError(caught, "KEY_TYPE_MISMATCH").code)
+      setError(toAppError(caught, "QR_TOO_LARGE").code)
     } finally {
+      zeroize(artifactBytes)
       setBusy(false)
     }
   }
@@ -441,9 +481,8 @@ export function KeyDetailContent({
     setBusy(true)
     setError(null)
     try {
-      const ecLevel = ecLevelFor("stored-key", preferences)
       const blob = await qrPngBlob(view.payload, {
-        ecLevel,
+        ecLevel: "Q",
         size: env.qrRenderSize,
       })
       triggerDownload(blob, buildExportFileName(symmetric.name, symmetric.id, "png"))
@@ -455,9 +494,16 @@ export function KeyDetailContent({
   }
 
   const copySymmetricQr = async () => {
-    if (view.kind !== "symmetric-qr" || !view.acknowledged) return
+    const artifactBytes = symmetricArtifactRef.current
+    if (
+      view.kind !== "symmetric-qr" ||
+      !view.acknowledged ||
+      artifactBytes === null
+    ) {
+      return
+    }
     try {
-      await copyTextToClipboard(view.payload)
+      await copyTextToClipboard(buildV2Payload("symmetric-key", artifactBytes))
       toast.success(t("keyDetail.toast.copied"))
     } catch {
       setError("common.copyFailed")
@@ -524,17 +570,19 @@ export function KeyDetailContent({
                   <ArrowLeft aria-hidden="true" />
                   {t("keyDetail.backToDetail")}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-11 shrink-0"
-                  aria-label={t("qrDisplay.fullscreen.button")}
-                  disabled={!qrReady}
-                  onClick={() => setFullscreenOpen(true)}
-                >
-                  <Expand aria-hidden="true" />
-                </Button>
+                {(view.kind === "identity-qr" || view.acknowledged) && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-11 shrink-0"
+                    aria-label={t("qrDisplay.fullscreen.button")}
+                    disabled={!qrReady}
+                    onClick={() => setFullscreenOpen(true)}
+                  >
+                    <Expand aria-hidden="true" />
+                  </Button>
+                )}
               </div>
             )}
 
@@ -614,34 +662,41 @@ export function KeyDetailContent({
                   <Checkbox
                     id="secret-ack"
                     checked={view.acknowledged}
-                    onCheckedChange={(checked) =>
-                      setView({ ...view, acknowledged: checked === true })
-                    }
+                    onCheckedChange={(checked) => {
+                      const acknowledged = checked === true
+                      if (!acknowledged) {
+                        setFullscreenOpen(false)
+                        setQrReady(false)
+                      }
+                      setView({ ...view, acknowledged })
+                    }}
                   />
                   <Label htmlFor="secret-ack">{t("common.riskUnderstood")}</Label>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11"
-                    disabled={!view.acknowledged || busy}
-                    onClick={() => void exportSymmetricQr()}
-                  >
-                    <Download aria-hidden="true" />
-                    {t("common.download")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11"
-                    disabled={!view.acknowledged || busy}
-                    onClick={() => void copySymmetricQr()}
-                  >
-                    <Clipboard aria-hidden="true" />
-                    {t("common.copy")}
-                  </Button>
-                </div>
+                {view.acknowledged && (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11"
+                      disabled={busy}
+                      onClick={() => void exportSymmetricQr()}
+                    >
+                      <Download aria-hidden="true" />
+                      {t("common.download")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11"
+                      disabled={busy}
+                      onClick={() => void copySymmetricQr()}
+                    >
+                      <Clipboard aria-hidden="true" />
+                      {t("common.copy")}
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -672,10 +727,11 @@ export function KeyDetailContent({
 
       {qrHost &&
         view.kind === "symmetric-qr" &&
+        view.acknowledged &&
         createPortal(
           <QrDisplay
             payload={view.payload}
-            ecLevel={ecLevelFor("stored-key", preferences)}
+            ecLevel="Q"
             size={env.qrRenderSize}
             title={t("keyDetail.symmetricQr.title")}
             fullscreenControls={{

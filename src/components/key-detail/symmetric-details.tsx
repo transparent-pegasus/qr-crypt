@@ -34,16 +34,18 @@ export function SymmetricDetails({
         })}
       </p>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11"
-          disabled={busy}
-          onClick={onShow}
-        >
-          <QrCode aria-hidden="true" />
-          {t("keyDetail.button.showSecretQr")}
-        </Button>
+        {record.status === "active" && (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11"
+            disabled={busy}
+            onClick={onShow}
+          >
+            <QrCode aria-hidden="true" />
+            {t("keyDetail.button.showSecretQr")}
+          </Button>
+        )}
         <Button
           type="button"
           variant="destructive"

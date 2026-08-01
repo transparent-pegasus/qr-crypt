@@ -10,6 +10,7 @@ import type {
 import type { DecryptPqMessageArgs } from "@/crypto/pq/decrypt-orchestrator"
 import type { ReceiptSubject, ReceiptVerdict } from "@/features/receipt-cache"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
+import { fromBase64Url } from "@/lib/base64url"
 import type { FeatureSupport } from "@/lib/feature-detect"
 import type { QrExportOptions } from "@/qr/export-image"
 import type { TransferState } from "@/qr/multipart/transfer-state"
@@ -25,6 +26,7 @@ import type {
   QrFrameV2,
   StoredKeyRecord,
   SymMessageEnvelopeV2,
+  SymmetricKeyEnvelopeV2,
   V2ArtifactType,
 } from "@/schemas/domain"
 import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
@@ -173,6 +175,7 @@ let artifactCounter = 0
 let keyCounter = 0
 let lastMessageEnvelope: AesMessageEnvelopeV1 | null = null
 let lastSymMessageEnvelope: SymMessageEnvelopeV2 | null = null
+const symmetricFingerprintsByKeyId = new Map<string, string>()
 let lastPqEnvelope: MlKemMessageEnvelopeV2 = {
   version: 2,
   type: "pq-message",
@@ -288,7 +291,7 @@ export const createSymmetricKeyRecord = vi.fn(
   async (name: string, now: number): Promise<StoredKeyRecord> => {
     keyCounter += 1
     return {
-      id: `generated-sym-${keyCounter}`,
+      id: `G${String(keyCounter).padStart(21, "0")}`,
       name,
       kind: "symmetric",
       algorithm: "A256GCM",
@@ -310,6 +313,26 @@ export const buildSymmetricKeyEnvelope = vi.fn(
     key: new Uint8Array(32),
   }),
 )
+export const buildSymmetricKeyEnvelopeV2 = vi.fn(
+  async (record: StoredKeyRecord): Promise<SymmetricKeyEnvelopeV2> => {
+    if (
+      record.kind !== "symmetric" ||
+      record.status !== "active" ||
+      record.symmetricKey === undefined
+    ) {
+      throw new AppError("KEY_TYPE_MISMATCH")
+    }
+    symmetricFingerprintsByKeyId.set(record.id, record.fingerprint)
+    return {
+      version: 2,
+      type: "symmetric-key",
+      algorithm: "A256GCM",
+      keyId: record.id,
+      createdAt: record.createdAt,
+      key: new Uint8Array(32).fill(0x7c),
+    }
+  },
+)
 export const importSymmetricKeyRecord = vi.fn(
   async (name: string, envelope: SymmetricKeyEnvelopeV1, now: number) => ({
     id: envelope.keyId,
@@ -322,6 +345,24 @@ export const importSymmetricKeyRecord = vi.fn(
     status: "active",
     symmetricKey: cryptoKey("secret"),
   }),
+)
+export const importSymmetricKeyRecordV2 = vi.fn(
+  async (name: string, envelope: SymmetricKeyEnvelopeV2, now: number) => {
+    const record: StoredKeyRecord = {
+      id: envelope.keyId,
+      name,
+      kind: "symmetric",
+      algorithm: "A256GCM",
+      fingerprint:
+        symmetricFingerprintsByKeyId.get(envelope.keyId) ?? generatedFingerprint(302),
+      createdAt: now,
+      useCount: 0,
+      status: "active",
+      symmetricKey: cryptoKey("secret"),
+    }
+    envelope.key.fill(0)
+    return record
+  },
 )
 export const encodeEnvelopeToPayload = vi.fn(
   (envelope: AesMessageEnvelopeV1 | SymmetricKeyEnvelopeV1 | PublicKeyEnvelopeV1) => {
@@ -363,6 +404,14 @@ export const decodePayload = vi.fn((payload: string) => {
         createdAt: 1_720_000_000_000,
         key: new Uint8Array(32),
       } satisfies SymmetricKeyEnvelopeV1,
+    }
+  }
+  if (payload.startsWith("OCK2:")) {
+    return {
+      kind: "symmetric-key" as const,
+      envelope: decodeSymmetricKeyEnvelopeV2(
+        fromBase64Url(payload.slice("OCK2:".length)),
+      ),
     }
   }
   if (payload.startsWith("OCP1:")) {
@@ -614,6 +663,12 @@ export const decodeSymMessageEnvelopeV2 = vi.fn(() => {
   }
   return lastSymMessageEnvelope
 })
+export const encodeSymmetricKeyEnvelopeV2 = vi.fn<
+  (envelope: SymmetricKeyEnvelopeV2) => Uint8Array
+>()
+export const decodeSymmetricKeyEnvelopeV2 = vi.fn<
+  (bytes: Uint8Array) => SymmetricKeyEnvelopeV2
+>()
 export const encodePublicIdentityBundleV2 = vi.fn((bundle: PublicIdentityBundleV2) => {
   lastPublicBundle = bundle
   return new Uint8Array(3_400)
@@ -1065,6 +1120,7 @@ export function resetFakes(): void {
   keyCounter = 0
   lastMessageEnvelope = null
   lastSymMessageEnvelope = null
+  symmetricFingerprintsByKeyId.clear()
   lastPqEnvelope = {
     version: 2,
     type: "pq-message",
