@@ -18,7 +18,8 @@ the repository root as `README.ja.md` (GitHub language switcher).
 * Vite / TypeScript / Tailwind CSS v4
 * shadcn/ui (Radix UI) + sonner
 * Web Crypto API / IndexedDB (idb)
-* Zod / cbor-x / qrcode / zxing-wasm (reader-only, camera scanning)
+* Zod / qrcode / zxing-wasm (reader-only, camera scanning); v2 wire CBOR is the
+  in-house canonical codec in `src/crypto/pq/canonical-cbor.ts` (no `cbor-x`)
 * vite-plugin-pwa / workbox-window
 * Vitest / Testing Library / Playwright (@playwright/test)
 * Aube (package manager) / mise (pinned tool versions)
@@ -99,7 +100,14 @@ Important:
 * `VITE_*` values are embedded in the built client code, so **they must never contain secrets**
 * Do not put encryption keys, private keys, Cloudflare API tokens, or decryption material in `.env`
 * Do not use feature flags as access control or secret protection
-* `VITE_ENABLE_RSA` is **retired and rejected**. Its presence in the environment — including the `VITE_ENABLE_RSA=false` that `.env.example` and `.env.prod` used to carry — now fails environment validation at application startup, rather than being accepted and normalized away. Delete the line from any `.env.local` still holding it. The rejection is a startup check, not a build check: `aube build:prod` still succeeds with a stale value and embeds it, so a build that carries one fails for every user instead of failing in CI
+* `VITE_ENABLE_RSA`, `VITE_REQUIRE_SIGNATURE`, and `VITE_DEFAULT_PQ_PROFILE` are
+  **retired and rejected**. Their presence in the environment — including the
+  false/default values `.env.example` and `.env.prod` once carried — fails
+  environment validation at application startup, rather than being accepted and
+  normalized away. Delete those lines from any `.env.local` still holding them.
+  The rejection is a startup check, not a build check: `aube build:prod` still
+  succeeds with a stale value and embeds it, so a build that carries one fails
+  for every user instead of failing in CI
 
 ## Pre-release checklist
 
