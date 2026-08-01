@@ -6,14 +6,11 @@ import { AppError, ERROR_CODES, toAppError } from "@/crypto/errors"
 import {
   FRAME_INTERVAL_MS_VALUES,
   KEY_ID_PATTERN,
-  MAX_CIPHERTEXT_BYTES,
   MAX_PLAINTEXT_BYTES,
   MAX_PQ_PLAINTEXT_BYTES,
-  MAX_SYMMETRIC_PLAINTEXT_BYTES,
-  maximumSymmetricPlaintextBytesForPayloadCapacity,
+  MAX_SYM_PLAINTEXT_BYTES,
 } from "@/lib/limits"
-import { qrByteCapacity } from "@/qr/encode"
-import { QR_PREFIX } from "@/qr/payload"
+import { QR_PREFIX_V2 } from "@/qr/payload-v2"
 import { toUiAlgorithm, toWireAlgorithm } from "@/schemas/domain"
 import { env, parseAppEnv } from "@/schemas/env-schema"
 import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
@@ -29,7 +26,7 @@ describe("contract smoke", () => {
     expect(toAppError(error, "STORAGE_FAILED")).toBe(error)
   })
 
-  it("keeps only the active A256GCM v1 mapper", () => {
+  it("keeps only the active A256GCM mapper", () => {
     expect(toWireAlgorithm("A256GCM")).toBe("A256GCM")
     expect(toUiAlgorithm("A256GCM")).toBe("A256GCM")
     expect(() => toWireAlgorithm("MLKEM1024_A256GCM")).toThrow(TypeError)
@@ -41,10 +38,10 @@ describe("contract smoke", () => {
     // The shared allocation ceiling must not drift off the PQ ceiling; typecheck
     // does not catch a later edit that reassigns it.
     expect(MAX_PLAINTEXT_BYTES).toBe(MAX_PQ_PLAINTEXT_BYTES)
-    // The v1 envelope bound is structural — what one OCM1 payload can carry — and is
-    // deliberately NOT the post-quantum multipart ceiling.
-    expect(MAX_SYMMETRIC_PLAINTEXT_BYTES).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
-    expect(MAX_CIPHERTEXT_BYTES).toBe(MAX_SYMMETRIC_PLAINTEXT_BYTES + 16)
+    // Sym-v2 is deliberately capped to one frame, independently of the PQ
+    // multipart allocation ceiling.
+    expect(MAX_SYM_PLAINTEXT_BYTES).toBe(810)
+    expect(MAX_SYM_PLAINTEXT_BYTES).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
     const normalized = parseAppEnv({})
     expect(normalized.qrFrameBytes).toBe(1_000)
     expect(normalized.qrFrameIntervalMs).toBe(200)
@@ -84,30 +81,9 @@ describe("contract smoke", () => {
     },
   )
 
-  it("derives a smaller A256GCM plaintext ceiling from each selected QR capacity", () => {
-    const symmetricLimits = Object.fromEntries(
-      (["L", "M", "Q", "H"] as const).map((level) => [
-        level,
-        maximumSymmetricPlaintextBytesForPayloadCapacity(qrByteCapacity(level)),
-      ]),
-    )
-
-    expect(symmetricLimits).toEqual({
-      L: 2_010,
-      M: 1_543,
-      Q: 1_042,
-      H: 750,
-    })
-    for (const limit of Object.values(symmetricLimits)) {
-      expect(limit).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
-    }
-  })
-
-  it("payload prefixes match the protocol doc", () => {
-    expect(QR_PREFIX.message).toBe("OCM1:")
-    expect(QR_PREFIX["symmetric-key"]).toBe("OCK1:")
-    expect(QR_PREFIX["public-key"]).toBe("OCP1:")
-    expect(QR_PREFIX["encrypted-private-key"]).toBe("OCB1:")
+  it("payload prefixes expose only the v2 wire family", () => {
+    expect(QR_PREFIX_V2["sym-message"]).toBe("OCA2:")
+    expect(QR_PREFIX_V2["symmetric-key"]).toBe("OCK2:")
   })
 
   it("qr name schema enforces the naming rules", () => {

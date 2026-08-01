@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest"
-import { Encoder, Tag } from "cbor-x"
 import { PNG } from "pngjs"
 import * as QRCode from "qrcode"
 import {
@@ -8,69 +7,22 @@ import {
   QRCodeReader,
   RGBLuminanceSource,
 } from "@zxing/library"
-import { buildAad, type AnyEnvelopeV1 } from "@/crypto/envelope"
-import { toBase64Url } from "@/lib/base64url"
-import { concatBytes } from "@/lib/bytes"
 import {
-  MAX_CIPHERTEXT_BYTES,
-  MAX_SYMMETRIC_PLAINTEXT_BYTES,
-} from "@/lib/limits"
-import {
-  ecLevelFor,
-  estimatePayloadChars,
   payloadFits,
   qrByteCapacity,
   renderQrDataUrl,
   renderQrSvgString,
 } from "@/qr/encode"
 import { buildExportFileName, qrSvgBlob, sanitizeQrFileName } from "@/qr/export-image"
-import { decodePayload, encodeEnvelopeToPayload, payloadSha256Hex } from "@/qr/payload"
+import { decodePayload, payloadSha256Hex } from "@/qr/payload"
+import {
+  OCK1_SYMMETRIC_KEY,
+  OCM1_MESSAGE_33,
+  OCP1_PUBLIC_KEY,
+} from "../fixtures/relay-v1"
 
 const KEY_ID = "B".repeat(22)
-const CREATED_AT = 1_700_000_000_000
-const rawEncoder = new Encoder({ useRecords: false, tagUint8Array: false })
-
-function aesEnvelope(plaintextBytes = 12): AnyEnvelopeV1 {
-  const aad = buildAad({
-    v: 1,
-    type: "message",
-    algorithm: "A256GCM",
-    keyId: KEY_ID,
-    createdAt: CREATED_AT,
-  })
-  return {
-    v: 1,
-    type: "message",
-    algorithm: "A256GCM",
-    keyId: KEY_ID,
-    createdAt: CREATED_AT,
-    iv: new Uint8Array(12),
-    ciphertext: new Uint8Array(plaintextBytes + 16),
-    aad,
-  }
-}
-
-const symmetricEnvelope: AnyEnvelopeV1 = {
-  v: 1,
-  type: "symmetric-key",
-  algorithm: "A256GCM",
-  keyId: KEY_ID,
-  createdAt: CREATED_AT,
-  key: new Uint8Array(32),
-}
-
-const publicEnvelope: AnyEnvelopeV1 = {
-  v: 1,
-  type: "public-key",
-  algorithm: "RSA-OAEP-3072",
-  keyId: KEY_ID,
-  createdAt: CREATED_AT,
-  spki: new Uint8Array(422),
-}
-
-function rawPayload(prefix: string, value: unknown): string {
-  return `${prefix}${toBase64Url(rawEncoder.encode(value))}`
-}
+const FRAME_PAYLOAD = "OCF2:ZnJhbWUtb25seQ"
 
 function decodePixels(
   luminance: Uint8ClampedArray,
@@ -118,110 +70,30 @@ async function decodePng(payload: string): Promise<string> {
   return decodePixels(luminance, png.width, png.height)
 }
 
-describe("deterministic payload encoding and strict decoding", () => {
-  it("round-trips active v1 payloads", () => {
-    for (const envelope of [aesEnvelope(), symmetricEnvelope, publicEnvelope]) {
-      const payload = encodeEnvelopeToPayload(envelope)
-      const decoded = decodePayload(payload)
-      expect(decoded.envelope).toEqual(envelope)
-    }
+describe("v2-only payload decoding", () => {
+  it.each([
+    ["OCM1 message", OCM1_MESSAGE_33],
+    ["OCK1 symmetric key", OCK1_SYMMETRIC_KEY],
+    ["OCP1 public key", OCP1_PUBLIC_KEY],
+  ])("rejects a previously valid %s at the prefix boundary", (_name, payload) => {
+    expect(() => decodePayload(payload)).toThrow("INVALID_QR_PREFIX")
   })
 
-  it("normalizes property insertion order to a byte-identical payload", () => {
-    const original = aesEnvelope() as Extract<
-      AnyEnvelopeV1,
-      { algorithm: "A256GCM"; type: "message" }
-    >
-    const reordered = {
-      aad: original.aad,
-      ciphertext: original.ciphertext,
-      iv: original.iv,
-      createdAt: original.createdAt,
-      keyId: original.keyId,
-      algorithm: original.algorithm,
-      type: original.type,
-      v: original.v,
-    } as AnyEnvelopeV1
-    expect(encodeEnvelopeToPayload(reordered)).toBe(encodeEnvelopeToPayload(original))
-  })
-
-  it("follows prefix/version/type/algorithm/strict validation error mapping", () => {
-    expect(() => decodePayload("XYZ1:abc")).toThrow("INVALID_QR_PREFIX")
-    expect(() => decodePayload("OCB1:AA")).toThrow("INVALID_QR_PAYLOAD")
-    expect(() => decodePayload("OCK1:a=")).toThrow("INVALID_QR_PAYLOAD")
-    expect(() => decodePayload("OCK1:____")).toThrow("INVALID_QR_PAYLOAD")
-
-    const valid = symmetricEnvelope as Extract<AnyEnvelopeV1, { type: "symmetric-key" }>
-    expect(() => decodePayload(rawPayload("OCK1:", { ...valid, v: 2 }))).toThrow(
-      "UNSUPPORTED_PROTOCOL_VERSION",
-    )
-    expect(() => decodePayload(rawPayload("OCP1:", valid))).toThrow("INVALID_QR_PAYLOAD")
-    expect(() =>
-      decodePayload(rawPayload("OCK1:", { ...valid, algorithm: "UNKNOWN" })),
-    ).toThrow("UNSUPPORTED_ALGORITHM")
-    expect(() =>
-      decodePayload(
-        rawPayload("OCM1:", {
-          v: 1,
-          type: "message",
-          algorithm: "RSA-OAEP-3072+A256GCM",
-        }),
-      ),
-    ).toThrow("UNSUPPORTED_ALGORITHM")
-    const missing = {
-      v: valid.v,
-      type: valid.type,
-      algorithm: valid.algorithm,
-      keyId: valid.keyId,
-      createdAt: valid.createdAt,
-    }
-    expect(() => decodePayload(rawPayload("OCK1:", missing))).toThrow(
-      "INVALID_QR_PAYLOAD",
-    )
-    expect(() =>
-      decodePayload(rawPayload("OCK1:", { ...valid, unexpected: true })),
-    ).toThrow("INVALID_QR_PAYLOAD")
-  })
-
-  it("rejects trailing CBOR, non-map values, unknown tags, and all size excesses", () => {
-    const first = rawEncoder.encode(symmetricEnvelope)
-    const second = rawEncoder.encode({ extra: true })
-    expect(() =>
-      decodePayload(`OCK1:${toBase64Url(concatBytes(first, second))}`),
-    ).toThrow("INVALID_QR_PAYLOAD")
-    expect(() => decodePayload(rawPayload("OCK1:", [symmetricEnvelope]))).toThrow(
-      "INVALID_QR_PAYLOAD",
-    )
-    expect(() =>
-      decodePayload(rawPayload("OCK1:", new Tag(symmetricEnvelope, 999))),
-    ).toThrow("INVALID_QR_PAYLOAD")
-    expect(() => decodePayload(`OCK1:${"A".repeat(8192)}`)).toThrow("INVALID_QR_PAYLOAD")
-    const oversized = {
-      ...(aesEnvelope() as unknown as Record<string, unknown>),
-      // One byte past what a single OCM1 payload can carry. The v1 bound is
-      // structural, not the post-quantum multipart ceiling.
-      ciphertext: new Uint8Array(MAX_CIPHERTEXT_BYTES + 1),
-    }
-    expect(() => decodePayload(rawPayload("OCM1:", oversized))).toThrow(
-      "INVALID_QR_PAYLOAD",
-    )
+  it.each(["OCB1:AA", "XYZ1:abc"])("rejects the unrecognized prefix in %s", (payload) => {
+    expect(() => decodePayload(payload)).toThrow("INVALID_QR_PREFIX")
   })
 
   it("hashes the complete ASCII payload", async () => {
-    const payload = encodeEnvelopeToPayload(symmetricEnvelope)
-    expect(await payloadSha256Hex(payload)).toMatch(/^[0-9a-f]{64}$/u)
-    expect(await payloadSha256Hex(`${payload}A`)).not.toBe(
-      await payloadSha256Hex(payload),
+    expect(await payloadSha256Hex(FRAME_PAYLOAD)).toMatch(/^[0-9a-f]{64}$/u)
+    expect(await payloadSha256Hex(`${FRAME_PAYLOAD}A`)).not.toBe(
+      await payloadSha256Hex(FRAME_PAYLOAD),
     )
   })
 })
 
 describe("QR sizing, rendering, and production decoder round-trips", () => {
   it("exports the fixed render style shared by every QR renderer", async () => {
-    const encode = (await import("@/qr/encode")) as unknown as Record<
-      string,
-      unknown
-    >
+    const encode = (await import("@/qr/encode")) as unknown as Record<string, unknown>
 
     expect(encode["QR_RENDER_STYLE"]).toEqual({
       margin: 4,
@@ -247,54 +119,22 @@ describe("QR sizing, rendering, and production decoder round-trips", () => {
     }
   })
 
-  it("separates message, stored-key, and OCF2 EC policies", () => {
-    const prefs = { qrErrorCorrection: "L" as const }
-    expect(ecLevelFor("message", prefs)).toBe("L")
-    expect(ecLevelFor("stored-key", prefs)).toBe("H")
-    expect(ecLevelFor("multipart-frame", prefs)).toBe("Q")
-  })
-
-  it("estimates by constructing same-sized envelopes", async () => {
-    for (const length of [0, 512, MAX_SYMMETRIC_PLAINTEXT_BYTES]) {
-      const aesActual = encodeEnvelopeToPayload(aesEnvelope(length)).length
-      const aesEstimate = estimatePayloadChars(length, "A256GCM")
-      expect(aesEstimate).toBeGreaterThanOrEqual(aesActual)
-      expect(aesEstimate - aesActual).toBeLessThanOrEqual(16)
-    }
-    expect(estimatePayloadChars(MAX_SYMMETRIC_PLAINTEXT_BYTES, "A256GCM")).toBeGreaterThan(
-      qrByteCapacity("Q"),
-    )
-    await expect(
-      renderQrSvgString(encodeEnvelopeToPayload(aesEnvelope(MAX_SYMMETRIC_PLAINTEXT_BYTES)), {
-        ecLevel: "Q",
-      }),
-    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
-  })
-
-  it("decodes generated modules and production PNG pixels for all three QR kinds", async () => {
-    for (const envelope of [aesEnvelope(), symmetricEnvelope, publicEnvelope]) {
-      const payload = encodeEnvelopeToPayload(envelope)
-      expect(decodeModules(payload)).toBe(payload)
-      try {
-        expect(await decodePng(payload)).toBe(payload)
-      } catch {
-        throw new Error(`PNG decode failed for ${payload.slice(0, 5)}`)
-      }
-    }
+  it("decodes generated frame modules and production PNG pixels", async () => {
+    expect(decodeModules(FRAME_PAYLOAD)).toBe(FRAME_PAYLOAD)
+    expect(await decodePng(FRAME_PAYLOAD)).toBe(FRAME_PAYLOAD)
   })
 
   it("renders fixed black/white SVG and PNG data URLs and normalizes oversize errors", async () => {
-    const payload = encodeEnvelopeToPayload(symmetricEnvelope)
-    const svg = await renderQrSvgString(payload, { ecLevel: "H" })
+    const svg = await renderQrSvgString(FRAME_PAYLOAD, { ecLevel: "H" })
     expect(svg).toMatch(/^<svg/u)
     expect(svg).toMatch(/viewBox=/u)
     expect(svg).toMatch(/#FFFFFF/iu)
     expect(svg).toMatch(/#000000/iu)
     expect(svg.trim()).toMatch(/<\/svg>$/u)
-    const svgBlob = await qrSvgBlob(payload, { ecLevel: "H" })
+    const svgBlob = await qrSvgBlob(FRAME_PAYLOAD, { ecLevel: "H" })
     expect(svgBlob.type).toContain("image/svg+xml")
     expect((await svgBlob.text()).trim()).toBe(svg.trim())
-    expect(await renderQrDataUrl(payload, { ecLevel: "H", size: 512 })).toMatch(
+    expect(await renderQrDataUrl(FRAME_PAYLOAD, { ecLevel: "H", size: 512 })).toMatch(
       /^data:image\/png;base64,/u,
     )
     await expect(
