@@ -55,6 +55,7 @@ function defaultKeys(): StoredKeyRecord[] {
       fingerprint: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
       createdAt: 1_720_000_000_000,
       useCount: 2,
+      status: "active",
       symmetricKey: cryptoKey("secret"),
     },
     {
@@ -65,6 +66,7 @@ function defaultKeys(): StoredKeyRecord[] {
       fingerprint: "102132435465768798a9bacbdcedfe0f102132435465768798a9bacbdcedfe0f",
       createdAt: 1_721_000_000_000,
       useCount: 1,
+      status: "active",
       publicKey: cryptoKey("public"),
       privateKey: cryptoKey("private"),
     },
@@ -76,6 +78,7 @@ function defaultKeys(): StoredKeyRecord[] {
       fingerprint: "2031425364758697a8b9cadbecfd0e1f2031425364758697a8b9cadbecfd0e1f",
       createdAt: 1_722_000_000_000,
       useCount: 0,
+      status: "active",
       publicKey: cryptoKey("public"),
     },
   ]
@@ -260,6 +263,7 @@ export const createSymmetricKeyRecord = vi.fn(
       fingerprint: generatedFingerprint(100 + keyCounter),
       createdAt: now,
       useCount: 0,
+      status: "active",
       symmetricKey: cryptoKey("secret"),
     }
   },
@@ -283,6 +287,7 @@ export const importSymmetricKeyRecord = vi.fn(
     fingerprint: generatedFingerprint(301),
     createdAt: now,
     useCount: 0,
+    status: "active",
     symmetricKey: cryptoKey("secret"),
   }),
 )

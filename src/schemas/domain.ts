@@ -19,6 +19,7 @@ export type SymSuite = typeof SYM_SUITE
 export type QrEcLevel = "L" | "M" | "Q" | "H"
 
 export type KeyKind = "symmetric" | "rsa-key-pair" | "public-key"
+export type SymmetricKeyStatus = "active" | "rotated"
 
 export interface StoredKeyRecord {
   id: string
@@ -29,6 +30,9 @@ export interface StoredKeyRecord {
   createdAt: number
   lastUsedAt?: number
   useCount: number
+  status: SymmetricKeyStatus
+  rotatedFromId?: string
+  rotatedAt?: number
   publicKey?: CryptoKey
   privateKey?: CryptoKey
   symmetricKey?: CryptoKey

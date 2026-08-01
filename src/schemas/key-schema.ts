@@ -66,11 +66,40 @@ const storedKeyBaseSchema = z
     createdAt: timestampSchema,
     lastUsedAt: timestampSchema.optional(),
     useCount: z.number().int().nonnegative(),
+    status: z.enum(["active", "rotated"]),
+    rotatedFromId: keyIdSchema.optional(),
+    rotatedAt: timestampSchema.optional(),
     publicKey: z.custom<CryptoKey>(isCryptoKey).optional(),
     privateKey: z.custom<CryptoKey>(isCryptoKey).optional(),
     symmetricKey: z.custom<CryptoKey>(isCryptoKey).optional(),
   })
   .strict()
+  .superRefine((record, context) => {
+    if (record.rotatedFromId === record.id) {
+      context.addIssue({
+        code: "custom",
+        path: ["rotatedFromId"],
+        message: "key cannot rotate from itself",
+      })
+    }
+    if (
+      (record.status === "active" && record.rotatedAt !== undefined) ||
+      (record.status === "rotated" && record.rotatedAt === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "invalid status date",
+      })
+    }
+    if (record.rotatedAt !== undefined && record.rotatedAt < record.createdAt) {
+      context.addIssue({
+        code: "custom",
+        path: ["rotatedAt"],
+        message: "rotation predates key",
+      })
+    }
+  })
 
 function hasExactUsages(key: CryptoKey, expected: readonly KeyUsage[]): boolean {
   return (
