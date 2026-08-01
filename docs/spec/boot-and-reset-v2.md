@@ -146,10 +146,11 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    the Vault key record** (crypto-shredding; overwriting the bytes of a
    non-extractable `CryptoKey` is impossible and is not claimed).
 6. Delete all DBs (including `pqIdentities`/`pqPublicBundles`) + all `oc-*`
-   localStorage keys. This includes the UI language preference (`oc-lang`) and
-   the last online tab (`oc-online-tab`); after a wipe or full reset the UI
-   language reverts to the English default and the online gate's tab preference
-   reverts to the install screen.
+   localStorage keys. This includes the UI language (`oc-lang`), theme
+   (`oc-theme`), and last online tab (`oc-online-tab`) preferences; after a wipe
+   or full reset, the language reverts to English, the theme reverts to the
+   `system` default, and the online gate's tab preference reverts to the install
+   screen.
    Only in the `online-detected` case, re-set `oc-offline-ack-pending="1"`
    after the deletion and before publishing `wiped`. In the `user-requested`
    case it is not re-set.
