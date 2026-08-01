@@ -29,16 +29,12 @@ vi.mock("@/crypto/random", () => ({
 }))
 vi.mock("@/crypto/aes-gcm", () => ({
   generateAesKey: fakes.generateAesKey,
-  encryptWithAesKey: fakes.encryptWithAesKey,
-  decryptWithAesKey: fakes.decryptWithAesKey,
   sealSymMessage: fakes.sealSymMessage,
   openSymMessage: fakes.openSymMessage,
 }))
 vi.mock("@/crypto/key-generation", () => ({
   createSymmetricKeyRecord: fakes.createSymmetricKeyRecord,
-  importSymmetricKeyRecord: fakes.importSymmetricKeyRecord,
   importSymmetricKeyRecordV2: fakes.importSymmetricKeyRecordV2,
-  buildSymmetricKeyEnvelope: fakes.buildSymmetricKeyEnvelope,
   buildSymmetricKeyEnvelopeV2: fakes.buildSymmetricKeyEnvelopeV2,
   rotateSymmetricKeyRecord: fakes.rotateSymmetricKeyRecord,
   groupSymmetricKeys: fakes.groupSymmetricKeys,
@@ -96,7 +92,6 @@ vi.mock("@/crypto/vault/vault-key", async (importOriginal) => ({
 
 vi.mock("@/qr/payload", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/payload")>()),
-  encodeEnvelopeToPayload: fakes.encodeEnvelopeToPayload,
   decodePayload: fakes.decodePayload,
   payloadSha256Hex: fakes.payloadSha256Hex,
 }))
@@ -106,9 +101,6 @@ vi.mock("@/qr/encode", async (importOriginal) => ({
   renderQrSvgString: fakes.renderQrSvgString,
   qrByteCapacity: fakes.qrByteCapacity,
   payloadFits: fakes.payloadFits,
-  estimatePayloadChars: fakes.estimatePayloadChars,
-  ecLevelFor: fakes.ecLevelFor,
-  relayMessageEcLevel: fakes.relayMessageEcLevel,
 }))
 vi.mock("@/qr/export-image", () => ({
   qrPngBlob: fakes.qrPngBlob,

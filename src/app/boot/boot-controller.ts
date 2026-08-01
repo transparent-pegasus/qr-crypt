@@ -239,17 +239,14 @@ function optionalIntegerInRange(
 }
 
 function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
-  const algorithms = [
-    "A256GCM",
-    "RSA-HYBRID",
-    "MLKEM1024_MLDSA87_A256GCM",
-  ]
-  const correctionLevels = ["L", "M", "Q", "H"]
+  // Retired identifiers stay READABLE here even though nothing produces them
+  // any more: an unreadable stored preference forces wipeOnOnline true, and a
+  // later network-confirmed contact would then wipe user data. Rejecting the
+  // vocabulary is the repository's job, not boot's.
+  const algorithms = ["A256GCM", "RSA-HYBRID", "MLKEM1024_MLDSA87_A256GCM"]
   return (
     (value.defaultAlgorithm === undefined ||
       algorithms.includes(value.defaultAlgorithm as string)) &&
-    (value.qrErrorCorrection === undefined ||
-      correctionLevels.includes(value.qrErrorCorrection as string)) &&
     optionalBoolean(value.autoClearPlaintextAfterEncrypt) &&
     optionalBoolean(value.backgroundClearEnabled) &&
     isBootReadableFrameBytes(value.frameBytes) &&

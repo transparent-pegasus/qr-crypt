@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { readBootDecision } from "@/app/boot/boot-controller"
-import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
+import { openSymMessage, sealSymMessage } from "@/crypto/aes-gcm"
 import {
   createSymmetricKeyRecord,
   rotateSymmetricKeyRecord,
@@ -42,6 +42,7 @@ import {
   getPreferences,
   updatePreferences,
 } from "@/storage/preferences-repository"
+import { LEGACY_RSA_ID, legacyRsaRecord } from "../fixtures/legacy-rsa-record"
 
 const NOW = 1_700_000_000_000
 const HISTORICAL_DISPLAY_ROWS = [
@@ -159,6 +160,14 @@ describe("database creation", () => {
 })
 
 describe("key repository", () => {
+  it("admits only symmetric stored-key records at the type boundary", () => {
+    type HasRetiredKind =
+      Exclude<StoredKeyRecord["kind"], "symmetric"> extends never ? false : true
+    const hasRetiredKind: HasRetiredKind = false
+
+    expect(hasRetiredKind).toBe(false)
+  })
+
   it("supports CRUD, lookup, atomic usage increments, and CryptoKey reuse after reopen", async () => {
     const first = await createSymmetricKeyRecord("鍵A", NOW)
     const second = await createSymmetricKeyRecord("鍵B", NOW + 1)
@@ -176,9 +185,8 @@ describe("key repository", () => {
     expect(used?.useCount).toBe(5)
     expect(used?.lastUsedAt).toBe(NOW + 2)
 
-    const beforeClose = await encryptWithAesKey({
-      key: first.symmetricKey!,
-      keyId: first.id,
+    const beforeClose = await sealSymMessage({
+      record: first,
       plaintext: utf8ToBytes("再起動後"),
       now: NOW + 3,
     })
@@ -186,8 +194,8 @@ describe("key repository", () => {
     const restored = await getKeyRecord(first.id)
     expect(restored?.symmetricKey).toBeDefined()
     expect(
-      await decryptWithAesKey({
-        key: restored!.symmetricKey!,
+      await openSymMessage({
+        record: restored!,
         envelope: beforeClose,
       }),
     ).toEqual(utf8ToBytes("再起動後"))
@@ -225,13 +233,34 @@ describe("key repository", () => {
       id: generateKeyId(),
       fingerprint: "f".repeat(64),
       algorithm: "AES-ECB",
-    } as StoredKeyRecord
+    } as unknown as StoredKeyRecord
     await (await getDb()).add(STORE_KEYS, malformed)
     expect((await listKeyRecords()).map((record) => record.id)).not.toContain(
       malformed.id,
     )
     await expect(getKeyRecord(malformed.id)).rejects.toMatchObject({
       code: "STORAGE_FAILED",
+    })
+  })
+
+  it("silently omits a legacy RSA row from the key list without repairing it", async () => {
+    const legacyRow = await legacyRsaRecord()
+    const database = await getDb()
+    await database.add(STORE_KEYS, legacyRow as never)
+
+    const listed = await listKeyRecords()
+    const persisted = await database.get(STORE_KEYS, LEGACY_RSA_ID)
+
+    expect({
+      listedNames: listed.map(({ name }) => name),
+      storedRows: await database.count(STORE_KEYS),
+      persistedKind: (persisted as { kind?: unknown } | undefined)?.kind,
+      persistedAlgorithm: (persisted as { algorithm?: unknown } | undefined)?.algorithm,
+    }).toEqual({
+      listedNames: [],
+      storedRows: 1,
+      persistedKind: "rsa-key-pair",
+      persistedAlgorithm: "RSA-OAEP-3072",
     })
   })
 })
@@ -360,7 +389,6 @@ describe("preferences and plaintext non-persistence", () => {
   it("uses env defaults and validates persisted updates", async () => {
     expect(await getPreferences()).toMatchObject({
       defaultAlgorithm: env.defaultAlgorithm,
-      qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
       frameBytes: DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes,
@@ -369,13 +397,11 @@ describe("preferences and plaintext non-persistence", () => {
     expect(
       await updatePreferences({
         defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM",
-        qrErrorCorrection: "M",
         autoClearPlaintextAfterEncrypt: false,
         backgroundClearEnabled: false,
       }),
     ).toMatchObject({
       defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM",
-      qrErrorCorrection: "M",
       autoClearPlaintextAfterEncrypt: false,
       backgroundClearEnabled: false,
     })
@@ -388,12 +414,11 @@ describe("preferences and plaintext non-persistence", () => {
       await getDb()
     ).put(STORE_PREFERENCES, {
       key: "preferences",
-      value: { qrErrorCorrection: "H", backgroundClearSeconds: 12 },
+      value: { backgroundClearSeconds: 12 },
     })
     const migrated = await getPreferences()
     expect(migrated).toMatchObject({
       defaultAlgorithm: env.defaultAlgorithm,
-      qrErrorCorrection: "H",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
     })
@@ -434,7 +459,6 @@ describe("preferences and plaintext non-persistence", () => {
         key: "preferences",
         value: {
           ...value,
-          qrErrorCorrection: "H",
           wipeOnOnline: false,
         },
       })
@@ -442,7 +466,6 @@ describe("preferences and plaintext non-persistence", () => {
       const preferences = await getPreferences()
       expect(preferences).toEqual({
         ...defaultPreferences(),
-        qrErrorCorrection: "H",
         wipeOnOnline: false,
       })
       expect(preferences).not.toHaveProperty("requireSignature")
@@ -495,10 +518,10 @@ describe("preferences and plaintext non-persistence", () => {
         wipeOnOnline: false,
       })
       await expect(
-        updatePreferences({ qrErrorCorrection: "M" }),
+        updatePreferences({ backgroundClearEnabled: false }),
       ).resolves.toMatchObject({
         ...DEFAULT_GENERATED_DISPLAY_PAIR,
-        qrErrorCorrection: "M",
+        backgroundClearEnabled: false,
         wipeOnOnline: false,
       })
       expect(await database.count(STORE_KEYS)).toBe(1)
@@ -568,9 +591,8 @@ describe("preferences and plaintext non-persistence", () => {
     const plaintext = utf8ToBytes(secret)
     const aesRecord = await createSymmetricKeyRecord("AES保管", NOW)
     await saveKeyRecord(aesRecord)
-    await encryptWithAesKey({
-      key: aesRecord.symmetricKey!,
-      keyId: aesRecord.id,
+    await sealSymMessage({
+      record: aesRecord,
       plaintext,
       now: NOW + 2,
     })

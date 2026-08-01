@@ -6,7 +6,7 @@
 // crypto/pq/suites.ts.
 
 // ---------------------------------------------------------------------------
-// Algorithm IDs and suites (v1 A256GCM + v2 symmetric/PQ).
+// Algorithm IDs and suites (symmetric and post-quantum).
 // ---------------------------------------------------------------------------
 
 export type UiAlgorithm = "A256GCM" | "MLKEM1024_MLDSA87_A256GCM"
@@ -18,14 +18,13 @@ export type SymSuite = typeof SYM_SUITE
 
 export type QrEcLevel = "L" | "M" | "Q" | "H"
 
-export type KeyKind = "symmetric" | "rsa-key-pair" | "public-key"
 export type SymmetricKeyStatus = "active" | "rotated"
 
 export interface StoredKeyRecord {
   id: string
   name: string
-  kind: KeyKind
-  algorithm: string
+  kind: "symmetric"
+  algorithm: "A256GCM"
   fingerprint: string
   createdAt: number
   lastUsedAt?: number
@@ -33,12 +32,10 @@ export interface StoredKeyRecord {
   status: SymmetricKeyStatus
   rotatedFromId?: string | undefined
   rotatedAt?: number | undefined
-  publicKey?: CryptoKey
-  privateKey?: CryptoKey
-  symmetricKey?: CryptoKey
+  symmetricKey: CryptoKey
 }
 
-// Mapper exclusively for the v1 A256GCM wire format. Resolve PQ wire algorithms with
+// Mapper exclusively for the symmetric A256GCM UI/wire identifier. Resolve PQ suites with
 // resolveSuite in crypto/pq/suites.ts. This dependency-free module cannot throw AppError.
 export function toWireAlgorithm(algorithm: UiAlgorithm): WireAlgorithm {
   if (algorithm === "A256GCM") return "A256GCM"
@@ -344,7 +341,6 @@ export type GeneratedDisplayPair =
 
 export interface Preferences {
   defaultAlgorithm: UiAlgorithm
-  qrErrorCorrection: QrEcLevel
   autoClearPlaintextAfterEncrypt: boolean
   backgroundClearEnabled: boolean
   frameBytes: number // Generated 100–1000 in 100B steps; stored as one exact display pair.

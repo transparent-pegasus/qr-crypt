@@ -1,5 +1,5 @@
 // Preferences persistence.
-// The environment supplies defaults for defaultAlgorithm and qrErrorCorrection.
+// The environment supplies the default for defaultAlgorithm.
 // Do not persist delays as preferences; use the
 // WebAssembly-runtime-selected env.autoClearSeconds or
 // env.autoClearFallbackSeconds value. As in v1, theme belongs to
@@ -9,7 +9,6 @@ import {
   DEFAULT_GENERATED_DISPLAY_PAIR,
   PQ_PREFERENCE_DEFAULTS,
   type Preferences,
-  type QrEcLevel,
   type UiAlgorithm,
 } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -37,7 +36,6 @@ const UI_ALGORITHMS: readonly UiAlgorithm[] = [
 
 const PREFERENCE_KEYS = [
   "defaultAlgorithm",
-  "qrErrorCorrection",
   "autoClearPlaintextAfterEncrypt",
   "backgroundClearEnabled",
   "frameBytes",
@@ -47,13 +45,10 @@ const PREFERENCE_KEYS = [
   "resetChurnMb",
 ] as const satisfies readonly (keyof Preferences)[]
 
-const EC_LEVELS: readonly QrEcLevel[] = ["L", "M", "Q", "H"]
-
 export function defaultPreferences(): Preferences {
   return {
     ...PQ_PREFERENCE_DEFAULTS,
     defaultAlgorithm: env.defaultAlgorithm,
-    qrErrorCorrection: env.qrErrorCorrection,
     autoClearPlaintextAfterEncrypt: true,
     backgroundClearEnabled: true,
     frameBytes: env.qrFrameBytes,
@@ -89,17 +84,11 @@ function normalizeLegacyStoredPreferences(
   for (const key of PREFERENCE_KEYS) {
     if (Object.hasOwn(value, key)) normalized[key] = value[key]
   }
-  switch (normalized.defaultAlgorithm) {
-    case "RSA-HYBRID":
-      normalized.defaultAlgorithm = "A256GCM"
-      break
-    default:
-      if (
-        normalized.defaultAlgorithm !== undefined &&
-        !UI_ALGORITHMS.includes(normalized.defaultAlgorithm as UiAlgorithm)
-      ) {
-        delete normalized.defaultAlgorithm
-      }
+  if (
+    normalized.defaultAlgorithm !== undefined &&
+    !UI_ALGORITHMS.includes(normalized.defaultAlgorithm as UiAlgorithm)
+  ) {
+    delete normalized.defaultAlgorithm
   }
   const frameBytesBootReadable = isBootReadableFrameBytes(normalized.frameBytes)
   const frameIntervalMsBootReadable = isBootReadableFrameIntervalMs(
@@ -171,7 +160,6 @@ function validatePreferences(value: unknown): Preferences {
   const candidate = value as Partial<Preferences>
   if (
     !UI_ALGORITHMS.includes(candidate.defaultAlgorithm as UiAlgorithm) ||
-    !EC_LEVELS.includes(candidate.qrErrorCorrection as QrEcLevel) ||
     typeof candidate.autoClearPlaintextAfterEncrypt !== "boolean" ||
     typeof candidate.backgroundClearEnabled !== "boolean" ||
     !isFrameBytes(candidate.frameBytes) ||
@@ -188,7 +176,6 @@ function validatePreferences(value: unknown): Preferences {
   }
   return {
     defaultAlgorithm: candidate.defaultAlgorithm as UiAlgorithm,
-    qrErrorCorrection: candidate.qrErrorCorrection as QrEcLevel,
     autoClearPlaintextAfterEncrypt: candidate.autoClearPlaintextAfterEncrypt,
     backgroundClearEnabled: candidate.backgroundClearEnabled,
     frameBytes: candidate.frameBytes,

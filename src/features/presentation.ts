@@ -1,12 +1,8 @@
 import { translate, type Language } from "@/i18n/messages"
-import { QR_PREFIX } from "@/qr/payload"
 import { QR_PREFIX_V2 } from "@/qr/payload-v2"
 import type { UiAlgorithm } from "@/schemas/domain"
 
-const QR_CRYPT_PREFIXES = [
-  ...Object.values(QR_PREFIX),
-  ...Object.values(QR_PREFIX_V2),
-]
+const QR_CRYPT_PREFIXES = Object.values(QR_PREFIX_V2)
 
 export const ALGORITHM_LABELS: Record<
   Language,

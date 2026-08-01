@@ -61,7 +61,7 @@ import {
   useI18n,
   type MessageKey,
 } from "@/i18n"
-import type { Preferences, QrEcLevel, UiAlgorithm } from "@/schemas/domain"
+import type { Preferences, UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
   RESET_CHURN_MB_MAX,
@@ -266,29 +266,6 @@ export function SettingsPage() {
               )}
             </SelectContent>
           </Select>
-        </SettingField>
-        <SettingField label={t("settings.field.defaultEc")} htmlFor="default-ec">
-          <Select
-            value={preferences.qrErrorCorrection}
-            disabled={preferencesLoading}
-            onValueChange={(value) =>
-              void savePreference({ qrErrorCorrection: value as QrEcLevel })
-            }
-          >
-            <SelectTrigger id="default-ec" className="h-11 text-base">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["L", "M", "Q", "H"] as const).map((level) => (
-                <SelectItem key={level} value={level}>
-                  {level}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            {t("settings.ec.hint")}
-          </p>
         </SettingField>
       </SettingsCard>
 

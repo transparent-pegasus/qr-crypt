@@ -53,8 +53,6 @@ describe("i18n catalog", () => {
       "animatedQr.missing.body":
         "欠損フレーム: {indexes}。欠損したままでは復元できません。",
       "encrypt.toast.autoCleared": "平文と一時結果を自動消去しました",
-      "scanner.error.singleWhileMultipart":
-        "複数QR読取中です。単発QRは読取完了または破棄後に読み取ってください。",
       "scanner.progress.missingIndex": "欠損フレーム: {indexes}",
       "errors.QR_DECODE_PROGRESS_TIMEOUT":
         "この端末でQR復号パイプラインの進行が停止しました。",
@@ -72,6 +70,7 @@ describe("i18n catalog", () => {
       "encrypt.result.decryptedTitle",
       "encrypt.result.encryptDone",
       "keys.toast.legacyRemoved",
+      "scanner.error.singleWhileMultipart",
       "qrDisplay.fullscreen.brightnessHint",
     ]) {
       expect(messages.en).not.toHaveProperty(removedKey)

@@ -1,4 +1,4 @@
-// Key fingerprints; see docs/spec/qr-protocol.md §8.
+// Key fingerprints.
 // Internal identity is the complete sha256 hex; the abbreviated visual check
 // users compare out of band is rendered by features/presentation.formatFingerprint.
 import { exportAesKeyRaw } from "@/crypto/key-import-export"

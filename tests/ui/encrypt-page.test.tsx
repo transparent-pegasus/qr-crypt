@@ -18,7 +18,6 @@ import type {
 import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"
 import {
-  encryptWithAesKey,
   encryptPq,
   encodeSymMessageEnvelopeV2,
   exportQrFramePayloads,
@@ -362,7 +361,6 @@ describe("encrypt page v2", () => {
       plaintext: new TextEncoder().encode("single sym frame"),
       now: expect.any(Number),
     })
-    expect(encryptWithAesKey).not.toHaveBeenCalled()
 
     await waitFor(() =>
       expect(
@@ -412,7 +410,6 @@ describe("encrypt page v2", () => {
     expect(screen.getByRole("button", { name: "Encrypt" })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Encrypt" }))
     expect(sealSymMessage).not.toHaveBeenCalled()
-    expect(encryptWithAesKey).not.toHaveBeenCalled()
 
     await chooseSelectOption(
       user,
@@ -435,7 +432,6 @@ describe("encrypt page v2", () => {
       MAX_SYM_PLAINTEXT_BYTES + 1,
     )
     expect(sealSymMessage).not.toHaveBeenCalled()
-    expect(encryptWithAesKey).not.toHaveBeenCalled()
   })
 
   it("clears plaintext after symmetric success and exposes no SVG affordance", async () => {
@@ -978,7 +974,6 @@ describe("encrypt page v2", () => {
     })
     await screen.findByRole("dialog", { name: "Encryption complete" })
     expect(sealSymMessage).toHaveBeenCalledOnce()
-    expect(encryptWithAesKey).not.toHaveBeenCalled()
 
     expect(busyState).toEqual({
       plaintextDisabled: true,
