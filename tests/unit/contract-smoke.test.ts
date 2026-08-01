@@ -65,13 +65,32 @@ describe("contract smoke", () => {
     expect(() => parseAppEnv({ VITE_QR_RENDER_SIZE: "abc" })).toThrow(
       "Invalid environment variables",
     )
-    for (const legacyAlgorithm of ["MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"]) {
-      expect(() => parseAppEnv({ VITE_DEFAULT_ALGORITHM: legacyAlgorithm })).toThrow(
+    for (const removedAlgorithm of [
+      "MLKEM768_A256GCM",
+      "MLKEM768_MLDSA65_A256GCM",
+      "MLKEM1024_A256GCM",
+    ]) {
+      expect(() => parseAppEnv({ VITE_DEFAULT_ALGORITHM: removedAlgorithm })).toThrow(
         "Invalid environment variables",
       )
     }
     expect(() => parseAppEnv({ VITE_DEFAULT_PQ_PROFILE: "balanced" })).toThrow(
       "Invalid environment variables",
+    )
+  })
+
+  it("omits retired post-quantum preferences from the parsed environment", () => {
+    const parsed = parseAppEnv({})
+    expect(parsed).not.toHaveProperty("defaultPqProfile")
+    expect(parsed).not.toHaveProperty("requireSignature")
+  })
+
+  it.each([
+    ["VITE_DEFAULT_PQ_PROFILE", "maximum"],
+    ["VITE_REQUIRE_SIGNATURE", "false"],
+  ] as const)("rejects retired environment identifier %s", (identifier, value) => {
+    expect(() => parseAppEnv({ [identifier]: value })).toThrow(
+      `Invalid environment variables: ${identifier}`,
     )
   })
 

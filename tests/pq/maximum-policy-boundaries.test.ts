@@ -1,19 +1,60 @@
 import { describe, expect, it, vi } from "vitest"
-import { encodeSignedMessageV2 } from "@/crypto/pq/canonical-cbor"
+import {
+  decodeMlKemEnvelopeV2,
+  decodePublicIdentityBundleV2,
+  encodeCanonicalCbor,
+  encodeSignedMessageV2,
+} from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { createIdentity, rotateIdentity } from "@/crypto/pq/identity"
 import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
-import { maxEnvelopeCiphertextBytes, maxSignedMessageBytes } from "@/crypto/pq/profiles"
+import {
+  DSA_SIZES,
+  KEM_SIZES,
+  maxEnvelopeCiphertextBytes,
+  maxSignedMessageBytes,
+  PQ_PROFILES,
+} from "@/crypto/pq/profiles"
+import {
+  assertActiveSuite,
+  resolveSuite,
+  suiteComponents,
+} from "@/crypto/pq/suites"
+import {
+  validateMlKemEnvelopeV2,
+  validatePublicIdentityBundleV2,
+} from "@/crypto/pq/validation"
 import type { PqCryptoClient, PqWorkerOperation } from "@/crypto/pq/worker-client"
 import { toBase64Url } from "@/lib/base64url"
 import {
+  ML_DSA_ALGORITHMS,
+  ML_KEM_ALGORITHMS,
+  PQ_PROFILE_IDS,
+  WIRE_SUITES,
   type MlKemMessageEnvelopeV2,
   type MlDsaAlgorithm,
   type PostQuantumIdentity,
   type PqPublicBundleRecord,
   type WireSuite,
 } from "@/schemas/domain"
+import { validatePostQuantumIdentity } from "@/schemas/key-schema"
 import { handlePqWorkerRequest } from "@/workers/pq-crypto.worker"
+
+const SIGNED_SUITE = "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
+const REMOVED_WIRE_SUITES = [
+  {
+    suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+    kemCiphertextBytes: 1_568,
+  },
+  {
+    suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+    kemCiphertextBytes: 1_088,
+  },
+  {
+    suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
+    kemCiphertextBytes: 1_088,
+  },
+] as const
 
 function keyId(fill: number): string {
   return toBase64Url(new Uint8Array(16).fill(fill))
@@ -54,7 +95,7 @@ function legacyIdentity(): PostQuantumIdentity {
     identityFingerprint: "3".repeat(64),
     status: "active",
     createdAt: 1_700_000_000_000,
-  }
+  } as unknown as PostQuantumIdentity
 }
 
 function legacyBundle(): PqPublicBundleRecord {
@@ -93,6 +134,41 @@ function legacyEnvelope(): MlKemMessageEnvelopeV2 {
     hkdfSalt: new Uint8Array(32),
     iv: new Uint8Array(12),
     ciphertext: new Uint8Array(16),
+  } as unknown as MlKemMessageEnvelopeV2
+}
+
+function removedSuiteEnvelope({
+  suite,
+  kemCiphertextBytes,
+}: (typeof REMOVED_WIRE_SUITES)[number]) {
+  return {
+    version: 2,
+    type: "pq-message",
+    suite,
+    recipientKemKeyId: keyId(2),
+    kemCiphertext: new Uint8Array(kemCiphertextBytes),
+    hkdfSalt: new Uint8Array(32),
+    iv: new Uint8Array(12),
+    ciphertext: new Uint8Array(16),
+  }
+}
+
+function removedPublicBundle() {
+  return {
+    version: 2,
+    type: "pq-public-identity",
+    identityId: keyId(1),
+    kem: {
+      algorithm: "ML-KEM-768",
+      keyId: keyId(2),
+      publicKey: new Uint8Array(1_184),
+    },
+    signing: {
+      algorithm: "ML-DSA-65",
+      keyId: keyId(3),
+      publicKey: new Uint8Array(1_952),
+    },
+    createdAt: 1_700_000_000_000,
   }
 }
 
@@ -130,7 +206,7 @@ describe("maximum active-policy boundaries", () => {
         client: pq.client,
         vaultKey: await vaultKey(),
         name: "legacy",
-        profile: "balanced",
+        profile: "balanced" as never,
         now: 1_700_000_000_001,
       }),
     ).rejects.toMatchObject({ code: "UNSUPPORTED_ALGORITHM" })
@@ -166,7 +242,7 @@ describe("maximum active-policy boundaries", () => {
         algorithm: "ML-DSA-65",
         value: new Uint8Array(3309),
       },
-    })
+    } as never)
     const cases: Array<{
       operation: PqWorkerOperation
       payload: unknown
@@ -301,14 +377,93 @@ describe("maximum active-policy boundaries", () => {
   })
 })
 
-const EXPECTED_ENVELOPE_CEILING: Record<WireSuite, number> = {
-  "ML-KEM-768+HKDF-SHA256+A256GCM": 120_528,
-  "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM": 124_349,
-  "ML-KEM-1024+HKDF-SHA256+A256GCM": 120_528,
+describe("single active post-quantum vocabulary", () => {
+  it("exports exactly the one signed suite and maximum algorithms", () => {
+    expect(WIRE_SUITES).toEqual([SIGNED_SUITE])
+    expect(ML_KEM_ALGORITHMS).toEqual(["ML-KEM-1024"])
+    expect(ML_DSA_ALGORITHMS).toEqual(["ML-DSA-87"])
+    expect(PQ_PROFILE_IDS).toEqual(["maximum"])
+  })
+
+  it("keeps only maximum rows in the profile size tables", () => {
+    expect(Object.keys(KEM_SIZES)).toEqual(["ML-KEM-1024"])
+    expect(Object.keys(DSA_SIZES)).toEqual(["ML-DSA-87"])
+    expect(Object.keys(PQ_PROFILES)).toEqual(["maximum"])
+  })
+
+  it.each([
+    ["a missing KEM", undefined, "ML-DSA-87"],
+    ["a missing signature", "ML-KEM-1024", undefined],
+    ["the retired 768/65 pair", "ML-KEM-768", "ML-DSA-65"],
+  ] as const)("rejects %s in resolveSuite", (_label, kem, signature) => {
+    expect(() => resolveSuite(kem as never, signature as never)).toThrowError(
+      expect.objectContaining({ code: "UNSUPPORTED_ALGORITHM" }),
+    )
+  })
+
+  it("resolves and decomposes only the signed maximum suite", () => {
+    expect(resolveSuite("ML-KEM-1024", "ML-DSA-87")).toBe(SIGNED_SUITE)
+    expect(suiteComponents(SIGNED_SUITE)).toEqual({
+      kem: "ML-KEM-1024",
+      signature: "ML-DSA-87",
+    })
+    expect(WIRE_SUITES.map((suite) => suiteComponents(suite).signature)).toEqual([
+      "ML-DSA-87",
+    ])
+  })
+
+  it.each(REMOVED_WIRE_SUITES)(
+    "rejects removed suite $suite at the active-policy boundary",
+    ({ suite }) => {
+      expect(() => assertActiveSuite(suite as never)).toThrowError(
+        expect.objectContaining({ code: "UNSUPPORTED_ALGORITHM" }),
+      )
+    },
+  )
+
+  it.each(REMOVED_WIRE_SUITES)(
+    "rejects removed suite $suite at the canonical decoder boundary",
+    (removedSuite) => {
+      const encoded = encodeCanonicalCbor(
+        removedSuiteEnvelope(removedSuite) as never,
+      )
+      expect(() => decodeMlKemEnvelopeV2(encoded)).toThrowError(
+        expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+      )
+    },
+  )
+
+  it.each(REMOVED_WIRE_SUITES)(
+    "rejects removed suite $suite at the strict validator boundary",
+    (removedSuite) => {
+      expect(() =>
+        validateMlKemEnvelopeV2(removedSuiteEnvelope(removedSuite)),
+      ).toThrowError(expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }))
+    },
+  )
+
+  it("rejects ML-KEM-768 and ML-DSA-65 at the public-bundle decoder boundary", () => {
+    const encoded = encodeCanonicalCbor(removedPublicBundle() as never)
+    expect(() => decodePublicIdentityBundleV2(encoded)).toThrowError(
+      expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+    )
+  })
+
+  it("rejects ML-KEM-768 and ML-DSA-65 at the public-bundle validator boundary", () => {
+    expect(() => validatePublicIdentityBundleV2(removedPublicBundle())).toThrowError(
+      expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+    )
+  })
+
+  it("rejects the balanced profile at the stored-identity validator boundary", () => {
+    expect(() => validatePostQuantumIdentity(legacyIdentity())).toThrow()
+  })
+})
+
+const EXPECTED_ENVELOPE_CEILING = {
   "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM": 125_667,
-}
+} as const
 const EXPECTED_SIGNED_MESSAGE_CEILING = {
-  "ML-DSA-65": 124_333,
   "ML-DSA-87": 125_651,
 } as const
 

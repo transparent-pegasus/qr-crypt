@@ -94,7 +94,6 @@ async function runResetAllLocalData(user: UserEvent): Promise<void> {
 describe("key management v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
-    env.requireSignature = false
     resetUi()
     // The terminal boot state is a module singleton; leaving it engaged would
     // make every later test in this file start from a dead application.
@@ -340,7 +339,7 @@ describe("key management v2", () => {
   })
 
   it("rejects a balanced OCI2 bundle before the fingerprint/import flow", async () => {
-    const legacyBundle: PublicIdentityBundleV2 = {
+    const legacyBundle = {
       version: 2,
       type: "pq-public-identity",
       identityId: "B".repeat(22),
@@ -355,7 +354,7 @@ describe("key management v2", () => {
         publicKey: new Uint8Array(1952),
       },
       createdAt: 1_700_000_000_000,
-    }
+    } as unknown as PublicIdentityBundleV2
     encodePublicIdentityBundleV2(legacyBundle)
     const user = userEvent.setup()
     await renderApp("/keys")
@@ -376,7 +375,7 @@ describe("key management v2", () => {
   })
 
   it("rejects balanced OCP2 and OCS2 single keys before exposing fingerprints", async () => {
-    const legacyKem: KemPublicKeyEnvelopeV2 = {
+    const legacyKem = {
       version: 2,
       type: "pq-kem-public-key",
       identityId: "B".repeat(22),
@@ -384,8 +383,8 @@ describe("key management v2", () => {
       keyId: "K".repeat(22),
       publicKey: new Uint8Array(1184),
       createdAt: 1_700_000_000_000,
-    }
-    const legacyDsa: DsaPublicKeyEnvelopeV2 = {
+    } as unknown as KemPublicKeyEnvelopeV2
+    const legacyDsa = {
       version: 2,
       type: "pq-dsa-public-key",
       identityId: "B".repeat(22),
@@ -393,7 +392,7 @@ describe("key management v2", () => {
       keyId: "S".repeat(22),
       publicKey: new Uint8Array(1952),
       createdAt: 1_700_000_000_000,
-    }
+    } as unknown as DsaPublicKeyEnvelopeV2
     const user = userEvent.setup()
     await renderApp("/keys")
     await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
@@ -578,7 +577,6 @@ describe("key management v2", () => {
 describe("settings v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
-    env.requireSignature = false
     resetUi()
     // The terminal boot state is a module singleton; leaving it engaged would
     // make every later test in this file start from a dead application.
@@ -673,26 +671,31 @@ describe("settings v2", () => {
     expect(screen.getByText(deleteError)).toBeInTheDocument()
   })
 
-  it("enforces the environment signature floor", async () => {
-    env.requireSignature = true
-    fakePreferences.requireSignature = true
+  it("offers neither retired post-quantum preference control", async () => {
     await renderApp("/settings")
-    const signature = await screen.findByRole("switch", { name: "Require a signature" })
-    expect(signature).toBeChecked()
-    expect(signature).toBeDisabled()
+    await screen.findByLabelText("Default cryptographic algorithm")
     expect(
-      screen.getByText(
-        /cannot be disabled because it is required by the environment configuration/,
-      ),
-    ).toBeInTheDocument()
-    await userEvent
-      .setup()
-      .click(screen.getByLabelText("Default cryptographic algorithm"))
-    expect(
-      // The unsigned option is the one without a signature algorithm; both
-      // labels now start with the same words.
-      screen.queryByRole("option", { name: /^Post-quantum ML-KEM-1024 \+ AES/ }),
+      screen.queryByRole("combobox", { name: /post-quantum profile/iu }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("switch", { name: "Require a signature" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("offers only symmetric and signed post-quantum algorithms", async () => {
+    const user = userEvent.setup()
+    await renderApp("/settings")
+    const algorithm = await screen.findByLabelText("Default cryptographic algorithm")
+    await user.click(algorithm)
+    expect(
+      screen.queryByRole("option", {
+        name: "Post-quantum ML-KEM-1024 + AES-256-GCM",
+      }),
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Symmetric-key AES-256-GCM",
+      "Post-quantum ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
+    ])
   })
 
   it("switches the settings language and persists the selection", async () => {
