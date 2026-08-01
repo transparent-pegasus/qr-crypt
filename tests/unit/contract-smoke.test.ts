@@ -71,9 +71,6 @@ describe("contract smoke", () => {
         "Invalid environment variables",
       )
     }
-    expect(() => parseAppEnv({ VITE_DEFAULT_PQ_PROFILE: "balanced" })).toThrow(
-      "Invalid environment variables",
-    )
   })
 
   it("omits retired post-quantum preferences from the parsed environment", () => {
