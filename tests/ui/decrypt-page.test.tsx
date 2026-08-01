@@ -84,9 +84,7 @@ async function prepareSymPayload(record: StoredKeyRecord): Promise<{
   }
 }
 
-async function preparePqPayload(
-  signed: boolean,
-): Promise<MlKemMessageEnvelopeV2> {
+async function preparePqPayload(): Promise<MlKemMessageEnvelopeV2> {
   const identity = fakeIdentities[0]!
   const storedBundle = fakeBundles[0]!
   const envelope = await encryptPq({
@@ -98,10 +96,10 @@ async function preparePqPayload(
       },
     },
     plaintext: Uint8Array.of(1),
-    sign: signed ? { identity } : undefined,
+    sign: { identity },
     now: fakePqCreatedAt,
   })
-  fakePqDecrypt.kind = signed ? "signed-valid" : "unsigned"
+  fakePqDecrypt.kind = "signed-valid"
   return envelope
 }
 
@@ -322,7 +320,7 @@ describe("decrypt page v2", () => {
 
   it("refuses a reused message id from a signed PQ payload without opening a result dialog", async () => {
     const user = userEvent.setup()
-    await preparePqPayload(true)
+    await preparePqPayload()
     recordReceipt.mockReturnValueOnce({
       kind: "message-id-reused",
       firstSeenAt: 1_724_000_000_000,
@@ -359,7 +357,7 @@ describe("decrypt page v2", () => {
   it("zeroizes the exact PQ plaintext buffer after a reused message-id refusal", async () => {
     const user = userEvent.setup()
     const plaintext = Uint8Array.of(91, 17, 203, 44, 5, 188)
-    await preparePqPayload(true)
+    await preparePqPayload()
     decryptPqMessage.mockImplementationOnce(async ({ resolveSigningKey }) => {
       const senderSigningKeyId = fakeBundles[0]!.signing.keyId
       await resolveSigningKey(senderSigningKeyId)
@@ -399,7 +397,7 @@ describe("decrypt page v2", () => {
     actualReceiptCache.clearReceipts()
     clearRealReceipts = actualReceiptCache.clearReceipts
     recordReceipt.mockImplementation(actualReceiptCache.recordReceipt)
-    await preparePqPayload(true)
+    await preparePqPayload()
     await renderApp("/decrypt")
     await screen.findByRole("heading", { name: "Scan with the camera" })
     fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
@@ -439,7 +437,7 @@ describe("decrypt page v2", () => {
 
   it("shows sender-reported time without a replay alert for first-seen PQ plaintext", async () => {
     const user = userEvent.setup()
-    await preparePqPayload(true)
+    await preparePqPayload()
     await renderApp("/decrypt")
     await screen.findByRole("heading", { name: "Scan with the camera" })
     fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
@@ -487,7 +485,7 @@ describe("decrypt page v2", () => {
     ).not.toBeInTheDocument()
     expect(recordReceipt).not.toHaveBeenCalled()
 
-    await preparePqPayload(true)
+    await preparePqPayload()
     fakePqDecrypt.kind = "signed-key-unknown"
     fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
       target: { value: "OCM2:unknown-signer" },
@@ -502,7 +500,7 @@ describe("decrypt page v2", () => {
     expect(recordReceipt).not.toHaveBeenCalled()
   })
 
-  it("records exact AES, signed PQ, and unsigned PQ receipt subjects", async () => {
+  it("records exact AES and signed PQ receipt subjects", async () => {
     const user = userEvent.setup()
     await renderApp("/decrypt")
     await screen.findByRole("heading", { name: "Scan with the camera" })
@@ -524,7 +522,7 @@ describe("decrypt page v2", () => {
       ).not.toBeInTheDocument(),
     )
 
-    await preparePqPayload(true)
+    await preparePqPayload()
     fireEvent.change(input, {
       target: { value: "OCM2:signed" },
     })
@@ -539,16 +537,6 @@ describe("decrypt page v2", () => {
         screen.queryByRole("dialog", { name: "Decryption complete" }),
       ).not.toBeInTheDocument(),
     )
-
-    await preparePqPayload(false)
-    fireEvent.change(input, {
-      target: { value: "OCM2:unsigned" },
-    })
-    await waitFor(() => expect(decryptButton).toBeEnabled())
-    await user.click(decryptButton)
-    await screen.findByRole("dialog", {
-      name: "Decryption complete",
-    })
 
     expect(recordReceipt.mock.calls).toEqual([
       [
@@ -569,19 +557,10 @@ describe("decrypt page v2", () => {
         },
         expect.any(Number),
       ],
-      [
-        {
-          kind: "pq-unsigned",
-          recipientKemKeyId: fakeIdentities[0]!.kem.keyId,
-          messageIdHex: fakePqMessageIdHex,
-          envelopeHash: "0000000000000000000000000000000000000000000000000000000000000987",
-        },
-        expect.any(Number),
-      ],
     ])
     expect(
       new Set(recordReceipt.mock.calls.map(([subject]) => subject.envelopeHash)).size,
-    ).toBe(3)
+    ).toBe(2)
   })
 
   it("distinguishes signature validity from person trust and hides unknown-signer plaintext", async () => {
@@ -705,35 +684,6 @@ describe("decrypt page v2", () => {
     ).toBeInTheDocument()
   })
 
-  it("labels unsigned plaintext and suppresses it after a signature failure", async () => {
-    const user = userEvent.setup()
-    fakePqDecrypt.kind = "unsigned"
-    await renderApp("/decrypt")
-    await screen.findByRole("heading", { name: "Scan with the camera" })
-    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
-      target: { value: "OCM2:fake" },
-    })
-    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
-    await waitFor(() => expect(decryptButton).toBeEnabled())
-    await user.click(decryptButton)
-    expect(await screen.findByText("Unsigned")).toBeInTheDocument()
-    expect(screen.getByText("PQ復号済み平文")).toBeInTheDocument()
-
-    const dialog = screen.getByRole("dialog", { name: "Decryption complete" })
-    await user.click(within(dialog).getByRole("button", { name: "Close" }))
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Decryption complete" }),
-      ).not.toBeInTheDocument()
-    })
-    decryptPqMessage.mockRejectedValueOnce(new AppError("SIGNATURE_INVALID"))
-    await user.click(decryptButton)
-    expect(
-      await screen.findByText(messageFor("SIGNATURE_INVALID", "en")),
-    ).toBeInTheDocument()
-    expect(screen.queryByText("PQ復号済み平文")).not.toBeInTheDocument()
-  })
-
   it("re-resolves the recipient from storage and refuses a discarded generation", async () => {
     const user = userEvent.setup()
     const cachedIdentity = fakeIdentities[0]!
@@ -760,9 +710,9 @@ describe("decrypt page v2", () => {
     const cachedIdentity = fakeIdentities[0]!
     findIdentityByKemKeyId.mockResolvedValueOnce({
       ...cachedIdentity,
-      profile: "balanced",
-      kem: { ...cachedIdentity.kem, algorithm: "ML-KEM-768" },
-      signing: { ...cachedIdentity.signing, algorithm: "ML-DSA-65" },
+      profile: "balanced" as never,
+      kem: { ...cachedIdentity.kem, algorithm: "ML-KEM-768" as never },
+      signing: { ...cachedIdentity.signing, algorithm: "ML-DSA-65" as never },
     })
     await renderApp("/decrypt")
     await screen.findByRole("heading", { name: "Scan with the camera" })

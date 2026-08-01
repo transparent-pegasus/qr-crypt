@@ -18,12 +18,6 @@ export type ReceiptSubject =
   | { kind: "aes"; recipientKeyId: string; envelopeHash: string }
   | { kind: "sym"; recipientKeyId: string; envelopeHash: string }
   | {
-      kind: "pq-unsigned"
-      recipientKemKeyId: string
-      messageIdHex: string
-      envelopeHash: string
-    }
-  | {
       kind: "pq-signed"
       recipientKemKeyId: string
       senderFingerprint: string
@@ -54,8 +48,6 @@ function subjectKey(subject: ReceiptSubject): string {
       // Sym-v2 likewise has no message id, so the authenticated envelope is its
       // replay identity.
       return `sym\n${subject.recipientKeyId}\n${subject.envelopeHash}`
-    case "pq-unsigned":
-      return `pq-unsigned\n${subject.recipientKemKeyId}\n${subject.messageIdHex}`
     case "pq-signed":
       return `pq-signed\n${subject.senderFingerprint}\n${subject.recipientKemKeyId}\n${subject.messageIdHex}`
   }

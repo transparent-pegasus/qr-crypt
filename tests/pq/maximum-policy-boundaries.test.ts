@@ -3,7 +3,6 @@ import {
   decodeMlKemEnvelopeV2,
   decodePublicIdentityBundleV2,
   encodeCanonicalCbor,
-  encodeSignedMessageV2,
 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { createIdentity, rotateIdentity } from "@/crypto/pq/identity"
@@ -96,6 +95,24 @@ function legacyIdentity(): PostQuantumIdentity {
     status: "active",
     createdAt: 1_700_000_000_000,
   } as unknown as PostQuantumIdentity
+}
+
+function activeIdentity(): PostQuantumIdentity {
+  return {
+    ...legacyIdentity(),
+    name: "active maximum",
+    profile: "maximum",
+    kem: {
+      ...legacyIdentity().kem,
+      algorithm: "ML-KEM-1024",
+      publicKey: new Uint8Array(1_568),
+    },
+    signing: {
+      ...legacyIdentity().signing,
+      algorithm: "ML-DSA-87",
+      publicKey: new Uint8Array(2_592),
+    },
+  }
 }
 
 function legacyBundle(): PqPublicBundleRecord {
@@ -229,7 +246,7 @@ describe("maximum active-policy boundaries", () => {
   it("rejects every 768/65 operation when the Worker RPC handler is called directly", async () => {
     const identity = legacyIdentity()
     const key = await vaultKey()
-    const signedMessageBytes = encodeSignedMessageV2({
+    const signedMessageBytes = encodeCanonicalCbor({
       body: {
         version: 2,
         messageId: new Uint8Array(16),
@@ -242,7 +259,7 @@ describe("maximum active-policy boundaries", () => {
         algorithm: "ML-DSA-65",
         value: new Uint8Array(3309),
       },
-    } as never)
+    })
     const cases: Array<{
       operation: PqWorkerOperation
       payload: unknown
@@ -354,6 +371,7 @@ describe("maximum active-policy boundaries", () => {
         client: pq.client,
         recipient: legacyBundle(),
         plaintext: new Uint8Array(),
+        sign: { identity: activeIdentity(), vaultKey: await vaultKey() },
         now: 1_700_000_000_001,
       }),
     ).rejects.toMatchObject({ code: "UNSUPPORTED_ALGORITHM" })

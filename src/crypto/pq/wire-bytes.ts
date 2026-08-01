@@ -92,9 +92,9 @@ export function buildVaultAadV2(fields: VaultAadFieldsV2): Uint8Array {
   }
   const roleMatchesAlgorithm =
     (fields.role === "ml-kem-seed" &&
-      (fields.algorithm === "ML-KEM-768" || fields.algorithm === "ML-KEM-1024")) ||
+      fields.algorithm === "ML-KEM-1024") ||
     (fields.role === "ml-dsa-seed" &&
-      (fields.algorithm === "ML-DSA-65" || fields.algorithm === "ML-DSA-87"))
+      fields.algorithm === "ML-DSA-87")
   if (!roleMatchesAlgorithm) throw new AppError("ENCRYPTION_FAILED")
   const value: CanonicalCborValue = {
     version: 2,

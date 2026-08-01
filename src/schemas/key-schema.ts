@@ -192,53 +192,31 @@ const signingEncryptedSeedSchema = z
   })
   .strict()
 
-const kemMaterialSchema = z.discriminatedUnion("algorithm", [
-  z
-    .object({
-      algorithm: z.literal("ML-KEM-768"),
-      keyId: keyIdSchema,
-      publicKey: bytes(KEM_SIZES["ML-KEM-768"].publicKeyBytes),
-      encryptedSeed: kemEncryptedSeedSchema,
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-  z
-    .object({
-      algorithm: z.literal("ML-KEM-1024"),
-      keyId: keyIdSchema,
-      publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
-      encryptedSeed: kemEncryptedSeedSchema,
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-])
+const kemMaterialSchema = z
+  .object({
+    algorithm: z.literal("ML-KEM-1024"),
+    keyId: keyIdSchema,
+    publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
+    encryptedSeed: kemEncryptedSeedSchema,
+    fingerprint: fingerprintSchema,
+  })
+  .strict()
 
-const signingMaterialSchema = z.discriminatedUnion("algorithm", [
-  z
-    .object({
-      algorithm: z.literal("ML-DSA-65"),
-      keyId: keyIdSchema,
-      publicKey: bytes(DSA_SIZES["ML-DSA-65"].publicKeyBytes),
-      encryptedSeed: signingEncryptedSeedSchema,
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-  z
-    .object({
-      algorithm: z.literal("ML-DSA-87"),
-      keyId: keyIdSchema,
-      publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
-      encryptedSeed: signingEncryptedSeedSchema,
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-])
+const signingMaterialSchema = z
+  .object({
+    algorithm: z.literal("ML-DSA-87"),
+    keyId: keyIdSchema,
+    publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
+    encryptedSeed: signingEncryptedSeedSchema,
+    fingerprint: fingerprintSchema,
+  })
+  .strict()
 
 const postQuantumIdentitySchema = z
   .object({
     id: keyIdSchema,
     name: keyNameSchema,
-    profile: z.enum(["balanced", "maximum"]),
+    profile: z.literal("maximum"),
     kem: kemMaterialSchema,
     signing: signingMaterialSchema,
     identityFingerprint: fingerprintSchema,
@@ -251,16 +229,6 @@ const postQuantumIdentitySchema = z
   })
   .strict()
   .superRefine((identity, context) => {
-    const profileMatches =
-      (identity.profile === "balanced" &&
-        identity.kem.algorithm === "ML-KEM-768" &&
-        identity.signing.algorithm === "ML-DSA-65") ||
-      (identity.profile === "maximum" &&
-        identity.kem.algorithm === "ML-KEM-1024" &&
-        identity.signing.algorithm === "ML-DSA-87")
-    if (!profileMatches) {
-      context.addIssue({ code: "custom", path: ["profile"], message: "profile mismatch" })
-    }
     if (new Set([identity.id, identity.kem.keyId, identity.signing.keyId]).size !== 3) {
       context.addIssue({ code: "custom", path: ["id"], message: "key IDs must differ" })
     }
@@ -303,43 +271,23 @@ export function validatePostQuantumIdentity(value: unknown): PostQuantumIdentity
   return postQuantumIdentitySchema.parse(value) as PostQuantumIdentity
 }
 
-const bundleKemSchema = z.discriminatedUnion("algorithm", [
-  z
-    .object({
-      algorithm: z.literal("ML-KEM-768"),
-      keyId: keyIdSchema,
-      publicKey: bytes(KEM_SIZES["ML-KEM-768"].publicKeyBytes),
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-  z
-    .object({
-      algorithm: z.literal("ML-KEM-1024"),
-      keyId: keyIdSchema,
-      publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-])
+const bundleKemSchema = z
+  .object({
+    algorithm: z.literal("ML-KEM-1024"),
+    keyId: keyIdSchema,
+    publicKey: bytes(KEM_SIZES["ML-KEM-1024"].publicKeyBytes),
+    fingerprint: fingerprintSchema,
+  })
+  .strict()
 
-const bundleSigningSchema = z.discriminatedUnion("algorithm", [
-  z
-    .object({
-      algorithm: z.literal("ML-DSA-65"),
-      keyId: keyIdSchema,
-      publicKey: bytes(DSA_SIZES["ML-DSA-65"].publicKeyBytes),
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-  z
-    .object({
-      algorithm: z.literal("ML-DSA-87"),
-      keyId: keyIdSchema,
-      publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
-      fingerprint: fingerprintSchema,
-    })
-    .strict(),
-])
+const bundleSigningSchema = z
+  .object({
+    algorithm: z.literal("ML-DSA-87"),
+    keyId: keyIdSchema,
+    publicKey: bytes(DSA_SIZES["ML-DSA-87"].publicKeyBytes),
+    fingerprint: fingerprintSchema,
+  })
+  .strict()
 
 const pqPublicBundleRecordSchema = z
   .object({
@@ -358,17 +306,6 @@ const pqPublicBundleRecordSchema = z
   })
   .strict()
   .superRefine((record, context) => {
-    const algorithmsMatch =
-      (record.kem.algorithm === "ML-KEM-768" &&
-        record.signing.algorithm === "ML-DSA-65") ||
-      (record.kem.algorithm === "ML-KEM-1024" && record.signing.algorithm === "ML-DSA-87")
-    if (!algorithmsMatch) {
-      context.addIssue({
-        code: "custom",
-        path: ["signing", "algorithm"],
-        message: "profile mismatch",
-      })
-    }
     if (
       (record.trust === "unverified" && record.trustConfirmedAt !== undefined) ||
       (record.trust === "fingerprint-confirmed" && record.trustConfirmedAt === undefined)

@@ -104,7 +104,7 @@ type EncryptionResult =
       artifactBytes: Uint8Array
       generation: number
       recipient: PqPublicBundleRecord
-      sender?: PostQuantumIdentity
+      sender: PostQuantumIdentity
       createdAt: number
       totalBytes: number
       sha256: string
@@ -112,17 +112,12 @@ type EncryptionResult =
 
 const EMPTY_ARTIFACT_BYTES = new Uint8Array()
 
-function algorithmOptions(requireSignature: boolean): UiAlgorithm[] {
+function algorithmOptions(): UiAlgorithm[] {
   const options: UiAlgorithm[] = ["A256GCM"]
-  if (env.enableMlKem && !requireSignature) options.push("MLKEM1024_A256GCM")
   if (env.enableMlKem && env.enableMlDsa) {
     options.push("MLKEM1024_MLDSA87_A256GCM")
   }
   return options
-}
-
-function isSignedAlgorithm(algorithm: UiAlgorithm): boolean {
-  return algorithm === "MLKEM1024_MLDSA87_A256GCM"
 }
 
 export function EncryptPage() {
@@ -199,16 +194,12 @@ export function EncryptPage() {
     frames.length > 0 && !frameSplit.splitting && frameError === null
   const localizedFrameError = useLocalizedMessage(frameError)
 
-  const algorithms = useMemo(
-    () => algorithmOptions(preferences.requireSignature),
-    [preferences.requireSignature],
-  )
+  const algorithms = useMemo(() => algorithmOptions(), [])
   const algorithm = algorithms.includes(algorithmOverride as UiAlgorithm)
     ? (algorithmOverride as UiAlgorithm)
     : algorithms.includes(preferences.defaultAlgorithm)
       ? preferences.defaultAlgorithm
       : (algorithms.at(-1) ?? "A256GCM")
-  const signed = isSignedAlgorithm(algorithm)
   const symmetricKeys = useMemo(() => {
     const records = keys.filter(
       (key) => key.kind === "symmetric" && key.symmetricKey !== undefined,
@@ -261,7 +252,7 @@ export function EncryptPage() {
     !busy &&
     (algorithm === "A256GCM"
       ? selectedKey !== undefined
-      : selectedRecipient !== undefined && (!signed || selectedSender !== undefined))
+      : selectedRecipient !== undefined && selectedSender !== undefined)
 
   useEffect(() => {
     setSensitiveSession({
@@ -345,15 +336,13 @@ export function EncryptPage() {
         })
         await markKeyUsed(selectedKey.id, now).catch(() => undefined)
       } else if (selectedRecipient) {
-        const sender = signed ? selectedSender : undefined
-        if (signed && sender === undefined) throw new AppError("KEY_NOT_FOUND")
+        const sender = selectedSender
+        if (sender === undefined) throw new AppError("KEY_NOT_FOUND")
         const envelope = await encryptPq({
           client: getPqClient(),
           recipient: selectedRecipient,
           plaintext: plaintextBytes,
-          ...(sender === undefined
-            ? {}
-            : { sign: { identity: sender, vaultKey: await getOrCreateVaultKey() } }),
+          sign: { identity: sender, vaultKey: await getOrCreateVaultKey() },
           now,
         })
         const artifactBytes = encodeMlKemEnvelopeV2(envelope)
@@ -372,13 +361,13 @@ export function EncryptPage() {
           artifactBytes,
           generation: resultGenerationRef.current,
           recipient: selectedRecipient,
-          ...(sender === undefined ? {} : { sender }),
+          sender,
           createdAt: now,
           totalBytes: artifactBytes.byteLength,
           sha256,
         })
         await markBundleUsed(selectedRecipient.recordId, now).catch(() => undefined)
-        if (sender) await markIdentityUsed(sender.id, now).catch(() => undefined)
+        await markIdentityUsed(sender.id, now).catch(() => undefined)
       }
       if (preferences.autoClearPlaintextAfterEncrypt) {
         setPlaintext("")
@@ -499,19 +488,17 @@ export function EncryptPage() {
               {t("encrypt.recipient.needsConfirmation")}
             </p>
           )}
-          {signed && (
-            <RecordSelect
-              id="sender-select"
-              label={t("encrypt.senderLabel")}
-              value={senderIdentityId}
-              onChange={setSenderIdentityId}
-              loading={pqLoading}
-              items={signingIdentities.map((identity) => ({
-                value: identity.id,
-                label: identity.name,
-              }))}
-            />
-          )}
+          <RecordSelect
+            id="sender-select"
+            label={t("encrypt.senderLabel")}
+            value={senderIdentityId}
+            onChange={setSenderIdentityId}
+            loading={pqLoading}
+            items={signingIdentities.map((identity) => ({
+              value: identity.id,
+              label: identity.name,
+            }))}
+          />
         </>
       )}
 
@@ -729,7 +716,7 @@ export function EncryptPage() {
                       label={t("encrypt.detail.senderSigningKeyId")}
                       value={
                         result.kind === "pq"
-                          ? (result.sender?.signing.keyId ?? t("common.na"))
+                          ? result.sender.signing.keyId
                           : t("common.na")
                       }
                       mono
@@ -753,9 +740,7 @@ export function EncryptPage() {
                     <DetailRow
                       label={t("encrypt.detail.signature")}
                       value={
-                        result.kind === "pq" && result.sender
-                          ? t("common.yes")
-                          : t("common.na")
+                        result.kind === "pq" ? t("common.yes") : t("common.na")
                       }
                     />
                     <DetailRow

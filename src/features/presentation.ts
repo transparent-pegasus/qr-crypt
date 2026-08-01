@@ -14,7 +14,6 @@ export const ALGORITHM_LABELS: Record<
 > = {
   en: {
     A256GCM: translate("en", "algorithm.A256GCM"),
-    MLKEM1024_A256GCM: translate("en", "algorithm.MLKEM1024_A256GCM"),
     MLKEM1024_MLDSA87_A256GCM: translate(
       "en",
       "algorithm.MLKEM1024_MLDSA87_A256GCM",
@@ -22,7 +21,6 @@ export const ALGORITHM_LABELS: Record<
   },
   ja: {
     A256GCM: translate("ja", "algorithm.A256GCM"),
-    MLKEM1024_A256GCM: translate("ja", "algorithm.MLKEM1024_A256GCM"),
     MLKEM1024_MLDSA87_A256GCM: translate(
       "ja",
       "algorithm.MLKEM1024_MLDSA87_A256GCM",

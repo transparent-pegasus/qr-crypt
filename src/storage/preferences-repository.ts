@@ -1,7 +1,6 @@
 // Preferences persistence.
-// The environment supplies defaults for defaultAlgorithm, qrErrorCorrection,
-// defaultPqProfile, and requireSignature. VITE_REQUIRE_SIGNATURE=true is a floor
-// the user cannot lower. Do not persist delays as preferences; use the
+// The environment supplies defaults for defaultAlgorithm and qrErrorCorrection.
+// Do not persist delays as preferences; use the
 // WebAssembly-runtime-selected env.autoClearSeconds or
 // env.autoClearFallbackSeconds value. As in v1, theme belongs to
 // localStorage("oc-theme") and is outside this store.
@@ -9,7 +8,6 @@ import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
   DEFAULT_GENERATED_DISPLAY_PAIR,
   PQ_PREFERENCE_DEFAULTS,
-  type PqProfileId,
   type Preferences,
   type QrEcLevel,
   type UiAlgorithm,
@@ -34,11 +32,20 @@ export const PREFERENCES_KEY = "preferences"
 
 const UI_ALGORITHMS: readonly UiAlgorithm[] = [
   "A256GCM",
-  "MLKEM1024_A256GCM",
   "MLKEM1024_MLDSA87_A256GCM",
 ]
 
-const PQ_PROFILES_ALLOWED: readonly PqProfileId[] = ["maximum"]
+const PREFERENCE_KEYS = [
+  "defaultAlgorithm",
+  "qrErrorCorrection",
+  "autoClearPlaintextAfterEncrypt",
+  "backgroundClearEnabled",
+  "frameBytes",
+  "frameIntervalMs",
+  "transferTimeoutMinutes",
+  "wipeOnOnline",
+  "resetChurnMb",
+] as const satisfies readonly (keyof Preferences)[]
 
 const EC_LEVELS: readonly QrEcLevel[] = ["L", "M", "Q", "H"]
 
@@ -46,8 +53,6 @@ export function defaultPreferences(): Preferences {
   return {
     ...PQ_PREFERENCE_DEFAULTS,
     defaultAlgorithm: env.defaultAlgorithm,
-    defaultPqProfile: env.defaultPqProfile,
-    requireSignature: env.requireSignature,
     qrErrorCorrection: env.qrErrorCorrection,
     autoClearPlaintextAfterEncrypt: true,
     backgroundClearEnabled: true,
@@ -80,20 +85,21 @@ function isGeneratedDisplayPreferencePair(
 function normalizeLegacyStoredPreferences(
   value: Record<string, unknown>,
 ): Record<string, unknown> {
-  const normalized = { ...value }
+  const normalized: Record<string, unknown> = {}
+  for (const key of PREFERENCE_KEYS) {
+    if (Object.hasOwn(value, key)) normalized[key] = value[key]
+  }
   switch (normalized.defaultAlgorithm) {
     case "RSA-HYBRID":
       normalized.defaultAlgorithm = "A256GCM"
       break
-    case "MLKEM768_A256GCM":
-      normalized.defaultAlgorithm = "MLKEM1024_A256GCM"
-      break
-    case "MLKEM768_MLDSA65_A256GCM":
-      normalized.defaultAlgorithm = "MLKEM1024_MLDSA87_A256GCM"
-      break
-  }
-  if (normalized.defaultPqProfile === "balanced") {
-    normalized.defaultPqProfile = "maximum"
+    default:
+      if (
+        normalized.defaultAlgorithm !== undefined &&
+        !UI_ALGORITHMS.includes(normalized.defaultAlgorithm as UiAlgorithm)
+      ) {
+        delete normalized.defaultAlgorithm
+      }
   }
   const frameBytesBootReadable = isBootReadableFrameBytes(normalized.frameBytes)
   const frameIntervalMsBootReadable = isBootReadableFrameIntervalMs(
@@ -140,10 +146,11 @@ function validatePreferencesPatch(patch: unknown): asserts patch is Partial<Pref
   const hasFrameBytes = "frameBytes" in candidate
   const hasFrameIntervalMs = "frameIntervalMs" in candidate
   if (
+    Object.keys(candidate).some(
+      (key) => !(PREFERENCE_KEYS as readonly string[]).includes(key),
+    ) ||
     ("defaultAlgorithm" in candidate &&
       !UI_ALGORITHMS.includes(candidate.defaultAlgorithm as UiAlgorithm)) ||
-    ("defaultPqProfile" in candidate &&
-      !PQ_PROFILES_ALLOWED.includes(candidate.defaultPqProfile as PqProfileId)) ||
     hasFrameBytes !== hasFrameIntervalMs ||
     (hasFrameBytes &&
       (!isFrameBytes(candidate.frameBytes) ||
@@ -162,17 +169,8 @@ function validatePreferences(value: unknown): Preferences {
     throw new AppError("STORAGE_FAILED")
   }
   const candidate = value as Partial<Preferences>
-  const signatureRequired = candidate.requireSignature === true || env.requireSignature
-  const defaultAlgorithm =
-    signatureRequired && candidate.defaultAlgorithm === "MLKEM1024_A256GCM"
-      ? env.enableMlDsa
-        ? "MLKEM1024_MLDSA87_A256GCM"
-        : "A256GCM"
-      : candidate.defaultAlgorithm
   if (
-    !UI_ALGORITHMS.includes(defaultAlgorithm as UiAlgorithm) ||
-    !PQ_PROFILES_ALLOWED.includes(candidate.defaultPqProfile as PqProfileId) ||
-    typeof candidate.requireSignature !== "boolean" ||
+    !UI_ALGORITHMS.includes(candidate.defaultAlgorithm as UiAlgorithm) ||
     !EC_LEVELS.includes(candidate.qrErrorCorrection as QrEcLevel) ||
     typeof candidate.autoClearPlaintextAfterEncrypt !== "boolean" ||
     typeof candidate.backgroundClearEnabled !== "boolean" ||
@@ -189,10 +187,7 @@ function validatePreferences(value: unknown): Preferences {
     throw new AppError("STORAGE_FAILED")
   }
   return {
-    defaultAlgorithm: defaultAlgorithm as UiAlgorithm,
-    defaultPqProfile: candidate.defaultPqProfile as PqProfileId,
-    // The environment's signature requirement is a floor.
-    requireSignature: signatureRequired,
+    defaultAlgorithm: candidate.defaultAlgorithm as UiAlgorithm,
     qrErrorCorrection: candidate.qrErrorCorrection as QrEcLevel,
     autoClearPlaintextAfterEncrypt: candidate.autoClearPlaintextAfterEncrypt,
     backgroundClearEnabled: candidate.backgroundClearEnabled,

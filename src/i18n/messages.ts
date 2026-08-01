@@ -207,7 +207,6 @@ const en = {
   "offlineAck.reload": "Reload and continue",
 
   "algorithm.A256GCM": "Symmetric-key AES-256-GCM",
-  "algorithm.MLKEM1024_A256GCM": "Post-quantum ML-KEM-1024 + AES-256-GCM",
   "algorithm.MLKEM1024_MLDSA87_A256GCM":
     "Post-quantum ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
 
@@ -430,8 +429,7 @@ const en = {
   "encrypt.signingKeyId": " Key ID: {id}",
   "encrypt.importSigningKey": "Import a signing key",
   "encrypt.result.decryptedModalTitle": "Decryption complete",
-  "encrypt.result.unsigned": "Unsigned",
-  "encrypt.result.aesUnsigned": "Symmetric-key message, unsigned",
+  "encrypt.result.symmetric": "Symmetric-key message",
   "encrypt.result.signatureValid": "The signature is valid for this key",
   "encrypt.result.senderSigningKeyId": "Sender signing key ID: {id}",
   "encrypt.result.identityCheck.label": "Identity verification:",
@@ -574,11 +572,6 @@ const en = {
   "settings.ec.hint":
     "Higher levels are easier to scan but hold less data. This setting applies only to the single-image AES message QR; the symmetric-key QR is fixed at H, and all frame-based QRs (ciphertext, public key, and identity) are fixed at Q.",
   "settings.card.pqMessage": "Post-quantum messages",
-  "settings.requireSignature.label": "Require a signature",
-  "settings.requireSignature.forced":
-    "This cannot be disabled because it is required by the environment configuration.",
-  "settings.requireSignature.hint":
-    "When enabled, unsigned post-quantum options are hidden.",
   "settings.field.transferTimeout": "Scan-state lifetime: {min}–{max} minutes",
   "settings.frameEc.hint": "OCF2 frames always use Q error correction.",
   "settings.card.plaintext": "Plaintext handling",
@@ -872,8 +865,6 @@ const ja = {
   "offlineAck.reload": "再読み込みして続行",
 
   "algorithm.A256GCM": "共通鍵 AES-256-GCM",
-  "algorithm.MLKEM1024_A256GCM":
-    "ポスト量子 ML-KEM-1024 + AES-256-GCM",
   "algorithm.MLKEM1024_MLDSA87_A256GCM":
     "ポスト量子 ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
 
@@ -1096,8 +1087,7 @@ const ja = {
   "encrypt.signingKeyId": " 鍵ID: {id}",
   "encrypt.importSigningKey": "署名鍵を取り込む",
   "encrypt.result.decryptedModalTitle": "復号が完了しました",
-  "encrypt.result.unsigned": "署名なし",
-  "encrypt.result.aesUnsigned": "共通鍵メッセージ、署名なし",
+  "encrypt.result.symmetric": "共通鍵メッセージ",
   "encrypt.result.signatureValid": "署名はこの鍵に対して有効です",
   "encrypt.result.senderSigningKeyId": "送信者署名鍵ID: {id}",
   "encrypt.result.identityCheck.label": "人物確認:",
@@ -1239,11 +1229,6 @@ const ja = {
   "settings.ec.hint":
     "高いほど読み取りに強く、入る量は減ります。この設定が効くのは単一画像のAESメッセージQRだけです。共通鍵QRは常にH、フレーム分割QR（暗号文・公開鍵・公開鍵セット）は常にQです。",
   "settings.card.pqMessage": "ポスト量子メッセージ",
-  "settings.requireSignature.label": "署名を必須にする",
-  "settings.requireSignature.forced":
-    "環境設定で必須化されているため解除できません。",
-  "settings.requireSignature.hint":
-    "有効時は非署名のポスト量子方式を選択肢から隠します。",
   "settings.field.transferTimeout":
     "読取状態の期限 {min}〜{max} 分",
   "settings.frameEc.hint": "OCF2フレームの誤り訂正は常にQです。",

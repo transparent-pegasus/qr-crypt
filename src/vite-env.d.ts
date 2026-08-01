@@ -7,13 +7,11 @@ interface ImportMetaEnv {
   readonly VITE_APP_NAME?: string
   readonly VITE_APP_SHORT_NAME?: string
   readonly VITE_DEFAULT_ALGORITHM?: string
-  readonly VITE_DEFAULT_PQ_PROFILE?: string
   readonly VITE_QR_ERROR_CORRECTION?: string
   readonly VITE_QR_RENDER_SIZE?: string
   readonly VITE_MAX_PLAINTEXT_BYTES?: string
   readonly VITE_ENABLE_ML_KEM?: string
   readonly VITE_ENABLE_ML_DSA?: string
-  readonly VITE_REQUIRE_SIGNATURE?: string
   readonly VITE_QR_FRAME_BYTES?: string
   readonly VITE_QR_FRAME_INTERVAL_MS?: string
   readonly VITE_QR_MAX_FRAMES?: string

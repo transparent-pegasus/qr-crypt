@@ -33,17 +33,16 @@ function expectCode(fn: () => unknown, code: ErrorCode): void {
 }
 
 describe("hkdfInfoV2", () => {
-  it("matches the frozen info bytes for unsigned 768", () => {
-    expect(bytesToHex(hkdfInfoV2("ML-KEM-768+HKDF-SHA256+A256GCM", KEY_ID))).toBe(
-      "51522d43525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02",
-    )
-  })
-
-  it("matches the frozen info bytes for signed 768", () => {
+  it("matches the frozen info bytes for the signed maximum suite", () => {
     expect(
-      bytesToHex(hkdfInfoV2("ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM", KEY_ID)),
+      bytesToHex(
+        hkdfInfoV2(
+          "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
+          KEY_ID,
+        ),
+      ),
     ).toBe(
-      "51522d43525950542d4d4553534147452d5632004d4c2d4b454d2d3736382b4d4c2d4453412d36352b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02",
+      "51522d43525950542d4d4553534147452d5632004d4c2d4b454d2d313032342b4d4c2d4453412d38372b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02",
     )
   })
 
@@ -67,12 +66,12 @@ describe("buildVaultAadV2", () => {
     const aad = buildVaultAadV2({
       identityId: KEY_ID,
       role: "ml-kem-seed",
-      algorithm: "ML-KEM-768",
+      algorithm: "ML-KEM-1024",
       keyId: KEY_ID,
       publicKeySha256: new Uint8Array(32).fill(0x11),
     })
     expect(bytesToHex(aad)).toBe(
-      "a764726f6c656b6d6c2d6b656d2d7365656464747970657271722d63727970742d7661756c742d616164656b657949647641414543417751464267634943516f4c4441304f44776776657273696f6e0269616c676f726974686d6a4d4c2d4b454d2d3736386a6964656e7469747949647641414543417751464267634943516f4c4441304f44776f7075626c69634b657953686132353658201111111111111111111111111111111111111111111111111111111111111111",
+      "a764726f6c656b6d6c2d6b656d2d7365656464747970657271722d63727970742d7661756c742d616164656b657949647641414543417751464267634943516f4c4441304f44776776657273696f6e0269616c676f726974686d6b4d4c2d4b454d2d313032346a6964656e7469747949647641414543417751464267634943516f4c4441304f44776f7075626c69634b657953686132353658201111111111111111111111111111111111111111111111111111111111111111",
     )
   })
 
@@ -82,7 +81,7 @@ describe("buildVaultAadV2", () => {
         buildVaultAadV2({
           identityId: KEY_ID,
           role: "ml-kem-seed",
-          algorithm: "ML-DSA-65",
+          algorithm: "ML-DSA-87",
           keyId: KEY_ID,
           publicKeySha256: new Uint8Array(32),
         }),
@@ -93,7 +92,7 @@ describe("buildVaultAadV2", () => {
         buildVaultAadV2({
           identityId: KEY_ID,
           role: "ml-dsa-seed",
-          algorithm: "ML-KEM-768",
+          algorithm: "ML-KEM-1024",
           keyId: KEY_ID,
           publicKeySha256: new Uint8Array(32),
         }),
@@ -105,8 +104,8 @@ describe("buildVaultAadV2", () => {
 describe("pq fingerprints", () => {
   it("matches the domain-separated frozen fingerprint for an individual key", async () => {
     expect(
-      await pqKeyFingerprint("kem", "ML-KEM-768", new Uint8Array(1184).fill(0x0a)),
-    ).toBe("874c5f32a6464e06a88104f81736753065aeb63c2a5398ddf0d9e93e5d16a6e3")
+      await pqKeyFingerprint("kem", "ML-KEM-1024", new Uint8Array(1568).fill(0x0a)),
+    ).toBe("07fd4244196a40db040d3cc14037e99e09ba332527b4eae6fd10012f24b32e99")
   })
 
   it("fingerprints the identity tuple without name and is independent of name", async () => {
@@ -116,19 +115,18 @@ describe("pq fingerprints", () => {
       identityId: KEY_ID,
       name: "テスト",
       kem: {
-        algorithm: "ML-KEM-768",
+        algorithm: "ML-KEM-1024",
         keyId: KEY_ID,
-        publicKey: new Uint8Array(1184).fill(0x0a),
+        publicKey: new Uint8Array(1568).fill(0x0a),
       },
       signing: {
-        algorithm: "ML-DSA-65",
+        algorithm: "ML-DSA-87",
         keyId: KEY_ID,
-        publicKey: new Uint8Array(1952).fill(0x0b),
+        publicKey: new Uint8Array(2592).fill(0x0b),
       },
       createdAt: 1_700_000_000_000,
     }
-    const expected =
-      "e37a66b4fce2ff58563d283cadc68e4f63da47255093221a4e6944614416e999"
+    const expected = "3d9e7e6a80fb05b71ea77875ec088b43be359de49113c47ceaefde5c51d3f695"
     expect(await pqIdentityFingerprint(bundle)).toBe(expected)
     const renamed = { ...bundle, name: "別名" }
     expect(await pqIdentityFingerprint(renamed)).toBe(expected)

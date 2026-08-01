@@ -16,47 +16,29 @@ export function assertActiveProfile(profile: PqProfileId): void {
 }
 
 export function assertActiveSuite(suite: WireSuite): void {
-  if (
-    suite !== "ML-KEM-1024+HKDF-SHA256+A256GCM" &&
-    suite !== "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
-  ) {
+  if (suite !== "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM") {
     throw new AppError("UNSUPPORTED_ALGORITHM")
   }
 }
 
-// The only permitted signed combinations are (768,65) and (1024,87).
-// Reject mixtures such as 768+87 as type confusion/downgrade attempts.
-export function resolveSuite(kem: MlKemAlgorithm, signature?: MlDsaAlgorithm): WireSuite {
-  if (kem === "ML-KEM-768") {
-    if (signature === undefined) return "ML-KEM-768+HKDF-SHA256+A256GCM"
-    if (signature === "ML-DSA-65") {
-      return "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM"
-    }
+export function resolveSuite(
+  kem: MlKemAlgorithm,
+  signature: MlDsaAlgorithm,
+): WireSuite {
+  if (kem !== "ML-KEM-1024" || signature !== "ML-DSA-87") {
     throw new AppError("UNSUPPORTED_ALGORITHM")
   }
-  if (signature === undefined) return "ML-KEM-1024+HKDF-SHA256+A256GCM"
-  if (signature === "ML-DSA-87") {
-    return "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
-  }
-  throw new AppError("UNSUPPORTED_ALGORITHM")
+  return "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
 }
 
 export interface SuiteComponents {
   kem: MlKemAlgorithm
-  signature?: MlDsaAlgorithm
+  signature: MlDsaAlgorithm
 }
 
 // Reverse lookup for decryption-side cross-binding.
 // It must round-trip with resolveSuite.
 export function suiteComponents(suite: WireSuite): SuiteComponents {
-  switch (suite) {
-    case "ML-KEM-768+HKDF-SHA256+A256GCM":
-      return { kem: "ML-KEM-768" }
-    case "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM":
-      return { kem: "ML-KEM-768", signature: "ML-DSA-65" }
-    case "ML-KEM-1024+HKDF-SHA256+A256GCM":
-      return { kem: "ML-KEM-1024" }
-    case "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM":
-      return { kem: "ML-KEM-1024", signature: "ML-DSA-87" }
-  }
+  assertActiveSuite(suite)
+  return { kem: "ML-KEM-1024", signature: "ML-DSA-87" }
 }

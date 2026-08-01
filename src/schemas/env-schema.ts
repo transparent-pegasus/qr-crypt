@@ -10,7 +10,6 @@ import {
 import { isFrameIntervalMs } from "@/lib/frame-interval"
 import {
   DEFAULT_GENERATED_DISPLAY_PAIR,
-  type PqProfileId,
   type QrEcLevel,
   type UiAlgorithm,
 } from "@/schemas/domain"
@@ -19,14 +18,12 @@ export interface AppEnv {
   appName: string
   appShortName: string
   defaultAlgorithm: UiAlgorithm
-  defaultPqProfile: PqProfileId
   qrErrorCorrection: QrEcLevel
   qrRenderSize: number
   // Post-quantum multipart plaintext ceiling.
   maxPlaintextBytes: number
   enableMlKem: boolean
   enableMlDsa: boolean
-  requireSignature: boolean
   qrFrameBytes: number
   qrFrameIntervalMs: number
   qrMaxFrames: number
@@ -108,9 +105,8 @@ const rawSchema = z.object({
   VITE_APP_NAME: z.string().min(1).default("QR Crypt"),
   VITE_APP_SHORT_NAME: z.string().min(1).default("QR Crypt"),
   VITE_DEFAULT_ALGORITHM: z
-    .enum(["A256GCM", "MLKEM1024_A256GCM", "MLKEM1024_MLDSA87_A256GCM"])
+    .enum(["A256GCM", "MLKEM1024_MLDSA87_A256GCM"])
     .default("A256GCM"),
-  VITE_DEFAULT_PQ_PROFILE: z.enum(["maximum"]).default("maximum"),
   VITE_QR_ERROR_CORRECTION: z.enum(["L", "M", "Q", "H"]).default("Q"),
   // 1024 keeps a version 40 symbol (177 modules plus an 8-module quiet zone) at about
   // 5.5 source pixels per module. At the former 512 the displayed raster, not the
@@ -123,7 +119,6 @@ const rawSchema = z.object({
   VITE_ENABLE_RSA: z.never().optional(),
   VITE_ENABLE_ML_KEM: boolFromString("true"),
   VITE_ENABLE_ML_DSA: boolFromString("true"),
-  VITE_REQUIRE_SIGNATURE: boolFromString("false"),
   VITE_QR_FRAME_BYTES: frameBytesFromString,
   VITE_QR_FRAME_INTERVAL_MS: frameIntervalMsFromString,
   VITE_QR_MAX_FRAMES: intFromString(128, 1, 128),
@@ -136,21 +131,21 @@ const rawSchema = z.object({
 })
 
 export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
+  const unknownViteKeys = Object.keys(raw).filter(
+    (key) => key.startsWith("VITE_") && !(key in rawSchema.shape),
+  )
+  if (unknownViteKeys.length > 0) {
+    throw new Error(`Invalid environment variables: ${unknownViteKeys.join(", ")}`)
+  }
   const parsed = rawSchema.safeParse(raw)
   if (!parsed.success) {
     const paths = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")
     throw new Error(`Invalid environment variables: ${paths}`)
   }
   const v = parsed.data
-  // Cross-field constraints (fail closed; the only silent degradations are the
-  // normalizations listed here):
-  // 1) Requiring signatures while ML-DSA is disabled is invalid → startup error.
-  if (v.VITE_REQUIRE_SIGNATURE && !v.VITE_ENABLE_ML_DSA) {
-    throw new Error(
-      "Invalid environment variables: VITE_REQUIRE_SIGNATURE=true and VITE_ENABLE_ML_DSA=false cannot be used together",
-    )
-  }
-  // 2) Reject before startup any configuration where the raw artifact bytes for a
+  // Cross-field constraints (fail closed; the only silent degradation is the
+  // feature-flag normalization below):
+  // 1) Reject before startup any configuration where the raw artifact bytes for a
   //    maximum signed message with maximum plaintext do not fit at the maximum
   //    selectable density. The renderer clamps each artifact independently, so the
   //    stored/default density is not a boot-capacity constraint.
@@ -162,34 +157,23 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     )
   }
   let defaultAlgorithm: UiAlgorithm = v.VITE_DEFAULT_ALGORITHM
-  // 3) If ML-KEM is disabled and the default algorithm points to PQ, normalize to A256GCM.
+  // 2) Signed PQ requires both ML-KEM and ML-DSA. If either feature is disabled,
+  // normalize a PQ default to A256GCM.
   if (
-    !v.VITE_ENABLE_ML_KEM &&
-    (defaultAlgorithm === "MLKEM1024_A256GCM" ||
-      defaultAlgorithm === "MLKEM1024_MLDSA87_A256GCM")
+    (!v.VITE_ENABLE_ML_KEM || !v.VITE_ENABLE_ML_DSA) &&
+    defaultAlgorithm === "MLKEM1024_MLDSA87_A256GCM"
   ) {
     defaultAlgorithm = "A256GCM"
-  }
-  // 4) If ML-DSA is disabled and the default is signed PQ, normalize to unsigned PQ.
-  if (!v.VITE_ENABLE_ML_DSA && defaultAlgorithm === "MLKEM1024_MLDSA87_A256GCM") {
-    defaultAlgorithm = "MLKEM1024_A256GCM"
-  }
-  // 5) If signatures are required, normalize the default PQ algorithm to signed PQ.
-  //    A256GCM is excluded.
-  if (v.VITE_REQUIRE_SIGNATURE && defaultAlgorithm === "MLKEM1024_A256GCM") {
-    defaultAlgorithm = "MLKEM1024_MLDSA87_A256GCM"
   }
   return {
     appName: v.VITE_APP_NAME,
     appShortName: v.VITE_APP_SHORT_NAME,
     defaultAlgorithm,
-    defaultPqProfile: v.VITE_DEFAULT_PQ_PROFILE,
     qrErrorCorrection: v.VITE_QR_ERROR_CORRECTION,
     qrRenderSize: v.VITE_QR_RENDER_SIZE,
     maxPlaintextBytes: v.VITE_MAX_PLAINTEXT_BYTES,
     enableMlKem: v.VITE_ENABLE_ML_KEM,
     enableMlDsa: v.VITE_ENABLE_ML_DSA,
-    requireSignature: v.VITE_REQUIRE_SIGNATURE,
     qrFrameBytes: v.VITE_QR_FRAME_BYTES,
     qrFrameIntervalMs: v.VITE_QR_FRAME_INTERVAL_MS,
     qrMaxFrames: v.VITE_QR_MAX_FRAMES,

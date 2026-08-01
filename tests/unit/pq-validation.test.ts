@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
+import { maxEnvelopeCiphertextBytes } from "@/crypto/pq/profiles"
 import {
   decodeQrFrameV2,
   encodeCanonicalCbor,
@@ -13,7 +14,6 @@ import {
   FRAME_CHUNK_MAX_BYTES,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
   MAX_PQ_PLAINTEXT_BYTES,
-  MAX_PLAINTEXT_BYTES,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
 import {
@@ -24,6 +24,7 @@ import {
 } from "@/schemas/domain"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
+const ACTIVE_SUITE = "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
 const confirmedBundleFixture: PqPublicBundleRecord = {
   recordId: "recipient-record",
   identityId: "recipient-identity",
@@ -74,9 +75,9 @@ describe("PQ strict validation", () => {
     const envelope = {
       version: 2,
       type: "pq-message",
-      suite: "ML-KEM-768+HKDF-SHA256+A256GCM",
+      suite: ACTIVE_SUITE,
       recipientKemKeyId: KEY_ID,
-      kemCiphertext: new Uint8Array(1088),
+      kemCiphertext: new Uint8Array(1568),
       hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(16),
@@ -85,7 +86,7 @@ describe("PQ strict validation", () => {
     expect(() =>
       validateMlKemEnvelopeV2({
         ...envelope,
-        ciphertext: new Uint8Array(MAX_PLAINTEXT_BYTES + 529),
+        ciphertext: new Uint8Array(maxEnvelopeCiphertextBytes(ACTIVE_SUITE) + 1),
       }),
     ).toThrow("INVALID_QR_PAYLOAD")
     expect(() => validateMlKemEnvelopeV2({ ...envelope, extra: true })).toThrow(
@@ -101,6 +102,7 @@ describe("PQ strict validation", () => {
         client: { encryptPqMessage } as never,
         recipient: {} as never,
         plaintext: new Uint8Array(MAX_PQ_PLAINTEXT_BYTES + 1),
+        sign: {} as never,
         now: 1_700_000_000_000,
       }),
     ).rejects.toMatchObject({ code: "ENCRYPTION_FAILED" })
@@ -120,27 +122,28 @@ describe("PQ strict validation", () => {
         client: { encryptPqMessage } as never,
         recipient: unverifiedRecipient,
         plaintext: new TextEncoder().encode("x"),
+        sign: {} as never,
         now: 1_700_000_000_001,
       }),
     ).rejects.toMatchObject({ code: "KEY_NOT_FOUND" })
     expect(encryptPqMessage).not.toHaveBeenCalled()
   })
 
-  it("rejects mixed bundle profiles and enforces exact public-key lengths", () => {
+  it("accepts the active bundle and enforces exact public-key lengths", () => {
     const bundle = {
       version: 2,
       type: "pq-public-identity",
       identityId: KEY_ID,
       name: "検証",
       kem: {
-        algorithm: "ML-KEM-768",
+        algorithm: "ML-KEM-1024",
         keyId: KEY_ID,
-        publicKey: new Uint8Array(1184),
+        publicKey: new Uint8Array(1568),
       },
       signing: {
-        algorithm: "ML-DSA-65",
+        algorithm: "ML-DSA-87",
         keyId: KEY_ID,
-        publicKey: new Uint8Array(1952),
+        publicKey: new Uint8Array(2592),
       },
       createdAt: 1_700_000_000_000,
     } as const
@@ -150,8 +153,7 @@ describe("PQ strict validation", () => {
         ...bundle,
         signing: {
           ...bundle.signing,
-          algorithm: "ML-DSA-87",
-          publicKey: new Uint8Array(2592),
+          publicKey: new Uint8Array(1952),
         },
       }),
     ).toThrow("INVALID_QR_PAYLOAD")

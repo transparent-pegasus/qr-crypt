@@ -32,7 +32,7 @@ describe("contract smoke", () => {
   it("keeps only the active A256GCM v1 mapper", () => {
     expect(toWireAlgorithm("A256GCM")).toBe("A256GCM")
     expect(toUiAlgorithm("A256GCM")).toBe("A256GCM")
-    expect(() => toWireAlgorithm("MLKEM1024_A256GCM")).toThrow(TypeError)
+    expect(() => toWireAlgorithm("MLKEM1024_A256GCM" as never)).toThrow(TypeError)
   })
 
   it("env parsing applies defaults, cross-field normalization, and retired-value rejection", () => {
