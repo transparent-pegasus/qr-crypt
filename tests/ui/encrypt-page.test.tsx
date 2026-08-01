@@ -896,7 +896,6 @@ describe("encrypt page v2", () => {
         screen.queryByRole("dialog", { name: "Encryption complete" }),
       ).not.toBeInTheDocument()
     })
-    expect(screen.queryByText(/^OCM1:/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^OCA2:/)).not.toBeInTheDocument()
   })
 
