@@ -353,7 +353,7 @@ const en = {
   "keys.import.cameraTitle": "Scan with the camera",
   "keys.import.scanTrigger": "Scan a key QR code",
   "keys.import.payloadLabel": "Key payload",
-  "keys.import.payloadPlaceholder": "Paste OCK1: / OCP2: / OCS2: / OCI2:",
+  "keys.import.payloadPlaceholder": "Paste OCK2: / OCP2: / OCS2: / OCI2:",
   "keys.import.readButton": "Read the key",
   "keys.singleKey.title": "A single key was read",
   "keys.singleKey.kemLabel": "Encryption public key",
@@ -415,9 +415,9 @@ const en = {
   "encrypt.decrypt.cameraTitle": "Scan with the camera",
   "encrypt.decrypt.scanTrigger": "Scan a ciphertext QR code",
   "encrypt.decrypt.payloadLabel": "Ciphertext payload",
-  "encrypt.decrypt.payloadPlaceholder": "Paste an OCM1: or OCM2: payload",
+  "encrypt.decrypt.payloadPlaceholder": "Paste an OCA2: or OCM2: payload",
   "encrypt.decrypt.invalidTitle": "The ciphertext could not be identified",
-  "encrypt.decrypt.invalidBody": "Enter a supported OCM1 or OCM2 ciphertext.",
+  "encrypt.decrypt.invalidBody": "Enter a supported OCA2 or OCM2 ciphertext.",
   "encrypt.detail.method": "Method",
   "encrypt.detail.recipientKeyId": "Recipient key ID",
   "encrypt.pqUnsupported.body":
@@ -468,20 +468,11 @@ const en = {
   "encrypt.recordSelect.placeholder": "Select an option",
   "encrypt.recordSelect.noKeys": "There are no available keys.",
 
-  "scanner.targetLabel.message": "Ciphertext",
-  "scanner.targetLabel.symmetricKey": "Symmetric key",
-  "scanner.targetLabel.publicKey": "Public key",
   "scanner.payloadLabel.foreign": "Not from this app",
   "scanner.acceptedLabel.multipart": "multi-frame QR",
-  "scanner.acceptedLabel.separator": ", ",
-  "scanner.acceptedLabel.fallback": "a configured QR code",
   "scanner.mismatch":
     "This QR code is not accepted ({actual}). This screen can scan {accepted}.",
   "scanner.defaultTitle": "Scan a QR code",
-  "scanner.stopHint.default":
-    "Camera images are not stored. Scanning stops when you press Stop or leave the screen.",
-  "scanner.stopHint.modal":
-    "Camera images are not stored. Scanning stops when you close the dialog, press Stop, or leave the screen.",
   "scanner.stopHint.multipart":
     "Camera images are not stored. Scanning stops when you close the dialog, discard the scan state, or leave the screen.",
   "scanner.status.idlePrompt": "Press Start to start the camera",
@@ -495,10 +486,6 @@ const en = {
   "scanner.status.readerLoading": "Still loading the QR reader…",
   "scanner.reader.reloadHint":
     "The QR reader could not be prepared. Reload the page and try again.",
-  "scanner.status.qrRead": "The QR code was read",
-  "scanner.error.multipartNotAccepted":
-    "This screen does not accept multi-frame QR codes.",
-  "scanner.status.multipartRejected": "The multi-frame QR code was rejected",
   "scanner.status.multipartReading": "Reading a multi-frame QR code",
   "scanner.status.multipartError":
     "The multi-frame QR scan state has an error",
@@ -507,18 +494,10 @@ const en = {
   "scanner.status.stateDiscarded": "The scan state was discarded",
   "scanner.status.multipartReadingUnordered":
     "Reading multi-frame QR codes in any order",
-  "scanner.error.singleWhileMultipart":
-    "A multi-frame QR scan is in progress. Scan a single QR code after completion or after discarding the scan state.",
-  "scanner.status.singleRejectedDuringMultipart":
-    "A single QR code was rejected during a multi-frame scan",
   "scanner.status.unacceptedRejected": "An unaccepted QR code was rejected",
   "scanner.status.cameraError": "A camera error occurred",
   "scanner.status.startFailed": "The camera could not be started",
-  "scanner.status.alignInFrame": "Align the QR code inside the frame",
   "scanner.status.readUnordered": "QR codes can be read in any order",
-  "scanner.error.stopped":
-    "The camera was stopped. Press Restart to resume.",
-  "scanner.status.stopped": "The camera was stopped",
   "scanner.status.discardedCanStart":
     "The scan state was discarded. Press Start to start the camera",
   "scanner.error.hiddenStopped":
@@ -543,7 +522,6 @@ const en = {
     "SHA-256 detects missing or mixed frames during transfer; it does not prove the sender's authenticity.",
   "scanner.error.title": "The scan could not be completed",
   "scanner.button.discard": "Discard scan state",
-  "scanner.button.stopCamera": "Stop camera",
   "scanner.closed.multipartProgress":
     "Multi-frame QR scan in progress: received {received} / {total}",
   "scanner.closed.integrityImported":
@@ -567,9 +545,6 @@ const en = {
   "settings.theme.dark": "Dark",
   "settings.card.defaults": "Defaults",
   "settings.field.defaultAlgorithm": "Default cryptographic algorithm",
-  "settings.field.defaultEc": "Default QR error-correction level",
-  "settings.ec.hint":
-    "Higher levels are easier to scan but hold less data. This setting applies only to the single-image AES message QR; the symmetric-key QR is fixed at H, and all frame-based QRs (ciphertext, public key, and identity) are fixed at Q.",
   "settings.card.pqMessage": "Post-quantum messages",
   "settings.requireSignature.label": "Require a signature",
   "settings.requireSignature.forced":
@@ -1013,7 +988,7 @@ const ja = {
   "keys.import.cameraTitle": "カメラで読み取る",
   "keys.import.scanTrigger": "鍵QRを読み取る",
   "keys.import.payloadLabel": "鍵ペイロード",
-  "keys.import.payloadPlaceholder": "OCK1: / OCP2: / OCS2: / OCI2: を貼り付け",
+  "keys.import.payloadPlaceholder": "OCK2: / OCP2: / OCS2: / OCI2: を貼り付け",
   "keys.import.readButton": "鍵を読み取る",
   "keys.singleKey.title": "単鍵を読み取りました",
   "keys.singleKey.kemLabel": "暗号化用公開鍵",
@@ -1077,10 +1052,10 @@ const ja = {
   "encrypt.decrypt.scanTrigger": "暗号文QRを読み取る",
   "encrypt.decrypt.payloadLabel": "暗号文ペイロード",
   "encrypt.decrypt.payloadPlaceholder":
-    "OCM1: または OCM2: ペイロードを貼り付けてください",
+    "OCA2: または OCM2: ペイロードを貼り付けてください",
   "encrypt.decrypt.invalidTitle": "暗号文を確認できません",
   "encrypt.decrypt.invalidBody":
-    "対応するOCM1/OCM2暗号文を入力してください。",
+    "対応するOCA2/OCM2暗号文を入力してください。",
   "encrypt.detail.method": "方式",
   "encrypt.detail.recipientKeyId": "受信者鍵ID",
   "encrypt.pqUnsupported.body":
@@ -1130,20 +1105,11 @@ const ja = {
   "encrypt.recordSelect.placeholder": "選択してください",
   "encrypt.recordSelect.noKeys": "使用できる鍵がありません。",
 
-  "scanner.targetLabel.message": "暗号文",
-  "scanner.targetLabel.symmetricKey": "共通鍵",
-  "scanner.targetLabel.publicKey": "公開鍵",
   "scanner.payloadLabel.foreign": "本アプリ以外",
   "scanner.acceptedLabel.multipart": "複数QR",
-  "scanner.acceptedLabel.separator": "・",
-  "scanner.acceptedLabel.fallback": "設定されたQR",
   "scanner.mismatch":
     "受理対象外のQRです({actual})。この画面では{accepted}を読み取れます。",
   "scanner.defaultTitle": "QRコードを読み取る",
-  "scanner.stopHint.default":
-    "カメラ画像は保存されません。停止ボタンまたは画面離脱で停止します。",
-  "scanner.stopHint.modal":
-    "カメラ画像は保存されません。閉じる・停止ボタン・画面離脱で停止します。",
   "scanner.stopHint.multipart":
     "カメラ画像は保存されません。閉じる・破棄ボタン・画面離脱で停止します。",
   "scanner.status.idlePrompt": "起動ボタンを押すとカメラを開始します",
@@ -1157,10 +1123,6 @@ const ja = {
   "scanner.status.readerLoading": "QRリーダーを読み込んでいます…",
   "scanner.reader.reloadHint":
     "QRリーダーを準備できませんでした。ページを再読み込みしてからやり直してください。",
-  "scanner.status.qrRead": "QRコードを読み取りました",
-  "scanner.error.multipartNotAccepted":
-    "この画面では複数QRを受理しません。",
-  "scanner.status.multipartRejected": "複数QRを拒否しました",
   "scanner.status.multipartReading": "複数QRを読み取り中です",
   "scanner.status.multipartError":
     "複数QRの読取状態にエラーがあります",
@@ -1169,18 +1131,10 @@ const ja = {
   "scanner.status.stateDiscarded": "読取状態を破棄しました",
   "scanner.status.multipartReadingUnordered":
     "複数QRを順不同で読み取り中です",
-  "scanner.error.singleWhileMultipart":
-    "複数QR読取中です。単発QRは読取完了または破棄後に読み取ってください。",
-  "scanner.status.singleRejectedDuringMultipart":
-    "複数QR読取中の単発QRを拒否しました",
   "scanner.status.unacceptedRejected": "受理対象外のQRを拒否しました",
   "scanner.status.cameraError": "カメラでエラーが発生しました",
   "scanner.status.startFailed": "カメラを起動できませんでした",
-  "scanner.status.alignInFrame": "QRコードを枠内に合わせてください",
   "scanner.status.readUnordered": "QRコードを順不同で読み取れます",
-  "scanner.error.stopped":
-    "カメラを停止しました。再起動ボタンで再開できます。",
-  "scanner.status.stopped": "カメラを停止しました",
   "scanner.status.discardedCanStart":
     "読取状態を破棄しました。起動ボタンでカメラを開始できます",
   "scanner.error.hiddenStopped":
@@ -1205,7 +1159,6 @@ const ja = {
     "SHA-256は転送中の欠損・混在検出用であり、送信者の真正性を証明しません。",
   "scanner.error.title": "読み取りを完了できません",
   "scanner.button.discard": "読取状態を破棄",
-  "scanner.button.stopCamera": "カメラを停止",
   "scanner.closed.multipartProgress":
     "複数QR読取中: 受信 {received} / {total}",
   "scanner.closed.integrityImported":
@@ -1229,9 +1182,6 @@ const ja = {
   "settings.theme.dark": "ダーク",
   "settings.card.defaults": "既定値",
   "settings.field.defaultAlgorithm": "デフォルト暗号方式",
-  "settings.field.defaultEc": "デフォルトQR誤り訂正レベル",
-  "settings.ec.hint":
-    "高いほど読み取りに強く、入る量は減ります。この設定が効くのは単一画像のAESメッセージQRだけです。共通鍵QRは常にH、フレーム分割QR（暗号文・公開鍵・公開鍵セット）は常にQです。",
   "settings.card.pqMessage": "ポスト量子メッセージ",
   "settings.requireSignature.label": "署名を必須にする",
   "settings.requireSignature.forced":

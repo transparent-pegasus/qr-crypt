@@ -551,7 +551,7 @@ describe("key management v2", () => {
     expect(fakeKeys).toHaveLength(0)
   })
 
-  it("keeps single-frame OCK1 camera import behind a secret-key confirmation", async () => {
+  it("rejects a retired OCK1 payload at the multipart camera boundary", async () => {
     const user = userEvent.setup()
     const originalCount = fakeKeys.length
     await renderApp("/keys")
@@ -562,16 +562,16 @@ describe("key management v2", () => {
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     await act(async () => emitScannedPayload("OCK1:imported-key-000001"))
 
-    const dialog = await screen.findByRole("dialog", { name: "Import a symmetric key" })
-    const save = within(dialog).getByRole("button", { name: "Save the symmetric key" })
-    expect(save).toBeDisabled()
-    await user.click(
-      within(dialog).getByRole("checkbox", {
-        name: "I trust the channel used to share this key",
-      }),
-    )
-    await user.click(save)
-    await waitFor(() => expect(fakeKeys).toHaveLength(originalCount + 1))
+    expect(
+      await screen.findByText(
+        "This QR code is not accepted (Not from this app). This screen can scan multi-frame QR.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole("dialog", { name: "Import a symmetric key" }),
+    ).not.toBeInTheDocument()
+    expect(importSymmetricKeyRecordV2).not.toHaveBeenCalled()
+    expect(fakeKeys).toHaveLength(originalCount)
   })
 })
 

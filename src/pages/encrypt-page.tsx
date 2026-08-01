@@ -209,12 +209,10 @@ export function EncryptPage() {
       ? preferences.defaultAlgorithm
       : (algorithms.at(-1) ?? "A256GCM")
   const signed = isSignedAlgorithm(algorithm)
-  const symmetricKeys = useMemo(() => {
-    const records = keys.filter(
-      (key) => key.kind === "symmetric" && key.symmetricKey !== undefined,
-    )
-    return groupSymmetricKeys(records).map((group) => group.head)
-  }, [keys])
+  const symmetricKeys = useMemo(
+    () => groupSymmetricKeys(keys).map((group) => group.head),
+    [keys],
+  )
   const selectedKey = symmetricKeys.find((key) => key.id === selectedKeyId)
   const recipients = useMemo(
     () =>

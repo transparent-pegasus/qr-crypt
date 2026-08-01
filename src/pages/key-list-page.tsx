@@ -145,14 +145,10 @@ export function KeyListPage() {
   if (bundleDetailId !== null && !pqLoading && bundleDetail === null) {
     setBundleDetailId(null)
   }
-  const symmetricKeys = useMemo(
-    () => keys.filter((key) => key.kind === "symmetric"),
-    [keys],
-  )
   const identityGroups = useMemo(() => groupIdentities(identities), [identities])
   const symmetricGroups = useMemo(
-    () => groupSymmetricKeys(symmetricKeys),
-    [symmetricKeys],
+    () => groupSymmetricKeys(keys),
+    [keys],
   )
   const ownKeyItems = useMemo<OwnKeyItem[]>(
     () =>

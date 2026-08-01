@@ -33,7 +33,7 @@ const HAS_RETIRED_SINGLE_PROPS: HasRetiredSingleProps = false
 
 function frameOnlyProps(
   session = new MultipartScanSession(5),
-  onComplete = vi.fn(),
+  onComplete: PanelProps["multipart"]["onComplete"] = vi.fn(),
 ) {
   return { multipart: { session, onComplete } }
 }

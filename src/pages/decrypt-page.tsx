@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router"
 import { AlertCircle, CheckCircle2, LoaderCircle, LockOpen } from "lucide-react"
 import { toast } from "sonner"
-import { decryptWithAesKey, openSymMessage } from "@/crypto/aes-gcm"
+import { openSymMessage } from "@/crypto/aes-gcm"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
   decodeMlKemEnvelopeV2,
@@ -46,7 +46,6 @@ import { bytesToHex, bytesToUtf8 } from "@/lib/bytes"
 import { buildV2Payload } from "@/qr/payload-v2"
 import {
   decodePayload,
-  encodeEnvelopeToPayload,
   payloadSha256Hex,
 } from "@/qr/payload"
 import type {
@@ -112,11 +111,7 @@ export function DecryptPage() {
     setReplayAcknowledged(false)
   }, [])
 
-  const symmetricKeys = useMemo(
-    () =>
-      keys.filter((key) => key.kind === "symmetric" && key.symmetricKey !== undefined),
-    [keys],
-  )
+  const symmetricKeys = keys
 
   const multipartSession = useMemo(
     () => new MultipartScanSession(preferences.transferTimeoutMinutes),
@@ -128,8 +123,7 @@ export function DecryptPage() {
     if (!input) return null
     try {
       const decoded = decodePayload(input)
-      return decoded.kind === "message" ||
-        decoded.kind === "sym-message" ||
+      return decoded.kind === "sym-message" ||
         decoded.kind === "pq-message"
         ? decoded
         : null
@@ -142,7 +136,7 @@ export function DecryptPage() {
     parsedDecrypt?.kind === "pq-message" &&
     !isActiveWireSuite(parsedDecrypt.envelope.suite)
   const decryptSymmetricKey =
-    parsedDecrypt?.kind === "message" || parsedDecrypt?.kind === "sym-message"
+    parsedDecrypt?.kind === "sym-message"
       ? symmetricKeys.find((key) => key.id === parsedDecrypt.envelope.keyId)
       : undefined
   const decryptIdentity =
@@ -205,7 +199,6 @@ export function DecryptPage() {
     try {
       const decoded = decodePayload(payload.trim())
       parsed =
-        decoded.kind === "message" ||
         decoded.kind === "sym-message" ||
         decoded.kind === "pq-message"
           ? decoded
@@ -217,7 +210,7 @@ export function DecryptPage() {
     if (parsed.kind === "pq-message" && !isActiveWireSuite(parsed.envelope.suite)) return
 
     const symmetricKey =
-      parsed.kind === "message" || parsed.kind === "sym-message"
+      parsed.kind === "sym-message"
         ? symmetricKeys.find((key) => key.id === parsed.envelope.keyId)
         : undefined
     const identity =
@@ -240,38 +233,24 @@ export function DecryptPage() {
     setError(null)
     clearDecrypted()
     try {
-      if (parsed.kind !== "pq-message" && symmetricKey?.symmetricKey) {
-        const decryptedBytes =
-          parsed.kind === "message"
-            ? await decryptWithAesKey({
-                key: symmetricKey.symmetricKey,
-                envelope: parsed.envelope,
-              })
-            : await openSymMessage({
-                record: symmetricKey,
-                envelope: parsed.envelope,
-              })
+      if (parsed.kind === "sym-message" && symmetricKey) {
+        const decryptedBytes = await openSymMessage({
+          record: symmetricKey,
+          envelope: parsed.envelope,
+        })
         try {
           const envelopeHash = await payloadSha256Hex(
-            parsed.kind === "message"
-              ? encodeEnvelopeToPayload(parsed.envelope)
-              : buildV2Payload(
-                  "sym-message",
-                  encodeSymMessageEnvelopeV2(parsed.envelope),
-                ),
+            buildV2Payload(
+              "sym-message",
+              encodeSymMessageEnvelopeV2(parsed.envelope),
+            ),
           )
           const verdict = recordReceipt(
-            parsed.kind === "message"
-              ? {
-                  kind: "aes",
-                  recipientKeyId: symmetricKey.id,
-                  envelopeHash,
-                }
-              : {
-                  kind: "sym",
-                  recipientKeyId: symmetricKey.id,
-                  envelopeHash,
-                },
+            {
+              kind: "sym",
+              recipientKeyId: symmetricKey.id,
+              envelopeHash,
+            },
             Date.now(),
           )
           // Unreachable for symmetric messages — their receipt identity includes the
@@ -403,16 +382,9 @@ export function DecryptPage() {
           <QrScannerModal
             triggerLabel={t("encrypt.decrypt.scanTrigger")}
             className="space-y-6"
-            singleTargets={["message"]}
             cameraAvailable={camera}
             triggerDisabled={busy}
             title={t("encrypt.decrypt.scanTrigger")}
-            onSingleScan={(_target, payload) => {
-              setDecryptInput(payload)
-              clearDecrypted()
-              setError(null)
-              pendingDecryptRef.current = payload
-            }}
             multipart={{
               session: multipartSession,
               onComplete: ({ artifactType, artifactBytes }) => {
@@ -500,11 +472,7 @@ export function DecryptPage() {
             <div className="space-y-2 text-sm">
               <DetailRow
                 label={t("encrypt.detail.method")}
-                value={
-                  parsedDecrypt.kind === "message"
-                    ? "A256GCM"
-                    : parsedDecrypt.envelope.suite
-                }
+                value={parsedDecrypt.envelope.suite}
               />
               <DetailRow
                 label={t("encrypt.detail.recipientKeyId")}

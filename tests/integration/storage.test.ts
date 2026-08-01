@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { readBootDecision } from "@/app/boot/boot-controller"
-import { decryptWithAesKey, encryptWithAesKey } from "@/crypto/aes-gcm"
+import { openSymMessage, sealSymMessage } from "@/crypto/aes-gcm"
 import {
   createSymmetricKeyRecord,
   rotateSymmetricKeyRecord,
@@ -172,9 +172,8 @@ describe("key repository", () => {
     expect(used?.useCount).toBe(5)
     expect(used?.lastUsedAt).toBe(NOW + 2)
 
-    const beforeClose = await encryptWithAesKey({
-      key: first.symmetricKey!,
-      keyId: first.id,
+    const beforeClose = await sealSymMessage({
+      record: first,
       plaintext: utf8ToBytes("再起動後"),
       now: NOW + 3,
     })
@@ -182,8 +181,8 @@ describe("key repository", () => {
     const restored = await getKeyRecord(first.id)
     expect(restored?.symmetricKey).toBeDefined()
     expect(
-      await decryptWithAesKey({
-        key: restored!.symmetricKey!,
+      await openSymMessage({
+        record: restored!,
         envelope: beforeClose,
       }),
     ).toEqual(utf8ToBytes("再起動後"))
@@ -221,7 +220,7 @@ describe("key repository", () => {
       id: generateKeyId(),
       fingerprint: "f".repeat(64),
       algorithm: "AES-ECB",
-    } as StoredKeyRecord
+    } as unknown as StoredKeyRecord
     await (await getDb()).add(STORE_KEYS, malformed)
     expect((await listKeyRecords()).map((record) => record.id)).not.toContain(
       malformed.id,
@@ -377,7 +376,6 @@ describe("preferences and plaintext non-persistence", () => {
   it("uses env defaults and validates persisted updates", async () => {
     expect(await getPreferences()).toMatchObject({
       defaultAlgorithm: env.defaultAlgorithm,
-      qrErrorCorrection: "Q",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
       frameBytes: DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes,
@@ -386,13 +384,11 @@ describe("preferences and plaintext non-persistence", () => {
     expect(
       await updatePreferences({
         defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM",
-        qrErrorCorrection: "M",
         autoClearPlaintextAfterEncrypt: false,
         backgroundClearEnabled: false,
       }),
     ).toMatchObject({
       defaultAlgorithm: "MLKEM1024_MLDSA87_A256GCM",
-      qrErrorCorrection: "M",
       autoClearPlaintextAfterEncrypt: false,
       backgroundClearEnabled: false,
     })
@@ -405,12 +401,11 @@ describe("preferences and plaintext non-persistence", () => {
       await getDb()
     ).put(STORE_PREFERENCES, {
       key: "preferences",
-      value: { qrErrorCorrection: "H", backgroundClearSeconds: 12 },
+      value: { backgroundClearSeconds: 12 },
     })
     const migrated = await getPreferences()
     expect(migrated).toMatchObject({
       defaultAlgorithm: env.defaultAlgorithm,
-      qrErrorCorrection: "H",
       autoClearPlaintextAfterEncrypt: true,
       backgroundClearEnabled: true,
     })
@@ -443,13 +438,12 @@ describe("preferences and plaintext non-persistence", () => {
     }
   })
 
-  it("normalizes legacy PQ/RSA preferences while boot preserves wipeOnOnline=false", async () => {
+  it("normalizes legacy PQ preferences while boot preserves wipeOnOnline=false", async () => {
     const database = await getDb()
     await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
     const cases = [
       ["MLKEM768_A256GCM", "MLKEM1024_A256GCM"],
       ["MLKEM768_MLDSA65_A256GCM", "MLKEM1024_MLDSA87_A256GCM"],
-      ["RSA-HYBRID", "A256GCM"],
     ] as const
 
     for (const [legacyAlgorithm, expectedAlgorithm] of cases) {
@@ -498,10 +492,10 @@ describe("preferences and plaintext non-persistence", () => {
         wipeOnOnline: false,
       })
       await expect(
-        updatePreferences({ qrErrorCorrection: "M" }),
+        updatePreferences({ backgroundClearEnabled: false }),
       ).resolves.toMatchObject({
         ...DEFAULT_GENERATED_DISPLAY_PAIR,
-        qrErrorCorrection: "M",
+        backgroundClearEnabled: false,
         wipeOnOnline: false,
       })
       expect(await database.count(STORE_KEYS)).toBe(1)
@@ -570,9 +564,8 @@ describe("preferences and plaintext non-persistence", () => {
     const plaintext = utf8ToBytes(secret)
     const aesRecord = await createSymmetricKeyRecord("AES保管", NOW)
     await saveKeyRecord(aesRecord)
-    await encryptWithAesKey({
-      key: aesRecord.symmetricKey!,
-      keyId: aesRecord.id,
+    await sealSymMessage({
+      record: aesRecord,
       plaintext,
       now: NOW + 2,
     })

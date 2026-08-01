@@ -13,7 +13,7 @@ export function randomBytes(length: number): Uint8Array {
   }
 }
 
-// 16 random bytes → 22 base64url characters (docs/spec/qr-protocol.md §8).
+// 16 random bytes → 22 base64url characters.
 export function generateKeyId(): string {
   return toBase64Url(randomBytes(16))
 }

@@ -1,6 +1,6 @@
 // Preferences persistence.
-// The environment supplies defaults for defaultAlgorithm, qrErrorCorrection,
-// defaultPqProfile, and requireSignature. VITE_REQUIRE_SIGNATURE=true is a floor
+// The environment supplies defaults for defaultAlgorithm, defaultPqProfile, and
+// requireSignature. VITE_REQUIRE_SIGNATURE=true is a floor
 // the user cannot lower. Do not persist delays as preferences; use the
 // WebAssembly-runtime-selected env.autoClearSeconds or
 // env.autoClearFallbackSeconds value. As in v1, theme belongs to
@@ -11,7 +11,6 @@ import {
   PQ_PREFERENCE_DEFAULTS,
   type PqProfileId,
   type Preferences,
-  type QrEcLevel,
   type UiAlgorithm,
 } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -40,15 +39,12 @@ const UI_ALGORITHMS: readonly UiAlgorithm[] = [
 
 const PQ_PROFILES_ALLOWED: readonly PqProfileId[] = ["maximum"]
 
-const EC_LEVELS: readonly QrEcLevel[] = ["L", "M", "Q", "H"]
-
 export function defaultPreferences(): Preferences {
   return {
     ...PQ_PREFERENCE_DEFAULTS,
     defaultAlgorithm: env.defaultAlgorithm,
     defaultPqProfile: env.defaultPqProfile,
     requireSignature: env.requireSignature,
-    qrErrorCorrection: env.qrErrorCorrection,
     autoClearPlaintextAfterEncrypt: true,
     backgroundClearEnabled: true,
     frameBytes: env.qrFrameBytes,
@@ -82,9 +78,6 @@ function normalizeLegacyStoredPreferences(
 ): Record<string, unknown> {
   const normalized = { ...value }
   switch (normalized.defaultAlgorithm) {
-    case "RSA-HYBRID":
-      normalized.defaultAlgorithm = "A256GCM"
-      break
     case "MLKEM768_A256GCM":
       normalized.defaultAlgorithm = "MLKEM1024_A256GCM"
       break
@@ -173,7 +166,6 @@ function validatePreferences(value: unknown): Preferences {
     !UI_ALGORITHMS.includes(defaultAlgorithm as UiAlgorithm) ||
     !PQ_PROFILES_ALLOWED.includes(candidate.defaultPqProfile as PqProfileId) ||
     typeof candidate.requireSignature !== "boolean" ||
-    !EC_LEVELS.includes(candidate.qrErrorCorrection as QrEcLevel) ||
     typeof candidate.autoClearPlaintextAfterEncrypt !== "boolean" ||
     typeof candidate.backgroundClearEnabled !== "boolean" ||
     !isFrameBytes(candidate.frameBytes) ||
@@ -193,7 +185,6 @@ function validatePreferences(value: unknown): Preferences {
     defaultPqProfile: candidate.defaultPqProfile as PqProfileId,
     // The environment's signature requirement is a floor.
     requireSignature: signatureRequired,
-    qrErrorCorrection: candidate.qrErrorCorrection as QrEcLevel,
     autoClearPlaintextAfterEncrypt: candidate.autoClearPlaintextAfterEncrypt,
     backgroundClearEnabled: candidate.backgroundClearEnabled,
     frameBytes: candidate.frameBytes,

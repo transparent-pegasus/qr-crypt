@@ -60,8 +60,8 @@ const storedKeyBaseSchema = z
   .object({
     id: keyIdSchema,
     name: keyNameSchema,
-    kind: z.enum(["symmetric", "rsa-key-pair", "public-key"]),
-    algorithm: z.string().min(1),
+    kind: z.literal("symmetric"),
+    algorithm: z.literal("A256GCM"),
     fingerprint: fingerprintSchema,
     createdAt: timestampSchema,
     lastUsedAt: timestampSchema.optional(),
@@ -69,9 +69,7 @@ const storedKeyBaseSchema = z
     status: z.enum(["active", "rotated"]),
     rotatedFromId: keyIdSchema.optional(),
     rotatedAt: timestampSchema.optional(),
-    publicKey: z.custom<CryptoKey>(isCryptoKey).optional(),
-    privateKey: z.custom<CryptoKey>(isCryptoKey).optional(),
-    symmetricKey: z.custom<CryptoKey>(isCryptoKey).optional(),
+    symmetricKey: z.custom<CryptoKey>(isCryptoKey),
   })
   .strict()
   .superRefine((record, context) => {
@@ -119,59 +117,9 @@ function isAesKey(key: CryptoKey): boolean {
   )
 }
 
-function isRsaKey(key: CryptoKey, type: "public" | "private"): boolean {
-  const algorithm = key.algorithm as RsaHashedKeyAlgorithm
-  const exponent = algorithm.publicExponent
-  const expectedUsages =
-    type === "public"
-      ? (["encrypt", "wrapKey"] as const)
-      : (["decrypt", "unwrapKey"] as const)
-  return (
-    key.type === type &&
-    algorithm.name === "RSA-OAEP" &&
-    algorithm.modulusLength === 3072 &&
-    exponent instanceof Uint8Array &&
-    exponent.length === 3 &&
-    exponent[0] === 1 &&
-    exponent[1] === 0 &&
-    exponent[2] === 1 &&
-    algorithm.hash.name === "SHA-256" &&
-    (type === "public" ? key.extractable : !key.extractable) &&
-    hasExactUsages(key, expectedUsages)
-  )
-}
-
 export function validateStoredKeyRecord(value: unknown): StoredKeyRecord {
   const record = storedKeyBaseSchema.parse(value)
-  const valid = (() => {
-    switch (record.kind) {
-      case "symmetric":
-        return (
-          record.algorithm === "A256GCM" &&
-          record.symmetricKey !== undefined &&
-          isAesKey(record.symmetricKey) &&
-          record.publicKey === undefined &&
-          record.privateKey === undefined
-        )
-      case "rsa-key-pair":
-        return (
-          record.algorithm === "RSA-OAEP-3072" &&
-          record.publicKey !== undefined &&
-          isRsaKey(record.publicKey, "public") &&
-          (record.privateKey === undefined || isRsaKey(record.privateKey, "private")) &&
-          record.symmetricKey === undefined
-        )
-      case "public-key":
-        return (
-          record.algorithm === "RSA-OAEP-3072" &&
-          record.publicKey !== undefined &&
-          isRsaKey(record.publicKey, "public") &&
-          record.privateKey === undefined &&
-          record.symmetricKey === undefined
-        )
-    }
-  })()
-  if (!valid) throw new Error("invalid key record")
+  if (!isAesKey(record.symmetricKey)) throw new Error("invalid key record")
   return record as StoredKeyRecord
 }
 

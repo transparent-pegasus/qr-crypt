@@ -77,8 +77,6 @@ export async function saveSymmetricRotation(
   const next = checkedRecord(rotated.next)
   const previous = checkedRecord(rotated.previous)
   if (
-    next.kind !== "symmetric" ||
-    previous.kind !== "symmetric" ||
     next.status !== "active" ||
     previous.status !== "rotated" ||
     next.rotatedFromId !== previous.id ||

@@ -18,15 +18,8 @@ import { resetUi } from "./helpers/render-app"
 function scanner(
   session: MultipartScanSession,
   onComplete = vi.fn(),
-  onSingleScan = vi.fn(),
 ) {
-  return (
-    <QrScannerPanel
-      singleTargets={["message"]}
-      onSingleScan={onSingleScan}
-      multipart={{ session, onComplete }}
-    />
-  )
+  return <QrScannerPanel multipart={{ session, onComplete }} />
 }
 
 describe("QrScannerPanel multipart scan", () => {
@@ -126,11 +119,10 @@ describe("QrScannerPanel multipart scan", () => {
     expect(scannerStop).not.toHaveBeenCalled()
   })
 
-  it("locks to multipart synchronously and rejects a competing single payload", async () => {
+  it("rejects a competing bare payload while collecting frames", async () => {
     const user = userEvent.setup()
     const session = new MultipartScanSession(5)
-    const onSingleScan = vi.fn()
-    render(scanner(session, vi.fn(), onSingleScan))
+    render(scanner(session))
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
 
@@ -139,10 +131,9 @@ describe("QrScannerPanel multipart scan", () => {
 
     expect(
       await screen.findByText(
-        "A multi-frame QR scan is in progress. Scan a single QR code after completion or after discarding the scan state.",
+        "This QR code is not accepted (Not from this app). This screen can scan multi-frame QR.",
       ),
     ).toBeInTheDocument()
-    expect(onSingleScan).not.toHaveBeenCalled()
     expect(await screen.findByText("Received 1 / 2")).toBeInTheDocument()
     expect(scannerStop).not.toHaveBeenCalled()
   })

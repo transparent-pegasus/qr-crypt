@@ -1,6 +1,5 @@
 // High-level API that packages key generation and import into StoredKeyRecord.
 // It does not persist records; storage/key-repository owns persistence.
-import type { SymmetricKeyEnvelopeV1 } from "@/crypto/envelope"
 import type { StoredKeyRecord, SymmetricKeyEnvelopeV2 } from "@/schemas/domain"
 import { generateAesKey } from "@/crypto/aes-gcm"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -56,8 +55,6 @@ export async function rotateSymmetricKeyRecord(
 ): Promise<RotatedSymmetricKey> {
   try {
     if (
-      current.kind !== "symmetric" ||
-      current.symmetricKey === undefined ||
       current.status !== "active" ||
       now < current.createdAt
     ) {
@@ -98,51 +95,6 @@ export function groupSymmetricKeys(
     })
 }
 
-export async function importSymmetricKeyRecord(
-  name: string,
-  envelope: SymmetricKeyEnvelopeV1,
-  now: number,
-): Promise<StoredKeyRecord> {
-  try {
-    if (!validTimestamp(now)) throw new AppError("STORAGE_FAILED")
-    const symmetricKey = await importAesKeyRaw(envelope.key)
-    return {
-      id: envelope.keyId,
-      name: normalizedName(name),
-      kind: "symmetric",
-      algorithm: "A256GCM",
-      fingerprint: await fingerprintAesKey(symmetricKey),
-      createdAt: now,
-      useCount: 0,
-      status: "active",
-      rotatedAt: undefined,
-      symmetricKey,
-    }
-  } catch (error) {
-    throw toAppError(error, "INVALID_QR_PAYLOAD")
-  }
-}
-
-export async function buildSymmetricKeyEnvelope(
-  record: StoredKeyRecord,
-): Promise<SymmetricKeyEnvelopeV1> {
-  try {
-    if (record.kind !== "symmetric" || record.symmetricKey === undefined) {
-      throw new AppError("KEY_TYPE_MISMATCH")
-    }
-    return {
-      v: 1,
-      type: "symmetric-key",
-      algorithm: "A256GCM",
-      keyId: record.id,
-      createdAt: record.createdAt,
-      key: await exportAesKeyRaw(record.symmetricKey),
-    }
-  } catch (error) {
-    throw toAppError(error, "KEY_TYPE_MISMATCH")
-  }
-}
-
 export async function importSymmetricKeyRecordV2(
   name: string,
   envelope: SymmetricKeyEnvelopeV2,
@@ -176,9 +128,7 @@ export async function buildSymmetricKeyEnvelopeV2(
 ): Promise<SymmetricKeyEnvelopeV2> {
   try {
     if (
-      record.kind !== "symmetric" ||
-      record.status !== "active" ||
-      record.symmetricKey === undefined
+      record.status !== "active"
     ) {
       throw new AppError("KEY_TYPE_MISMATCH")
     }

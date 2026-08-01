@@ -11,7 +11,6 @@ import { isFrameIntervalMs } from "@/lib/frame-interval"
 import {
   DEFAULT_GENERATED_DISPLAY_PAIR,
   type PqProfileId,
-  type QrEcLevel,
   type UiAlgorithm,
 } from "@/schemas/domain"
 
@@ -20,7 +19,6 @@ export interface AppEnv {
   appShortName: string
   defaultAlgorithm: UiAlgorithm
   defaultPqProfile: PqProfileId
-  qrErrorCorrection: QrEcLevel
   qrRenderSize: number
   // Post-quantum multipart plaintext ceiling.
   maxPlaintextBytes: number
@@ -111,16 +109,13 @@ const rawSchema = z.object({
     .enum(["A256GCM", "MLKEM1024_A256GCM", "MLKEM1024_MLDSA87_A256GCM"])
     .default("A256GCM"),
   VITE_DEFAULT_PQ_PROFILE: z.enum(["maximum"]).default("maximum"),
-  VITE_QR_ERROR_CORRECTION: z.enum(["L", "M", "Q", "H"]).default("Q"),
   // 1024 keeps a version 40 symbol (177 modules plus an 8-module quiet zone) at about
   // 5.5 source pixels per module. At the former 512 the displayed raster, not the
   // camera, capped what a phone could resolve at the dense end of the density range.
   VITE_QR_RENDER_SIZE: intFromString(1024, 128, 1024),
-  // Post-quantum multipart plaintext ceiling. The A256GCM single-QR path
-  // derives its smaller pre-encryption limit from the selected EC capacity.
+  // Post-quantum multipart plaintext ceiling. Symmetric messages have a smaller,
+  // fixed single-frame ceiling in lib/limits.
   VITE_MAX_PLAINTEXT_BYTES: intFromString(120_000, 1, 120_000),
-  // RSA is retired; reject stale configuration instead of silently ignoring it.
-  VITE_ENABLE_RSA: z.never().optional(),
   VITE_ENABLE_ML_KEM: boolFromString("true"),
   VITE_ENABLE_ML_DSA: boolFromString("true"),
   VITE_REQUIRE_SIGNATURE: boolFromString("false"),
@@ -135,7 +130,15 @@ const rawSchema = z.object({
   VITE_BUILD_SHA: z.string().min(1).default("development"),
 })
 
+const APP_ENV_KEYS = new Set(Object.keys(rawSchema.shape))
+
 export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
+  const unknownKeys = Object.keys(raw).filter(
+    (key) => key.startsWith("VITE_") && !APP_ENV_KEYS.has(key),
+  )
+  if (unknownKeys.length > 0) {
+    throw new Error(`Invalid environment variables: ${unknownKeys.join(", ")}`)
+  }
   const parsed = rawSchema.safeParse(raw)
   if (!parsed.success) {
     const paths = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ")
@@ -184,7 +187,6 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     appShortName: v.VITE_APP_SHORT_NAME,
     defaultAlgorithm,
     defaultPqProfile: v.VITE_DEFAULT_PQ_PROFILE,
-    qrErrorCorrection: v.VITE_QR_ERROR_CORRECTION,
     qrRenderSize: v.VITE_QR_RENDER_SIZE,
     maxPlaintextBytes: v.VITE_MAX_PLAINTEXT_BYTES,
     enableMlKem: v.VITE_ENABLE_ML_KEM,

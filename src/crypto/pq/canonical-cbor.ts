@@ -11,9 +11,7 @@
 //   - Unknown keys, trailing data, and non-canonical input are rejected.
 //
 // Implementation: encode and decode this profile directly so the wire contract is isolated
-// from version-dependent behavior in external encoders (cbor-x is only for the v1 path.
-// Its defaults use a fixed two-byte map length and convert integers above 2^32 to float64,
-// so it cannot implement this profile). Decoding structurally enforces shortest forms,
+// from version-dependent behavior in external encoders. Decoding structurally enforces shortest forms,
 // ascending keys, and a single value, then defensively checks re-encoded byte equality.
 import type {
   DsaPublicKeyEnvelopeV2,

@@ -39,8 +39,8 @@ export function QrScannerModal(props: QrScannerModalProps) {
     className,
   } = props
   const title = titleProp ?? t("scanner.defaultTitle")
-  const stopHint = stopHintProp ?? t("scanner.stopHint.modal")
-  const multipartSession = props.multipart?.session
+  const stopHint = stopHintProp ?? t("scanner.stopHint.multipart")
+  const multipartSession = props.multipart.session
   const multipartRef = useRef(props.multipart)
   const contentRef = useRef<HTMLDivElement>(null)
   const mountedRef = useRef(true)
@@ -49,7 +49,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
   const deliveryBusyRef = useRef(false)
   const automaticCloseRef = useRef(false)
   const previousClosedKindRef = useRef<TransferState["kind"]>(
-    multipartSession?.state().kind ?? "idle",
+    multipartSession.state().kind,
   )
   const [open, setOpen] = useState(false)
   const [deliveryBusy, setDeliveryBusy] = useState(false)
@@ -84,11 +84,11 @@ export function QrScannerModal(props: QrScannerModalProps) {
   }, [])
 
   useEffect(() => {
-    previousClosedKindRef.current = multipartSession?.state().kind ?? "idle"
+    previousClosedKindRef.current = multipartSession.state().kind
   }, [multipartSession])
 
   useEffect(() => {
-    if (open || multipartSession === undefined) return
+    if (open) return
     let polling = true
 
     const inspectClosedSession = async () => {
@@ -133,9 +133,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
       if (!beginDelivery()) return
       try {
         if (!multipartSession.claimCompletion()) return
-        const onComplete = multipartRef.current?.onComplete
-        if (onComplete === undefined) return
-        await onComplete({
+        await multipartRef.current.onComplete({
           artifactType: next.artifactType,
           artifactBytes: next.artifactBytes,
         })
@@ -171,7 +169,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
       openGenerationRef.current += 1
       automaticCloseRef.current = false
       previousClosedKindRef.current =
-        multipartSession?.state().kind ?? "idle"
+        multipartSession.state().kind
       setClosedNotice(null)
     }
     setOpen(nextOpen)
@@ -215,43 +213,23 @@ export function QrScannerModal(props: QrScannerModalProps) {
     }
   }
 
-  const panel =
-    props.multipart === undefined ? (
-      <QrScannerPanel
-        singleTargets={props.singleTargets}
-        onSingleScan={(target, payload) =>
-          deliverFromPanel(panelGeneration, () =>
-            props.onSingleScan(target, payload),
-          )
-        }
-        cameraAvailable={cameraAvailable}
-        title={title}
-        autoStart
-        stopHint={stopHint}
-      />
-    ) : (
-      <QrScannerPanel
-        singleTargets={props.singleTargets}
-        onSingleScan={(target, payload) =>
-          deliverFromPanel(panelGeneration, () =>
-            props.onSingleScan(target, payload),
-          )
-        }
-        cameraAvailable={cameraAvailable}
-        title={title}
-        autoStart
-        stopHint={stopHint}
-        multipart={{
-          session: props.multipart.session,
-          onComplete: (completion) =>
-            deliverFromPanel(
-              panelGeneration,
-              () => props.multipart?.onComplete(completion),
-              localized("scanner.closed.integrityImported"),
-            ),
-        }}
-      />
-    )
+  const panel = (
+    <QrScannerPanel
+      cameraAvailable={cameraAvailable}
+      title={title}
+      autoStart
+      stopHint={stopHint}
+      multipart={{
+        session: props.multipart.session,
+        onComplete: (completion) =>
+          deliverFromPanel(
+            panelGeneration,
+            () => props.multipart.onComplete(completion),
+            localized("scanner.closed.integrityImported"),
+          ),
+      }}
+    />
+  )
 
   return (
     <div

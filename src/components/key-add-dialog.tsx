@@ -34,7 +34,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
   createSymmetricKeyRecord,
-  importSymmetricKeyRecord,
   importSymmetricKeyRecordV2,
 } from "@/crypto/key-generation"
 import {
@@ -79,7 +78,7 @@ import { saveIdentity } from "@/storage/pq-identity-repository"
 
 export type KeyAddMode = "create" | "import"
 
-type CreateKeyKind = "pq-identity" | "symmetric"
+type CreateKeyType = "pq-identity" | "symmetric"
 
 type SingleKeyRead = KemPublicKeyEnvelopeV2 | DsaPublicKeyEnvelopeV2
 
@@ -131,8 +130,8 @@ export function KeyAddDialog({
   const [view, setView] = useState<AddView>({ kind: mode ?? "create" })
   const [openedAs, setOpenedAs] = useState<KeyAddMode | null>(mode)
   // Follow the configured default algorithm unless the user explicitly selects a kind.
-  const [createKindOverride, setCreateKindOverride] = useState<CreateKeyKind | null>(null)
-  const createKind: CreateKeyKind =
+  const [createKindOverride, setCreateKindOverride] = useState<CreateKeyType | null>(null)
+  const createKind: CreateKeyType =
     createKindOverride ??
     (preferences.defaultAlgorithm === "A256GCM" ? "symmetric" : "pq-identity")
   const [keyName, setKeyName] = useState("")
@@ -316,18 +315,11 @@ export function KeyAddDialog({
     if (abandoned(opening)) return
     switch (decoded.kind) {
       case "symmetric-key": {
-        const record =
-          "v" in decoded.envelope
-            ? await importSymmetricKeyRecord(
-                symmetricImportDefaultName(),
-                decoded.envelope,
-                Date.now(),
-              )
-            : await importSymmetricKeyRecordV2(
-                symmetricImportDefaultName(),
-                decoded.envelope,
-                Date.now(),
-              )
+        const record = await importSymmetricKeyRecordV2(
+          symmetricImportDefaultName(),
+          decoded.envelope,
+          Date.now(),
+        )
         beginSymmetricImport(record)
         return
       }
@@ -354,17 +346,6 @@ export function KeyAddDialog({
     } catch (caught) {
       if (abandoned(opening)) return
       setError(toAppError(caught, "INVALID_QR_PAYLOAD").code)
-    } finally {
-      if (!abandoned(opening)) setBusy(false)
-    }
-  }
-
-  const importScannedPayload = async (payload: string) => {
-    const opening = openingRef.current
-    setBusy(true)
-    setError(null)
-    try {
-      await importDecoded(decodePayload(payload), opening)
     } finally {
       if (!abandoned(opening)) setBusy(false)
     }
@@ -548,10 +529,8 @@ export function KeyAddDialog({
                   <p className="text-sm text-muted-foreground">{t("keys.demo.hint")}</p>
                   <QrScannerModal
                     triggerLabel={t("keys.import.scanTrigger")}
-                    singleTargets={["symmetric-key"]}
                     cameraAvailable={camera}
                     title={t("keys.import.scanTrigger")}
-                    onSingleScan={(_target, payload) => importScannedPayload(payload)}
                     multipart={{
                       session: scanSession,
                       onComplete: (completion) => handleCompletedArtifact(completion),
@@ -722,8 +701,8 @@ function CreateField({
   busy,
   onCreate,
 }: {
-  kind: CreateKeyKind
-  onKindChange: (kind: CreateKeyKind) => void
+  kind: CreateKeyType
+  onKindChange: (kind: CreateKeyType) => void
   value: string
   onChange: (value: string) => void
   busy: boolean
@@ -740,7 +719,7 @@ function CreateField({
           <Label htmlFor="create-key-kind">{t("keys.create.kindLabel")}</Label>
           <Select
             value={kind}
-            onValueChange={(value) => onKindChange(value as CreateKeyKind)}
+          onValueChange={(value) => onKindChange(value as CreateKeyType)}
           >
             <SelectTrigger id="create-key-kind" className="h-11">
               <SelectValue />

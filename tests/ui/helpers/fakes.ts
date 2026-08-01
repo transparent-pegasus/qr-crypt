@@ -2,11 +2,6 @@ import { useState } from "react"
 import { vi } from "vitest"
 import type { RegisterSWOptions } from "virtual:pwa-register/react"
 import { AppError, type ErrorCode } from "@/crypto/errors"
-import type {
-  AesMessageEnvelopeV1,
-  PublicKeyEnvelopeV1,
-  SymmetricKeyEnvelopeV1,
-} from "@/crypto/envelope"
 import type { DecryptPqMessageArgs } from "@/crypto/pq/decrypt-orchestrator"
 import type { ReceiptSubject, ReceiptVerdict } from "@/features/receipt-cache"
 import { storeOnlyZip } from "@/lib/best-effort-zip"
@@ -37,17 +32,12 @@ import {
 
 const encoder = new TextEncoder()
 
-function cryptoKey(type: KeyType): CryptoKey {
+function cryptoKey(): CryptoKey {
   return {
-    type,
-    extractable: type !== "private",
-    algorithm: { name: type === "secret" ? "AES-GCM" : "RSA-OAEP" },
-    usages:
-      type === "secret"
-        ? ["encrypt", "decrypt"]
-        : type === "public"
-          ? ["encrypt"]
-          : ["decrypt"],
+    type: "secret",
+    extractable: true,
+    algorithm: { name: "AES-GCM", length: 256 },
+    usages: ["encrypt", "decrypt"],
   } as CryptoKey
 }
 
@@ -62,30 +52,7 @@ function defaultKeys(): StoredKeyRecord[] {
       createdAt: 1_720_000_000_000,
       useCount: 2,
       status: "active",
-      symmetricKey: cryptoKey("secret"),
-    },
-    {
-      id: "rsa-key-00000001",
-      name: "受信鍵B",
-      kind: "rsa-key-pair",
-      algorithm: "RSA-OAEP-3072",
-      fingerprint: "102132435465768798a9bacbdcedfe0f102132435465768798a9bacbdcedfe0f",
-      createdAt: 1_721_000_000_000,
-      useCount: 1,
-      status: "active",
-      publicKey: cryptoKey("public"),
-      privateKey: cryptoKey("private"),
-    },
-    {
-      id: "public-key-0001",
-      name: "相手の公開鍵",
-      kind: "public-key",
-      algorithm: "RSA-OAEP-3072",
-      fingerprint: "2031425364758697a8b9cadbecfd0e1f2031425364758697a8b9cadbecfd0e1f",
-      createdAt: 1_722_000_000_000,
-      useCount: 0,
-      status: "active",
-      publicKey: cryptoKey("public"),
+      symmetricKey: cryptoKey(),
     },
   ]
 }
@@ -156,7 +123,6 @@ export const fakePreferences: Preferences = {
   defaultAlgorithm: "A256GCM",
   frameBytes: 1_000,
   frameIntervalMs: 200,
-  qrErrorCorrection: "Q",
   autoClearPlaintextAfterEncrypt: true,
   backgroundClearEnabled: true,
 }
@@ -173,7 +139,6 @@ export const fakePwa = {
 
 let artifactCounter = 0
 let keyCounter = 0
-let lastMessageEnvelope: AesMessageEnvelopeV1 | null = null
 let lastSymMessageEnvelope: SymMessageEnvelopeV2 | null = null
 const symmetricFingerprintsByKeyId = new Map<string, string>()
 let lastPqEnvelope: MlKemMessageEnvelopeV2 = {
@@ -230,31 +195,6 @@ export const generateKeyId = vi.fn(() => {
 export const shortId = vi.fn((value: string) => value.slice(0, 8))
 export const randomBytes = vi.fn((length: number) => new Uint8Array(length))
 
-export const encryptWithAesKey = vi.fn(
-  async ({
-    keyId,
-    plaintext,
-    now,
-  }: {
-    keyId: string
-    plaintext: Uint8Array
-    now: number
-  }) => {
-    const envelope: AesMessageEnvelopeV1 = {
-      v: 1,
-      type: "message",
-      algorithm: "A256GCM",
-      keyId,
-      createdAt: now,
-      iv: new Uint8Array(12),
-      ciphertext: new Uint8Array([...plaintext, ...new Uint8Array(16)]),
-      aad: encoder.encode(`OCAAD1|${keyId}`),
-    }
-    lastMessageEnvelope = envelope
-    return envelope
-  },
-)
-export const decryptWithAesKey = vi.fn(async () => encoder.encode("復号済み平文"))
 export const sealSymMessage = vi.fn(
   async ({
     record,
@@ -282,7 +222,7 @@ export const sealSymMessage = vi.fn(
 export const openSymMessage = vi.fn(async () =>
   encoder.encode("sym-v2復号済み平文"),
 )
-export const generateAesKey = vi.fn(async () => cryptoKey("secret"))
+export const generateAesKey = vi.fn(async () => cryptoKey())
 function generatedFingerprint(counter: number): string {
   return counter.toString(16).padStart(64, "0")
 }
@@ -299,7 +239,7 @@ export const createSymmetricKeyRecord = vi.fn(
       createdAt: now,
       useCount: 0,
       status: "active",
-      symmetricKey: cryptoKey("secret"),
+      symmetricKey: cryptoKey(),
     }
   },
 )
@@ -318,22 +258,10 @@ async function defaultRotateSymmetricKeyRecord(
 export const rotateSymmetricKeyRecord = vi.fn(
   defaultRotateSymmetricKeyRecord,
 )
-export const buildSymmetricKeyEnvelope = vi.fn(
-  async (record: StoredKeyRecord): Promise<SymmetricKeyEnvelopeV1> => ({
-    v: 1,
-    type: "symmetric-key",
-    algorithm: "A256GCM",
-    keyId: record.id,
-    createdAt: record.createdAt,
-    key: new Uint8Array(32),
-  }),
-)
 export const buildSymmetricKeyEnvelopeV2 = vi.fn(
   async (record: StoredKeyRecord): Promise<SymmetricKeyEnvelopeV2> => {
     if (
-      record.kind !== "symmetric" ||
-      record.status !== "active" ||
-      record.symmetricKey === undefined
+      record.status !== "active"
     ) {
       throw new AppError("KEY_TYPE_MISMATCH")
     }
@@ -348,19 +276,6 @@ export const buildSymmetricKeyEnvelopeV2 = vi.fn(
     }
   },
 )
-export const importSymmetricKeyRecord = vi.fn(
-  async (name: string, envelope: SymmetricKeyEnvelopeV1, now: number) => ({
-    id: envelope.keyId,
-    name,
-    kind: "symmetric" as const,
-    algorithm: "A256GCM",
-    fingerprint: generatedFingerprint(301),
-    createdAt: now,
-    useCount: 0,
-    status: "active",
-    symmetricKey: cryptoKey("secret"),
-  }),
-)
 export const importSymmetricKeyRecordV2 = vi.fn(
   async (name: string, envelope: SymmetricKeyEnvelopeV2, now: number) => {
     const record: StoredKeyRecord = {
@@ -373,54 +288,13 @@ export const importSymmetricKeyRecordV2 = vi.fn(
       createdAt: now,
       useCount: 0,
       status: "active",
-      symmetricKey: cryptoKey("secret"),
+      symmetricKey: cryptoKey(),
     }
     envelope.key.fill(0)
     return record
   },
 )
-export const encodeEnvelopeToPayload = vi.fn(
-  (envelope: AesMessageEnvelopeV1 | SymmetricKeyEnvelopeV1 | PublicKeyEnvelopeV1) => {
-    if (envelope.type === "message") {
-      lastMessageEnvelope = envelope
-      return `OCM1:${envelope.keyId}`
-    }
-    if (envelope.type === "symmetric-key") return `OCK1:${envelope.keyId}`
-    return `OCP1:${envelope.keyId}`
-  },
-)
 export const decodePayload = vi.fn((payload: string) => {
-  if (payload.startsWith("OCM1:") && lastMessageEnvelope) {
-    return { kind: "message" as const, envelope: lastMessageEnvelope }
-  }
-  if (payload.startsWith("OCM1:")) {
-    return {
-      kind: "message" as const,
-      envelope: {
-        v: 1,
-        type: "message",
-        algorithm: "A256GCM",
-        keyId: payload.slice(5),
-        createdAt: 1_720_000_000_000,
-        iv: new Uint8Array(12),
-        ciphertext: new Uint8Array(24),
-        aad: encoder.encode("OCAAD1"),
-      } satisfies AesMessageEnvelopeV1,
-    }
-  }
-  if (payload.startsWith("OCK1:")) {
-    return {
-      kind: "symmetric-key" as const,
-      envelope: {
-        v: 1,
-        type: "symmetric-key",
-        algorithm: "A256GCM",
-        keyId: payload.slice(5),
-        createdAt: 1_720_000_000_000,
-        key: new Uint8Array(32),
-      } satisfies SymmetricKeyEnvelopeV1,
-    }
-  }
   if (payload.startsWith("OCK2:")) {
     return {
       kind: "symmetric-key" as const,
@@ -429,26 +303,24 @@ export const decodePayload = vi.fn((payload: string) => {
       ),
     }
   }
-  if (payload.startsWith("OCP1:")) {
-    return {
-      kind: "public-key" as const,
-      envelope: {
-        v: 1,
-        type: "public-key",
-        algorithm: "RSA-OAEP-3072",
-        keyId: payload.slice(5),
-        createdAt: 1_720_000_000_000,
-        spki: new Uint8Array(400),
-      } satisfies PublicKeyEnvelopeV1,
-    }
-  }
   if (payload.startsWith("OCM2:")) {
     return { kind: "pq-message" as const, envelope: lastPqEnvelope }
   }
-  if (payload.startsWith("OCA2:") && lastSymMessageEnvelope !== null) {
+  if (payload.startsWith("OCA2:")) {
     return {
       kind: "sym-message" as const,
-      envelope: lastSymMessageEnvelope,
+      envelope:
+        lastSymMessageEnvelope ??
+        ({
+          version: 2,
+          type: "sym-message",
+          suite: "HKDF-SHA256+A256GCM",
+          keyId: payload.slice("OCA2:".length),
+          createdAt: 1_723_000_000_001,
+          hkdfSalt: new Uint8Array(32),
+          iv: new Uint8Array(12),
+          ciphertext: new Uint8Array(16),
+        } satisfies SymMessageEnvelopeV2),
     }
   }
   if (payload.startsWith("OCI2:")) {
@@ -507,14 +379,6 @@ export const qrByteCapacity = vi.fn(
 export const payloadFits = vi.fn(
   (payload: string, level: "L" | "M" | "Q" | "H") =>
     payload.length <= qrByteCapacity(level),
-)
-export const estimatePayloadChars = vi.fn((bytes: number) => bytes * 2 + 220)
-export const ecLevelFor = vi.fn(
-  (kind: "message" | "stored-key" | "multipart-frame", prefs: Preferences) =>
-    kind === "message" ? prefs.qrErrorCorrection : kind === "multipart-frame" ? "Q" : "H",
-)
-export const relayMessageEcLevel = vi.fn((payload: string) =>
-  payload.length <= 1_663 ? "Q" : payload.length <= 2_331 ? "M" : "L",
 )
 export const qrPngBlob = vi.fn<
   (payload: string, options: QrExportOptions) => Promise<Blob>
@@ -595,7 +459,7 @@ export function emitScannedPayload(payload: string): void {
 
 export const disposePqClient = vi.fn()
 export const createPqCryptoClient = vi.fn(() => ({ dispose: disposePqClient }))
-export const getOrCreateVaultKey = vi.fn(async () => cryptoKey("secret"))
+export const getOrCreateVaultKey = vi.fn(async () => cryptoKey())
 
 export const buildPublicBundle = vi.fn(
   (identity: PostQuantumIdentity): PublicIdentityBundleV2 => ({
@@ -1147,7 +1011,6 @@ export function resetFakes(): void {
     defaultAlgorithm: "A256GCM",
     frameBytes: 1_000,
     frameIntervalMs: 200,
-    qrErrorCorrection: "Q",
     autoClearPlaintextAfterEncrypt: true,
     backgroundClearEnabled: true,
   } satisfies Preferences)
@@ -1160,7 +1023,6 @@ export function resetFakes(): void {
   fakePwa.offlineReady = false
   artifactCounter = 0
   keyCounter = 0
-  lastMessageEnvelope = null
   lastSymMessageEnvelope = null
   symmetricFingerprintsByKeyId.clear()
   lastPqEnvelope = {
