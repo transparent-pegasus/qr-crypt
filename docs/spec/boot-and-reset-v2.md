@@ -67,21 +67,25 @@ offline-confirmed -- display online re-commit --> probing (at most once)
   mutation-exclusion lease is held. A second tab can therefore create a key
   after a successful proof and before the next re-check; this residual race is
   a stale policy signal, not a relay read of or disclosure from the database.
-- As of 2026-07-24 the boot read-compatibility allowlist is algorithm
-  (`A256GCM`, `RSA-HYBRID`, `MLKEM768_A256GCM`,
-  `MLKEM768_MLDSA65_A256GCM`, `MLKEM1024_A256GCM`,
-  `MLKEM1024_MLDSA87_A256GCM`) and profile (`balanced`, `maximum`).
-  The allowlist is append-only so that a stored preference can never turn into
-  a read failure and misfire the fail-safe above.
-- The numeric read allowlists are append-only for the same reason. Active
+- As of 2026-08-01 the boot read-compatibility allowlist for crypto vocabulary
+  is the single-active set only: algorithm
+  (`A256GCM`, `MLKEM1024_MLDSA87_A256GCM`) and profile (`maximum`). Retired
+  identifiers (`RSA-HYBRID`, `MLKEM768_*`, `MLKEM1024_A256GCM`, profile
+  `balanced`) are no longer boot-readable; a stored row that still carries them
+  fails preference validation and falls back to defaults through the existing
+  normalization path (no migration). The authorized freshness policy is
+  single-active vocabulary plus removed-vocabulary rejection — not append-only
+  retention of every historical algorithm/profile id.
+- The numeric density and interval read allowlists remain append-only. Active
   generated density is every 100B grid value from 100 through 1,000B; boot
   accepts every safe density integer from 100 through 1,000B, retaining every
   historical integer from 100 through 900. The generated interval set is
   every 100ms grid value from 200 through 1,000ms plus 2,000ms; boot accepts
   every safe interval integer from 150 through 3,000ms, retaining every
   historical integer from 150 through 2,000 together with 2,500 and 3,000.
-  Neither boot-readable set may be narrowed when the display preference
-  policy changes.
+  Neither numeric boot-readable set may be narrowed when the display preference
+  policy changes — narrowing them would make older stored preferences
+  unreadable and force `wipeOnOnline`.
 - Boot only decides whether the stored row is readable. When the normal
   preferences repository later loads that row, it preserves the exact default
   1,000B/200ms pair and the exact user-selected compatible 100B/2,000ms pair.

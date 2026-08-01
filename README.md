@@ -108,37 +108,37 @@ the message-payload QR text through any messenger. Ciphertext is the intended wo
 not a property the relay can authenticate. Use an online device that has never held QR
 Crypt keys.
 
-For AES-256-GCM (`OCM1`), the relay path is one scan, one paste, and one re-displayed QR;
-there is no multi-frame assembly. The post-quantum (`OCF2`) path remains a multi-frame
-transfer.
+For AES-256-GCM (`sym-message` / `OCA2`), the offline device always emits exactly one
+OCF2 frame (single-QR hard constraint). The post-quantum path remains a multi-frame
+OCF2 transfer. The relay accepts only validated OCF2 frames declaring `pq-message` or
+`sym-message`.
 
-1. **Sender's offline device** — encrypt as usual and display one OCM1 QR for AES, or the
-   OCF2 frame sequence for a post-quantum message.
-2. **Sender's online device** — open the **Relay** page, use **Scan → text**, capture the
-   one OCM1 QR or collect every OCF2 frame, and copy the resulting text. That clipboard
-   copy can persist or sync outside the app, and outside any wipe.
+1. **Sender's offline device** — encrypt as usual and display the single OCF2 frame for
+   AES, or the OCF2 frame sequence for a post-quantum message.
+2. **Sender's online device** — open the **Relay** page, use **Scan → text**, collect
+   every OCF2 frame for the transfer, and copy the resulting text. That clipboard copy
+   can persist or sync outside the app, and outside any wipe.
 3. **Recipient's online device** — open the **Relay** page, paste the text into
-   **Text → QR**, and show the single OCM1 QR or play the OCF2 frames back for the
-   recipient's camera.
-4. **Recipient's offline device** — scan the QR or frames. Only this device assembles an
-   OCF2 message, and it is the only endpoint that authenticates either kind.
+   **Text → QR**, and play the OCF2 frames back for the recipient's camera.
+4. **Recipient's offline device** — scan the frames. Only this device authenticates the
+   assembled artifact (AEAD, and ML-DSA for post-quantum messages).
 
 Public keys and identities are still exchanged face to face. The relay accepts only
-canonical OCF2 `pq-message` frames or one canonical OCM1 message and does not authenticate
-accepted opaque bytes — full allowlist and residual:
-[docs/security/threat-model.md](docs/security/threat-model.md) T19.
+canonical OCF2 `pq-message` or `sym-message` frames, validates the assembled artifact
+before playback, and does not authenticate accepted opaque bytes — full allowlist and
+residual: [docs/security/threat-model.md](docs/security/threat-model.md) T19 / T21.
 
 ## Encryption
 
 | Mode | When to use it |
 | --- | --- |
-| **AES-256-GCM** (default) | Everyday messages. One QR code, and a key you hand over in person. |
-| **ML-KEM-1024** (with HKDF-SHA256 + AES-256-GCM) | Messages that must stay private for decades. Built to resist a future quantum computer; heavier, so the message becomes a sequence of QR codes. |
-| **ML-KEM-1024 + ML-DSA-87** | The same, with a signature so the recipient can verify who sent it. |
+| **AES-256-GCM** (default; HKDF per message) | Everyday messages. One QR code, and a key you hand over in person. Symmetric keys can be rotated; superseded generations still decrypt. |
+| **ML-KEM-1024 + ML-DSA-87** | Messages that must stay private for decades, with a signature so the recipient can verify who sent it. Heavier, so each message becomes a sequence of QR codes. |
 
-For post-quantum identities, the rotation cadence is the granularity of forward secrecy.
-Rotation retains superseded generations for decryption, so every envelope addressed to an
-older generation remains decryptable until you explicitly discard that generation.
+For post-quantum identities and symmetric keys, the rotation cadence is the granularity of
+forward secrecy. Rotation retains superseded generations for decryption, so every envelope
+addressed to an older generation remains decryptable until you explicitly discard that
+generation.
 
 A message already received in this session is flagged before its contents are shown, and
 the same message identifier arriving with different ciphertext is refused. The check is
@@ -151,8 +151,7 @@ validation or an independent security assessment. Current status and blockers:
 
 ## Documentation
 
-* [docs/spec/qr-protocol.md](docs/spec/qr-protocol.md) — QR protocol specification (v1)
-* [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QR protocol specification (v2, post-quantum), including the user-selected display preference and per-artifact density clamps
+* [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QR protocol specification (v2: post-quantum and symmetric), including the user-selected display preference and per-artifact density clamps
 * [docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md) — Boot / wipe-on-online contract
 * [docs/security/threat-model.md](docs/security/threat-model.md) — Threat model
 * [docs/security/security-review.md](docs/security/security-review.md) — Security review record (v2, audit classification)
