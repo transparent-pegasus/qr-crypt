@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-08-01 # last revision of this registry itself
+updated: 2026-08-02 # last revision of this registry itself
 
 units:
   - id: deps
@@ -305,7 +305,6 @@ units:
     last_checked: 2026-08-01
     files:
       - docs/spec/qr-protocol-v2.md
-      - docs/spec/qr-protocol.md # v1 A256GCM path; must not regrow retired RSA sections
       - docs/spec/boot-and-reset-v2.md
       - src/crypto/pq/wire-bytes.ts # mirrors documented wire layout
       - src/crypto/pq/canonical-cbor.ts # mirrors documented canonical encoding
@@ -323,10 +322,11 @@ units:
       - src/components/key-detail/identity-qr-session.tsx # the identity display surface that consumes the pair
       - src/components/animated-qr-frames.tsx # labelled compatibility switch, commit-gated dwell, and one-button export
       - src/components/online-relay.tsx # independent replay cadence and deliberately absent switch
-      - src/qr/relay-frames.ts # two-kind validation, session binding, and canonical relay boundary
-      - tests/fixtures/relay-v1.ts # production-generated canonical v1 relay literals
+      - src/qr/relay-frames.ts # two-message allowlist, session binding, and assembled-artifact validation
+      - tests/fixtures/relay-legacy.ts # retired OCM1 strings retained only as rejection fixtures
       - tests/unit/relay-frames.test.ts # parser contract and node-environment fixture pins
-      - tests/ui/online-relay.test.tsx # jsdom relay behavior using the pinned literals
+      - tests/ui/online-relay.test.tsx # jsdom relay behavior and rejection boundaries
+      - tests/pq/sym-envelope.golden.test.ts # frozen sym envelope, AAD, HKDF info, and size boundary
       - tests/pq/wire-bytes.golden.test.ts # frozen hex must match the docs
       - tests/pq/canonical-cbor.golden.test.ts
       - tests/pq/composition-golden.test.ts
@@ -345,10 +345,12 @@ units:
       preferences-repository.ts, encrypt-page.tsx, decrypt-page.tsx,
       generated-display.ts, key-detail-dialog.tsx,
       key-detail/identity-qr-session.tsx,
-      animated-qr-frames.tsx, and online-relay.tsx. Confirm the
-      qr-protocol.md §7 size column still names VITE_QR_RENDER_SIZE rather
-      than a copied pixel value, and that qr-display.tsx still requires the
-      size prop so no surface can render off that contract. Confirm the
+      animated-qr-frames.tsx, and online-relay.tsx. Reconcile the documented
+      sym-message/symmetric-key layouts, prefixes, HKDF inputs, byte bounds,
+      and single-frame rule with sym-envelope.golden.test.ts. Confirm the relay
+      allowlist and completed-set assembled-artifact validation match
+      relay-frames.ts and its unit/UI tests. Confirm qr-display.tsx still
+      requires the size prop so no surface can render off that contract. Confirm the
       qr-protocol-v2.md messageId note (~169–170) still states the wire format
       is not a replay-prevention mechanism while documenting the receiving
       session-memory receipt keyed by it, and that the clarification matches
@@ -366,6 +368,7 @@ units:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
       - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
       - src/lib/frame-interval.ts # preference/relay dwell set and append-only boot range
+      - tests/pq/sym-envelope.golden.test.ts # sym overhead, plaintext ceiling, and single-frame boundary
       - tests/pq/maximum-artifact-size.golden.test.ts # preference-pair / effective-clamp / boundary fixtures
       - src/schemas/env-schema.ts # PQ ceiling and golden maximum-artifact guard
       - .env.prod # runtime crypto/framing contract

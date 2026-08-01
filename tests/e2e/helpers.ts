@@ -44,9 +44,10 @@ export async function expectOnlineGate(page: Page): Promise<void> {
     ).toBeVisible(),
     expectOnline(
       page.getByText(
-        "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message, or one structurally canonical OCM1 message, without using local keys.",
+        /clean origin may also relay canonical OCF2 frames.*pq-message.*sym-message.*without using local keys/,
       ),
     ).toBeVisible(),
+    expectOnline(page.getByText(/OCM1/)).toHaveCount(0),
     expectOnline(page.getByRole("img", { name: /app icon/ })).toBeVisible(),
     expectOnline(page.getByText("PWA installation status")).toBeVisible(),
     expectOnline(page.getByText("Offline-use readiness")).toBeVisible(),
@@ -68,9 +69,7 @@ export async function expectOfflineAcknowledgement(page: Page): Promise<void> {
   await expect(
     shell.getByText(/no way to encrypt messages with complete safety/),
   ).toBeVisible()
-  await expect(
-    shell.getByText(/does not guarantee complete safety/),
-  ).toBeVisible()
+  await expect(shell.getByText(/does not guarantee complete safety/)).toBeVisible()
   await expect(
     shell.getByText(/does not verify or restore the security of the device/),
   ).toBeVisible()
@@ -202,9 +201,7 @@ export async function goToOfflinePage(
   } as const
   await mainNavigation(page)
     .getByRole("link", {
-      name: new RegExp(
-        `^${escapeRegex(labels[path])}(?: current page)?$`,
-      ),
+      name: new RegExp(`^${escapeRegex(labels[path])}(?: current page)?$`),
     })
     .click()
   await expect(page).toHaveURL(new RegExp(`${escapeRegex(path)}$`))
@@ -865,8 +862,7 @@ export async function expectStableTrailingDialogClose(
       closeAtTop.right > contentAtTop.left &&
       closeAtTop.top < contentAtTop.bottom &&
       closeAtTop.bottom > contentAtTop.top
-    const contentAtBottom =
-      lastContent === null ? scrollAtBottom : rectOf(lastContent)
+    const contentAtBottom = lastContent === null ? scrollAtBottom : rectOf(lastContent)
     const closeOverlapsBodyAtBottom =
       closeAtBottom.left < contentAtBottom.right &&
       closeAtBottom.right > contentAtBottom.left &&
@@ -912,9 +908,7 @@ export async function expectStableTrailingDialogClose(
   }
   // An absolute close sits over the padded tail of the scroll body rather than
   // below it, so bottom-alignment is asserted against the dialog, not the body.
-  expect(metrics.closeAtTop.bottom).toBeLessThanOrEqual(
-    metrics.dialogAtTop.bottom + 0.5,
-  )
+  expect(metrics.closeAtTop.bottom).toBeLessThanOrEqual(metrics.dialogAtTop.bottom + 0.5)
   expect(metrics.closeAtTop.right).toBeGreaterThan(
     metrics.dialogAtTop.left + metrics.dialogAtTop.width / 2,
   )
