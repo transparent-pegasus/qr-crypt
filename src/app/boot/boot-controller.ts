@@ -242,19 +242,12 @@ function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
   const algorithms = [
     "A256GCM",
     "RSA-HYBRID",
-    "MLKEM768_A256GCM",
-    "MLKEM768_MLDSA65_A256GCM",
-    "MLKEM1024_A256GCM",
     "MLKEM1024_MLDSA87_A256GCM",
   ]
-  const profiles = ["balanced", "maximum"]
   const correctionLevels = ["L", "M", "Q", "H"]
   return (
     (value.defaultAlgorithm === undefined ||
       algorithms.includes(value.defaultAlgorithm as string)) &&
-    (value.defaultPqProfile === undefined ||
-      profiles.includes(value.defaultPqProfile as string)) &&
-    optionalBoolean(value.requireSignature) &&
     (value.qrErrorCorrection === undefined ||
       correctionLevels.includes(value.qrErrorCorrection as string)) &&
     optionalBoolean(value.autoClearPlaintextAfterEncrypt) &&

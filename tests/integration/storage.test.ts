@@ -11,9 +11,7 @@ import { bytesToHex, utf8ToBytes } from "@/lib/bytes"
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
   DEFAULT_GENERATED_DISPLAY_PAIR,
-  type PqProfileId,
   type StoredKeyRecord,
-  type UiAlgorithm,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
@@ -39,7 +37,11 @@ import {
   saveKeyRecord,
   saveSymmetricRotation,
 } from "@/storage/key-repository"
-import { getPreferences, updatePreferences } from "@/storage/preferences-repository"
+import {
+  defaultPreferences,
+  getPreferences,
+  updatePreferences,
+} from "@/storage/preferences-repository"
 
 const NOW = 1_700_000_000_000
 const HISTORICAL_DISPLAY_ROWS = [
@@ -58,6 +60,20 @@ const HISTORICAL_DISPLAY_ROWS = [
   {
     label: "a missing density member",
     value: { frameIntervalMs: 1_000 },
+  },
+] as const
+const RETIRED_STORED_PREFERENCES = [
+  {
+    label: "requireSignature",
+    value: { requireSignature: true },
+  },
+  {
+    label: "defaultPqProfile",
+    value: { defaultPqProfile: "balanced" },
+  },
+  {
+    label: "the unsigned UI algorithm",
+    value: { defaultAlgorithm: "MLKEM1024_A256GCM" },
   },
 ] as const
 
@@ -410,36 +426,50 @@ describe("preferences and plaintext non-persistence", () => {
     }
   })
 
-  it("normalizes legacy PQ/RSA preferences while boot preserves wipeOnOnline=false", async () => {
-    const database = await getDb()
-    await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
-    const cases = [
-      ["MLKEM768_A256GCM", "MLKEM1024_A256GCM"],
-      ["MLKEM768_MLDSA65_A256GCM", "MLKEM1024_MLDSA87_A256GCM"],
-      ["RSA-HYBRID", "A256GCM"],
-    ] as const
-
-    for (const [legacyAlgorithm, expectedAlgorithm] of cases) {
+  it.each(RETIRED_STORED_PREFERENCES)(
+    "ignores stored $label and merges every remaining value over current defaults",
+    async ({ value }) => {
+      const database = await getDb()
       await database.put(STORE_PREFERENCES, {
         key: "preferences",
         value: {
-          defaultAlgorithm: legacyAlgorithm,
-          defaultPqProfile: "balanced",
+          ...value,
+          qrErrorCorrection: "H",
           wipeOnOnline: false,
         },
       })
 
-      await expect(getPreferences()).resolves.toMatchObject({
-        defaultAlgorithm: expectedAlgorithm,
-        defaultPqProfile: "maximum",
+      const preferences = await getPreferences()
+      expect(preferences).toEqual({
+        ...defaultPreferences(),
+        qrErrorCorrection: "H",
         wipeOnOnline: false,
       })
-      await expect(readBootDecision()).resolves.toMatchObject({
-        preferencesReadFailed: false,
-        sensitiveDataExists: true,
+      expect(preferences).not.toHaveProperty("requireSignature")
+      expect(preferences).not.toHaveProperty("defaultPqProfile")
+    },
+  )
+
+  it("normalizes the legacy RSA preference while boot preserves wipeOnOnline=false", async () => {
+    const database = await getDb()
+    await database.put(STORE_KEYS, { id: "confirmed-sensitive-row" } as never)
+    await database.put(STORE_PREFERENCES, {
+      key: "preferences",
+      value: {
+        defaultAlgorithm: "RSA-HYBRID",
         wipeOnOnline: false,
-      })
-    }
+      },
+    })
+
+    await expect(getPreferences()).resolves.toMatchObject({
+      defaultAlgorithm: "A256GCM",
+      wipeOnOnline: false,
+    })
+    await expect(readBootDecision()).resolves.toMatchObject({
+      preferencesReadFailed: false,
+      sensitiveDataExists: true,
+      wipeOnOnline: false,
+    })
   })
 
   it.each(HISTORICAL_DISPLAY_ROWS)(
@@ -517,19 +547,20 @@ describe("preferences and plaintext non-persistence", () => {
     },
   )
 
-  it("rejects legacy algorithm and balanced profile injection through updates", async () => {
-    for (const defaultAlgorithm of ["MLKEM768_A256GCM", "MLKEM768_MLDSA65_A256GCM"]) {
-      await expect(
-        updatePreferences({
-          defaultAlgorithm: defaultAlgorithm as unknown as UiAlgorithm,
-        }),
-      ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
-    }
-    await expect(
-      updatePreferences({
-        defaultPqProfile: "balanced" as unknown as PqProfileId,
-      }),
-    ).rejects.toMatchObject({ code: "STORAGE_FAILED" })
+  it.each([
+    ["MLKEM768_A256GCM", { defaultAlgorithm: "MLKEM768_A256GCM" }],
+    [
+      "MLKEM768_MLDSA65_A256GCM",
+      { defaultAlgorithm: "MLKEM768_MLDSA65_A256GCM" },
+    ],
+    ["MLKEM1024_A256GCM", { defaultAlgorithm: "MLKEM1024_A256GCM" }],
+    ["requireSignature", { requireSignature: true }],
+    ["defaultPqProfile=balanced", { defaultPqProfile: "balanced" }],
+    ["defaultPqProfile=maximum", { defaultPqProfile: "maximum" }],
+  ] as const)("rejects removed preference %s through updates", async (_label, patch) => {
+    await expect(updatePreferences(patch as never)).rejects.toMatchObject({
+      code: "STORAGE_FAILED",
+    })
   })
 
   it("never persists plaintext and has no QR artifact store", async () => {

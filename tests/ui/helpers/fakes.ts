@@ -179,7 +179,7 @@ const symmetricFingerprintsByKeyId = new Map<string, string>()
 let lastPqEnvelope: MlKemMessageEnvelopeV2 = {
   version: 2,
   type: "pq-message",
-  suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
+  suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
   recipientKemKeyId: KEM_KEY_ID,
   kemCiphertext: new Uint8Array(1568),
   hkdfSalt: new Uint8Array(32),
@@ -867,29 +867,27 @@ export const encryptPq = vi.fn(
   }: {
     recipient: PqPublicBundleRecord
     plaintext: Uint8Array
-    sign?: { identity: PostQuantumIdentity } | undefined
+    sign: { identity: PostQuantumIdentity }
     now: number
   }) => {
     void now
+    void sign
     lastPqEnvelope = {
       version: 2,
       type: "pq-message",
-      suite:
-        sign === undefined
-          ? "ML-KEM-1024+HKDF-SHA256+A256GCM"
-          : "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: recipient.kem.keyId,
       kemCiphertext: new Uint8Array(1568),
       hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
-      ciphertext: new Uint8Array(plaintext.byteLength + (sign ? 3_500 : 128)),
+      ciphertext: new Uint8Array(plaintext.byteLength + 3_500),
     }
     return lastPqEnvelope
   },
 )
 
 export const fakePqDecrypt = {
-  kind: "signed-valid" as "unsigned" | "signed-valid" | "signed-key-unknown",
+  kind: "signed-valid" as "signed-valid" | "signed-key-unknown",
 }
 export const fakePqMessageId = Uint8Array.from(
   { length: 16 },
@@ -900,15 +898,6 @@ export const fakePqCreatedAt = 1_723_000_000_000
 async function defaultDecryptPqMessage(
   args: DecryptPqMessageArgs,
 ): Promise<PqDecryptResult> {
-  if (fakePqDecrypt.kind === "unsigned") {
-    return {
-      kind: "unsigned",
-      plaintext: encoder.encode("PQ復号済み平文"),
-      messageId: fakePqMessageId.slice(),
-      createdAt: fakePqCreatedAt,
-    }
-  }
-
   const senderSigningKeyId = "T".repeat(22)
   const resolvedSigningKey = await args.resolveSigningKey(senderSigningKeyId)
   if (

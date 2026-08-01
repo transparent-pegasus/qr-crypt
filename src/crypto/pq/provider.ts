@@ -6,9 +6,7 @@
 // may import it directly.
 import type { MlDsaAlgorithm, MlKemAlgorithm } from "@/schemas/domain"
 import {
-  createNobleDsa65,
   createNobleDsa87,
-  createNobleKem768,
   createNobleKem1024,
 } from "@/crypto/pq/provider-noble"
 
@@ -47,9 +45,7 @@ export interface MlDsaProvider {
 }
 
 export interface PqProviders {
-  kem768: MlKemProvider
   kem1024: MlKemProvider
-  dsa65: MlDsaProvider
   dsa87: MlDsaProvider
 }
 
@@ -57,9 +53,7 @@ export interface PqProviders {
 export function resolveProviders(providerId: "noble"): PqProviders {
   if (providerId !== "noble") throw new TypeError("unsupported PQ provider")
   return Object.freeze({
-    kem768: createNobleKem768(),
     kem1024: createNobleKem1024(),
-    dsa65: createNobleDsa65(),
     dsa87: createNobleDsa87(),
   })
 }

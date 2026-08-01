@@ -63,36 +63,6 @@ function fakeClient(overrides: Partial<PqCryptoClient>): PqCryptoClient {
 }
 
 describe("decryptPqMessage", () => {
-  it("propagates authenticated receipt fields for an unsigned message", async () => {
-    const plaintext = new TextEncoder().encode("unsigned")
-    const client = fakeClient({
-      openPqEnvelope: vi.fn().mockResolvedValue({
-        kind: "unsigned",
-        plaintext,
-        messageId: MESSAGE_ID,
-        createdAt: CREATED_AT,
-      }),
-    })
-
-    await expect(
-      decryptPqMessage({
-        client,
-        envelope: {
-          ...envelope,
-          suite: "ML-KEM-1024+HKDF-SHA256+A256GCM",
-        },
-        recipient,
-        vaultKey: {} as CryptoKey,
-        resolveSigningKey: vi.fn(),
-      }),
-    ).resolves.toEqual({
-      kind: "unsigned",
-      plaintext,
-      messageId: MESSAGE_ID,
-      createdAt: CREATED_AT,
-    })
-  })
-
   it("returns unknown signer without constructing plaintext or invoking verify", async () => {
     const signedMessageBytes = new Uint8Array([1, 2, 3])
     const verifySignedMessage = vi.fn()

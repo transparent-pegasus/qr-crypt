@@ -62,18 +62,12 @@ import {
 
 type DecryptionResult =
   | {
-      kind: "unsigned"
-      text: string
-      replay: ReceiptVerdict
-      senderCreatedAt: number
-    }
-  | {
       kind: "signed-valid"
       text: string
       replay: ReceiptVerdict
       senderCreatedAt: number
       senderSigningKeyId: string
-      sender: PqPublicBundleRecord | undefined
+      sender: PqPublicBundleRecord
     }
   | { kind: "signed-key-unknown"; senderSigningKeyId: string }
   | { kind: "aes"; text: string; replay: ReceiptVerdict }
@@ -335,42 +329,30 @@ export function DecryptPage() {
               ),
             )
             const messageIdHex = bytesToHex(pqResult.messageId)
+            if (resolvedSender === undefined) {
+              throw new AppError("DECRYPTION_FAILED")
+            }
             const verdict = recordReceipt(
-              pqResult.kind === "signed-valid" && resolvedSender !== undefined
-                ? {
-                    kind: "pq-signed",
-                    senderFingerprint: resolvedSender.signing.fingerprint,
-                    recipientKemKeyId: parsed.envelope.recipientKemKeyId,
-                    messageIdHex,
-                    envelopeHash,
-                  }
-                : {
-                    kind: "pq-unsigned",
-                    recipientKemKeyId: parsed.envelope.recipientKemKeyId,
-                    messageIdHex,
-                    envelopeHash,
-                  },
+              {
+                kind: "pq-signed",
+                senderFingerprint: resolvedSender.signing.fingerprint,
+                recipientKemKeyId: parsed.envelope.recipientKemKeyId,
+                messageIdHex,
+                envelopeHash,
+              },
               Date.now(),
             )
             if (verdict.kind === "message-id-reused") {
               throw new AppError("MESSAGE_ID_REUSED")
             }
-            const outcome: DecryptionResult =
-              pqResult.kind === "unsigned"
-                ? {
-                    kind: "unsigned",
-                    text: bytesToUtf8(decryptedBytes),
-                    replay: verdict,
-                    senderCreatedAt: pqResult.createdAt,
-                  }
-                : {
-                    kind: "signed-valid",
-                    text: bytesToUtf8(decryptedBytes),
-                    replay: verdict,
-                    senderCreatedAt: pqResult.createdAt,
-                    senderSigningKeyId: pqResult.senderSigningKeyId,
-                    sender: resolvedSender,
-                  }
+            const outcome: DecryptionResult = {
+              kind: "signed-valid",
+              text: bytesToUtf8(decryptedBytes),
+              replay: verdict,
+              senderCreatedAt: pqResult.createdAt,
+              senderSigningKeyId: pqResult.senderSigningKeyId,
+              sender: resolvedSender,
+            }
             await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
             setDecrypted(outcome)
           } finally {
@@ -610,18 +592,15 @@ export function DecryptPage() {
             </DialogHeader>
             {decrypted !== null && decrypted.kind !== "signed-key-unknown" && (
               <>
-                {decrypted.kind === "unsigned" && (
-                  <p className="text-sm font-medium">{t("encrypt.result.unsigned")}</p>
-                )}
                 {decrypted.kind === "aes" && (
-                  <p className="text-sm font-medium">{t("encrypt.result.aesUnsigned")}</p>
+                  <p className="text-sm font-medium">{t("encrypt.result.symmetric")}</p>
                 )}
                 {decrypted.kind === "signed-valid" && (
                   <>
                     <div className="space-y-1 text-sm">
                       <p
                         className={
-                          decrypted.sender?.trust === "fingerprint-confirmed"
+                          decrypted.sender.trust === "fingerprint-confirmed"
                             ? "font-medium text-success"
                             : "font-medium"
                         }
@@ -633,14 +612,14 @@ export function DecryptPage() {
                           id: decrypted.senderSigningKeyId,
                         })}
                       </p>
-                      {decrypted.sender?.trust === "fingerprint-confirmed" && (
+                      {decrypted.sender.trust === "fingerprint-confirmed" && (
                         <p className="font-medium text-success">
                           {t("encrypt.result.identityCheck.label")}{" "}
                           {t("encrypt.result.identityCheck.confirmed")}
                         </p>
                       )}
                     </div>
-                    {decrypted.sender?.trust !== "fingerprint-confirmed" && (
+                    {decrypted.sender.trust !== "fingerprint-confirmed" && (
                       <Alert
                         variant="destructive"
                         role="group"
@@ -663,8 +642,7 @@ export function DecryptPage() {
                     )}
                   </>
                 )}
-                {(decrypted.kind === "unsigned" ||
-                  decrypted.kind === "signed-valid") && (
+                {decrypted.kind === "signed-valid" && (
                   <p className="text-xs text-muted-foreground">
                     {t("encrypt.result.senderCreatedAt", {
                       time: formatDateTime(decrypted.senderCreatedAt, language),

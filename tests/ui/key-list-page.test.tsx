@@ -1227,7 +1227,7 @@ describe("key list page", () => {
 
   it("labels unsupported profiles and restricts them to deletion", async () => {
     const user = userEvent.setup()
-    fakeIdentities[0] = { ...fakeIdentities[0]!, profile: "balanced" }
+    fakeIdentities[0] = { ...fakeIdentities[0]!, profile: "balanced" as never }
     await renderKeyList()
     expect(await screen.findByText("Unsupported (legacy profile)")).toBeInTheDocument()
     await user.click(rowFor("自分のPQ ID"))

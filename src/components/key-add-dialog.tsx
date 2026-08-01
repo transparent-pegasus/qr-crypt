@@ -111,7 +111,10 @@ function assertUsableBundle(bundle: PublicIdentityBundleV2 | PqPublicBundleRecor
 function assertUsableSingleKey(envelope: SingleKeyRead): void {
   const suite =
     envelope.type === "pq-kem-public-key"
-      ? resolveSuite(envelope.algorithm)
+      ? resolveSuite(
+          envelope.algorithm,
+          PQ_PROFILES[ACTIVE_PROFILE].signature.algorithm,
+        )
       : resolveSuite(PQ_PROFILES[ACTIVE_PROFILE].kem.algorithm, envelope.algorithm)
   assertActiveSuite(suite)
 }

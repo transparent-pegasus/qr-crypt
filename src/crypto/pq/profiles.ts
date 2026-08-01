@@ -41,14 +41,6 @@ export interface PqProfileSpec {
 }
 
 export const KEM_SIZES: Record<MlKemAlgorithm, KemSizeSpec> = {
-  "ML-KEM-768": {
-    algorithm: "ML-KEM-768",
-    publicKeyBytes: 1184,
-    secretKeyBytes: 2400,
-    ciphertextBytes: 1088,
-    sharedSecretBytes: 32,
-    seedBytes: KEM_SEED_BYTES,
-  },
   "ML-KEM-1024": {
     algorithm: "ML-KEM-1024",
     publicKeyBytes: 1568,
@@ -60,13 +52,6 @@ export const KEM_SIZES: Record<MlKemAlgorithm, KemSizeSpec> = {
 }
 
 export const DSA_SIZES: Record<MlDsaAlgorithm, DsaSizeSpec> = {
-  "ML-DSA-65": {
-    algorithm: "ML-DSA-65",
-    publicKeyBytes: 1952,
-    secretKeyBytes: 4032,
-    signatureBytes: 3309,
-    seedBytes: DSA_SEED_BYTES,
-  },
   "ML-DSA-87": {
     algorithm: "ML-DSA-87",
     publicKeyBytes: 2592,
@@ -77,16 +62,6 @@ export const DSA_SIZES: Record<MlDsaAlgorithm, DsaSizeSpec> = {
 }
 
 export const PQ_PROFILES: Record<PqProfileId, PqProfileSpec> = {
-  balanced: {
-    id: "balanced",
-    kem: KEM_SIZES["ML-KEM-768"],
-    signature: DSA_SIZES["ML-DSA-65"],
-    symmetric: "AES-256-GCM",
-    kdf: "HKDF-SHA-256",
-  },
-  // "maximum" is the active mainline profile. "balanced" remains available only as
-  // append-only wire/codec vocabulary and is rejected at operational boundaries with
-  // UNSUPPORTED_ALGORITHM.
   maximum: {
     id: "maximum",
     kem: KEM_SIZES["ML-KEM-1024"],
@@ -101,7 +76,6 @@ export const PQ_PROFILES: Record<PqProfileId, PqProfileSpec> = {
 // (limits cannot import this module without a cycle).
 // Measured canonical-CBOR envelope overhead allowances; the golden fixtures in
 // tests/pq/maximum-artifact-size.golden.test.ts pin the real totals.
-const UNSIGNED_BODY_CBOR_OVERHEAD_BYTES = 512
 const SIGNED_MESSAGE_CBOR_OVERHEAD_BYTES = 1024
 
 export function maxSignedMessageBytes(algorithm: MlDsaAlgorithm): number {
@@ -114,9 +88,5 @@ export function maxSignedMessageBytes(algorithm: MlDsaAlgorithm): number {
 
 export function maxEnvelopeCiphertextBytes(suite: WireSuite): number {
   const { signature } = suiteComponents(suite)
-  const innerBytes =
-    signature === undefined
-      ? MAX_PLAINTEXT_BYTES + UNSIGNED_BODY_CBOR_OVERHEAD_BYTES
-      : maxSignedMessageBytes(signature)
-  return innerBytes + AES_GCM_TAG_BYTES
+  return maxSignedMessageBytes(signature) + AES_GCM_TAG_BYTES
 }

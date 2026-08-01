@@ -99,7 +99,7 @@ As a cross-cutting countermeasure for T8/T11, OnlineGate fail-closes encryption,
 | Only `radix-ui@1.6.4` (the umbrella package) lacked provenance (the adjacent 1.6.3 / 1.7.0-rc are attested)                                                                                     | Not adopted due to a possible supply-chain incident       | Removed the umbrella package; using the provenance-preserving scoped `@radix-ui/react-*` packages         |
 | `cbor-extract` install script                                                                                                                                                                   | Unreviewed build scripts are not executed (aube default)  | Operating on the pure-JS path without native acceleration (browsers use the JS path anyway)               |
 
-### Current re-check (2026-07-29)
+### Current re-check (2026-08-02)
 
 | Target | Status | Notes |
 | --- | --- | --- |
@@ -110,7 +110,7 @@ As a cross-cutting countermeasure for T8/T11, OnlineGate fail-closes encryption,
 | `brace-expansion` forced to `5.0.8` via `aube.overrides` (both major lines) | **RESOLVED** `GHSA-mh99-v99m-4gvg` (high): DoS via unbounded expansion; vulnerable `<=5.0.7`, no fixed 2.x release | Dev-chain only (`workbox-build` glob tooling; repo-controlled inputs). Build and full test suite re-verified after the override. `aube audit` exits 0 |
 | Routine in-range updates | Applied | `react@19.2.8`, radix-family minors, `wrangler@4.114.0` |
 | Toolchain | `node@26.5.0` / `aube@1.32.0` pinned | `mise.toml` |
-| FIPS 203 / 204 errata | Prospective correction only | NIST FIPS 204 sheet updated 2026-02-27. No API / size impact |
+| FIPS 203 / 204 errata | Prospective corrections; no new technical requirements | NIST workbooks checked 2026-08-02; FIPS 204 workbook updated 2026-07-31. No active API / size impact |
 
 ## 6. Mapping to verification
 

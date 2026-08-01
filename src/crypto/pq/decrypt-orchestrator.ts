@@ -3,8 +3,7 @@
 // Flow (frozen):
 //   openPqEnvelope (Worker: Decaps → HKDF → successful GCM authentication
 //   → inner-schema validation)
-//   → unsigned suite: return plaintext plus authenticated messageId / createdAt
-//   → signed suite: resolveSigningKey by the inner senderSigningKeyId (repository lookup)
+//   → resolveSigningKey by the inner senderSigningKeyId (repository lookup)
 //     → unknown key: {kind:"signed-key-unknown", senderSigningKeyId}
 //       (do not construct plaintext; zeroize in the Worker; continue to the signing-key
 //       import path)
@@ -73,24 +72,9 @@ export async function decryptPqMessage(
       vaultKey: args.vaultKey,
     },
   })
-  if (opened.kind === "unsigned") {
-    if (components.signature !== undefined) {
-      zeroize(opened.plaintext)
-      throw new AppError("DECRYPTION_FAILED")
-    }
-    return {
-      kind: "unsigned",
-      plaintext: opened.plaintext,
-      messageId: opened.messageId,
-      createdAt: opened.createdAt,
-    }
-  }
 
   try {
-    if (
-      components.signature === undefined ||
-      opened.signatureAlgorithm !== components.signature
-    ) {
+    if (opened.signatureAlgorithm !== components.signature) {
       throw new AppError("DECRYPTION_FAILED")
     }
     const resolved = await args.resolveSigningKey(opened.senderSigningKeyId)

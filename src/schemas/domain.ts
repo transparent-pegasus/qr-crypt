@@ -9,7 +9,7 @@
 // Algorithm IDs and suites (v1 A256GCM + v2 symmetric/PQ).
 // ---------------------------------------------------------------------------
 
-export type UiAlgorithm = "A256GCM" | "MLKEM1024_A256GCM" | "MLKEM1024_MLDSA87_A256GCM"
+export type UiAlgorithm = "A256GCM" | "MLKEM1024_MLDSA87_A256GCM"
 
 export type WireAlgorithm = "A256GCM"
 
@@ -53,19 +53,16 @@ export function toUiAlgorithm(algorithm: WireAlgorithm): UiAlgorithm {
 // v2 post-quantum algorithms and suites; see docs/spec/qr-protocol-v2.md §4.
 // ---------------------------------------------------------------------------
 
-export const ML_KEM_ALGORITHMS = ["ML-KEM-768", "ML-KEM-1024"] as const
+export const ML_KEM_ALGORITHMS = ["ML-KEM-1024"] as const
 export type MlKemAlgorithm = (typeof ML_KEM_ALGORITHMS)[number]
 
-export const ML_DSA_ALGORITHMS = ["ML-DSA-65", "ML-DSA-87"] as const
+export const ML_DSA_ALGORITHMS = ["ML-DSA-87"] as const
 export type MlDsaAlgorithm = (typeof ML_DSA_ALGORITHMS)[number]
 
-export const PQ_PROFILE_IDS = ["balanced", "maximum"] as const
+export const PQ_PROFILE_IDS = ["maximum"] as const
 export type PqProfileId = (typeof PQ_PROFILE_IDS)[number]
 
 export const WIRE_SUITES = [
-  "ML-KEM-768+HKDF-SHA256+A256GCM",
-  "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
-  "ML-KEM-1024+HKDF-SHA256+A256GCM",
   "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
 ] as const
 export type WireSuite = (typeof WIRE_SUITES)[number]
@@ -186,20 +183,8 @@ export interface MessageBodyCommonV2 {
   plaintext: Uint8Array
 }
 
-// For unsigned messages, omit the senderSigningKeyId key entirely rather than using
-// an empty string (U29).
-export type UnsignedMessageBodyV2 = MessageBodyCommonV2
-
 export interface SignedMessageBodyV2 extends MessageBodyCommonV2 {
   senderSigningKeyId: string
-}
-
-// kind is an in-memory discriminator and is not included in wire CBOR; the outer suite
-// is authoritative. Wire shape: unsigned suite → a standalone UnsignedMessageBodyV2 map /
-// signed suite → a { body, signature } map (docs/spec/qr-protocol-v2.md §5).
-export interface UnsignedMessageV2 {
-  kind: "unsigned"
-  body: UnsignedMessageBodyV2
 }
 
 export interface SignedMessageV2 {
@@ -211,7 +196,7 @@ export interface SignedMessageV2 {
   }
 }
 
-export type InnerMessageV2 = UnsignedMessageV2 | SignedMessageV2
+export type InnerMessageV2 = SignedMessageV2
 
 // ---------------------------------------------------------------------------
 // v2 outer envelopes and AAD; see docs/spec/qr-protocol-v2.md §3.
@@ -272,12 +257,6 @@ export interface SymmetricKeyEnvelopeV2 {
 // ---------------------------------------------------------------------------
 
 export type PqDecryptResult =
-  | {
-      kind: "unsigned"
-      plaintext: Uint8Array
-      messageId: Uint8Array
-      createdAt: number
-    }
   | {
       kind: "signed-valid"
       plaintext: Uint8Array
@@ -365,9 +344,6 @@ export type GeneratedDisplayPair =
 
 export interface Preferences {
   defaultAlgorithm: UiAlgorithm
-  defaultPqProfile: PqProfileId
-  // VITE_REQUIRE_SIGNATURE=true from the environment is a floor the user cannot lower.
-  requireSignature: boolean
   qrErrorCorrection: QrEcLevel
   autoClearPlaintextAfterEncrypt: boolean
   backgroundClearEnabled: boolean
@@ -381,8 +357,6 @@ export interface Preferences {
 // Defaults for v2 additions. Construct Preferences literals by spreading this value
 // as the single source; preferences-repository / limits.ts validate numeric ranges.
 export const PQ_PREFERENCE_DEFAULTS = {
-  defaultPqProfile: "maximum",
-  requireSignature: false,
   frameBytes: DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes,
   frameIntervalMs: DEFAULT_GENERATED_DISPLAY_PAIR.frameIntervalMs,
   transferTimeoutMinutes: 10,

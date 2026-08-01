@@ -135,17 +135,6 @@ const publicIdentityBundleV2Schema = z
   })
   .strict()
   .superRefine((bundle, context) => {
-    const algorithmsMatch =
-      (bundle.kem.algorithm === "ML-KEM-768" &&
-        bundle.signing.algorithm === "ML-DSA-65") ||
-      (bundle.kem.algorithm === "ML-KEM-1024" && bundle.signing.algorithm === "ML-DSA-87")
-    if (!algorithmsMatch) {
-      context.addIssue({
-        code: "custom",
-        path: ["signing", "algorithm"],
-        message: "KEM and signature profiles do not match",
-      })
-    }
     if (
       bundle.kem.publicKey.byteLength !== KEM_SIZES[bundle.kem.algorithm].publicKeyBytes
     ) {

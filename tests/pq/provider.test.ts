@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
-  createNobleDsa65,
   createNobleDsa87,
-  createNobleKem768,
   createNobleKem1024,
 } from "@/crypto/pq/provider-noble"
 import { signBody, verifySignedBody } from "@/crypto/pq/ml-dsa-signature"
@@ -12,10 +10,9 @@ import { bytesEqual } from "@/lib/bytes"
 
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
 
-describe.each([
-  ["ML-KEM-768", createNobleKem768],
-  ["ML-KEM-1024", createNobleKem1024],
-] as const)("%s provider", (algorithm, createProvider) => {
+describe.each([["ML-KEM-1024", createNobleKem1024]] as const)(
+  "%s provider",
+  (algorithm, createProvider) => {
   const sizes = KEM_SIZES[algorithm]
 
   it("has frozen lengths and deterministic seed keygen", () => {
@@ -75,12 +72,12 @@ describe.each([
       ),
     ).toThrow(RangeError)
   })
-})
+  },
+)
 
-describe.each([
-  ["ML-DSA-65", createNobleDsa65],
-  ["ML-DSA-87", createNobleDsa87],
-] as const)("%s provider", (algorithm, createProvider) => {
+describe.each([["ML-DSA-87", createNobleDsa87]] as const)(
+  "%s provider",
+  (algorithm, createProvider) => {
   const sizes = DSA_SIZES[algorithm]
 
   it("has frozen lengths and deterministic seed keygen", () => {
@@ -180,11 +177,12 @@ describe.each([
       ),
     ).toThrow(RangeError)
   })
-})
+  },
+)
 
 it("pins KEM and DSA seed lengths", () => {
-  const kemSeed = new Uint8Array(KEM_SIZES["ML-KEM-768"].seedBytes).fill(0x91)
-  const dsaSeed = new Uint8Array(DSA_SIZES["ML-DSA-65"].seedBytes).fill(0x91)
+  const kemSeed = new Uint8Array(KEM_SIZES["ML-KEM-1024"].seedBytes).fill(0x91)
+  const dsaSeed = new Uint8Array(DSA_SIZES["ML-DSA-87"].seedBytes).fill(0x91)
   expect(kemSeed.byteLength).toBe(64)
   expect(dsaSeed.byteLength).toBe(32)
 })

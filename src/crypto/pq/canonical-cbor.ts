@@ -27,7 +27,6 @@ import type {
   SymAadV2,
   SymMessageEnvelopeV2,
   SymmetricKeyEnvelopeV2,
-  UnsignedMessageBodyV2,
 } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
@@ -568,9 +567,7 @@ export function decodeSymmetricKeyEnvelopeV2(
 }
 
 // ---------------------------------------------------------------------------
-// Inner message. The suite is authoritative for the wire shape:
-//   unsigned suite → a standalone UnsignedMessageBodyV2 map
-//   signed suite   → a { body: SignedMessageBodyV2, signature } map
+// Inner signed message: { body: SignedMessageBodyV2, signature }.
 // validation.ts enforces the environment-dependent plaintext size limit.
 // ---------------------------------------------------------------------------
 
@@ -588,17 +585,6 @@ function guardBodyCommon(record: Record<string, unknown>): {
     recipientKemKeyId: guardKeyId(record["recipientKemKeyId"]),
     plaintext: guardBytes(record["plaintext"]),
   }
-}
-
-export function guardUnsignedMessageBodyV2(value: unknown): UnsignedMessageBodyV2 {
-  const record = guardKeys(value, [
-    "version",
-    "messageId",
-    "createdAt",
-    "recipientKemKeyId",
-    "plaintext",
-  ])
-  return guardBodyCommon(record)
 }
 
 export function guardSignedMessageBodyV2(value: unknown): SignedMessageBodyV2 {
@@ -627,16 +613,6 @@ export function guardSignedMessageV2(value: unknown): Omit<SignedMessageV2, "kin
       value: guardBytes(signatureRecord["value"], DSA_SIZES[algorithm].signatureBytes),
     },
   }
-}
-
-export function encodeUnsignedMessageBodyV2(body: UnsignedMessageBodyV2): Uint8Array {
-  return encodeCanonicalCbor(
-    guardUnsignedMessageBodyV2(body) as unknown as CanonicalCborValue,
-  )
-}
-
-export function decodeUnsignedMessageBodyV2(bytes: Uint8Array): UnsignedMessageBodyV2 {
-  return guardUnsignedMessageBodyV2(decodeCanonicalCbor(bytes))
 }
 
 // Signing target = canonical CBOR of the standalone SignedMessageBodyV2 map
@@ -673,11 +649,6 @@ export function guardPublicIdentityBundleV2(value: unknown): PublicIdentityBundl
   const signingRecord = guardKeys(record["signing"], ["algorithm", "keyId", "publicKey"])
   const kemAlgorithm = guardEnum(kemRecord["algorithm"], ML_KEM_ALGORITHMS)
   const dsaAlgorithm = guardEnum(signingRecord["algorithm"], ML_DSA_ALGORITHMS)
-  // Accept only same-profile pairs; reject combinations such as 768+87.
-  const pairValid =
-    (kemAlgorithm === "ML-KEM-768" && dsaAlgorithm === "ML-DSA-65") ||
-    (kemAlgorithm === "ML-KEM-1024" && dsaAlgorithm === "ML-DSA-87")
-  if (!pairValid) throw new AppError("INVALID_QR_PAYLOAD")
   const name = guardOptionalName(record["name"])
   const bundle: PublicIdentityBundleV2 = {
     version: guardLiteral(record["version"], 2),
