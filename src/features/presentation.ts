@@ -2,7 +2,10 @@ import { translate, type Language } from "@/i18n/messages"
 import { QR_PREFIX_V2 } from "@/qr/payload-v2"
 import type { UiAlgorithm } from "@/schemas/domain"
 
-const QR_CRYPT_PREFIXES = Object.values(QR_PREFIX_V2)
+// OCB2 is reserved and rejected by every decoder; the display side must not call it valid.
+const QR_CRYPT_PREFIXES = Object.entries(QR_PREFIX_V2)
+  .filter(([kind]) => kind !== "encrypted-seed-backup")
+  .map(([, prefix]) => prefix)
 
 export const ALGORITHM_LABELS: Record<
   Language,
