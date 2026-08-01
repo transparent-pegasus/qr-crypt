@@ -64,11 +64,11 @@ describe("encrypt page v2", () => {
     await renderApp("/encrypt")
     await user.click(await screen.findByLabelText("Cryptographic algorithm"))
     expect(
-      await screen.findByRole("option", { name: /Symmetric-key.*AES-256-GCM/ }),
+      await screen.findByRole("option", { name: /Shared-key.*AES-256-GCM/ }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole("option", {
-        name: /^Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES-256-GCM$/,
+        name: /^Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES-256-GCM$/,
       }),
     ).toBeInTheDocument()
     expect(
@@ -137,7 +137,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await user.click(await screen.findByLabelText("Recipient ML-KEM public key"))
     const labels = (await screen.findAllByRole("option")).map(
@@ -163,7 +163,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
 
     expect(
@@ -270,7 +270,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "stable transfer")
@@ -316,7 +316,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "worker failure")
@@ -335,7 +335,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Symmetric-key.*AES-256-GCM/,
+      /Shared-key.*AES-256-GCM/,
     )
     await chooseSelectOption(user, "Key", "共通鍵A")
     await user.type(screen.getByLabelText("Plaintext"), "single sym frame")
@@ -414,7 +414,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     expect(
@@ -476,7 +476,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "no wasm default")
@@ -527,7 +527,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "fullscreen compatibility")
@@ -649,7 +649,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "compatible clamp")
@@ -709,7 +709,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "compatible remount")
@@ -759,7 +759,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "density floor")
@@ -860,7 +860,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "PQ modal transport controls")
@@ -908,7 +908,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "pending PQ frame split")
@@ -925,7 +925,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "PQ export failure")
@@ -990,7 +990,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "dismissed export")
@@ -1063,7 +1063,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "compatibility failure")
@@ -1101,7 +1101,7 @@ describe("encrypt page v2", () => {
     await chooseSelectOption(
       user,
       "Cryptographic algorithm",
-      /Post-quantum ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
+      /Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES/,
     )
     await choosePqRecipient(user)
     await user.type(screen.getByLabelText("Plaintext"), "stale compatibility")

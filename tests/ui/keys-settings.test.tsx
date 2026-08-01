@@ -163,13 +163,13 @@ describe("key management v2", () => {
     await user.click(await screen.findByRole("button", { name: "Create a key" }))
 
     // defaultAlgorithm=A256GCM in the fakes, so the default kind is symmetric key.
-    expect(await screen.findByLabelText("Symmetric-key name")).toBeInTheDocument()
+    expect(await screen.findByLabelText("Shared-key name")).toBeInTheDocument()
     expect(
       screen.queryByText("experimental · not independently audited"),
     ).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Create a symmetric key" })).toBeDisabled()
-    await user.type(screen.getByLabelText("Symmetric-key name"), "新しい共通鍵")
-    await user.click(screen.getByRole("button", { name: "Create a symmetric key" }))
+    expect(screen.getByRole("button", { name: "Create a shared key" })).toBeDisabled()
+    await user.type(screen.getByLabelText("Shared-key name"), "新しい共通鍵")
+    await user.click(screen.getByRole("button", { name: "Create a shared key" }))
     await waitFor(() => expect(createSymmetricKeyRecord).toHaveBeenCalledOnce())
     expect(fakeKeys.filter((key) => key.kind === "symmetric")).toHaveLength(
       symmetricCount + 1,
@@ -208,11 +208,11 @@ describe("key management v2", () => {
     await renderApp("/keys")
     await user.click(await screen.findByRole("button", { name: "Create a key" }))
 
-    await user.type(await screen.findByLabelText("Symmetric-key name"), "全画面共通鍵")
-    await user.click(screen.getByRole("button", { name: "Create a symmetric key" }))
+    await user.type(await screen.findByLabelText("Shared-key name"), "全画面共通鍵")
+    await user.click(screen.getByRole("button", { name: "Create a shared key" }))
     let dialog = await screen.findByRole("dialog", { name: "全画面共通鍵" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
-    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
     await user.click(
       within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
     )
@@ -227,7 +227,7 @@ describe("key management v2", () => {
     await waitFor(() => expect(symmetricFullscreenTriggers[0]).toBeEnabled())
     await user.click(symmetricFullscreenTriggers[0]!)
     let fullscreen = await screen.findByRole("dialog", {
-      name: /View Symmetric-key QR full screen/,
+      name: /View Shared-key QR full screen/,
     })
     expect(within(fullscreen).getByText("Sensitive information")).toBeInTheDocument()
     await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
@@ -428,7 +428,7 @@ describe("key management v2", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Show secret-key QR" }),
     )
-    dialog = await screen.findByRole("dialog", { name: "Symmetric-key QR" })
+    dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
     await user.click(
       within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
     )
@@ -455,14 +455,14 @@ describe("key management v2", () => {
       ),
     )
 
-    dialog = await screen.findByRole("dialog", { name: "Import a symmetric key" })
+    dialog = await screen.findByRole("dialog", { name: "Import a shared key" })
     await user.click(
       within(dialog).getByRole("checkbox", {
         name: "I trust the channel used to share this key",
       }),
     )
     await user.click(
-      within(dialog).getByRole("button", { name: "Save the symmetric key" }),
+      within(dialog).getByRole("button", { name: "Save the shared key" }),
     )
 
     await waitFor(() => expect(fakeKeys).toHaveLength(1))
@@ -488,7 +488,7 @@ describe("key management v2", () => {
     })
     await user.click(screen.getByRole("button", { name: "Read the key" }))
     const dialog = await screen.findByRole("dialog", {
-      name: "Import a symmetric key",
+      name: "Import a shared key",
     })
     await user.click(
       within(dialog).getByRole("checkbox", {
@@ -496,7 +496,7 @@ describe("key management v2", () => {
       }),
     )
     await user.click(
-      within(dialog).getByRole("button", { name: "Save the symmetric key" }),
+      within(dialog).getByRole("button", { name: "Save the shared key" }),
     )
 
     await waitFor(() => expect(fakeKeys).toHaveLength(1))
@@ -567,7 +567,7 @@ describe("key management v2", () => {
       ),
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole("dialog", { name: "Import a symmetric key" }),
+      screen.queryByRole("dialog", { name: "Import a shared key" }),
     ).not.toBeInTheDocument()
     expect(importSymmetricKeyRecordV2).not.toHaveBeenCalled()
     expect(fakeKeys).toHaveLength(originalCount)
@@ -689,12 +689,12 @@ describe("settings v2", () => {
     await user.click(algorithm)
     expect(
       screen.queryByRole("option", {
-        name: "Post-quantum ML-KEM-1024 + AES-256-GCM",
+        name: "Public-key ML-KEM-1024 + AES-256-GCM",
       }),
     ).not.toBeInTheDocument()
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Symmetric-key AES-256-GCM",
-      "Post-quantum ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
+      "Shared-key AES-256-GCM",
+      "Public-key ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
     ])
   })
 

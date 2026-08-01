@@ -14,7 +14,7 @@ import {
   RGBLuminanceSource,
 } from "@zxing/library"
 
-export const AES_ALGORITHM_LABEL = "Symmetric-key AES-256-GCM"
+export const AES_ALGORITHM_LABEL = "Shared-key AES-256-GCM"
 // Matched on the signature algorithm because the unsigned option, until it is
 // deleted, shares the leading words of this label.
 export const PQ_ALGORITHM_LABEL = /ML-DSA-87/
@@ -211,8 +211,8 @@ export async function createSymmetricKey(page: Page, name: string): Promise<void
   await goToOfflinePage(page, "/keys")
   await page.getByRole("button", { name: "Create a key", exact: true }).click()
   await chooseOption(page, "Key type", AES_ALGORITHM_LABEL)
-  await page.getByLabel("Symmetric-key name", { exact: true }).fill(name)
-  await page.getByRole("button", { name: "Create a symmetric key", exact: true }).click()
+  await page.getByLabel("Shared-key name", { exact: true }).fill(name)
+  await page.getByRole("button", { name: "Create a shared key", exact: true }).click()
   const dialog = page.getByRole("dialog", { name, exact: true })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText("AES-256-GCM", { exact: true })).toBeVisible()
