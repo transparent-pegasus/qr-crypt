@@ -336,7 +336,7 @@ export async function encryptWithStoredKey(
     keyName: string
     plaintext: string
   },
-): Promise<{ payload: string }> {
+): Promise<{ framePayload: string; payload: string }> {
   await goToOfflinePage(page, "/encrypt")
   await chooseOption(page, "Cryptographic algorithm", AES_ALGORITHM_LABEL)
   await chooseOption(page, "Key", args.keyName)
@@ -345,10 +345,29 @@ export async function encryptWithStoredKey(
 
   const result = page.getByRole("dialog", { name: "Encryption complete" })
   await expect(result).toBeVisible()
-  await expect(result.getByRole("img", { name: "Ciphertext QR image" })).toBeVisible()
-  const payload = (await result.locator("p").first().innerText()).trim()
-  expect(payload).toMatch(/^OCM1:/)
-  return { payload }
+  const qr = result.getByTestId("encrypt-result-qr")
+  const image = qr.getByRole("img", { name: "Ciphertext QR image" })
+  await expect(image).toHaveCount(1)
+  await expect(image).toBeVisible()
+  await expect(qr.getByRole("region", { name: /frame display$/ })).toHaveCount(0)
+  await expect(
+    qr.getByRole("button", { name: /^(?:Previous|Pause|Play|Next)$/ }),
+  ).toHaveCount(0)
+  await expect(qr.getByRole("switch", { name: "Compatibility mode" })).toHaveCount(0)
+  await expect(qr.getByText(/^\d+ \/ \d+$/)).toHaveCount(0)
+
+  await expect(image).toHaveAttribute("src", /^data:image\/png;base64,/)
+  const source = await image.getAttribute("src")
+  if (source === null) throw new Error("Ciphertext QR image has no source")
+  const framePayload = decodePng(Buffer.from(source.split(",", 2)[1]!, "base64"))
+  expect(framePayload).toMatch(/^OCF2:/)
+
+  const payload = (
+    await result.getByTestId("encrypt-result-payload").locator("p").first().innerText()
+  ).trim()
+  expect(payload).toMatch(/^OCA2:/)
+  expect(Number.parseInt(await detailValue(result, "QR frame count"), 10)).toBe(1)
+  return { framePayload, payload }
 }
 
 export async function encryptSignedPq(

@@ -12,14 +12,15 @@ test("supports creation through key listing, QR display, and deletion without pe
   page,
 }) => {
   const keyName = "フロー共通鍵"
+  const plaintext = "暗号文をアプリ管理領域へ保存しない日本語平文"
 
   await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, keyName)
   await expectNoQrArtifactStore(page)
 
-  await encryptWithStoredKey(page, {
+  const { payload } = await encryptWithStoredKey(page, {
     keyName,
-    plaintext: "暗号文をアプリ管理領域へ保存しない日本語平文",
+    plaintext,
   })
   const result = page.getByRole("dialog", { name: "Encryption complete" })
   await expect(result.getByLabel("Output name", { exact: true })).toBeVisible()
@@ -29,6 +30,14 @@ test("supports creation through key listing, QR display, and deletion without pe
   await expectNoQrArtifactStore(page)
 
   await page.reload({ waitUntil: "domcontentloaded" })
+  await expectNoQrArtifactStore(page)
+
+  await goToOfflinePage(page, "/decrypt")
+  await page.getByLabel("Ciphertext payload").fill(payload)
+  await page.getByRole("button", { name: "Decrypt", exact: true }).click()
+  const decrypted = page.getByRole("dialog", { name: "Decryption complete" })
+  await expect(decrypted.getByText(plaintext, { exact: true })).toBeVisible()
+  await decrypted.getByRole("button", { name: "Close", exact: true }).click()
   await expectNoQrArtifactStore(page)
 
   await goToOfflinePage(page, "/keys")

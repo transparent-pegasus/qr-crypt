@@ -31,11 +31,14 @@ vi.mock("@/crypto/aes-gcm", () => ({
   generateAesKey: fakes.generateAesKey,
   encryptWithAesKey: fakes.encryptWithAesKey,
   decryptWithAesKey: fakes.decryptWithAesKey,
+  sealSymMessage: fakes.sealSymMessage,
+  openSymMessage: fakes.openSymMessage,
 }))
 vi.mock("@/crypto/key-generation", () => ({
   createSymmetricKeyRecord: fakes.createSymmetricKeyRecord,
   importSymmetricKeyRecord: fakes.importSymmetricKeyRecord,
   buildSymmetricKeyEnvelope: fakes.buildSymmetricKeyEnvelope,
+  groupSymmetricKeys: fakes.groupSymmetricKeys,
 }))
 vi.mock("@/crypto/pq/worker-client", () => ({
   createPqCryptoClient: fakes.createPqCryptoClient,
@@ -61,6 +64,8 @@ vi.mock("@/crypto/pq/canonical-cbor", async (importOriginal) => ({
   encodeSignedMessageV2: fakes.encodeSignedMessageV2,
   encodeMlKemEnvelopeV2: fakes.encodeMlKemEnvelopeV2,
   decodeMlKemEnvelopeV2: fakes.decodeMlKemEnvelopeV2,
+  encodeSymMessageEnvelopeV2: fakes.encodeSymMessageEnvelopeV2,
+  decodeSymMessageEnvelopeV2: fakes.decodeSymMessageEnvelopeV2,
   encodePublicIdentityBundleV2: fakes.encodePublicIdentityBundleV2,
   decodePublicIdentityBundleV2: fakes.decodePublicIdentityBundleV2,
   encodeKemPublicKeyEnvelopeV2: fakes.encodeKemPublicKeyEnvelopeV2,

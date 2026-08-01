@@ -2,12 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router"
 import { AlertCircle, CheckCircle2, LoaderCircle, LockOpen } from "lucide-react"
 import { toast } from "sonner"
-import { decryptWithAesKey } from "@/crypto/aes-gcm"
+import { decryptWithAesKey, openSymMessage } from "@/crypto/aes-gcm"
 import { AppError, toAppError } from "@/crypto/errors"
-import { decodeMlKemEnvelopeV2, encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
+import {
+  decodeMlKemEnvelopeV2,
+  decodeSymMessageEnvelopeV2,
+  encodeMlKemEnvelopeV2,
+  encodeSymMessageEnvelopeV2,
+} from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { zeroize } from "@/crypto/pq/zeroize"
 import { assertActiveSuite } from "@/crypto/pq/suites"
+import { validateSymMessageEnvelopeV2 } from "@/crypto/pq/validation"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import {
   useFeatureSupport,
@@ -122,7 +128,11 @@ export function DecryptPage() {
     if (!input) return null
     try {
       const decoded = decodePayload(input)
-      return decoded.kind === "message" || decoded.kind === "pq-message" ? decoded : null
+      return decoded.kind === "message" ||
+        decoded.kind === "sym-message" ||
+        decoded.kind === "pq-message"
+        ? decoded
+        : null
     } catch {
       return null
     }
@@ -131,8 +141,8 @@ export function DecryptPage() {
   const parsedPqUnsupported =
     parsedDecrypt?.kind === "pq-message" &&
     !isActiveWireSuite(parsedDecrypt.envelope.suite)
-  const decryptAesKey =
-    parsedDecrypt?.kind === "message"
+  const decryptSymmetricKey =
+    parsedDecrypt?.kind === "message" || parsedDecrypt?.kind === "sym-message"
       ? symmetricKeys.find((key) => key.id === parsedDecrypt.envelope.keyId)
       : undefined
   const decryptIdentity =
@@ -146,16 +156,16 @@ export function DecryptPage() {
   const decryptKeyMissing =
     parsedDecrypt !== null &&
     !parsedPqUnsupported &&
-    (parsedDecrypt.kind === "message"
-      ? decryptAesKey === undefined
-      : decryptIdentity === undefined)
+    (parsedDecrypt.kind === "pq-message"
+      ? decryptIdentity === undefined
+      : decryptSymmetricKey === undefined)
   const canDecrypt =
     !busy &&
     parsedDecrypt !== null &&
     !parsedPqUnsupported &&
-    (parsedDecrypt.kind === "message"
-      ? decryptAesKey !== undefined
-      : decryptIdentity !== undefined)
+    (parsedDecrypt.kind === "pq-message"
+      ? decryptIdentity !== undefined
+      : decryptSymmetricKey !== undefined)
 
   useEffect(() => {
     setSensitiveSession({
@@ -195,15 +205,19 @@ export function DecryptPage() {
     try {
       const decoded = decodePayload(payload.trim())
       parsed =
-        decoded.kind === "message" || decoded.kind === "pq-message" ? decoded : null
+        decoded.kind === "message" ||
+        decoded.kind === "sym-message" ||
+        decoded.kind === "pq-message"
+          ? decoded
+          : null
     } catch {
       parsed = null
     }
     if (parsed === null) return
     if (parsed.kind === "pq-message" && !isActiveWireSuite(parsed.envelope.suite)) return
 
-    const aesKey =
-      parsed.kind === "message"
+    const symmetricKey =
+      parsed.kind === "message" || parsed.kind === "sym-message"
         ? symmetricKeys.find((key) => key.id === parsed.envelope.keyId)
         : undefined
     const identity =
@@ -214,29 +228,53 @@ export function DecryptPage() {
               isUsableIdentity(candidate),
           )
         : undefined
-    if (parsed.kind === "message" ? aesKey === undefined : identity === undefined) return
+    if (
+      parsed.kind === "pq-message"
+        ? identity === undefined
+        : symmetricKey === undefined
+    ) {
+      return
+    }
 
     setBusy(true)
     setError(null)
     clearDecrypted()
     try {
-      if (parsed.kind === "message" && aesKey?.symmetricKey) {
-        const decryptedBytes = await decryptWithAesKey({
-          key: aesKey.symmetricKey,
-          envelope: parsed.envelope,
-        })
+      if (parsed.kind !== "pq-message" && symmetricKey?.symmetricKey) {
+        const decryptedBytes =
+          parsed.kind === "message"
+            ? await decryptWithAesKey({
+                key: symmetricKey.symmetricKey,
+                envelope: parsed.envelope,
+              })
+            : await openSymMessage({
+                record: symmetricKey,
+                envelope: parsed.envelope,
+              })
         try {
+          const envelopeHash = await payloadSha256Hex(
+            parsed.kind === "message"
+              ? encodeEnvelopeToPayload(parsed.envelope)
+              : buildV2Payload(
+                  "sym-message",
+                  encodeSymMessageEnvelopeV2(parsed.envelope),
+                ),
+          )
           const verdict = recordReceipt(
-            {
-              kind: "aes",
-              recipientKeyId: aesKey.id,
-              envelopeHash: await payloadSha256Hex(
-                encodeEnvelopeToPayload(parsed.envelope),
-              ),
-            },
+            parsed.kind === "message"
+              ? {
+                  kind: "aes",
+                  recipientKeyId: symmetricKey.id,
+                  envelopeHash,
+                }
+              : {
+                  kind: "sym",
+                  recipientKeyId: symmetricKey.id,
+                  envelopeHash,
+                },
             Date.now(),
           )
-          // Unreachable for AES — its receipt identity already includes the
+          // Unreachable for symmetric messages — their receipt identity includes the
           // ciphertext hash — but the refusal is shared with the PQ path.
           if (verdict.kind === "message-id-reused") {
             throw new AppError("MESSAGE_ID_REUSED")
@@ -246,7 +284,7 @@ export function DecryptPage() {
             text: bytesToUtf8(decryptedBytes),
             replay: verdict,
           }
-          await markKeyUsed(aesKey.id, Date.now()).catch(() => undefined)
+          await markKeyUsed(symmetricKey.id, Date.now()).catch(() => undefined)
           setDecrypted(outcome)
         } finally {
           zeroize(decryptedBytes)
@@ -381,13 +419,24 @@ export function DecryptPage() {
                 // The payload string below is the working copy from here on, so the
                 // assembler's own copy of the ciphertext is released immediately.
                 try {
-                  if (artifactType !== "pq-message")
+                  let payload: string
+                  if (artifactType === "pq-message") {
+                    const envelope = decodeMlKemEnvelopeV2(artifactBytes)
+                    payload = buildV2Payload(
+                      "pq-message",
+                      encodeMlKemEnvelopeV2(envelope),
+                    )
+                  } else if (artifactType === "sym-message") {
+                    const envelope = validateSymMessageEnvelopeV2(
+                      decodeSymMessageEnvelopeV2(artifactBytes),
+                    )
+                    payload = buildV2Payload(
+                      "sym-message",
+                      encodeSymMessageEnvelopeV2(envelope),
+                    )
+                  } else {
                     throw new AppError("INVALID_QR_PAYLOAD")
-                  const envelope = decodeMlKemEnvelopeV2(artifactBytes)
-                  const payload = buildV2Payload(
-                    "pq-message",
-                    encodeMlKemEnvelopeV2(envelope),
-                  )
+                  }
                   setDecryptInput(payload)
                   clearDecrypted()
                   setError(null)
@@ -460,9 +509,9 @@ export function DecryptPage() {
               <DetailRow
                 label={t("encrypt.detail.recipientKeyId")}
                 value={
-                  parsedDecrypt.kind === "message"
-                    ? parsedDecrypt.envelope.keyId
-                    : parsedDecrypt.envelope.recipientKemKeyId
+                  parsedDecrypt.kind === "pq-message"
+                    ? parsedDecrypt.envelope.recipientKemKeyId
+                    : parsedDecrypt.envelope.keyId
                 }
                 mono
               />

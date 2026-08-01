@@ -63,14 +63,14 @@ async function animatedFrameCount(scope: Locator): Promise<number> {
   return Number(match[1])
 }
 
-test("a one-QR encryption downloads one PNG with no SVG affordance", async ({
+test("a one-frame symmetric encryption downloads its OCF2 QR as one PNG with no SVG affordance", async ({
   context,
   page,
 }) => {
   const keyName = "出力確認鍵"
   await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, keyName)
-  const { payload } = await encryptWithStoredKey(page, {
+  const { framePayload } = await encryptWithStoredKey(page, {
     keyName,
     plaintext: "ダウンロードしたQRを再読取する日本語平文",
   })
@@ -88,7 +88,7 @@ test("a one-QR encryption downloads one PNG with no SVG affordance", async ({
   await downloadButton.click()
   const pngDownload = await pngDownloadPromise
   expect(pngDownload.suggestedFilename()).toMatch(/^[^/\\]+-[A-Za-z0-9_-]{8}\.png$/)
-  expect(decodePng(await downloadBuffer(pngDownload))).toBe(payload)
+  expect(decodePng(await downloadBuffer(pngDownload))).toBe(framePayload)
 })
 
 test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no SVG affordance", async ({

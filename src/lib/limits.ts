@@ -3,6 +3,7 @@
 import {
   FRAME_BYTES_MAX,
   FRAME_BYTES_STEP,
+  FRAME_BYTES_VALUES,
 } from "@/lib/frame-bytes"
 import { FRAME_INTERVAL_MS_MAX } from "@/lib/frame-interval"
 import { env } from "@/schemas/env-schema"
@@ -128,6 +129,20 @@ export function minimumFrameBytesForArtifact(
     FRAME_BYTES_STEP *
     Math.ceil(Math.ceil(artifactByteLength / maximumFrames) / FRAME_BYTES_STEP)
   )
+}
+
+// Select the least dense admitted frame that can carry the whole artifact.
+export function singleFrameBytesFor(artifactByteLength: number): number {
+  if (!Number.isSafeInteger(artifactByteLength) || artifactByteLength < 1) {
+    throw new RangeError("artifact byte length is out of range")
+  }
+  const frameBytes = FRAME_BYTES_VALUES.find(
+    (candidate) => candidate >= artifactByteLength,
+  )
+  if (frameBytes === undefined) {
+    throw new RangeError("artifact exceeds the single-frame capacity")
+  }
+  return frameBytes
 }
 // The active internal density reaches the 1,000-byte chunk ceiling, so the
 // density-derived artifact capacity and the algebraic wire budget now coincide.
