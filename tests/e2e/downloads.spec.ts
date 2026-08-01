@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises"
 import { expect, test, type Download, type Locator } from "@playwright/test"
 import {
-  SIGNED_PQ_ALGORITHM_LABEL,
+  PQ_ALGORITHM_LABEL,
   chooseOption,
   collectAnimatedFramePayloads,
   createPqIdentity,
@@ -271,7 +271,7 @@ test("measures a maximum 120000-byte signed PQ message through ZIP production", 
   await chooseOption(
     page,
     "Cryptographic algorithm",
-    SIGNED_PQ_ALGORITHM_LABEL,
+    PQ_ALGORITHM_LABEL,
   )
   await chooseOption(page, "Recipient ML-KEM public key", /^Verified: /)
   await chooseOption(page, "My ML-DSA signing identity", identityName)

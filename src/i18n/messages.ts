@@ -209,7 +209,7 @@ const en = {
   "algorithm.A256GCM": "Symmetric-key AES-256-GCM",
   "algorithm.MLKEM1024_A256GCM": "Post-quantum ML-KEM-1024 + AES-256-GCM",
   "algorithm.MLKEM1024_MLDSA87_A256GCM":
-    "Signed post-quantum ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
+    "Post-quantum ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
 
   "qrDisplay.defaultTitle": "QR code",
   "qrDisplay.notQrCryptPayload":
@@ -875,7 +875,7 @@ const ja = {
   "algorithm.MLKEM1024_A256GCM":
     "ポスト量子 ML-KEM-1024 + AES-256-GCM",
   "algorithm.MLKEM1024_MLDSA87_A256GCM":
-    "署名付きポスト量子 ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
+    "ポスト量子 ML-KEM-1024 + ML-DSA-87 + AES-256-GCM",
 
   "qrDisplay.defaultTitle": "QRコード",
   "qrDisplay.notQrCryptPayload":

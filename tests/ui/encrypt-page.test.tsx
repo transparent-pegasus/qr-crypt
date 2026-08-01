@@ -66,7 +66,7 @@ describe("encrypt page v2", () => {
       }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole("option", { name: /Signed post-quantum/ }),
+      screen.getByRole("option", { name: /ML-DSA-87/ }),
     ).toBeInTheDocument()
     expect(screen.queryByText(/RSA/)).not.toBeInTheDocument()
   })
@@ -177,7 +177,7 @@ describe("encrypt page v2", () => {
         }),
     )
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "Cryptographic algorithm", /Signed post-quantum/)
+    await chooseSelectOption(user, "Cryptographic algorithm", /ML-DSA-87/)
     await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
     await chooseSelectOption(user, "My ML-DSA signing identity", "自分のPQ ID")
     await user.type(screen.getByLabelText("Plaintext"), "署名付き短文")
@@ -818,7 +818,7 @@ describe("encrypt page v2", () => {
     })
     const user = userEvent.setup()
     await renderApp("/encrypt")
-    await chooseSelectOption(user, "Cryptographic algorithm", /Signed post-quantum/)
+    await chooseSelectOption(user, "Cryptographic algorithm", /ML-DSA-87/)
     await chooseSelectOption(user, "Recipient ML-KEM public key", /確認済みの相手/)
     await chooseSelectOption(user, "My ML-DSA signing identity", "自分のPQ ID")
     await user.type(screen.getByLabelText("Plaintext"), "too large")

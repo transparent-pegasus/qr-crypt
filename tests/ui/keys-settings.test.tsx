@@ -689,7 +689,9 @@ describe("settings v2", () => {
       .setup()
       .click(screen.getByLabelText("Default cryptographic algorithm"))
     expect(
-      screen.queryByRole("option", { name: /^Post-quantum ML-KEM/ }),
+      // The unsigned option is the one without a signature algorithm; both
+      // labels now start with the same words.
+      screen.queryByRole("option", { name: /^Post-quantum ML-KEM-1024 \+ AES/ }),
     ).not.toBeInTheDocument()
   })
 

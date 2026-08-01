@@ -15,7 +15,9 @@ import {
 } from "@zxing/library"
 
 export const AES_ALGORITHM_LABEL = "Symmetric-key AES-256-GCM"
-export const SIGNED_PQ_ALGORITHM_LABEL = /Signed post-quantum/
+// Matched on the signature algorithm because the unsigned option, until it is
+// deleted, shares the leading words of this label.
+export const PQ_ALGORITHM_LABEL = /ML-DSA-87/
 const ONLINE_GATE_TIMEOUT_MS = 30_000
 const expectOnline = expect.configure({ timeout: ONLINE_GATE_TIMEOUT_MS })
 const SECOND_WORKER_WAVE_DELAY_MS = 10_000
@@ -375,7 +377,7 @@ export async function encryptSignedPq(
   args: { identityName: string; plaintext: string },
 ): Promise<{ payload: string; result: Locator }> {
   await goToOfflinePage(page, "/encrypt")
-  await chooseOption(page, "Cryptographic algorithm", SIGNED_PQ_ALGORITHM_LABEL)
+  await chooseOption(page, "Cryptographic algorithm", PQ_ALGORITHM_LABEL)
   await chooseOption(page, "Recipient ML-KEM public key", /^Verified: /)
   await chooseOption(page, "My ML-DSA signing identity", args.identityName)
   await page.getByLabel("Plaintext", { exact: true }).fill(args.plaintext)
