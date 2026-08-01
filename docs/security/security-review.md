@@ -1,13 +1,12 @@
 # Security Review Record (v2 Post-Quantum)
 
 This document is the **factual record** for the release completion condition
-"independent security review of the adopted libraries". This document is the
-authoritative definition of that gate; completion is judged in the following
-two categories. The current operational review scope is the maximum mainline,
-i.e. ML-KEM-1024 and ML-DSA-87 (unsigned and signed). The four `WireSuite`
-values are retained as a wire/codec contract, but balanced (768/65) is outside
-the active policy and is rejected at the operational boundary as
-`UNSUPPORTED_ALGORITHM`.
+"independent security review of the adopted libraries". Completion is judged in
+the following two categories. The current operational review scope is the
+maximum mainline, i.e. ML-KEM-1024 and ML-DSA-87 (unsigned and signed). The
+four `WireSuite` values are retained as a wire/codec contract, but balanced
+(768/65) is outside the active policy and is rejected at the operational
+boundary as `UNSUPPORTED_ALGORITHM`.
 
 - **implementation-complete**: The state in which the in-repository
   implementation, tests, and documentation are complete. It can be reached with
@@ -88,25 +87,18 @@ frames serially, so its peak memory is bounded by roughly one 1024px raster
 rather than by 127 of them, but its ~7s wall clock on desktop implies a
 materially longer wait on a phone.
 
-Boot readability remains append-only: density accepts every safe integer from
-100 through 1,000B and interval accepts every safe integer from 150 through
-3,000ms. The internal admitted sets are 100, 200, …, 1,000B and 200, 300, …,
-1,000ms plus 2,000ms. The exact default and compatible pairs survive reads;
-every other boot-readable historical combination, including a missing member,
-is canonicalized to the default 1,000B/200ms pair before strict validation.
-The append-only ranges and historical per-field normalizers remain, so no
-stored preference can become unreadable and force a wipe. New preference
-patches must provide one exact pair, while per-artifact effective clamps are
-never persisted.
+Boot readability is append-only; non-exact historical pairs canonicalize to the
+default 1,000B/200ms pair before strict validation. Detail:
+[boot-and-reset-v2.md](../spec/boot-and-reset-v2.md) §2.
 
 Visible dismissal follows [threat-model.md](threat-model.md) (fingerprint
 confirmation is the documented non-dismissible exception).
 
-## 1. Facts About the Adopted Libraries (as of 2026-07-29)
+## 1. Facts About the Adopted Libraries (as of 2026-08-01)
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-07-29: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-08-01: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
 - Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
 - FIPS errata (§3 step 1, checked 2026-07-29): NIST lists prospective corrections only (FIPS 204 sheet updated 2026-02-27). No impact on the API or the size table
@@ -145,7 +137,7 @@ confirmation is the documented non-dismissible exception).
   detect. Trust also continues to include the lockfile pin, npm provenance
   attestation, and recorded zxing-wasm SHA-256 rather than a zxing-wasm
   from-source rebuild
-- **Not independently audited**; no advisories at the pinned version as of 2026-07-29
+- **Not independently audited**; no advisories at the pinned version as of 2026-08-01
 - Consequence for CSP: live `script-src` / `'wasm-unsafe-eval'` facts are owned
   by [threat-model.md](threat-model.md) §2
 - Attacker-controlled camera pixels now reach a C++/Emscripten parser. See
@@ -156,7 +148,7 @@ confirmation is the documented non-dismissible exception).
 ### Supply Chain
 
 - Locked in `aube-lock.yaml` (must be committed). For the v1-era supply-chain
-  decisions and the 2026-07-24 re-verification, see `docs/security/threat-model.md` §5.1
+  decisions and the current re-check table, see `docs/security/threat-model.md` §5.1
 - ZIP output is an in-house store-only implementation with no added dependency (`fflate` was rejected for lacking provenance)
 - **RESOLVED (dev chain, re-verified 2026-07-29)**: `sharp` — `GHSA-f88m-g3jw-g9cj`
   (CVE-2026-33327 / CVE-2026-33328 / CVE-2026-35590 / CVE-2026-35591,
@@ -226,25 +218,10 @@ They do not close the external `release-approved` blocker.
 
 ### F-03 — Imported-bundle key-ID shadowing
 
-- **Found:** an attacker-supplied public bundle asserting a stored `signing.keyId`
-  could displace the legitimate record because resolution took the newest import;
-  a confirmed record could be shadowed by a later unverified import.
-- **Shipped:** unique indexes on `signing.keyId` and `kem.keyId`; `saveBundle`
-  refuses a re-import with equal KEM/signing algorithms and equal public-key bytes
-  with `DUPLICATE_KEY`, and refuses any other key-ID collision with
-  `KEY_ID_CONFLICT` (including partial collisions). If either indexed match is
-  revoked, every re-import reports `KEY_ID_CONFLICT`, including equal key
-  material; the error explains that a disabled bundle may hold the reservation.
-  Signing-key resolution is an exact index lookup that treats revoked as unknown;
-  the decrypt page resolves the sender from storage and separates signature
-  validity from identity (success colour only when `fingerprint-confirmed`;
-  unverified sender gets a destructive identity alert above the plaintext).
-  Revoke confirmation copy states that disabling hides the row, permanently
-  reserves both signing and KEM key IDs in this installation, cannot be undone or
-  deleted from the key screen afterwards, and can be cleared only by a full local
-  wipe. Deletion frees the IDs only when chosen before disabling.
-- **Deferred:** hiding an unverified signer's plaintext behind an explicit action,
-  and binding the sender public key into the signing target.
+Closed under unique indexes and `KEY_ID_CONFLICT` / `DUPLICATE_KEY` refusal; see
+[threat-model.md](threat-model.md) T22. **Deferred:** hiding an unverified
+signer's plaintext behind an explicit action, and binding the sender public key
+into the signing target.
 
 ## 2. Prohibited Claims (UI / README / CI)
 

@@ -28,7 +28,7 @@ export interface WipeCoordinatorDependencies {
   bestEffortReset: (args: BestEffortResetArgs) => Promise<BestEffortResetReport>
   coordinateTabs: () => void | Promise<void>
   disposeCrypto: () => void | Promise<void>
-  dropVaultKeyCache: () => void | Promise<void>
+  dropVaultKeyCacheAndReceipts: () => void | Promise<void>
   engageBarrier: () => void | Promise<void>
   withExclusiveLock: <T>(operation: () => Promise<T>) => Promise<T>
 }
@@ -69,7 +69,7 @@ function disposeCrypto(): void {
   if (failed) throw new Error("crypto disposal failed")
 }
 
-async function dropVaultKeyCache(): Promise<void> {
+async function dropVaultKeyCacheAndReceipts(): Promise<void> {
   try {
     dropVaultKeyCacheModule()
   } finally {
@@ -123,7 +123,7 @@ const DEFAULT_DEPENDENCIES: WipeCoordinatorDependencies = {
   bestEffortReset: bestEffortLocalReset,
   coordinateTabs: broadcastWipeRequest,
   disposeCrypto,
-  dropVaultKeyCache,
+  dropVaultKeyCacheAndReceipts,
   engageBarrier,
   withExclusiveLock: withExclusiveWipeLock,
 }
@@ -152,7 +152,7 @@ async function executeWipe(
   // The remaining order is security-significant. Do not reorder these calls.
   await attempt("barrier", dependencies.engageBarrier)
   await attempt("crypto", dependencies.disposeCrypto)
-  await attempt("vault-key-cache", dependencies.dropVaultKeyCache)
+  await attempt("vault-key-cache", dependencies.dropVaultKeyCacheAndReceipts)
   await attempt("transient", args.resetTransient)
   await attempt("cross-tab-close", dependencies.coordinateTabs)
 
@@ -212,14 +212,14 @@ export interface WipeBroadcastListenerOptions {
 export interface WipeBroadcastListenerDependencies {
   closeDatabase: () => void
   disposeCrypto: () => void
-  dropVaultKeyCache: () => Promise<void>
+  dropVaultKeyCacheAndReceipts: () => Promise<void>
   engageBarrier: () => void
 }
 
 const DEFAULT_BROADCAST_LISTENER_DEPENDENCIES: WipeBroadcastListenerDependencies = {
   closeDatabase: closeDb,
   disposeCrypto,
-  dropVaultKeyCache,
+  dropVaultKeyCacheAndReceipts,
   engageBarrier,
 }
 
@@ -250,7 +250,7 @@ export function installWipeBroadcastListener(
         // Continue clearing other secret holders.
       }
       try {
-        await dependencies.dropVaultKeyCache()
+        await dependencies.dropVaultKeyCacheAndReceipts()
       } catch {
         // The sender will report its own reset status; this tab must still close.
       }

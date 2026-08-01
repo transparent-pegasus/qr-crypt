@@ -7,8 +7,6 @@ import { AppError, toAppError } from "@/crypto/errors"
 import { MAX_PLAINTEXT_BYTES } from "@/lib/limits"
 import { encodeEnvelopeToPayload } from "@/qr/payload"
 
-export type { QrEcLevel } from "@/schemas/domain"
-
 // QR version 40 byte-mode capacities (docs/spec/qr-protocol.md §7).
 const QR_BYTE_CAPACITY: Record<QrEcLevel, number> = {
   L: 2953,

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest"
-import { buildPublicBundle, createIdentity } from "@/crypto/pq/identity"
+import { createIdentity } from "@/crypto/pq/identity"
 import { createPqCryptoClient, type PqCryptoClient } from "@/crypto/pq/worker-client"
 import { generateKeyId } from "@/crypto/random"
 import { dropVaultKeyCache, getOrCreateVaultKey } from "@/crypto/vault/vault-key"
-import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
+import type { PqPublicBundleRecord } from "@/schemas/domain"
 import { closeDb, deleteEntireDatabase } from "@/storage/database"
 import {
   confirmBundleFingerprint,
@@ -13,33 +13,10 @@ import {
   revokeBundle,
   saveBundle,
 } from "@/storage/pq-bundle-repository"
+import { publicRecord } from "../helpers/pq-fixtures"
 
 const NOW = 1_700_300_000_000
 const clients: PqCryptoClient[] = []
-
-function publicRecord(
-  identity: PostQuantumIdentity,
-  importedAt: number,
-): PqPublicBundleRecord {
-  const bundle = buildPublicBundle(identity)
-  return {
-    recordId: generateKeyId(),
-    identityId: bundle.identityId,
-    name: identity.name,
-    kem: {
-      ...bundle.kem,
-      fingerprint: identity.kem.fingerprint,
-    },
-    signing: {
-      ...bundle.signing,
-      fingerprint: identity.signing.fingerprint,
-    },
-    identityFingerprint: identity.identityFingerprint,
-    trust: "unverified",
-    bundleCreatedAt: bundle.createdAt,
-    importedAt,
-  }
-}
 
 async function makeRecord(name: string, now: number): Promise<PqPublicBundleRecord> {
   const client = createPqCryptoClient()

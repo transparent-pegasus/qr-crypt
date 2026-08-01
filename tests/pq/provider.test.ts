@@ -182,7 +182,7 @@ describe.each([
   })
 })
 
-it("keeps KEM and DSA seed lengths distinct", () => {
+it("pins KEM and DSA seed lengths", () => {
   const kemSeed = new Uint8Array(KEM_SIZES["ML-KEM-768"].seedBytes).fill(0x91)
   const dsaSeed = new Uint8Array(DSA_SIZES["ML-DSA-65"].seedBytes).fill(0x91)
   expect(kemSeed.byteLength).toBe(64)

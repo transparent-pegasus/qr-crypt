@@ -38,20 +38,11 @@ import {
   startQrScan,
   updatePreferences,
 } from "./helpers/fakes"
+import { expectSingleAlertCancelWithoutClose } from "./helpers/dialog-assertions"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 function en(key: Parameters<typeof translate>[1]): string {
   return translate("en", key)
-}
-
-function expectSingleAlertCancelWithoutClose(dialog: HTMLElement): void {
-  expect(
-    within(dialog).getAllByRole("button", { name: "Cancel" }),
-  ).toHaveLength(1)
-  expect(
-    within(dialog).queryByRole("button", { name: "Close" }),
-  ).toBeNull()
-  expect(dialog.querySelector("svg.lucide-x")).toBeNull()
 }
 
 async function runResetAllLocalData(user: UserEvent): Promise<void> {
@@ -117,7 +108,7 @@ describe("key management v2", () => {
       .getByRole("button", { name: "Scan a key QR code" })
       .querySelector("svg.lucide-scan-line")!
     expect(scanIcon).toHaveAttribute("aria-hidden", "true")
-    expect((cameraCard as HTMLDivElement).querySelector("svg.size-32")).toBeNull()
+    expect(within(cameraCard as HTMLDivElement).queryByRole("img")).toBeNull()
     expect(exampleCaption.parentElement!.querySelector("img")).toBeNull()
     expect(
       screen.queryByText(

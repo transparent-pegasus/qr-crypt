@@ -23,7 +23,6 @@ import { encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
 import {
   ACTIVE_PROFILE,
-  assertActiveProfile,
   assertActiveSuite,
   resolveSuite,
 } from "@/crypto/pq/suites"
@@ -32,6 +31,10 @@ import { generateArtifactId } from "@/crypto/random"
 import { useSensitiveSession, useTransientClear } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
 import { DetailRow } from "@/components/detail-row"
+import {
+  isUsableBundle,
+  isUsableIdentity,
+} from "@/components/key-detail/identity-policy"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrDisplay } from "@/components/qr-display"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -136,25 +139,6 @@ function isSignedAlgorithm(algorithm: UiAlgorithm): boolean {
   return algorithm === "MLKEM1024_MLDSA87_A256GCM"
 }
 
-function isActiveBundle(record: PqPublicBundleRecord): boolean {
-  try {
-    assertActiveSuite(resolveSuite(record.kem.algorithm, record.signing.algorithm))
-    return true
-  } catch {
-    return false
-  }
-}
-
-function isActiveIdentity(identity: PostQuantumIdentity): boolean {
-  try {
-    assertActiveProfile(identity.profile)
-    assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
-    return true
-  } catch {
-    return false
-  }
-}
-
 export function EncryptPage() {
   const { language, t } = useI18n()
   const { keys, loading: keysLoading, error: keysError } = useKeys()
@@ -247,7 +231,7 @@ export function EncryptPage() {
       bundles.filter(
         (record) =>
           record.revokedAt === undefined &&
-          isActiveBundle(record) &&
+          isUsableBundle(record) &&
           // An in-band check the sender can forge is not an identity proof. Only a
           // fingerprint compared out of band may authorise encryption to this key.
           record.trust === "fingerprint-confirmed",
@@ -261,7 +245,7 @@ export function EncryptPage() {
     () =>
       identities.filter((identity) => {
         if (identity.status !== "active") return false
-        if (!isActiveIdentity(identity)) return false
+        if (!isUsableIdentity(identity)) return false
         if (!selectedRecipient) return identity.profile === ACTIVE_PROFILE
         try {
           assertActiveSuite(

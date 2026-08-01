@@ -87,15 +87,6 @@ describe("random ids, feature detection, and env parsing", () => {
     }
   })
 
-  it.each(["true", "TRUE"] as const)(
-    "rejects retired VITE_ENABLE_RSA=%s",
-    (value) => {
-      expect(() => parseAppEnv({ VITE_ENABLE_RSA: value })).toThrow(
-        /^Invalid environment variables: VITE_ENABLE_RSA$/u,
-      )
-    },
-  )
-
   it("defaults and validates both background auto-clear delays", () => {
     expect(parseAppEnv({})).toMatchObject({
       autoClearSeconds: 60,

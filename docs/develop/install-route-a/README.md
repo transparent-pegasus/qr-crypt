@@ -273,10 +273,9 @@ it; treating it as required would disagree with the archive copy.
    `127.0.0.1` only. A server merely installed through a route called “trusted”
    is not equivalent. It must apply the bundled `_headers` and `_redirects`
    semantics: the security headers, correct MIME types, the SPA fallback to
-   `/index.html`, and `no-store` for the reachability sentinel. The production
-   build also carries the supported part of the same CSP in a meta tag as a
-   fallback, but `frame-ancestors` cannot be enforced there and remains available
-   only through the `_headers` response header. Choose one uncommon fixed high
+   `/index.html`, and `no-store` for the reachability sentinel. Meta CSP fallback
+   and `frame-ancestors` header-only rule:
+   [threat-model.md](../../security/threat-model.md) §2. Choose one uncommon fixed high
    port (not a collision-prone default such as 8000 or 8080) and reserve that port
    for QR Crypt.
 4. Open the exact `http://127.0.0.1:PORT` origin and wait until the app reports

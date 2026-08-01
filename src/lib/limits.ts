@@ -13,23 +13,16 @@ export {
   FRAME_BYTES_VALUES,
   isBootReadableFrameBytes,
   isFrameBytes,
-  LEGACY_FRAME_BYTES_MAX,
-  LEGACY_FRAME_BYTES_MIN,
   normalizeLegacyFrameBytes,
-  type FrameBytes,
 } from "@/lib/frame-bytes"
 export {
   FRAME_INTERVAL_MS_MAX,
   FRAME_INTERVAL_MS_MIN,
-  FRAME_INTERVAL_MS_STEP,
   FRAME_INTERVAL_MS_VALUES,
   isBootReadableFrameIntervalMs,
   isFrameIntervalMs,
-  LEGACY_FRAME_INTERVAL_MS_MAX,
-  LEGACY_FRAME_INTERVAL_MS_MIN,
   normalizeLegacyFrameIntervalMs,
   RELAY_PLAYBACK_FRAME_INTERVAL_MS,
-  type FrameIntervalMs,
 } from "@/lib/frame-interval"
 
 // One environment value serves two roles: MAX_PQ_PLAINTEXT_BYTES is the
@@ -52,6 +45,10 @@ export const MAX_AAD_BYTES = 128
 // below it, and the per-EC-level QR capacity in qr/encode.ts is what actually binds
 // generation. Kept as a cheap pre-parse guard against oversized input.
 export const MAX_PAYLOAD_CHARS = 8192
+
+// AES-GCM IVs are fixed at 96 bits.
+export const IV_BYTES = 12
+export const AES_GCM_TAG_BYTES = 16
 
 // A v1 A256GCM message has a five-character OCM1 prefix and at most 201
 // non-plaintext CBOR bytes: the fixed eight-entry map, fixed fields, a
@@ -87,15 +84,13 @@ export const MAX_SYMMETRIC_PLAINTEXT_BYTES =
 // The v1 envelope is bounded by what a single OCM1 payload can carry, NOT by the
 // post-quantum multipart ceiling: tying it to MAX_PLAINTEXT_BYTES would let the v1
 // decoder accept envelopes no legitimate v1 QR could ever contain.
-export const MAX_CIPHERTEXT_BYTES = MAX_SYMMETRIC_PLAINTEXT_BYTES + 16
+export const MAX_CIPHERTEXT_BYTES =
+  MAX_SYMMETRIC_PLAINTEXT_BYTES + AES_GCM_TAG_BYTES
 
 
 // Key IDs / artifact IDs: base64url of 16 random bytes (22 characters).
 export const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/
 export const KEY_ID_RAW_BYTES = 16
-
-// AES-GCM IVs are fixed at 96 bits.
-export const IV_BYTES = 12
 
 // Raw AES-256 key length.
 export const AES_KEY_BYTES = 32

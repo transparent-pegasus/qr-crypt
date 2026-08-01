@@ -3,21 +3,15 @@ import { encodeSignedMessageV2 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { createIdentity, rotateIdentity } from "@/crypto/pq/identity"
 import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
-import {
-  DSA_SIZES,
-  maxEnvelopeCiphertextBytes,
-  maxSignedMessageBytes,
-} from "@/crypto/pq/profiles"
-import { suiteComponents } from "@/crypto/pq/suites"
+import { maxEnvelopeCiphertextBytes, maxSignedMessageBytes } from "@/crypto/pq/profiles"
 import type { PqCryptoClient, PqWorkerOperation } from "@/crypto/pq/worker-client"
 import { toBase64Url } from "@/lib/base64url"
-import { MAX_PLAINTEXT_BYTES } from "@/lib/limits"
 import {
-  ML_DSA_ALGORITHMS,
-  WIRE_SUITES,
   type MlKemMessageEnvelopeV2,
+  type MlDsaAlgorithm,
   type PostQuantumIdentity,
   type PqPublicBundleRecord,
+  type WireSuite,
 } from "@/schemas/domain"
 import { handlePqWorkerRequest } from "@/workers/pq-crypto.worker"
 
@@ -63,7 +57,8 @@ function legacyIdentity(): PostQuantumIdentity {
   }
 }
 
-function legacyBundle(identity = legacyIdentity()): PqPublicBundleRecord {
+function legacyBundle(): PqPublicBundleRecord {
+  const identity = legacyIdentity()
   return {
     recordId: keyId(4),
     identityId: identity.id,
@@ -88,13 +83,11 @@ function legacyBundle(identity = legacyIdentity()): PqPublicBundleRecord {
   }
 }
 
-function legacyEnvelope(signed = true): MlKemMessageEnvelopeV2 {
+function legacyEnvelope(): MlKemMessageEnvelopeV2 {
   return {
     version: 2,
     type: "pq-message",
-    suite: signed
-      ? "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM"
-      : "ML-KEM-768+HKDF-SHA256+A256GCM",
+    suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
     recipientKemKeyId: keyId(2),
     kemCiphertext: new Uint8Array(1088),
     hkdfSalt: new Uint8Array(32),
@@ -308,22 +301,29 @@ describe("maximum active-policy boundaries", () => {
   })
 })
 
-describe("derived ciphertext ceilings", () => {
-  it.each(WIRE_SUITES)("derives the envelope ciphertext ceiling for %s", (suite) => {
-    const { signature } = suiteComponents(suite)
-    const expected =
-      signature === undefined
-        ? MAX_PLAINTEXT_BYTES + 512 + 16
-        : MAX_PLAINTEXT_BYTES + DSA_SIZES[signature].signatureBytes + 1024 + 16
-    expect(maxEnvelopeCiphertextBytes(suite)).toBe(expected)
-  })
+const EXPECTED_ENVELOPE_CEILING: Record<WireSuite, number> = {
+  "ML-KEM-768+HKDF-SHA256+A256GCM": 120_528,
+  "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM": 124_349,
+  "ML-KEM-1024+HKDF-SHA256+A256GCM": 120_528,
+  "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM": 125_667,
+}
+const EXPECTED_SIGNED_MESSAGE_CEILING = {
+  "ML-DSA-65": 124_333,
+  "ML-DSA-87": 125_651,
+} as const
 
-  it.each(ML_DSA_ALGORITHMS)(
-    "derives the signed-message ceiling for %s",
-    (algorithm) => {
-      expect(maxSignedMessageBytes(algorithm)).toBe(
-        MAX_PLAINTEXT_BYTES + DSA_SIZES[algorithm].signatureBytes + 1024,
-      )
+describe("derived ciphertext ceilings", () => {
+  it.each(Object.entries(EXPECTED_ENVELOPE_CEILING))(
+    "pins the envelope ciphertext ceiling for %s",
+    (suite, expected) => {
+      expect(maxEnvelopeCiphertextBytes(suite as WireSuite)).toBe(expected)
+    },
+  )
+
+  it.each(Object.entries(EXPECTED_SIGNED_MESSAGE_CEILING))(
+    "pins the signed-message ceiling for %s",
+    (algorithm, expected) => {
+      expect(maxSignedMessageBytes(algorithm as MlDsaAlgorithm)).toBe(expected)
     },
   )
 })

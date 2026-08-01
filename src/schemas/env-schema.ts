@@ -78,6 +78,7 @@ const frameIntervalMsFromString = z
 // tests/pq/maximum-artifact-size.golden.test.ts pins boundary equality with generated output.
 const MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES = 6_609
 const MAXIMUM_SIGNED_INNER_FIXED_BYTES = 4_822
+// = AES_GCM_TAG_BYTES (lib/limits); kept local because limits imports this module.
 const AES_GCM_TAG_BYTES = 16
 
 function canonicalByteStringHeaderBytes(byteLength: number): number {

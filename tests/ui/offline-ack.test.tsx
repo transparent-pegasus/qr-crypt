@@ -16,6 +16,7 @@ import { AppProviders, useTransientClear } from "@/app/providers"
 import { OfflineAckShell } from "@/components/offline-ack-shell"
 import { LanguageProvider } from "@/i18n"
 import { translate } from "@/i18n/messages"
+import { decision, response } from "../helpers/boot-fixtures"
 import { fakeFeatures, getPreferences, useFakeRegisterSW } from "./helpers/fakes"
 import { setTestOnlineStatus, stubReachabilityFetch } from "./helpers/network"
 import {
@@ -28,27 +29,6 @@ import {
 const ACK_TITLE = "Confirm before continuing"
 const JA_ACK_TITLE = "続行前の確認"
 const INSTALL_TITLE = translate("en", "gate.heading")
-
-function response(body: string, status = 200): Response {
-  return { status, text: vi.fn(async () => body) } as unknown as Response
-}
-
-function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSnapshot {
-  const snapshot = {
-    wipeOnOnline: true,
-    sensitiveDataExists: false,
-    maintenanceTokenArmed: false,
-    resetChurnMb: 0,
-    preferencesReadFailed: false,
-    ...overrides,
-  }
-  return {
-    ...snapshot,
-    cleanOrigin:
-      overrides.cleanOrigin ??
-      (snapshot.sensitiveDataExists ? "dirty" : "confirmed-clean"),
-  }
-}
 
 async function renderWipedOnline(
   initialLanguage: "en" | "ja",

@@ -527,8 +527,7 @@ export function createBootController(
     networkTransitionHandled = false
   }
 
-  const isDestructiveTerminal = () =>
-    state.kind === "wiping" || state.kind === "wiped" || state.kind === "partial-failure"
+  const isDestructiveTerminal = () => destructive(state)
 
   const relayEligibleFrom = (decision: BootDecisionSnapshot): boolean =>
     decision.cleanOrigin === "confirmed-clean" && !decision.sensitiveDataExists

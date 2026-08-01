@@ -1,7 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react"
 import { createElement, type ComponentProps } from "react"
 import { expect } from "vitest"
-import * as i18nExports from "@/i18n"
 import { resetFakes } from "./fakes"
 import { setTestOnlineStatus } from "./network"
 import { clearAckPending } from "@/app/offline-ack-marker"
@@ -77,7 +76,6 @@ export function expectLanguageField(): void {
   })
 
   expect({
-    exportedComponent: typeof Reflect.get(i18nExports, "LanguageField"),
     visibleLabel: isVisible(label),
     nativeAssociation:
       label instanceof HTMLLabelElement && label.control === combobox,
@@ -85,7 +83,6 @@ export function expectLanguageField(): void {
       screen.getByLabelText("Language") === combobox,
     fallbackAriaLabel: combobox.getAttribute("aria-label"),
   }).toEqual({
-    exportedComponent: "function",
     visibleLabel: true,
     nativeAssociation: true,
     labelQueryResolvesToCombobox: true,

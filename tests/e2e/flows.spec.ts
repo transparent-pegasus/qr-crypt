@@ -2,9 +2,9 @@ import { expect, test } from "@playwright/test"
 import {
   createSymmetricKey,
   encryptWithStoredKey,
+  expectNoQrArtifactStore,
   goToOfflinePage,
   openOfflineApp,
-  rawQrArtifacts,
 } from "./helpers"
 
 test("supports creation through key listing, QR display, and deletion without persisting QR or ciphertext", async ({
@@ -15,7 +15,7 @@ test("supports creation through key listing, QR display, and deletion without pe
 
   await openOfflineApp(page, context, "/keys")
   await createSymmetricKey(page, keyName)
-  expect(await rawQrArtifacts(page)).toHaveLength(0)
+  await expectNoQrArtifactStore(page)
 
   await encryptWithStoredKey(page, {
     keyName,
@@ -26,10 +26,10 @@ test("supports creation through key listing, QR display, and deletion without pe
   await expect(result.getByLabel("QR name", { exact: true })).toHaveCount(0)
   await expect(result.getByRole("button", { name: "Save", exact: true })).toHaveCount(0)
   await expect(result.getByText(/Saved|Duplicate|Save key QR/)).toHaveCount(0)
-  expect(await rawQrArtifacts(page)).toHaveLength(0)
+  await expectNoQrArtifactStore(page)
 
   await page.reload({ waitUntil: "domcontentloaded" })
-  expect(await rawQrArtifacts(page)).toHaveLength(0)
+  await expectNoQrArtifactStore(page)
 
   await goToOfflinePage(page, "/keys")
   await expect(page.getByRole("tab", { name: "My keys", exact: true })).toBeVisible()
@@ -44,7 +44,7 @@ test("supports creation through key listing, QR display, and deletion without pe
   await dialog.getByRole("checkbox", { name: "I understand the risk" }).check()
   await expect(dialog.getByRole("button", { name: "Download", exact: true })).toBeEnabled()
   await expect(dialog.getByText(/Saved|Save key QR/)).toHaveCount(0)
-  expect(await rawQrArtifacts(page)).toHaveLength(0)
+  await expectNoQrArtifactStore(page)
 
   await dialog.getByRole("button", { name: "Back to details" }).click()
   dialog = page.getByRole("dialog", { name: keyName, exact: true })
@@ -56,5 +56,5 @@ test("supports creation through key listing, QR display, and deletion without pe
   await expect(dialog).toBeHidden()
   await expect(page.getByText(keyName, { exact: true })).toHaveCount(0)
   await expect(page.getByText("You have no keys.")).toBeVisible()
-  expect(await rawQrArtifacts(page)).toHaveLength(0)
+  await expectNoQrArtifactStore(page)
 })

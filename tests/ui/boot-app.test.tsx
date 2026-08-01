@@ -8,6 +8,7 @@ import {
 } from "@/app/boot/boot-controller"
 import { translate } from "@/i18n/messages"
 import type { BestEffortResetReport } from "@/storage/best-effort-reset"
+import { decision, response } from "../helpers/boot-fixtures"
 import { getPreferences } from "./helpers/fakes"
 import {
   expectLanguageField,
@@ -15,27 +16,6 @@ import {
   resetUi,
 } from "./helpers/render-app"
 import { setTestOnlineStatus } from "./helpers/network"
-
-function response(body: string, status = 200): Response {
-  return { status, text: vi.fn(async () => body) } as unknown as Response
-}
-
-function decision(overrides: Partial<BootDecisionSnapshot> = {}): BootDecisionSnapshot {
-  const snapshot = {
-    wipeOnOnline: true,
-    sensitiveDataExists: false,
-    maintenanceTokenArmed: false,
-    resetChurnMb: 0,
-    preferencesReadFailed: false,
-    ...overrides,
-  }
-  return {
-    ...snapshot,
-    cleanOrigin:
-      overrides.cleanOrigin ??
-      (snapshot.sensitiveDataExists ? "dirty" : "confirmed-clean"),
-  }
-}
 
 describe("App boot gate", () => {
   beforeEach(resetUi)

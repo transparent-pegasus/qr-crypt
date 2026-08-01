@@ -3,10 +3,13 @@ import { LoaderCircle, Plus, ScanLine } from "lucide-react"
 import { toast } from "sonner"
 import { KeyAddDialog, type KeyAddMode } from "@/components/key-add-dialog"
 import {
-  isUsableIdentity,
   KeyDetailDialog,
   type KeySelection,
 } from "@/components/key-detail-dialog"
+import {
+  isUsableBundle,
+  isUsableIdentity,
+} from "@/components/key-detail/identity-policy"
 import { Fingerprint } from "@/components/fingerprint"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { PeerBundleDetailDialog } from "@/components/peer-bundle-detail-dialog"
@@ -41,7 +44,6 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toAppError } from "@/crypto/errors"
-import { assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
 import { formatDateTime } from "@/features/presentation"
 import { useKeys } from "@/hooks/use-keys"
 import { usePqRecords } from "@/hooks/use-pq-records"
@@ -101,15 +103,6 @@ function groupIdentities(identities: PostQuantumIdentity[]): IdentityGroup[] {
       }
       return { head, previous }
     })
-}
-
-function isUsableBundle(bundle: PqPublicBundleRecord): boolean {
-  try {
-    assertActiveSuite(resolveSuite(bundle.kem.algorithm, bundle.signing.algorithm))
-    return true
-  } catch {
-    return false
-  }
 }
 
 export function KeyListPage() {

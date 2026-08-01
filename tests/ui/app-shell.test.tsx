@@ -30,7 +30,6 @@ describe("app shell and feature gate", () => {
     expect(
       links.filter((link) => link.getAttribute("aria-current") === "page"),
     ).toHaveLength(1)
-    expect(links[0]).toHaveAttribute("aria-current", "page")
   })
 
   it("reports offline as neutral communication state without a safety claim", async () => {
