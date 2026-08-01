@@ -30,6 +30,7 @@ import {
   fakeIdentities,
   fakeKeys,
   encodeSymmetricKeyEnvelopeV2,
+  getActiveKeyRecord,
   listIdentities,
   listKeyRecords,
   renameIdentity,
@@ -38,7 +39,10 @@ import {
   qrPngBlob,
   revokeBundle,
   revokeIdentity,
+  rotateSymmetricKeyRecord,
   saveRotation,
+  saveSymmetricRotation,
+  sealSymMessage,
   splitIntoFrames,
   triggerDownload,
   updatePreferences,
@@ -554,6 +558,7 @@ describe("key list page", () => {
     )
 
     const dialog = await screen.findByRole("dialog", { name: rotated.name })
+    expect(within(dialog).getByText("Rotated")).toBeInTheDocument()
     expect(
       within(dialog).queryByRole("button", { name: "Show secret-key QR" }),
     ).toBeNull()
@@ -819,6 +824,110 @@ describe("key list page", () => {
     expect(
       within(dialog).queryByRole("button", { name: "Rotate" }),
     ).not.toBeInTheDocument()
+  })
+
+  it("rotates a symmetric key, groups its lineage, and offers only the new head for encryption", async () => {
+    const user = userEvent.setup()
+    const original = fakeKeys[0]!
+    await renderKeyList()
+    await user.click(rowFor(original.name))
+    let dialog = await screen.findByRole("dialog", { name: original.name })
+
+    await user.click(within(dialog).getByRole("button", { name: "Rotate" }))
+
+    await waitFor(() => expect(saveSymmetricRotation).toHaveBeenCalledOnce())
+    expect(getActiveKeyRecord).toHaveBeenCalledWith(original.id)
+    expect(rotateSymmetricKeyRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ id: original.id, status: "active" }),
+      expect.any(Number),
+    )
+    expect(getActiveKeyRecord.mock.invocationCallOrder[0]).toBeLessThan(
+      rotateSymmetricKeyRecord.mock.invocationCallOrder[0]!,
+    )
+    expect(rotateSymmetricKeyRecord.mock.invocationCallOrder[0]).toBeLessThan(
+      saveSymmetricRotation.mock.invocationCallOrder[0]!,
+    )
+    expect(
+      await screen.findByText("The symmetric key was rotated"),
+    ).toBeInTheDocument()
+
+    const generations = fakeKeys.filter(
+      (record) => record.kind === "symmetric" && record.name === original.name,
+    )
+    expect(generations).toHaveLength(2)
+    const head = generations.find((record) => record.status === "active")
+    const previous = generations.find((record) => record.status === "rotated")
+    expect(head).toMatchObject({ rotatedFromId: original.id })
+    expect(previous).toMatchObject({ id: original.id })
+
+    dialog = await screen.findByRole("dialog", { name: original.name })
+    await user.click(within(dialog).getByRole("button", { name: "Close" }))
+    const matchingRows = within(screen.getByRole("tabpanel"))
+      .getAllByRole("button")
+      .filter((row) => row.textContent?.includes(original.name))
+    expect(matchingRows).toHaveLength(1)
+    expect(matchingRows[0]).toHaveTextContent("Active")
+    expect(matchingRows[0]).toHaveTextContent(
+      "1 older generation(s) can still decrypt",
+    )
+
+    await user.click(screen.getByRole("link", { name: "Encrypt" }))
+    await user.click(await screen.findByLabelText("Key"))
+    const headOptions = await screen.findAllByRole("option", {
+      name: original.name,
+    })
+    expect(headOptions).toHaveLength(1)
+    expect(head?.id).not.toBe(original.id)
+    await user.click(headOptions[0]!)
+    await user.type(screen.getByLabelText("Plaintext"), "new head only")
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    await waitFor(() =>
+      expect(sealSymMessage).toHaveBeenCalledWith({
+        record: head,
+        plaintext: new TextEncoder().encode("new head only"),
+        now: expect.any(Number),
+      }),
+    )
+  })
+
+  it("re-resolves a symmetric record before rotation and rejects an already-rotated stale view", async () => {
+    const user = userEvent.setup()
+    const displayed = ock2Record({ name: "Stale symmetric key" })
+    fakeKeys.splice(0, fakeKeys.length, displayed)
+    render(
+      <LanguageProvider initialLanguage="en">
+        <AppProviders features={fakeFeatures} pwaHook={undefined}>
+          <SymmetricDetailHarness record={displayed} />
+        </AppProviders>
+      </LanguageProvider>,
+    )
+    const dialog = await screen.findByRole("dialog", { name: displayed.name })
+
+    const rotatedAt = displayed.createdAt + 1_000
+    const concurrentHead = ock2Record({
+      id: "C".repeat(22),
+      name: displayed.name,
+      createdAt: rotatedAt,
+      rotatedFromId: displayed.id,
+    })
+    fakeKeys.splice(
+      0,
+      fakeKeys.length,
+      concurrentHead,
+      { ...displayed, status: "rotated", rotatedAt },
+    )
+
+    await user.click(within(dialog).getByRole("button", { name: "Rotate" }))
+
+    await waitFor(() => expect(getActiveKeyRecord).toHaveBeenCalledWith(displayed.id))
+    expect(rotateSymmetricKeyRecord).not.toHaveBeenCalled()
+    expect(saveSymmetricRotation).not.toHaveBeenCalled()
+    expect(fakeKeys.filter((record) => record.status === "active")).toEqual([
+      concurrentHead,
+    ])
+    expect(
+      await within(dialog).findByText("The storage operation failed."),
+    ).toBeInTheDocument()
   })
 
   it("hides retained-generation warnings and discard controls when none exist", async () => {

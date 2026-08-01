@@ -303,6 +303,21 @@ export const createSymmetricKeyRecord = vi.fn(
     }
   },
 )
+
+async function defaultRotateSymmetricKeyRecord(
+  current: StoredKeyRecord,
+  now: number,
+): Promise<{ next: StoredKeyRecord; previous: StoredKeyRecord }> {
+  const created = await createSymmetricKeyRecord(current.name, now)
+  return {
+    next: { ...created, rotatedFromId: current.id },
+    previous: { ...current, status: "rotated", rotatedAt: now },
+  }
+}
+
+export const rotateSymmetricKeyRecord = vi.fn(
+  defaultRotateSymmetricKeyRecord,
+)
 export const buildSymmetricKeyEnvelope = vi.fn(
   async (record: StoredKeyRecord): Promise<SymmetricKeyEnvelopeV1> => ({
     v: 1,
@@ -926,6 +941,33 @@ export const saveKeyRecord = vi.fn(async (record: StoredKeyRecord) => {
 export const getKeyRecord = vi.fn(async (id: string) =>
   fakeKeys.find((record) => record.id === id),
 )
+async function defaultGetActiveKeyRecord(
+  id: string,
+): Promise<StoredKeyRecord | undefined> {
+  const record = fakeKeys.find((item) => item.id === id)
+  return record?.status === "active" ? record : undefined
+}
+export const getActiveKeyRecord = vi.fn(defaultGetActiveKeyRecord)
+async function defaultSaveSymmetricRotation({
+  next,
+  previous,
+}: {
+  next: StoredKeyRecord
+  previous: StoredKeyRecord
+}): Promise<void> {
+  const index = fakeKeys.findIndex((item) => item.id === previous.id)
+  const persisted = fakeKeys[index]
+  if (
+    persisted === undefined ||
+    persisted.status !== "active" ||
+    persisted.fingerprint !== previous.fingerprint
+  ) {
+    throw new AppError("STORAGE_FAILED")
+  }
+  fakeKeys[index] = previous
+  fakeKeys.unshift(next)
+}
+export const saveSymmetricRotation = vi.fn(defaultSaveSymmetricRotation)
 export const findKeyByFingerprint = vi.fn(async (fingerprint: string) =>
   fakeKeys.find((record) => record.fingerprint === fingerprint),
 )
@@ -1139,6 +1181,9 @@ export function resetFakes(): void {
   nextMultipartAddGate = null
   nextMultipartArtifactBytes = null
   decryptPqMessage.mockImplementation(defaultDecryptPqMessage)
+  rotateSymmetricKeyRecord.mockImplementation(defaultRotateSymmetricKeyRecord)
+  getActiveKeyRecord.mockImplementation(defaultGetActiveKeyRecord)
+  saveSymmetricRotation.mockImplementation(defaultSaveSymmetricRotation)
   findBundleBySigningKeyId.mockImplementation(defaultFindBundleBySigningKeyId)
   findBundleByKemKeyId.mockImplementation(defaultFindBundleByKemKeyId)
   recordReceipt.mockImplementation(() => ({ kind: "first-seen" }) as const)

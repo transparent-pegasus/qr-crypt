@@ -38,7 +38,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AppError, toAppError } from "@/crypto/errors"
-import { buildSymmetricKeyEnvelopeV2 } from "@/crypto/key-generation"
+import {
+  buildSymmetricKeyEnvelopeV2,
+  rotateSymmetricKeyRecord,
+} from "@/crypto/key-generation"
 import {
   encodeDsaPublicKeyEnvelopeV2,
   encodeKemPublicKeyEnvelopeV2,
@@ -78,7 +81,12 @@ import {
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { keyNameSchema } from "@/schemas/key-schema"
-import { deleteKeyRecord, renameKeyRecord } from "@/storage/key-repository"
+import {
+  deleteKeyRecord,
+  getActiveKeyRecord,
+  renameKeyRecord,
+  saveSymmetricRotation,
+} from "@/storage/key-repository"
 import {
   deleteIdentity,
   deleteSupersededIdentities,
@@ -418,6 +426,23 @@ export function KeyDetailContent({
     }
   }
 
+  const rotateSymmetric = async (target: StoredKeyRecord) => {
+    setBusy(true)
+    setError(null)
+    try {
+      const current = await getActiveKeyRecord(target.id)
+      if (current === undefined) throw new AppError("STORAGE_FAILED")
+      const rotated = await rotateSymmetricKeyRecord(current, Date.now())
+      await saveSymmetricRotation(rotated)
+      await onChanged({ kind: "symmetric", id: rotated.next.id })
+      toast.success(t("keyDetail.toast.symmetricRotated"))
+    } catch (caught) {
+      setError(toAppError(caught, "STORAGE_FAILED").code)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const revoke = async (target: PostQuantumIdentity) => {
     if (!selection) return
     setBusy(true)
@@ -637,6 +662,7 @@ export function KeyDetailContent({
                 record={symmetric}
                 busy={busy}
                 onShow={() => void showSymmetricQr(symmetric)}
+                onRotate={() => void rotateSymmetric(symmetric)}
                 onDelete={() =>
                   setPendingDelete({
                     kind: "symmetric",
