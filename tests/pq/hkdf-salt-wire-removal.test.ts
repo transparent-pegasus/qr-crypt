@@ -58,14 +58,14 @@ function expectInvalidQrPayload(operation: () => unknown): void {
   })
 }
 
+type HasHkdfSalt<T> = "hkdfSalt" extends keyof T ? true : false
+
 describe("hkdfSalt wire removal", () => {
   it("removes hkdfSalt from both active envelope types", () => {
-    expectTypeOf<MlKemMessageEnvelopeV2>().toEqualTypeOf<
-      Omit<MlKemMessageEnvelopeV2, "hkdfSalt">
-    >()
-    expectTypeOf<SymMessageEnvelopeV2>().toEqualTypeOf<
-      Omit<SymMessageEnvelopeV2, "hkdfSalt">
-    >()
+    // Not `Omit<T, "hkdfSalt">`: when the key is absent Omit is the identity,
+    // so that assertion passes whether or not the field was ever removed.
+    expectTypeOf<HasHkdfSalt<MlKemMessageEnvelopeV2>>().toEqualTypeOf<false>()
+    expectTypeOf<HasHkdfSalt<SymMessageEnvelopeV2>>().toEqualTypeOf<false>()
   })
 
   it("validates, encodes, and decodes a saltless PQ envelope", () => {

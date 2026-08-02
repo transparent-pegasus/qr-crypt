@@ -9,6 +9,10 @@ describe("suspicious format characters", () => {
     ["bidi override", "\u202E"],
     ["bidi isolate", "\u2066"],
     ["soft hyphen", "\u00AD"],
+    // Default-ignorable but general category Mn, so a Cf-only scan missed them.
+    ["variation selector", "\uFE00"],
+    ["combining grapheme joiner", "\u034F"],
+    ["variation selector supplement", "\u{E0101}"],
   ] as const)("flags a %s", (_name, character) => {
     expect(countUnicodeFormatCharacters(`left${character}right`)).toBe(1)
   })
@@ -34,5 +38,17 @@ describe("suspicious format characters", () => {
 
   it("reports no suspicious characters in an empty string", () => {
     expect(countUnicodeFormatCharacters("")).toBe(0)
+  })
+
+  // Deliberate exclusion, not an oversight: U+FE0F appears in ordinary emoji
+  // text, and an alert that fires on every such message stops being read. The
+  // residual is recorded in docs/security/threat-model.md T21.
+  it("does not flag the emoji presentation selector", () => {
+    expect(countUnicodeFormatCharacters("❤️")).toBe(0)
+    expect(countUnicodeFormatCharacters("️️")).toBe(0)
+  })
+
+  it("still flags other variation selectors alongside an emoji one", () => {
+    expect(countUnicodeFormatCharacters("❤️︀")).toBe(1)
   })
 })
