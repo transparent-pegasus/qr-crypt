@@ -94,7 +94,6 @@ function fixtureEnvelope(): MlKemMessageEnvelopeV2 {
     suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: KEY_ID,
     kemCiphertext: new Uint8Array(1568).fill(0x33),
-    hkdfSalt: new Uint8Array(32).fill(0x44),
     iv: new Uint8Array(12).fill(0x55),
     ciphertext: new Uint8Array(20).fill(0x66),
   }
@@ -138,13 +137,13 @@ describe("canonical-cbor goldens", () => {
 
   it("matches the frozen envelope encoding length and SHA-256", async () => {
     const bytes = encodeMlKemEnvelopeV2(fixtureEnvelope())
-    expect(bytes.byteLength).toBe(1792)
+    expect(bytes.byteLength).toBe(1749)
     expect(await sha256Hex(bytes)).toBe(
-      "d121c8ad34a2043f7c43f3c4b8cafedb974feaea3134040248a93a211acfee82",
+      "2003fa10cac59d40a7074f47f75bb39ba01d81ac6b23a353ee64e22619385ecb",
     )
-    // Also pin the first 48 bytes: map header a8 and iv/type/suite ordering.
+    // Also pin the first 48 bytes: map header a7 and iv/type/suite ordering.
     expect(bytesToHex(bytes.subarray(0, 48))).toBe(
-      "a86269764c55555555555555555555555564747970656a70712d6d65737361676565737569746578294d4c2d4b454d2d",
+      "a76269764c55555555555555555555555564747970656a70712d6d65737361676565737569746578294d4c2d4b454d2d",
     )
   })
 

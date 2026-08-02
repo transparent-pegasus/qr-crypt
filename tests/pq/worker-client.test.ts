@@ -67,7 +67,6 @@ function openRequest(): OpenPqEnvelopeRequest {
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: KEY_ID,
       kemCiphertext: new Uint8Array(1568),
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(16),
     },

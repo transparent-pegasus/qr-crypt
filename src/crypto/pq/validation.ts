@@ -35,7 +35,6 @@ import {
   AES_GCM_TAG_BYTES,
   AES_KEY_BYTES,
   FRAME_CHUNK_MAX_BYTES,
-  HKDF_SALT_BYTES,
   IV_BYTES,
   KEY_ID_PATTERN,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
@@ -58,7 +57,6 @@ const mlKemEnvelopeV2Schema = z
     suite: z.enum(WIRE_SUITES),
     recipientKemKeyId: keyId,
     kemCiphertext: bytes(),
-    hkdfSalt: bytes(HKDF_SALT_BYTES),
     iv: bytes(IV_BYTES),
     ciphertext: bytes().refine((value) => value.byteLength >= 16),
   })
@@ -90,7 +88,6 @@ const symMessageEnvelopeV2Schema = z
     suite: z.literal(SYM_SUITE),
     keyId,
     createdAt: timestamp,
-    hkdfSalt: bytes(HKDF_SALT_BYTES),
     iv: bytes(IV_BYTES),
     ciphertext: bytes().refine(
       (value) =>

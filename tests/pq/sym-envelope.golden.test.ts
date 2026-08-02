@@ -16,13 +16,12 @@ import {
   validateSymMessageEnvelopeV2,
   validateSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/validation"
-import { hkdfInfoSymV2 } from "@/crypto/pq/wire-bytes"
+import { hkdfInfoSymV2, hkdfSaltV2 } from "@/crypto/pq/wire-bytes"
 import { bytesToHex } from "@/lib/bytes"
 import {
   AES_GCM_TAG_BYTES,
   AES_KEY_BYTES,
   FRAME_CHUNK_MAX_BYTES,
-  HKDF_SALT_BYTES,
   IV_BYTES,
   MAX_SYM_PLAINTEXT_BYTES,
   SYM_MESSAGE_OVERHEAD_BYTES,
@@ -32,14 +31,13 @@ const KEY_ID = "AAECAwQFBgcICQoLDA0ODw" // base64url for raw bytes 00..0f.
 const CREATED_AT = 1_700_000_000_000
 
 // 1 map + iv 16 + type 17 + keyId 29 + suite 26 + version 9
-// + hkdfSalt 43 + createdAt 19 + ciphertext 32 = 192 bytes.
+// + createdAt 19 + ciphertext 32 = 149 bytes.
 const EXPECTED_ENVELOPE_HEX =
-  "a86269764c222222222222222222222222" +
+  "a76269764c222222222222222222222222" +
   "64747970656b73796d2d6d657373616765" +
   "656b657949647641414543417751464267634943516f4c4441304f4477" +
   "65737569746573484b44462d5348413235362b4132353647434d" +
   "6776657273696f6e02" +
-  "68686b646653616c7458201111111111111111111111111111111111111111111111111111111111111111" +
   "696372656174656441741b0000018bcfe56800" +
   "6a63697068657274657874543333333333333333333333333333333333333333"
 
@@ -51,11 +49,14 @@ const EXPECTED_AAD_HEX =
   "6776657273696f6e02" +
   "696372656174656441741b0000018bcfe56800"
 
-// 23 label + 1 NUL + 19 suite + 1 NUL + 16 raw keyId + 1 version = 61 bytes.
+// 23 label + 1 NUL + 19 suite + 1 NUL + 16 raw keyId + 12 IV + 1 version = 73 bytes.
 const EXPECTED_INFO_HEX =
   "51522d43525950542d53594d2d4d4553534147452d563200" +
   "484b44462d5348413235362b4132353647434d00" +
-  "000102030405060708090a0b0c0d0e0f02"
+  "000102030405060708090a0b0c0d0e0f" +
+  "22222222222222222222222202"
+
+const EXPECTED_SALT_HEX = "51522d43525950542d484b44462d53414c542d5632"
 
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2)
@@ -78,7 +79,6 @@ function symMessageFixture(): SymMessageEnvelopeV2 {
     suite: "HKDF-SHA256+A256GCM",
     keyId: KEY_ID,
     createdAt: CREATED_AT,
-    hkdfSalt: new Uint8Array(32).fill(0x11),
     iv: new Uint8Array(12).fill(0x22),
     ciphertext: new Uint8Array(20).fill(0x33),
   }
@@ -100,7 +100,7 @@ describe("sym-v2 canonical goldens", () => {
     const envelope = symMessageFixture()
     const encoded = encodeSymMessageEnvelopeV2(envelope)
 
-    expect(encoded).toHaveLength(192)
+    expect(encoded).toHaveLength(149)
     expect(bytesToHex(encoded)).toBe(EXPECTED_ENVELOPE_HEX)
     const decoded = decodeSymMessageEnvelopeV2(encoded)
     expect(decoded).toEqual(envelope)
@@ -126,10 +126,11 @@ describe("sym-v2 canonical goldens", () => {
     expect(bytesToHex(encoded)).toBe(EXPECTED_AAD_HEX)
   })
 
-  it("matches the frozen sym-message HKDF info", () => {
-    const info = hkdfInfoSymV2(KEY_ID)
+  it("matches the frozen symmetric HKDF salt and info", () => {
+    const info = hkdfInfoSymV2(KEY_ID, symMessageFixture().iv)
 
-    expect(info).toHaveLength(61)
+    expect(bytesToHex(hkdfSaltV2())).toBe(EXPECTED_SALT_HEX)
+    expect(info).toHaveLength(73)
     expect(bytesToHex(info)).toBe(EXPECTED_INFO_HEX)
   })
 })
@@ -145,7 +146,7 @@ describe("sym-v2 canonical and schema rejections", () => {
   it.each([
     [
       "non-canonical key order",
-      `a8${typePair}${ivPair}${remainingPairs}`,
+      `a7${typePair}${ivPair}${remainingPairs}`,
     ],
     ["indefinite-length map", `bf${EXPECTED_ENVELOPE_HEX.slice(2)}ff`],
     ["trailing bytes", `${EXPECTED_ENVELOPE_HEX}00`],
@@ -164,7 +165,10 @@ describe("sym-v2 canonical and schema rejections", () => {
 
   it("rejects unknown fields in both strict schemas", () => {
     expectInvalid(() =>
-      validateSymMessageEnvelopeV2({ ...symMessageFixture(), extra: 1 }),
+      validateSymMessageEnvelopeV2({
+        ...symMessageFixture(),
+        hkdfSalt: new Uint8Array(32),
+      }),
     )
     expectInvalid(() =>
       validateSymmetricKeyEnvelopeV2({ ...symmetricKeyFixture(), extra: 1 }),
@@ -185,8 +189,6 @@ describe("sym-v2 canonical and schema rejections", () => {
   })
 
   it.each([
-    ["short hkdfSalt", { hkdfSalt: new Uint8Array(HKDF_SALT_BYTES - 1) }],
-    ["long hkdfSalt", { hkdfSalt: new Uint8Array(HKDF_SALT_BYTES + 1) }],
     ["short iv", { iv: new Uint8Array(IV_BYTES - 1) }],
     ["long iv", { iv: new Uint8Array(IV_BYTES + 1) }],
     ["ciphertext below the GCM tag", { ciphertext: new Uint8Array(AES_GCM_TAG_BYTES - 1) }],
@@ -213,9 +215,9 @@ describe("sym-v2 canonical and schema rejections", () => {
 describe("sym-message single-frame limit", () => {
   it("pins the exact envelope overhead and rejects one more plaintext byte", () => {
     // At this boundary ciphertext uses a three-byte CBOR byte-string header:
-    // 1 map + 159 fixed field bytes + 11 ciphertext-key bytes + 3 header bytes = 174.
-    expect(SYM_MESSAGE_OVERHEAD_BYTES).toBe(174)
-    expect(MAX_SYM_PLAINTEXT_BYTES).toBe(810)
+    // 1 map + 116 fixed field bytes + 11 ciphertext-key bytes + 3 header bytes = 131.
+    expect(SYM_MESSAGE_OVERHEAD_BYTES).toBe(131)
+    expect(MAX_SYM_PLAINTEXT_BYTES).toBe(853)
     expect(MAX_SYM_PLAINTEXT_BYTES).toBe(
       FRAME_CHUNK_MAX_BYTES - SYM_MESSAGE_OVERHEAD_BYTES - AES_GCM_TAG_BYTES,
     )

@@ -70,7 +70,6 @@ function messageArtifact(plaintextBytes: number): Uint8Array {
     suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: KEY_ID,
     kemCiphertext: new Uint8Array(1568).fill(0x44),
-    hkdfSalt: new Uint8Array(32).fill(0x55),
     iv: new Uint8Array(12).fill(0x66),
     // WebCrypto AES-GCM output length is canonical inner CBOR plus a 128-bit tag.
     ciphertext: new Uint8Array(innerBytes.byteLength + 16).fill(0x77),
@@ -153,14 +152,14 @@ function artifactFixtures(): ArtifactFixture[] {
       label: "signed / empty plaintext",
       artifactType: "pq-message",
       bytes: messageArtifact(0),
-      expectedBytes: 6613,
+      expectedBytes: 6570,
       expectedFrames: {
-        100: 67,
-        200: 34,
-        300: 23,
+        100: 66,
+        200: 33,
+        300: 22,
         400: 17,
         500: 14,
-        600: 12,
+        600: 11,
         700: 10,
         800: 9,
         900: 8,
@@ -171,14 +170,14 @@ function artifactFixtures(): ArtifactFixture[] {
       label: "signed / maximum plaintext",
       artifactType: "pq-message",
       bytes: messageArtifact(MAX_PQ_PLAINTEXT_BYTES),
-      expectedBytes: 126_619,
+      expectedBytes: 126_576,
       expectedFrames: {
-        100: 1_267,
-        200: 634,
-        300: 423,
+        100: 1_266,
+        200: 633,
+        300: 422,
         400: 317,
         500: 254,
-        600: 212,
+        600: 211,
         700: 181,
         800: 159,
         900: 141,
@@ -382,15 +381,15 @@ describe("maximum canonical CBOR artifact sizing", () => {
 
   it("signed sizing formula stays exact across canonical byte-string header boundaries", () => {
     for (const [plaintextBytes, expectedArtifactBytes] of [
-      [1, 6614],
-      [23, 6636],
-      [24, 6638],
-      [255, 6869],
-      [256, 6871],
-      [16_384, 22_999],
-      [65_535, 72_152],
-      [65_536, 72_155],
-      [MAX_PQ_PLAINTEXT_BYTES, 126_619],
+      [1, 6571],
+      [23, 6593],
+      [24, 6595],
+      [255, 6826],
+      [256, 6828],
+      [16_384, 22_956],
+      [65_535, 72_109],
+      [65_536, 72_112],
+      [MAX_PQ_PLAINTEXT_BYTES, 126_576],
     ] as const) {
       expect(messageArtifact(plaintextBytes)).toHaveLength(expectedArtifactBytes)
     }
@@ -399,7 +398,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
   it("round-trips a maximum PQ plaintext as 127 EC-Q frames byte for byte", async () => {
     const artifactBytes = messageArtifact(MAX_PQ_PLAINTEXT_BYTES)
     expect(MAX_PQ_PLAINTEXT_BYTES).toBe(120_000)
-    expect(artifactBytes).toHaveLength(126_619)
+    expect(artifactBytes).toHaveLength(126_576)
 
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
@@ -488,7 +487,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
       plaintextBytes: 0,
       qrMaxFrames: 64,
       expectedMinimum: 200,
-      expectedFrames: 34,
+      expectedFrames: 33,
     },
     {
       caseName: "signed maximum",
@@ -540,7 +539,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
 
   it("raises the compatible 100B preference for a 16KiB signed artifact and keeps 1000B valid", async () => {
     const artifactBytes = messageArtifact(16_384)
-    expect(artifactBytes).toHaveLength(22_999)
+    expect(artifactBytes).toHaveLength(22_956)
     const minimum = minimumFrameBytesForArtifact(artifactBytes.byteLength)
     expect(minimum).toBe(200)
     await expect(
