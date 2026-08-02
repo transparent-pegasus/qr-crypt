@@ -18,7 +18,10 @@ import {
   recordReceipt,
   type ReceiptSubject,
 } from "@/features/receipt-cache"
-import { withSensitiveWriteLock } from "@/storage/database"
+import {
+  SENSITIVE_WRITE_EXCLUSION_TIMEOUT_MS,
+  withSensitiveWriteLock,
+} from "@/storage/database"
 import { decision, response } from "../helpers/boot-fixtures"
 import { deferred } from "../helpers/deferred"
 import { MemoryStorage } from "../helpers/memory-storage"
@@ -657,29 +660,85 @@ describe("boot decisions", () => {
   })
 
   it("waits for an in-flight sensitive write before proving the origin clean", async () => {
-    // Without the exclusion the read runs while the writer is still suspended,
-    // observes an empty origin, and authorizes the relay.
+    // The writer stays suspended across the whole confirmation. A request that
+    // was shared, or no request at all, would be granted alongside it and the
+    // read would prove clean an origin the writer is about to make dirty — so
+    // the load-bearing assertion is that the read has not happened yet.
     let written = false
     const write = deferred<void>()
+    const readDecision = vi.fn(async () =>
+      decision({ sensitiveDataExists: written, wipeOnOnline: false }),
+    )
     const holding = withSensitiveWriteLock(async () => {
       await write.promise
       written = true
     })
     const controller = createBootController({
       fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
-      readDecision: async () =>
-        decision({ sensitiveDataExists: written, wipeOnOnline: false }),
+      readDecision,
     })
 
     const probing = controller.probe()
+    await waitFor(() => expect(controller.getState().kind).toBe("network-confirmed"))
+    expect(readDecision).not.toHaveBeenCalled()
+
     write.resolve()
     await holding
     await probing
 
+    expect(readDecision).toHaveBeenCalledTimes(1)
     expect(controller.getState()).toEqual({
       kind: "network-confirmed",
       relayEligibility: "ineligible",
     })
+  })
+
+  it("does not exclude one sensitive writer from another", async () => {
+    const first = deferred<void>()
+    const holding = withSensitiveWriteLock(() => first.promise)
+    const second = withSensitiveWriteLock(async () => undefined)
+    // Writers hold the lock shared, so the second runs while the first is still
+    // suspended. Asking for it exclusively would keep the second waiting, which
+    // is what the timer observes; nothing else in the suite pins the mode.
+    const overlapped = await Promise.race([
+      second.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 50)),
+    ])
+
+    first.resolve()
+    await Promise.all([holding, second])
+
+    expect(overlapped).toBe(true)
+  })
+
+  it("still reaches the wipe decision when a sensitive write never releases", async () => {
+    // The lock is origin-wide, so a frozen peer tab can hold it for as long as
+    // it likes. Deciding nothing is the one outcome worse than a denied relay.
+    // Only the bound is shortened here; the constant it is called with is
+    // asserted below.
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal)
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation(() => realTimeout(20))
+    const stuck = deferred<void>()
+    const holding = withSensitiveWriteLock(() => stuck.promise)
+    const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      performWipe,
+      readDecision: async () => decision({ sensitiveDataExists: true }),
+    })
+
+    try {
+      await controller.probe()
+
+      expect(timeout).toHaveBeenCalledWith(SENSITIVE_WRITE_EXCLUSION_TIMEOUT_MS)
+      expect(performWipe).toHaveBeenCalledOnce()
+      expect(controller.getState()).toEqual({ kind: "wiped" })
+    } finally {
+      stuck.resolve()
+      await holding
+    }
   })
 
   it("denies the relay when the platform offers no origin-wide lock", async () => {
