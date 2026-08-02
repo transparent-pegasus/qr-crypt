@@ -67,6 +67,14 @@ offline-confirmed -- display online re-commit --> probing (at most once)
   invalidated before it starts. Where the platform exposes no Web Locks the
   exclusion was never held, so the relay is denied; the wipe decision is still
   made from the same read.
+- The exclusive request is bounded at `SENSITIVE_WRITE_EXCLUSION_TIMEOUT_MS`
+  (3 s). Origin-wide cuts both ways: a frozen tab or a hung transaction anywhere
+  in the origin can hold the lock shared indefinitely, and the wipe decision is
+  taken inside the hold, so an unbounded request would let any tab pin a
+  key-holding device that has already reached the network. Waiting forever and
+  deciding nothing is the one outcome worse than a denied relay. On timeout — or
+  on any rejection raised before the hold begins — the decision is taken with
+  the exclusion unproved: the relay is denied and the wipe still runs.
 - Sentinel success first publishes a fresh immutable
   `network-confirmed { relayEligibility: "pending" }`. Only after the decision
   completes may it publish another fresh state with `eligible` or

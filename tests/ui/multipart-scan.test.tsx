@@ -286,6 +286,32 @@ describe("QrScannerPanel multipart scan", () => {
     ).toBeEnabled()
   })
 
+  it("hands the claim back when the panel is gone before delivery settles", async () => {
+    const delivery = deferred<void>()
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    const onComplete = vi.fn(() => delivery.promise)
+    const view = render(scanner(session, onComplete))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
+    )
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
+
+    // The panel is unmounted while the delivery is still in flight, so the
+    // publish guard in settleDelivery short-circuits. Releasing after that guard
+    // would strand the claim on a session the next mount can never deliver.
+    view.unmount()
+    await act(async () => {
+      delivery.reject(new AppError("STORAGE_FAILED"))
+      await delivery.promise.catch(() => undefined)
+    })
+
+    expect(session.claimCompletion()).toBe(true)
+  })
+
   it("detects timeout, stops, and returns to idle", async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-01-02T03:04:05Z"))
