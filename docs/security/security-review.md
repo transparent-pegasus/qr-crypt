@@ -32,7 +32,7 @@ retained four-suite wire/codec contract. Boot alone keeps a read-only
     displayable frame, the 1,529-character
     worst-metadata payload at the 1,000B ceiling, and boundary agreement with
     the env capacity guard. `tests/pq/sym-envelope.golden.test.ts` pins the
-    sym-message overhead (174 B) and plaintext ceiling (810 B).
+    sym-message overhead (131 B) and plaintext ceiling (853 B).
   - The ML-KEM-1024 / ML-DSA-87 KATs and `aube run test` /
     `aube run typecheck` pass, and the `aube run bench:pq` maximum reference
     figures plus the README and
@@ -50,7 +50,7 @@ fixture string):
 
 | artifact | canonical CBOR (bytes) | compatible-preference frames | default-preference frames |
 |---|---:|---:|---:|
-| signed empty / max | 6,613 / 126,619 | 67 / 127* | 7 / 127 |
+| signed empty / max | 6,570 / 126,576 | 66 / 127* | 7 / 127 |
 | OCI2 bundle | 4,402 | 45 | 5 |
 | OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 18 / 28 | 2 / 3 |
 | OCB2 reserved sizing fixture | 4,637 | 47 | 5 |
@@ -59,7 +59,7 @@ fixture string):
 Plaintext ceilings are algorithm-specific; owners live in `src/lib/limits.ts`
 and the suite size tables beside them. The post-quantum path accepts at most
 120,000 UTF-8 bytes. The single-frame symmetric path
-(`sym-message` / `OCA2`) is capped at `MAX_SYM_PLAINTEXT_BYTES` = 810
+(`sym-message` / `OCA2`) is capped at `MAX_SYM_PLAINTEXT_BYTES` = 853
 (`FRAME_CHUNK_MAX_BYTES` − `SYM_MESSAGE_OVERHEAD_BYTES` − `AES_GCM_TAG_BYTES`).
 
 Verified 2026-07-30: the labelled compatibility-switch contract (exact pairs,
@@ -85,7 +85,10 @@ PQ fixture:
 | first frame render | 31 ms |
 | complete 127-frame ZIP export | 7,085 ms |
 | archive size | 9,633,007 B (≈9.6 MB) |
-| artifact / frames | 126,619 B / 127 frames at 1,000B |
+| artifact / frames | 126,576 B / 127 frames at 1,000B |
+
+The artifact byte count is corrected to the current fixture; the timings and
+archive size above were not re-measured.
 
 These are desktop numbers. **On-device figures for Android Chrome and iOS Safari
 are not yet measured** — see `docs/develop/browser-matrix.md`. The ZIP path renders
@@ -297,7 +300,8 @@ guaranteed; JS memory erasure has limits
 - Target commit hash, build hash, `@noble/post-quantum` version, and transitive lock
 - Scope (the maximum-mainline libraries, the protocol design in
   docs/spec/qr-protocol-v2.md, the application implementation, and the
-  single-active suite / `sym-message` / `symmetric-key` wire contract)
+  single-active suite / `sym-message` / `symmetric-key` wire contract,
+  including the `hkdfSalt` wire-field removal and IV-bound fixed-salt HKDF)
 - List of findings, fix commits, and re-verification results
 - FIPS errata check result
 

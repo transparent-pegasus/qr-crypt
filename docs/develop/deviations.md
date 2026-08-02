@@ -40,7 +40,7 @@ update — so a record of what the software once did constrains nothing.
 | `QrFrameV2.artifactType` includes `pq-kem-public-key` / `pq-dsa-public-key` / `sym-message` / `symmetric-key` | Values beyond the three of the original draft, so single public keys and the unified symmetric artifacts can be carried as frames |
 | Error codes `RESET_FAILED`, `SIGNATURE_INVALID`, `SIGNING_KEY_NOT_FOUND`, `FRAME_MISMATCH`, `WORKER_UNAVAILABLE` beyond the specified set | `RESET_FAILED` carries the honest-naming policy for best-effort logical deletion — no error name may imply guaranteed erasure. The others cover signature verification failure, missing signing key, frame mismatch, and Worker unavailability |
 | `VITE_DEFAULT_ALGORITHM=A256GCM` (symmetric AES-256-GCM is the default) | Maintainer requirement, 2026-07-24. The sole selectable post-quantum UI algorithm is `MLKEM1024_MLDSA87_A256GCM` |
-| Symmetric messages and keys are single-frame OCF2 only | Owner decision, 2026-08-01. `MAX_SYM_PLAINTEXT_BYTES` = 810 is the accepted capacity cost of that hard constraint |
+| Symmetric messages and keys are single-frame OCF2 only | Owner decision, 2026-08-01. `MAX_SYM_PLAINTEXT_BYTES` = 853 is the accepted capacity cost of that hard constraint |
 
 ## Product surface
 
