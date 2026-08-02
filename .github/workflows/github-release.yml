@@ -1163,6 +1163,39 @@ jobs:
               --certificate-github-workflow-trigger "push"
           }
 
+          assert_canonical_tag() {
+            local context="$1"
+            [[ "$(jq -r '.object.type' "$tag_json")" == "commit" ]] ||
+              fail "$context: canonical tag is not a lightweight commit tag"
+            [[ "$(jq -r '.object.sha' "$tag_json")" == "$SOURCE_SHA" ]] ||
+              fail "$context: canonical tag does not resolve to $SOURCE_SHA"
+          }
+
+          # GitHub serves ref reads from replicas, so a ref can 404 for a
+          # moment after it is written. Retry only that transient absence, and
+          # only on an explicit HTTP 404 — a 500 whose text happens to read
+          # "not found" is a real error. A ref that reads back with the wrong
+          # target is a tag move: it fails on the first readable response
+          # rather than being re-polled until some replica agrees.
+          read_canonical_tag() {
+            local context="$1" attempt
+            for attempt in 1 2 3 4 5 6; do
+              if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
+                > "$tag_json" 2> "$tag_error"; then
+                assert_canonical_tag "$context"
+                return 0
+              fi
+              grep -q 'HTTP 404' "$tag_error" || {
+                cat "$tag_error" >&2 || true
+                fail "$context: canonical tag read failed"
+              }
+              [[ "$attempt" -lt 6 ]] || break
+              sleep 2
+            done
+            cat "$tag_error" >&2 || true
+            fail "$context: canonical tag did not become readable"
+          }
+
           tag_exists=false
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
             > "$tag_json" 2> "$tag_error"; then
@@ -1172,7 +1205,7 @@ jobs:
             tag_sha="$(jq -r '.object.sha' "$tag_json")"
             [[ "$tag_sha" == "$SOURCE_SHA" ]] ||
               fail "existing tag resolves to $tag_sha instead of $SOURCE_SHA"
-          elif ! grep -Eqi 'HTTP 404|Not Found' "$tag_error"; then
+          elif ! grep -q 'HTTP 404' "$tag_error"; then
             cat "$tag_error" >&2
             fail "could not determine whether the canonical tag exists"
           fi
@@ -1201,17 +1234,15 @@ jobs:
           [[ "$IMMUTABILITY_ACKNOWLEDGED" == "true" ]] ||
             fail "enable Release immutability, then set repository variable RELEASE_IMMUTABILITY_ENABLED=true"
 
+          # The create response is the authoritative ref object, so it is
+          # asserted directly instead of read back — the read-back is what
+          # raced GitHub's ref replication and failed run 30716158737.
           if [[ "$tag_exists" == "false" ]]; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
               -f "ref=refs/tags/$RELEASE_TAG" \
-              -f "sha=$SOURCE_SHA" > /dev/null
+              -f "sha=$SOURCE_SHA" > "$tag_json"
           fi
-          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
-            > "$tag_json"
-          [[ "$(jq -r '.object.type' "$tag_json")" == "commit" ]] ||
-            fail "canonical tag is not a lightweight commit tag"
-          [[ "$(jq -r '.object.sha' "$tag_json")" == "$SOURCE_SHA" ]] ||
-            fail "canonical tag does not resolve to the source commit"
+          assert_canonical_tag "canonical tag"
 
           create_payload="$RUNNER_TEMP/create-release.json"
           create_error="$RUNNER_TEMP/create-release.error"
@@ -1279,12 +1310,7 @@ jobs:
           assert_exact_draft_assets
 
           # Close the mutable-draft tag race immediately before publication.
-          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
-            > "$tag_json"
-          [[ "$(jq -r '.object.type' "$tag_json")" == "commit" ]] ||
-            fail "canonical tag ceased to be a lightweight commit tag"
-          [[ "$(jq -r '.object.sha' "$tag_json")" == "$SOURCE_SHA" ]] ||
-            fail "canonical tag moved before publication"
+          read_canonical_tag "pre-publication"
 
           publish_payload="$RUNNER_TEMP/publish-release.json"
           jq -n \
@@ -1301,12 +1327,7 @@ jobs:
             "repos/$GITHUB_REPOSITORY/releases/$release_id" \
             --input "$publish_payload" > /dev/null
 
-          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" \
-            > "$tag_json"
-          [[ "$(jq -r '.object.type' "$tag_json")" == "commit" ]] ||
-            fail "published tag is not a lightweight commit tag"
-          [[ "$(jq -r '.object.sha' "$tag_json")" == "$SOURCE_SHA" ]] ||
-            fail "published tag does not resolve to the source commit"
+          read_canonical_tag "post-publication"
 
           load_published_release_after_publication
           assert_exact_published_release
