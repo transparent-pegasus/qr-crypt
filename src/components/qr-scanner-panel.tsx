@@ -87,7 +87,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
   )
   const localizedError =
     error === null ? null : t(error.key, error.values)
-  const [integrityConfirmed, setIntegrityConfirmed] = useState(
+  const [frameSetComplete, setFrameSetComplete] = useState(
     transferState.kind === "complete",
   )
 
@@ -209,7 +209,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       activeRunRef.current = run
       startLockedRef.current = true
       publishTransferState(sessionState)
-      setIntegrityConfirmed(true)
+      setFrameSetComplete(true)
       if (!session.claimCompletion()) {
         run.emitted = true
         cancelRun(run, "idle")
@@ -249,7 +249,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       next: Extract<TransferState, { kind: "complete" }>,
     ) => {
       const claimed = currentSession.claimCompletion()
-      setIntegrityConfirmed(true)
+      setFrameSetComplete(true)
       if (!claimed) {
         run.emitted = true
         cancelRun(run, "idle")
@@ -288,7 +288,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       }
 
       setError(null)
-      setIntegrityConfirmed(false)
+      setFrameSetComplete(false)
       setCameraStatus(localized("scanner.status.multipartReading"))
       void run.session
         .add(payload)
@@ -397,7 +397,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     if (run !== null) cancelRun(run, "idle")
     publishTransferState(IDLE_TRANSFER_STATE)
     publishCameraMode("idle")
-    setIntegrityConfirmed(false)
+    setFrameSetComplete(false)
     setError(null)
     setCameraStatus(localized("scanner.status.discardedCanStart"))
   }, [cancelRun, publishCameraMode, publishTransferState])
@@ -461,7 +461,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     nextRunIdRef.current += 1
     publishTransferState(next)
     publishCameraMode("idle")
-    setIntegrityConfirmed(next.kind === "complete")
+    setFrameSetComplete(next.kind === "complete")
     setError(
       next.kind === "error" ? localizedErrorCode(next.code) : null,
     )
@@ -487,7 +487,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       const run = activeRunRef.current
       if (run !== null) cancelRun(run, "idle")
       publishCameraMode("idle")
-      setIntegrityConfirmed(false)
+      setFrameSetComplete(false)
       setError(
         previousKind === "collecting"
           ? localized("scanner.error.expiredDiscarded")
@@ -642,14 +642,14 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
           </div>
         )}
 
-        {integrityConfirmed && (
+        {frameSetComplete && (
           <p role="status" className="text-sm text-success">
-            {t("scanner.integrityConfirmed")}
+            {t("scanner.frameSetComplete")}
           </p>
         )}
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          {t("scanner.sha256Notice")}
+          {t("scanner.frameSetNotice")}
         </p>
 
         {error && (

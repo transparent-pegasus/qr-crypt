@@ -155,7 +155,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
         }
         if (canPublish()) {
           setClosedNotice(
-            localized("scanner.closed.integrityImported"),
+            localized("scanner.closed.frameSetImported"),
           )
           onClosed?.()
         }
@@ -246,7 +246,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
           deliverFromPanel(
             panelGeneration,
             () => props.multipart.onComplete(completion),
-            localized("scanner.closed.integrityImported"),
+            localized("scanner.closed.frameSetImported"),
           ),
       }}
     />

@@ -86,7 +86,9 @@ describe("QrScannerPanel multipart scan", () => {
       artifactBytes: Uint8Array.of(3),
     })
     expect(
-      screen.getByText("SHA-256 integrity was confirmed for all frames."),
+      screen.getByText(
+        "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+      ),
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
 
@@ -196,7 +198,9 @@ describe("QrScannerPanel multipart scan", () => {
 
     expect(onComplete).not.toHaveBeenCalled()
     expect(
-      screen.queryByText("SHA-256 integrity was confirmed for all frames."),
+      screen.queryByText(
+        "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+      ),
     ).not.toBeInTheDocument()
   })
 
@@ -219,7 +223,9 @@ describe("QrScannerPanel multipart scan", () => {
       await screen.findByText(messageFor("UNSUPPORTED_ALGORITHM", "en")),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("SHA-256 integrity was confirmed for all frames."),
+      screen.getByText(
+        "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+      ),
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
   })
@@ -332,5 +338,24 @@ describe("QrScannerPanel multipart scan", () => {
     ).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
     expect(scannerStop).toHaveBeenCalled()
+  })
+
+  it("does not claim a digest check the assembler never performs", async () => {
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    render(scanner(session))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
+    )
+
+    expect(
+      screen.getByText(
+        "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/SHA-256/i)).not.toBeInTheDocument()
   })
 })

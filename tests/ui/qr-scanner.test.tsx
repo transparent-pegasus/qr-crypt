@@ -535,7 +535,7 @@ describe("QrScannerModal frame delivery", () => {
     ).toBeDisabled()
     expect(
       screen.queryByText(
-        "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
+        "All frames of the multi-frame QR code were received and imported.",
       ),
     ).not.toBeInTheDocument()
 
@@ -543,12 +543,12 @@ describe("QrScannerModal frame delivery", () => {
 
     expect(
       screen.getByText(
-        "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
+        "All frames of the multi-frame QR code were received and imported.",
       ),
     ).toBeInTheDocument()
   })
 
-  it("auto-closes after frame completion and keeps the SHA-256 notice", async () => {
+  it("auto-closes after frame completion and keeps the frame-set notice", async () => {
     const user = userEvent.setup()
     const onComplete = vi.fn()
     render(
@@ -568,7 +568,7 @@ describe("QrScannerModal frame delivery", () => {
     expect(onComplete).toHaveBeenCalledOnce()
     expect(
       screen.getByText(
-        "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
+        "All frames of the multi-frame QR code were received and imported.",
       ),
     ).toBeInTheDocument()
   })

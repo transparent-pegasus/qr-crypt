@@ -837,7 +837,7 @@ describe("decrypt page v2", () => {
 
     expect(
       await screen.findByText(
-        "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
+        "All frames of the multi-frame QR code were received and imported.",
         {},
         { timeout: 2_500 },
       ),
