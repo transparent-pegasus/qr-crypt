@@ -40,7 +40,7 @@ describe("contract smoke", () => {
     expect(MAX_PLAINTEXT_BYTES).toBe(MAX_PQ_PLAINTEXT_BYTES)
     // Sym-v2 is deliberately capped to one frame, independently of the PQ
     // multipart allocation ceiling.
-    expect(MAX_SYM_PLAINTEXT_BYTES).toBe(810)
+    expect(MAX_SYM_PLAINTEXT_BYTES).toBe(853)
     expect(MAX_SYM_PLAINTEXT_BYTES).toBeLessThan(MAX_PQ_PLAINTEXT_BYTES)
     const normalized = parseAppEnv({})
     expect(normalized.qrFrameBytes).toBe(1_000)

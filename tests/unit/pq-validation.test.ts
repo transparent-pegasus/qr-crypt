@@ -78,7 +78,6 @@ describe("PQ strict validation", () => {
       suite: ACTIVE_SUITE,
       recipientKemKeyId: KEY_ID,
       kemCiphertext: new Uint8Array(1568),
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(16),
     } as const

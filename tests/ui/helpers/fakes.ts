@@ -147,7 +147,6 @@ let lastPqEnvelope: MlKemMessageEnvelopeV2 = {
   suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
   recipientKemKeyId: KEM_KEY_ID,
   kemCiphertext: new Uint8Array(1568),
-  hkdfSalt: new Uint8Array(32),
   iv: new Uint8Array(12),
   ciphertext: new Uint8Array(128),
 }
@@ -211,7 +210,6 @@ export const sealSymMessage = vi.fn(
       suite: "HKDF-SHA256+A256GCM",
       keyId: record.id,
       createdAt: now,
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array([...plaintext, ...new Uint8Array(16)]),
     }
@@ -317,7 +315,6 @@ export const decodePayload = vi.fn((payload: string) => {
           suite: "HKDF-SHA256+A256GCM",
           keyId: payload.slice("OCA2:".length),
           createdAt: 1_723_000_000_001,
-          hkdfSalt: new Uint8Array(32),
           iv: new Uint8Array(12),
           ciphertext: new Uint8Array(16),
         } satisfies SymMessageEnvelopeV2),
@@ -742,7 +739,6 @@ export const encryptPq = vi.fn(
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: recipient.kem.keyId,
       kemCiphertext: new Uint8Array(1568),
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(plaintext.byteLength + 3_500),
     }
@@ -1020,7 +1016,6 @@ export function resetFakes(): void {
     suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: identity.kem.keyId,
     kemCiphertext: new Uint8Array(1568),
-    hkdfSalt: new Uint8Array(32),
     iv: new Uint8Array(12),
     ciphertext: new Uint8Array(32),
   }

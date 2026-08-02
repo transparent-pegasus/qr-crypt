@@ -360,7 +360,7 @@ test("measures a maximum 120000-byte signed PQ message through ZIP production", 
     await detailValue(result, "QR frame count"),
     10,
   )
-  expect(artifactBytes).toBe(126_619)
+  expect(artifactBytes).toBe(126_576)
   expect(frameCount).toBe(127)
   await expect(frames.getByRole("button", { name: /SVG/i })).toHaveCount(0)
   await expect(
