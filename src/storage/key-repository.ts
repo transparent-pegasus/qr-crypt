@@ -107,8 +107,19 @@ export function saveSymmetricRotation(rotated: RotatedSymmetricKey): Promise<voi
           tx.abort()
           throw new AppError("STORAGE_FAILED")
         }
-        await tx.store.put(previous)
-        await tx.store.add(next)
+        // The persisted row wins. The caller's `previous` is a snapshot taken
+        // before key generation, so writing it back would revert another tab's
+        // rename or use count. The symmetric fingerprint covers only the raw key
+        // bytes, so the new generation can inherit the persisted name too — its
+        // own counters and timestamps stay at the new generation's values.
+        await tx.store.put(
+          checkedRecord({
+            ...persisted,
+            status: "rotated",
+            rotatedAt: previous.rotatedAt,
+          }),
+        )
+        await tx.store.add(checkedRecord({ ...next, name: persisted.name }))
         await tx.done
       } catch (error) {
         try {

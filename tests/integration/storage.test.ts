@@ -321,6 +321,30 @@ describe("symmetric key rotation persistence", () => {
     })
   })
 
+  it("keeps a concurrent rename and use count when rotating a symmetric key", async () => {
+    const current = await createSymmetricKeyRecord("before rename", NOW)
+    await saveKeyRecord(current)
+    // The caller's snapshot is taken before key generation; another tab writes
+    // while that generation is still running.
+    const rotation = await rotateSymmetricKeyRecord(current, NOW + 1)
+    await renameKeyRecord(current.id, "after rename")
+    await markKeyUsed(current.id, NOW + 2)
+
+    await saveSymmetricRotation(rotation)
+
+    const previous = await getKeyRecord(current.id)
+    expect(previous?.name).toBe("after rename")
+    expect(previous?.useCount).toBe(1)
+    expect(previous?.lastUsedAt).toBe(NOW + 2)
+    expect(previous?.status).toBe("rotated")
+    expect(previous?.rotatedAt).toBe(NOW + 1)
+
+    const next = await getKeyRecord(rotation.next.id)
+    expect(next?.name).toBe("after rename")
+    expect(next?.status).toBe("active")
+    expect(next?.useCount).toBe(0)
+  })
+
   it("commits exactly one of two rotations derived from the same stale row", async () => {
     const current = await createSymmetricKeyRecord("competing rotations", NOW)
     await saveKeyRecord(current)
