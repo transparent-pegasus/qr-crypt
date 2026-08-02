@@ -468,6 +468,8 @@ export function KeyAddDialog({
     }
   }
 
+  // No persist() here, unlike the import above: this view is already locked by
+  // its kind, and a public bundle is not sensitive data — boot never scans it.
   const savePendingBundle = async (confirmed: boolean) => {
     if (view.kind !== "bundle-confirm" || (confirmed && !fingerprintChecked)) return
     const opening = openingRef.current
