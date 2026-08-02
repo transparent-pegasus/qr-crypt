@@ -434,6 +434,16 @@ describe("symmetric key rotation persistence", () => {
       fingerprint: rotation.next.fingerprint,
     })
   })
+
+  it("takes the sensitive-write lock before saving a rotation", async () => {
+    const current = await createSymmetricKeyRecord("locked rotation", NOW)
+    await saveKeyRecord(current)
+    const rotation = await rotateSymmetricKeyRecord(current, NOW + 1)
+
+    await assertRunsAfterExclusiveLock(() => saveSymmetricRotation(rotation))
+
+    expect(await getKeyRecord(rotation.next.id)).toMatchObject({ status: "active" })
+  })
 })
 
 describe("preferences and plaintext non-persistence", () => {

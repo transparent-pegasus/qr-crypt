@@ -95,6 +95,25 @@ describe("sensitive-write lock", () => {
 
     await assertRunsAfterExclusiveLock(() => getOrCreateVaultKey())
   }, 30_000)
+
+  it("is held while an identity rotation is saved", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const identity = await createIdentity({
+      client,
+      vaultKey,
+      name: "locked rotation",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(identity)
+    const rotation = await rotateIdentity({ client, vaultKey, current: identity, now: NOW + 1 })
+
+    await assertRunsAfterExclusiveLock(() => saveRotation(rotation))
+
+    expect(await getIdentity(rotation.next.id)).toMatchObject({ status: "active" })
+  }, 30_000)
 })
 
 describe("PQ envelope and storage integration", () => {

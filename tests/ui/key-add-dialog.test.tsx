@@ -89,9 +89,16 @@ describe("KeyAddDialog abandonment", () => {
     await user.click(screen.getByRole("button", { name: "Create a shared key" }))
     await waitFor(() => expect(saveKeyRecord).toHaveBeenCalledOnce())
 
+    // "again" is the whole claim, so the gate has to be observed shut first:
+    // without this the case passes on a dialog that was never locked at all.
+    await user.keyboard("{Escape}")
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
     write.reject(new Error("write failed"))
     await screen.findByRole("alert")
 
+    // The release is in a finally: a write that rejects must not strand the user
+    // in a modal that refuses every dismiss path.
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
   })
