@@ -23,6 +23,7 @@ import {
   STORE_KEYS,
   STORE_PQ_IDENTITIES,
   STORE_PREFERENCES,
+  withSensitiveWritesExcluded,
 } from "@/storage/database"
 import { PREFERENCES_KEY } from "@/storage/preferences-repository"
 import { setAckPending } from "@/app/offline-ack-marker"
@@ -519,12 +520,21 @@ export function createBootController(
 
   const isDestructiveTerminal = () => destructive(state)
 
-  const relayEligibleFrom = (decision: BootDecisionSnapshot): boolean =>
-    decision.cleanOrigin === "confirmed-clean" && !decision.sensitiveDataExists
+  // The snapshot is only a proof of cleanliness while sensitive writers are
+  // excluded, so eligibility requires that the exclusion was actually held.
+  // Without Web Locks it never was, and the relay stays closed.
+  const relayEligibleFrom = (
+    decision: BootDecisionSnapshot,
+    exclusive: boolean,
+  ): boolean =>
+    exclusive &&
+    decision.cleanOrigin === "confirmed-clean" &&
+    !decision.sensitiveDataExists
 
   const publishRelayDecision = (
     episode: NonNullable<typeof confirmationEpisode>,
     decision: BootDecisionSnapshot,
+    exclusive: boolean,
   ): boolean => {
     if (
       confirmationEpisode !== episode ||
@@ -537,7 +547,7 @@ export function createBootController(
       emit({ kind: "network-confirmed", relayEligibility: "ineligible" })
       return false
     }
-    const eligible = relayEligibleFrom(decision)
+    const eligible = relayEligibleFrom(decision, exclusive)
     if (!eligible) endRelaySession("eligibility-loss")
     emit({
       kind: "network-confirmed",
@@ -549,6 +559,7 @@ export function createBootController(
   const finishNonDestructiveConfirmation = (
     episode: NonNullable<typeof confirmationEpisode>,
     decision: BootDecisionSnapshot,
+    exclusive: boolean,
   ) => {
     resetTransient()
     episode.continuationPending = false
@@ -562,7 +573,7 @@ export function createBootController(
       emit({ kind: "offline-confirmed" })
       return
     }
-    publishRelayDecision(episode, decision)
+    publishRelayDecision(episode, decision, exclusive)
   }
 
   const probe = async (): Promise<void> => {
@@ -576,7 +587,6 @@ export function createBootController(
     activeProbe = controller
     emit({ kind: "probing", generation: probeGeneration })
 
-    const decisionPromise = safeDecision(readDecision)
     const configuredNonce = options.nonce?.()
     const confirmed = await probeNetworkSentinel({
       ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
@@ -609,26 +619,36 @@ export function createBootController(
     // Sentinel success is the one-way boundary. From here onward no offline
     // request, generation update, or AbortSignal may cancel token consumption
     // or a qualifying wipe decision.
-    const decision = await decisionPromise
-
-    if (decision.maintenanceTokenArmed) {
-      const tokenConsumed = await consumeToken()
-      if (tokenConsumed) {
-        finishNonDestructiveConfirmation(episode, decision)
+    //
+    // The read is deliberately no longer concurrent with the sentinel: a
+    // snapshot taken while a writer is running proves nothing, so the read, the
+    // token consumption, and the publication all happen inside one exclusive
+    // hold. The wipe stays outside it — it is long, and the relay is already
+    // invalidated before it starts.
+    let wipeDecision: BootDecisionSnapshot | undefined
+    await withSensitiveWritesExcluded(async (exclusive) => {
+      const decision = await safeDecision(readDecision)
+      if (decision.maintenanceTokenArmed) {
+        const tokenConsumed = await consumeToken()
+        if (tokenConsumed) {
+          finishNonDestructiveConfirmation(episode, decision, exclusive)
+          return
+        }
+      }
+      if (!decision.sensitiveDataExists || !decision.wipeOnOnline) {
+        finishNonDestructiveConfirmation(episode, decision, exclusive)
         return
       }
-    }
-    if (!decision.sensitiveDataExists || !decision.wipeOnOnline) {
-      finishNonDestructiveConfirmation(episode, decision)
-      return
-    }
+      wipeDecision = decision
+    })
+    if (wipeDecision === undefined) return
 
     invalidateRelay("local-wipe")
     emit({ kind: "wiping" })
     try {
       const report = await performWipe({
         reason: "online-detected",
-        resetChurnMb: decision.resetChurnMb,
+        resetChurnMb: wipeDecision.resetChurnMb,
         endSession: () => endRelaySession("local-wipe"),
         resetTransient,
       })
@@ -717,18 +737,22 @@ export function createBootController(
     const refreshGeneration = ++relayRefreshGeneration
     endRelaySession("eligibility-loss")
     emit({ kind: "network-confirmed", relayEligibility: "pending" })
-    const decision = await safeDecision(readDecision)
-    if (
-      refreshGeneration !== relayRefreshGeneration ||
-      confirmationEpisode !== episode ||
-      episode.continuationPending ||
-      episode.offlineRequested ||
-      episode.relayInvalidated ||
-      state.kind !== "network-confirmed"
-    ) {
-      return false
-    }
-    return publishRelayDecision(episode, decision)
+    let stillEligible = false
+    await withSensitiveWritesExcluded(async (exclusive) => {
+      const decision = await safeDecision(readDecision)
+      if (
+        refreshGeneration !== relayRefreshGeneration ||
+        confirmationEpisode !== episode ||
+        episode.continuationPending ||
+        episode.offlineRequested ||
+        episode.relayInvalidated ||
+        state.kind !== "network-confirmed"
+      ) {
+        return
+      }
+      stillEligible = publishRelayDecision(episode, decision, exclusive)
+    })
+    return stillEligible
   }
 
   return {

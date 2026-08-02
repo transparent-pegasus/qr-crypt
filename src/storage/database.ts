@@ -58,6 +58,7 @@ let databaseAccessBarrier = false
 
 export const DATABASE_DELETE_TIMEOUT_MS = 3_000
 export const DATABASE_OPEN_BLOCKED_TIMEOUT_MS = 3_000
+export const SENSITIVE_WRITE_EXCLUSION_TIMEOUT_MS = 3_000
 
 export interface DeleteEntireDatabaseOptions {
   timeoutMs?: number
@@ -85,6 +86,64 @@ export function resetDatabaseAccessBarrierForTesting(): void {
     throw new AppError("RESET_FAILED")
   }
   databaseAccessBarrier = false
+}
+
+// Boot proves the origin holds no sensitive data before it authorizes the online
+// relay, and that proof is only worth anything if nothing can write while it is
+// being taken. A counter cannot give that: a writer still inside Web Crypto has
+// already incremented it, and a peer tab's writes never touch this realm's
+// variables at all. Web Locks are origin-wide, so an exclusive holder waits out
+// every writer wherever it started and keeps the next one out until the decision
+// is published.
+export const SENSITIVE_WRITE_LOCK = "qr-crypt-sensitive-write"
+
+function lockManager(): LockManager | undefined {
+  return typeof navigator === "undefined" ? undefined : navigator.locks
+}
+
+// Writers hold it shared: they do not exclude each other, only the proof.
+export async function withSensitiveWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+  const locks = lockManager()
+  if (locks === undefined) return operation()
+  return locks.request(SENSITIVE_WRITE_LOCK, { mode: "shared" }, operation)
+}
+
+// The callback is told whether the lock was actually taken. Without Web Locks the
+// origin cannot be proved clean, but the wipe decision still has to be made, so
+// the operation runs either way and the caller fails closed on false.
+//
+// The request is bounded for the same reason. The lock is origin-wide, so a
+// frozen tab or a hung transaction elsewhere can hold it shared indefinitely,
+// and boot decides whether to wipe inside this callback. The one unacceptable
+// outcome is waiting forever and deciding nothing: an origin that holds keys
+// and has reached the network must reset whether or not the exclusion could be
+// proved. On timeout — or on any rejection before the callback started, such as
+// the InvalidStateError a document that is not fully active gets — the operation
+// runs unexcluded, which denies the relay and still reaches the wipe.
+export async function withSensitiveWritesExcluded(
+  operation: (exclusive: boolean) => Promise<void>,
+): Promise<void> {
+  const locks = lockManager()
+  if (locks === undefined) return operation(false)
+  let started = false
+  try {
+    return await locks.request(
+      SENSITIVE_WRITE_LOCK,
+      {
+        mode: "exclusive",
+        signal: AbortSignal.timeout(SENSITIVE_WRITE_EXCLUSION_TIMEOUT_MS),
+      },
+      () => {
+        started = true
+        return operation(true)
+      },
+    )
+  } catch (error) {
+    // Once the callback has begun, the failure is the operation's own. Running
+    // it a second time would re-consume the maintenance token and re-publish.
+    if (started) throw error
+    return operation(false)
+  }
 }
 
 function timeoutOrDefault(value: number | undefined, fallback: number): number {

@@ -48,7 +48,10 @@ The algorithms themselves are the standard ones. The claim is about where they a
   requires Safari/iOS 16 or newer. Windows Chrome, macOS Safari, and Edge are recorded as
   reference environments
   ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)). Without Web Crypto or
-  IndexedDB the app stops at a start-up screen and no feature is available.
+  IndexedDB the app stops at a start-up screen and no feature is available. The online
+  optical relay additionally needs the Web Locks API: the proof that the origin holds no
+  keys is taken while every sensitive write is excluded origin-wide, and a browser that
+  cannot hold that lock is refused relay eligibility rather than trusted.
 * **Origin.** The app must be served over `https://`, or locally over
   `http://127.0.0.1`. Opening `index.html` from a `file://` path does not work, and plain
   HTTP over a LAN address does not either — the camera and the service worker are not

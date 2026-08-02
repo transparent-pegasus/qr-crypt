@@ -514,16 +514,16 @@ const en = {
   "scanner.progress.received": "Received {received} / {total}",
   "scanner.progress.missingIndex": "Missing frames: {indexes}",
   "scanner.progress.expiresAt": "Scan expires: {time}",
-  "scanner.integrityConfirmed":
-    "SHA-256 integrity was confirmed for all frames.",
-  "scanner.sha256Notice":
-    "SHA-256 detects missing or mixed frames during transfer; it does not prove the sender's authenticity.",
+  "scanner.frameSetComplete":
+    "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+  "scanner.frameSetNotice":
+    "These checks detect frames that are missing, duplicated, or mixed in from another transfer. They do not verify the artifact's contents and do not prove the sender's authenticity.",
   "scanner.error.title": "The scan could not be completed",
   "scanner.button.discard": "Discard scan state",
   "scanner.closed.multipartProgress":
     "Multi-frame QR scan in progress: received {received} / {total}",
-  "scanner.closed.integrityImported":
-    "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
+  "scanner.closed.frameSetImported":
+    "All frames of the multi-frame QR code were received and imported.",
 
   "settings.error.saveFailed":
     "Settings could not be saved. Check the device storage.",
@@ -1143,16 +1143,15 @@ const ja = {
   "scanner.progress.received": "受信 {received} / {total}",
   "scanner.progress.missingIndex": "欠損フレーム: {indexes}",
   "scanner.progress.expiresAt": "読取期限: {time}",
-  "scanner.integrityConfirmed":
-    "全フレームのSHA-256整合性を確認しました。",
-  "scanner.sha256Notice":
-    "SHA-256は転送中の欠損・混在検出用であり、送信者の真正性を証明しません。",
+  "scanner.frameSetComplete":
+    "必要な全フレームを受信しました。フレームのメタデータ・フレーム番号・合計長・形式の整合性を確認しました。",
+  "scanner.frameSetNotice":
+    "この確認は転送中の欠損・重複・他転送の混在を検出するものです。成果物の内容は検証せず、送信者の真正性も証明しません。",
   "scanner.error.title": "読み取りを完了できません",
   "scanner.button.discard": "読取状態を破棄",
   "scanner.closed.multipartProgress":
     "複数QR読取中: 受信 {received} / {total}",
-  "scanner.closed.integrityImported":
-    "複数QRの全フレームSHA-256整合性を確認し、取り込みました。",
+  "scanner.closed.frameSetImported": "複数QRの全フレームを受信し、取り込みました。",
 
   "settings.error.saveFailed":
     "設定を保存できませんでした。保存領域を確認してください。",
