@@ -657,16 +657,13 @@ export function DecryptPage() {
                 {formatCharacterCount > 0 && (
                   <Alert
                     variant="destructive"
-                    role="group"
+                    role="alert"
                     aria-labelledby="decrypt-invisible-characters-title"
                   >
                     <AlertTitle id="decrypt-invisible-characters-title">
                       {t("encrypt.result.invisibleCharacters.title")}
                     </AlertTitle>
-                    <AlertDescription
-                      role="alert"
-                      aria-labelledby="decrypt-invisible-characters-title"
-                    >
+                    <AlertDescription>
                       {t("encrypt.result.invisibleCharacters.body", {
                         count: formatCharacterCount,
                       })}

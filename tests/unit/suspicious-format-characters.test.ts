@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { countSuspiciousFormatCharacters } from "@/lib/suspicious-format-characters"
+import { countUnicodeFormatCharacters } from "@/lib/bytes"
 
 describe("suspicious format characters", () => {
   it.each([
@@ -10,12 +10,12 @@ describe("suspicious format characters", () => {
     ["bidi isolate", "\u2066"],
     ["soft hyphen", "\u00AD"],
   ] as const)("flags a %s", (_name, character) => {
-    expect(countSuspiciousFormatCharacters(`left${character}right`)).toBe(1)
+    expect(countUnicodeFormatCharacters(`left${character}right`)).toBe(1)
   })
 
   it("counts every suspicious code point", () => {
     expect(
-      countSuspiciousFormatCharacters(
+      countUnicodeFormatCharacters(
         "one\u200Btwo\u202Ethree\u2066four\u00ADfive\uFEFF",
       ),
     ).toBe(5)
@@ -29,10 +29,10 @@ describe("suspicious format characters", () => {
     ["combining marks", "Cafe\u0301"],
     ["newlines", "first line\nsecond line"],
   ] as const)("does not flag ordinary %s text", (_name, plaintext) => {
-    expect(countSuspiciousFormatCharacters(plaintext)).toBe(0)
+    expect(countUnicodeFormatCharacters(plaintext)).toBe(0)
   })
 
   it("reports no suspicious characters in an empty string", () => {
-    expect(countSuspiciousFormatCharacters("")).toBe(0)
+    expect(countUnicodeFormatCharacters("")).toBe(0)
   })
 })
