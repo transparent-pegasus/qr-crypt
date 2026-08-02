@@ -10,6 +10,16 @@ export function bytesToUtf8(bytes: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes)
 }
 
+const UNICODE_FORMAT_CHARACTER = /\p{Cf}/u
+
+export function countUnicodeFormatCharacters(text: string): number {
+  let count = 0
+  for (const character of text) {
+    if (UNICODE_FORMAT_CHARACTER.test(character)) count += 1
+  }
+  return count
+}
+
 export function utf8ByteLength(text: string): number {
   return utf8ToBytes(text).byteLength
 }
