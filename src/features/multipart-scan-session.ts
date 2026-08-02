@@ -48,4 +48,12 @@ export class MultipartScanSession {
     this.#completionClaimed = true
     return true
   }
+
+  // Delivery failed, so the claim goes back. Without this the scanner re-enables
+  // its Start button over a session that can never deliver again, and the only
+  // way out is rescanning every frame. Whoever releases owns not re-claiming on
+  // a timer — see the closed-session poller in QrScannerModal.
+  releaseCompletion(): void {
+    this.#completionClaimed = false
+  }
 }
