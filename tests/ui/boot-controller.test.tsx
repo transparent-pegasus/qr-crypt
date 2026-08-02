@@ -18,7 +18,9 @@ import {
   recordReceipt,
   type ReceiptSubject,
 } from "@/features/receipt-cache"
+import { withSensitiveWriteLock } from "@/storage/database"
 import { decision, response } from "../helpers/boot-fixtures"
+import { deferred } from "../helpers/deferred"
 import { MemoryStorage } from "../helpers/memory-storage"
 
 const localStorage = new MemoryStorage()
@@ -636,6 +638,9 @@ describe("boot decisions", () => {
       kind: "network-confirmed",
       relayEligibility: "pending",
     })
+    // The re-read happens inside the exclusion, so it is not synchronous with
+    // the call that published "pending".
+    await waitFor(() => expect(readDecision).toHaveBeenCalledTimes(2))
     resolveRefresh?.(
       decision({
         cleanOrigin: "indeterminate",
@@ -649,6 +654,99 @@ describe("boot decisions", () => {
     })
     expect(controller.getState()).not.toBe(eligibleState)
     expect(endSession).toHaveBeenCalledWith("eligibility-loss")
+  })
+
+  it("waits for an in-flight sensitive write before proving the origin clean", async () => {
+    // Without the exclusion the read runs while the writer is still suspended,
+    // observes an empty origin, and authorizes the relay.
+    let written = false
+    const write = deferred<void>()
+    const holding = withSensitiveWriteLock(async () => {
+      await write.promise
+      written = true
+    })
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      readDecision: async () =>
+        decision({ sensitiveDataExists: written, wipeOnOnline: false }),
+    })
+
+    const probing = controller.probe()
+    write.resolve()
+    await holding
+    await probing
+
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "ineligible",
+    })
+  })
+
+  it("denies the relay when the platform offers no origin-wide lock", async () => {
+    const locks = navigator.locks
+    Reflect.deleteProperty(navigator, "locks")
+    try {
+      const controller = createBootController({
+        fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+        readDecision: async () =>
+          decision({ sensitiveDataExists: false, wipeOnOnline: false }),
+      })
+      await controller.probe()
+      expect(controller.getState()).toEqual({
+        kind: "network-confirmed",
+        relayEligibility: "ineligible",
+      })
+    } finally {
+      Object.defineProperty(navigator, "locks", { configurable: true, value: locks })
+    }
+  })
+
+  it("still reaches the wipe decision when the platform offers no lock", async () => {
+    const locks = navigator.locks
+    Reflect.deleteProperty(navigator, "locks")
+    const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
+    try {
+      const controller = createBootController({
+        fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+        performWipe,
+        readDecision: async () =>
+          decision({ sensitiveDataExists: true, wipeOnOnline: true }),
+      })
+      await controller.probe()
+      expect(performWipe).toHaveBeenCalledOnce()
+      expect(controller.getState()).toEqual({ kind: "wiped" })
+    } finally {
+      Object.defineProperty(navigator, "locks", { configurable: true, value: locks })
+    }
+  })
+
+  it("waits for an in-flight sensitive write when refreshing eligibility", async () => {
+    let written = false
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      readDecision: async () =>
+        decision({ sensitiveDataExists: written, wipeOnOnline: false }),
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "eligible",
+    })
+
+    const write = deferred<void>()
+    const holding = withSensitiveWriteLock(async () => {
+      await write.promise
+      written = true
+    })
+    const refreshing = controller.refreshRelayEligibility()
+    write.resolve()
+    await holding
+
+    await expect(refreshing).resolves.toBe(false)
+    expect(controller.getState()).toEqual({
+      kind: "network-confirmed",
+      relayEligibility: "ineligible",
+    })
   })
 
   it("invalidates an eligible state synchronously on the peer-wipe boundary", async () => {
