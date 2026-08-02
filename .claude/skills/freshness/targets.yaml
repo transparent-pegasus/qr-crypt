@@ -117,6 +117,7 @@ units:
       - docs/languages/ja/develop/install-route-a/README.md # Japanese mirror under docs/languages/<lang>/; must not diverge from README.md
       - scripts/serve-dist.mjs # header-aware server called directly by the release workflow
       - tests/unit/serve-dist.test.ts # executable containment and server startup contract
+      - tests/unit/release-tag-read.test.ts # extracts assert_canonical_tag and read_canonical_tag from github-release.yml; breaks if either helper is renamed or reshaped
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
       image, and GitHub runner/CLI behavior all drift with upstream releases.
@@ -149,6 +150,7 @@ units:
     verify: |
       Local only — a freshness sweep must not push:
       aube run test -- tests/unit/serve-dist.test.ts
+      aube run test -- tests/unit/release-tag-read.test.ts
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \
