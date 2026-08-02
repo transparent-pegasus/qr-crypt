@@ -27,7 +27,7 @@ QR Cryptは、恒久的にオフラインにするデバイスにインストー
 ## 要件
 
 * **1人あたり2台のデバイスが必要です。** 1台は恒久的にオフラインに保ちQR Cryptを実行するデバイス、もう1台はスクランブルされたテキストを運ぶためだけに使う通常のオンラインデバイスです。
-* **ブラウザ。** Android ChromeとiOS Safariが主要ターゲットです。カメラによるQR読み取りにはSafari/iOS 16以降が必要です。Windows Chrome、macOS Safari、Edgeはリファレンス環境として記録されています（[docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)）。Web CryptoまたはIndexedDBが使用できない場合、アプリは起動画面で停止し、すべての機能が利用できません。
+* **ブラウザ。** Android ChromeとiOS Safariが主要ターゲットです。カメラによるQR読み取りにはSafari/iOS 16以降が必要です。Windows Chrome、macOS Safari、Edgeはリファレンス環境として記録されています（[docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)）。Web CryptoまたはIndexedDBが使用できない場合、アプリは起動画面で停止し、すべての機能が利用できません。オンライン光学リレーにはさらにWeb Locks APIが必要です。オリジンに鍵が存在しないことの証明は、機密書き込みをオリジン全体で排他した状態で取得されるため、このロックを保持できないブラウザは、信頼される代わりにリレーの利用資格を拒否されます。
 * **オリジン。** アプリは`https://`経由、またはローカルで`http://127.0.0.1`経由で提供される必要があります。`file://`パスから`index.html`を開いても動作しません。LAN上の通常のHTTPアドレスでも同様です。これらのコンテキストではカメラとService Workerが利用できません。
 * **WebAssembly。** カメラによるQR読み取りにはWebAssemblyデコーダーを使用しており、JavaScriptのフォールバックはありません：
   * WebAssemblyが無効化またはブロックされている場合、リーダー準備ゲートがスキャン操作を無効にし、`getUserMedia`より前にカメラへのアクセスを拒否します。「QRリーダーがブロックされている」という終了状態のメッセージが表示され、iPhoneではSafari 16以降を案内します。何も読み取ることができません。
