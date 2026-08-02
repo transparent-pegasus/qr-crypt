@@ -134,6 +134,9 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       caught: unknown,
       successStatus: LocalizedText,
     ) => {
+      // Released ahead of the publish guard: an unmounted or superseded run
+      // still holds the claim, and nothing else would ever hand it back.
+      if (!succeeded) run.session.releaseCompletion()
       if (
         !mountedRef.current ||
         nextRunIdRef.current !== run.id

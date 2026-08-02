@@ -47,6 +47,10 @@ export function QrScannerModal(props: QrScannerModalProps) {
   const openRef = useRef(false)
   const openGenerationRef = useRef(0)
   const deliveryBusyRef = useRef(false)
+  // The assembler keeps a completed transfer terminal until it is discarded, so
+  // a released claim would be re-claimed by the very next poll tick. Retry is
+  // the user's to ask for; the poller stops after one failed attempt.
+  const closedDeliveryFailedRef = useRef(false)
   const automaticCloseRef = useRef(false)
   const previousClosedKindRef = useRef<TransferState["kind"]>(
     multipartSession.state().kind,
@@ -130,13 +134,25 @@ export function QrScannerModal(props: QrScannerModalProps) {
         if (canPublish()) setClosedNotice(localizedErrorCode(next.code))
         return
       }
+      if (closedDeliveryFailedRef.current) return
       if (!beginDelivery()) return
       try {
         if (!multipartSession.claimCompletion()) return
-        await multipartRef.current.onComplete({
-          artifactType: next.artifactType,
-          artifactBytes: next.artifactBytes,
-        })
+        try {
+          await multipartRef.current.onComplete({
+            artifactType: next.artifactType,
+            artifactBytes: next.artifactBytes,
+          })
+        } catch (caught) {
+          // Only the delivery releases. onClosed below is a UI callback: a
+          // throw there must not hand back an artifact that did arrive.
+          multipartSession.releaseCompletion()
+          closedDeliveryFailedRef.current = true
+          if (canPublish()) {
+            setClosedNotice(localizedErrorCode(deliveryError(caught).code))
+          }
+          return
+        }
         if (canPublish()) {
           setClosedNotice(
             localized("scanner.closed.integrityImported"),
@@ -168,6 +184,7 @@ export function QrScannerModal(props: QrScannerModalProps) {
     if (nextOpen) {
       openGenerationRef.current += 1
       automaticCloseRef.current = false
+      closedDeliveryFailedRef.current = false
       previousClosedKindRef.current =
         multipartSession.state().kind
       setClosedNotice(null)
@@ -202,6 +219,10 @@ export function QrScannerModal(props: QrScannerModalProps) {
       ) {
         throw caught
       }
+      // The panel is gone or superseded, so it never learns of this failure and
+      // cannot hand the claim back on the modal's behalf.
+      props.multipart.session.releaseCompletion()
+      closedDeliveryFailedRef.current = true
       if (
         mountedRef.current &&
         openGenerationRef.current === generation

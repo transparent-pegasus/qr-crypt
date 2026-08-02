@@ -224,6 +224,32 @@ describe("QrScannerPanel multipart scan", () => {
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
   })
 
+  it("re-delivers the completed artifact when Start is pressed after a failed delivery", async () => {
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    const onComplete = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new AppError("UNSUPPORTED_ALGORITHM")
+      })
+      .mockResolvedValueOnce(undefined)
+    render(scanner(session, onComplete))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
+    )
+    expect(onComplete).toHaveBeenCalledOnce()
+
+    const start = screen.getByRole("button", { name: "Start camera" })
+    await waitFor(() => expect(start).toBeEnabled())
+    await user.click(start)
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(2))
+    expect(onComplete.mock.calls[1]?.[0]).toEqual(onComplete.mock.calls[0]?.[0])
+  })
+
   it("locks restart and discard while completion delivery is pending", async () => {
     const delivery = deferred<void>()
     const user = userEvent.setup()

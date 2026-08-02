@@ -38,6 +38,17 @@ function frameOnlyProps(
   return { multipart: { session, onComplete } }
 }
 
+function completedSession(): MultipartScanSession {
+  const session = new MultipartScanSession(5)
+  vi.spyOn(session, "state").mockReturnValue({
+    kind: "complete",
+    transferId: Uint8Array.of(1),
+    artifactType: "sym-message",
+    artifactBytes: Uint8Array.of(2),
+  })
+  return session
+}
+
 function setVisibility(state: DocumentVisibilityState): void {
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
@@ -590,5 +601,76 @@ describe("QrScannerModal frame delivery", () => {
     expect(
       screen.getByText("The temporary scan state expired and was discarded."),
     ).toBeInTheDocument()
+  })
+
+  it("does not retry a failed closed-session delivery on the next poll", async () => {
+    vi.useFakeTimers()
+    const onComplete = vi.fn(() =>
+      Promise.reject(new AppError("UNSUPPORTED_ALGORITHM")),
+    )
+    render(
+      <QrScannerModal
+        triggerLabel="Scan ciphertext frames"
+        {...frameOnlyProps(completedSession(), onComplete)}
+      />,
+    )
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_000))
+    expect(onComplete).toHaveBeenCalledOnce()
+
+    await act(async () => vi.advanceTimersByTimeAsync(5_000))
+    expect(onComplete).toHaveBeenCalledOnce()
+  })
+
+  it("permits exactly one further poll attempt after the dialog is reopened", async () => {
+    vi.useFakeTimers()
+    const onComplete = vi.fn(() =>
+      Promise.reject(new AppError("UNSUPPORTED_ALGORITHM")),
+    )
+    render(
+      <QrScannerModal
+        triggerLabel="Scan ciphertext frames"
+        {...frameOnlyProps(completedSession(), onComplete)}
+      />,
+    )
+    await act(async () => vi.advanceTimersByTimeAsync(1_000))
+    expect(onComplete).toHaveBeenCalledOnce()
+
+    // Reopening spends an attempt of its own: the panel auto-starts over a
+    // session that is still complete, and the released claim is free again.
+    fireEvent.click(screen.getByRole("button", { name: "Scan ciphertext frames" }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(onComplete).toHaveBeenCalledTimes(2)
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    await act(async () => vi.advanceTimersByTimeAsync(1_000))
+    expect(onComplete).toHaveBeenCalledTimes(3)
+
+    await act(async () => vi.advanceTimersByTimeAsync(5_000))
+    expect(onComplete).toHaveBeenCalledTimes(3)
+  })
+
+  it("does not redeliver when onClosed throws after a successful delivery", async () => {
+    vi.useFakeTimers()
+    const onComplete = vi.fn(async () => undefined)
+    const onClosed = vi.fn(() => {
+      throw new Error("ui callback failed")
+    })
+    render(
+      <QrScannerModal
+        triggerLabel="Scan ciphertext frames"
+        onClosed={onClosed}
+        {...frameOnlyProps(completedSession(), onComplete)}
+      />,
+    )
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_000))
+    expect(onComplete).toHaveBeenCalledOnce()
+    expect(onClosed).toHaveBeenCalledOnce()
+
+    await act(async () => vi.advanceTimersByTimeAsync(5_000))
+    expect(onComplete).toHaveBeenCalledOnce()
   })
 })
