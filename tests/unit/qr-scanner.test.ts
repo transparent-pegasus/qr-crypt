@@ -434,7 +434,7 @@ describe("camera scanner lifecycle", () => {
     const onText = vi.fn()
     const onError = vi.fn()
     const decoder = await loadDecoder()
-    zxing.readBarcodes.mockResolvedValueOnce(barcode("OCK1:autoplay"))
+    zxing.readBarcodes.mockResolvedValueOnce(barcode("SCANTEXT:autoplay"))
     const scanPromise = decoder.startQrScan(
       asVideoElement(fakeVideo),
       onText,
@@ -456,7 +456,7 @@ describe("camera scanner lifecycle", () => {
     await flushMicrotasks()
 
     expect(zxing.readBarcodes).toHaveBeenCalledOnce()
-    expect(onText).toHaveBeenCalledWith("OCK1:autoplay")
+    expect(onText).toHaveBeenCalledWith("SCANTEXT:autoplay")
     expect(onError).not.toHaveBeenCalled()
     expect(track.stop).not.toHaveBeenCalled()
     handle.stop()
@@ -683,7 +683,7 @@ describe("camera scanner lifecycle", () => {
       const onText = vi.fn()
       const onError = vi.fn()
       const decoder = await loadDecoder()
-      zxing.readBarcodes.mockResolvedValueOnce(barcode("OCK1:recovered"))
+      zxing.readBarcodes.mockResolvedValueOnce(barcode("SCANTEXT:recovered"))
       const handle = await decoder.startQrScan(
         asVideoElement(fakeVideo),
         onText,
@@ -699,7 +699,7 @@ describe("camera scanner lifecycle", () => {
       await advance(0)
 
       expect(zxing.readBarcodes).toHaveBeenCalledOnce()
-      expect(onText).toHaveBeenCalledWith("OCK1:recovered")
+      expect(onText).toHaveBeenCalledWith("SCANTEXT:recovered")
       expect(onError).not.toHaveBeenCalled()
       expect(fakeVideo.play.mock.calls.length).toBeGreaterThan(1)
       expect(track.stop).toHaveBeenCalledOnce()
@@ -803,7 +803,7 @@ describe("camera scanner lifecycle", () => {
     await advance(0)
 
     handle.stop()
-    pending.resolve(barcode("OCK1:late"))
+    pending.resolve(barcode("SCANTEXT:late"))
     await flushMicrotasks()
 
     expect(onText).not.toHaveBeenCalled()
@@ -829,7 +829,7 @@ describe("camera scanner lifecycle", () => {
     await advance(0)
 
     controller.abort()
-    pending.resolve(barcode("OCK1:late"))
+    pending.resolve(barcode("SCANTEXT:late"))
     await flushMicrotasks()
 
     expect(onText).not.toHaveBeenCalled()
@@ -855,7 +855,7 @@ describe("camera scanner lifecycle", () => {
     await advance(0)
 
     track.end()
-    pending.resolve(barcode("OCK1:late"))
+    pending.resolve(barcode("SCANTEXT:late"))
     await flushMicrotasks()
 
     expect(onText).not.toHaveBeenCalled()
@@ -897,7 +897,7 @@ describe("camera scanner lifecycle", () => {
       vi.fn(),
       { once: false },
     )
-    oldDecode.resolve(barcode("OCK1:old-late"))
+    oldDecode.resolve(barcode("SCANTEXT:old-late"))
     await flushMicrotasks()
     await advance(0)
 
@@ -942,7 +942,7 @@ describe("camera scanner lifecycle", () => {
     await advance(0)
     await advance(decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS)
 
-    oldDecode.resolve(barcode("OCK1:old-after-timeout"))
+    oldDecode.resolve(barcode("SCANTEXT:old-after-timeout"))
     replacementDecode.resolve([])
     await flushMicrotasks()
 
@@ -991,7 +991,7 @@ describe("camera scanner lifecycle", () => {
     await advance(decoder.CAMERA_START_TIMEOUT_MS)
     await replacementRejection
 
-    oldDecode.resolve(barcode("OCK1:old-after-timeout"))
+    oldDecode.resolve(barcode("SCANTEXT:old-after-timeout"))
     await flushMicrotasks()
 
     expect(oldText).not.toHaveBeenCalled()
@@ -1009,10 +1009,10 @@ describe("camera scanner lifecycle", () => {
   })
 
   it.each([
-    { once: true, expectedTexts: ["OCK1:first"], expectedReads: 1 },
+    { once: true, expectedTexts: ["SCANTEXT:first"], expectedReads: 1 },
     {
       once: false,
-      expectedTexts: ["OCK1:first", "OCK1:second"],
+      expectedTexts: ["SCANTEXT:first", "SCANTEXT:second"],
       expectedReads: 2,
     },
   ])(
@@ -1024,8 +1024,8 @@ describe("camera scanner lifecycle", () => {
       const onError = vi.fn()
       const decoder = await loadDecoder()
       zxing.readBarcodes
-        .mockResolvedValueOnce(barcode("OCK1:first"))
-        .mockResolvedValueOnce(barcode("OCK1:second"))
+        .mockResolvedValueOnce(barcode("SCANTEXT:first"))
+        .mockResolvedValueOnce(barcode("SCANTEXT:second"))
       const handle = await decoder.startQrScan(
         videoElement(),
         onText,
@@ -1472,12 +1472,12 @@ describe("camera scanner lifecycle", () => {
     getUserMedia.mockResolvedValue(mediaStream(new FakeTrack()))
     const onError = vi.fn()
     const decoder = await loadDecoder()
-    zxing.readBarcodes.mockResolvedValue(barcode("OCK1:SENTINEL-SECRET"))
+    zxing.readBarcodes.mockResolvedValue(barcode("SCANTEXT:SENTINEL-SECRET"))
 
     const handle = await decoder.startQrScan(
       videoElement(),
       () => {
-        throw new Error("delivery failed for OCK1:SENTINEL-SECRET")
+        throw new Error("delivery failed for SCANTEXT:SENTINEL-SECRET")
       },
       onError,
       { once: false },

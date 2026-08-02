@@ -16,6 +16,7 @@ import {
   type QrScanHandle,
 } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
+import { QR_PREFIX_V2 } from "@/qr/payload-v2"
 import {
   deliveryError,
   localized,
@@ -272,7 +273,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         return
       }
 
-      if (!payload.startsWith("OCF2:")) {
+      if (!payload.startsWith(QR_PREFIX_V2.frame)) {
         setError(
           localized("scanner.mismatch", {
             actual: t("scanner.payloadLabel.foreign"),
