@@ -13,7 +13,6 @@ import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
 import {
   AES_GCM_TAG_BYTES,
   AES_KEY_BYTES,
-  HKDF_SALT_BYTES,
   IV_BYTES,
   MAX_SYM_PLAINTEXT_BYTES,
 } from "@/lib/limits"
@@ -34,7 +33,6 @@ function changed(bytes: Uint8Array, index = 0): Uint8Array {
 function cloneEnvelope(envelope: SymMessageEnvelopeV2): SymMessageEnvelopeV2 {
   return {
     ...envelope,
-    hkdfSalt: Uint8Array.from(envelope.hkdfSalt),
     iv: Uint8Array.from(envelope.iv),
     ciphertext: Uint8Array.from(envelope.ciphertext),
   }
@@ -86,15 +84,12 @@ describe("sym-v2 sealing and opening", () => {
     expect(await openSymMessage({ record, envelope })).toEqual(plaintext)
   })
 
-  it("uses a fresh HKDF salt and IV for every seal", async () => {
+  it("uses a fresh IV for every seal", async () => {
     const record = await createSymmetricKeyRecord("fresh randomness", NOW)
     const plaintext = utf8ToBytes("same plaintext")
     const first = await sealSymMessage({ record, plaintext, now: NOW + 1 })
     const second = await sealSymMessage({ record, plaintext, now: NOW + 1 })
 
-    expect(first.hkdfSalt).toHaveLength(HKDF_SALT_BYTES)
-    expect(second.hkdfSalt).toHaveLength(HKDF_SALT_BYTES)
-    expect(second.hkdfSalt).not.toEqual(first.hkdfSalt)
     expect(first.iv).toHaveLength(IV_BYTES)
     expect(second.iv).toHaveLength(IV_BYTES)
     expect(second.iv).not.toEqual(first.iv)
@@ -106,13 +101,6 @@ describe("sym-v2 sealing and opening", () => {
       (envelope: SymMessageEnvelopeV2): SymMessageEnvelopeV2 => ({
         ...cloneEnvelope(envelope),
         createdAt: envelope.createdAt + 1,
-      }),
-    ],
-    [
-      "HKDF salt",
-      (envelope: SymMessageEnvelopeV2): SymMessageEnvelopeV2 => ({
-        ...cloneEnvelope(envelope),
-        hkdfSalt: changed(envelope.hkdfSalt),
       }),
     ],
     [
@@ -164,8 +152,6 @@ describe("sym-v2 sealing and opening", () => {
   })
 
   it.each([
-    ["short HKDF salt", "hkdfSalt", HKDF_SALT_BYTES - 1],
-    ["long HKDF salt", "hkdfSalt", HKDF_SALT_BYTES + 1],
     ["short IV", "iv", IV_BYTES - 1],
     ["long IV", "iv", IV_BYTES + 1],
   ] as const)("collapses a %s to DECRYPTION_FAILED", async (_name, field, length) => {

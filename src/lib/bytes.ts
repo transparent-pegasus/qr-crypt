@@ -10,6 +10,28 @@ export function bytesToUtf8(bytes: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes)
 }
 
+// `Cf` alone misses invisible code points that are not format characters:
+// variation selectors (U+FE00–FE0F, U+E0100–E01EF) and the combining grapheme
+// joiner are `Mn`, and default-ignorable. Match the union so a covert sender
+// cannot simply choose a class the scan does not look at.
+//
+// U+FE0F is the one deliberate exclusion. It is the emoji presentation
+// selector, so flagging it would warn on ordinary messages containing emoji;
+// an alert that fires constantly stops being read, which costs more than the
+// one bit per emoji position it denies. Recorded as residual in
+// docs/security/threat-model.md T21.
+const INVISIBLE_CHARACTER = /\p{Cf}|\p{Default_Ignorable_Code_Point}/u
+const EMOJI_PRESENTATION_SELECTOR = "️"
+
+export function countUnicodeFormatCharacters(text: string): number {
+  let count = 0
+  for (const character of text) {
+    if (character === EMOJI_PRESENTATION_SELECTOR) continue
+    if (INVISIBLE_CHARACTER.test(character)) count += 1
+  }
+  return count
+}
+
 export function utf8ByteLength(text: string): number {
   return utf8ToBytes(text).byteLength
 }

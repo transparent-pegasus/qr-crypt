@@ -205,7 +205,6 @@ export interface MlKemMessageEnvelopeV2 {
   suite: WireSuite
   recipientKemKeyId: string
   kemCiphertext: Uint8Array
-  hkdfSalt: Uint8Array // 32B CSPRNG
   iv: Uint8Array // 12B CSPRNG
   ciphertext: Uint8Array
 }
@@ -224,7 +223,6 @@ export interface SymMessageEnvelopeV2 {
   suite: SymSuite
   keyId: string
   createdAt: number
-  hkdfSalt: Uint8Array
   iv: Uint8Array
   ciphertext: Uint8Array
 }

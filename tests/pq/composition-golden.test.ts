@@ -11,7 +11,11 @@ import {
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { createNobleDsa87, createNobleKem1024 } from "@/crypto/pq/provider-noble"
 import { createPqCryptoClient } from "@/crypto/pq/worker-client"
-import { hkdfInfoV2, buildVaultAadV2 } from "@/crypto/pq/wire-bytes"
+import {
+  buildVaultAadV2,
+  hkdfInfoV2,
+  hkdfSaltV2,
+} from "@/crypto/pq/wire-bytes"
 import { zeroize } from "@/crypto/pq/zeroize"
 import { toBase64Url } from "@/lib/base64url"
 import {
@@ -135,7 +139,6 @@ async function compositionFixture(): Promise<Fixture> {
   const randomOutputs = [
     new Uint8Array(32).fill(0xa1), // ML-DSA signing randomness
     new Uint8Array(32).fill(0xa2), // ML-KEM encapsulation message
-    new Uint8Array(32).fill(0xa3), // HKDF salt
     new Uint8Array(12).fill(0xa4), // AES-GCM IV
   ]
   let randomIndex = 0
@@ -166,7 +169,7 @@ async function compositionFixture(): Promise<Fixture> {
       storedPublicKey: identity.signing.publicKey,
     },
   })
-  expect(randomIndex).toBe(4)
+  expect(randomIndex).toBe(3)
   return { client, identity, vaultKey, envelope, plaintext }
 }
 
@@ -174,7 +177,6 @@ function cloneEnvelope(envelope: MlKemMessageEnvelopeV2): MlKemMessageEnvelopeV2
   return {
     ...envelope,
     kemCiphertext: Uint8Array.from(envelope.kemCiphertext),
-    hkdfSalt: Uint8Array.from(envelope.hkdfSalt),
     iv: Uint8Array.from(envelope.iv),
     ciphertext: Uint8Array.from(envelope.ciphertext),
   }
@@ -202,7 +204,11 @@ async function innerCrypto(fixture: Fixture): Promise<{
   const kem = createNobleKem1024()
   const keys = kem.keygen(KEM_SEED)
   const sharedSecret = kem.decapsulate(fixture.envelope.kemCiphertext, keys.secretKey)
-  const info = hkdfInfoV2(fixture.envelope.suite, fixture.envelope.recipientKemKeyId)
+  const info = hkdfInfoV2(
+    fixture.envelope.suite,
+    fixture.envelope.recipientKemKeyId,
+    fixture.envelope.iv,
+  )
   const material = await crypto.subtle.importKey(
     "raw",
     toOwnedArrayBuffer(sharedSecret),
@@ -214,7 +220,7 @@ async function innerCrypto(fixture: Fixture): Promise<{
     {
       name: "HKDF",
       hash: "SHA-256",
-      salt: toOwnedArrayBuffer(fixture.envelope.hkdfSalt),
+      salt: toOwnedArrayBuffer(hkdfSaltV2()),
       info: toOwnedArrayBuffer(info),
     },
     material,
@@ -277,13 +283,12 @@ describe("signed composition golden", () => {
   it("freezes the complete envelope and every deterministic seam", async () => {
     const fixture = await compositionFixture()
     try {
-      expect(bytesToHex(fixture.envelope.hkdfSalt)).toBe("a3".repeat(32))
       expect(bytesToHex(fixture.envelope.iv)).toBe("a4".repeat(12))
       expect(await sha256Hex(fixture.envelope.kemCiphertext)).toBe(
         "7e7cc499f2d0f3bb0bb7aa61a3705c83bfc5cf2446b6bc81a1aa4badd2ea25ae",
       )
       expect(await sha256Hex(encodeMlKemEnvelopeV2(fixture.envelope))).toBe(
-        "a921a13f77a1312a39730dafb51b26eb6c828da3cfa9c1cc79bf42c0c665ef7b",
+        "6b748f18e87f105b9be28123c5b02371e97af9bec4410eab04b66c768d6d2cfe",
       )
       const inner = await fixture.client.openPqEnvelope(recipient(fixture))
       if (inner.kind !== "signed") throw new Error("expected signed inner")
@@ -308,9 +313,6 @@ describe("signed composition golden", () => {
       }> = [
         { mutate: (envelope) => {
           envelope.kemCiphertext[0] = envelope.kemCiphertext[0]! ^ 1
-        }, code: "DECRYPTION_FAILED" },
-        { mutate: (envelope) => {
-          envelope.hkdfSalt[0] = envelope.hkdfSalt[0]! ^ 1
         }, code: "DECRYPTION_FAILED" },
         { mutate: (envelope) => {
           envelope.iv[0] = envelope.iv[0]! ^ 1

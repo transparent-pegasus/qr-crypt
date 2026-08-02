@@ -68,7 +68,6 @@ function pqMessageEnvelope(): MlKemMessageEnvelopeV2 {
     suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: KEY_ID,
     kemCiphertext: new Uint8Array(1_568).fill(0x31),
-    hkdfSalt: new Uint8Array(32).fill(0x32),
     iv: new Uint8Array(12).fill(0x33),
     ciphertext: new Uint8Array(16).fill(0x34),
   }
@@ -81,7 +80,6 @@ function symMessageEnvelope(): SymMessageEnvelopeV2 {
     suite: "HKDF-SHA256+A256GCM",
     keyId: KEY_ID,
     createdAt: 1_700_000_000_000,
-    hkdfSalt: new Uint8Array(32).fill(0x41),
     iv: new Uint8Array(12).fill(0x42),
     ciphertext: new Uint8Array(16).fill(0x43),
   }

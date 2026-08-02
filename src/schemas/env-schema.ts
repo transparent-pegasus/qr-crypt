@@ -71,7 +71,7 @@ const frameIntervalMsFromString = z
 // each uses a five-byte header. The ML-DSA-87 signature is fixed at 4,627B, the
 // ML-KEM-1024 ciphertext at 1,568B, and the AES-GCM tag at 16B.
 // tests/pq/maximum-artifact-size.golden.test.ts pins boundary equality with generated output.
-const MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES = 6_609
+const MAXIMUM_SIGNED_ARTIFACT_FIXED_BYTES = 6_566
 const MAXIMUM_SIGNED_INNER_FIXED_BYTES = 4_822
 // = AES_GCM_TAG_BYTES (lib/limits); kept local because limits imports this module.
 const AES_GCM_TAG_BYTES = 16

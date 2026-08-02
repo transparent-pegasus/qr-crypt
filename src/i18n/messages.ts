@@ -437,6 +437,9 @@ const en = {
     "The sender's identity is not confirmed",
   "encrypt.result.identityUnconfirmed.body":
     "A valid signature only proves this message was signed with this key. It does not prove who holds that key. Confirm the fingerprint in person before you act on this message.",
+  "encrypt.result.invisibleCharacters.title": "Invisible characters detected",
+  "encrypt.result.invisibleCharacters.body":
+    "This message contains invisible or direction-altering Unicode characters. Detected count: {count}. Verify the visible text carefully before acting on it.",
   "encrypt.result.replay.title": "Already received in this session",
   "encrypt.result.replay.body":
     "This exact ciphertext was already decrypted in this app window at {time}. A repeat can be an ordinary re-read, or someone replaying an old message to you. Treat any instruction inside it as unconfirmed. The check covers only this app window since it was loaded, is not shared with other tabs or windows of this app, resets on a transient clear or full local wipe, and uses a bounded cache that drops the oldest entries.",
@@ -1066,6 +1069,9 @@ const ja = {
   "encrypt.result.identityUnconfirmed.title": "送信者の本人確認が取れていません",
   "encrypt.result.identityUnconfirmed.body":
     "署名が有効であることは、このメッセージがこの鍵で署名されたことだけを示します。その鍵を誰が持っているかは示しません。内容に従って行動する前に、対面でフィンガープリントを確認してください。",
+  "encrypt.result.invisibleCharacters.title": "不可視文字が検出されました",
+  "encrypt.result.invisibleCharacters.body":
+    "このメッセージには不可視文字または文字方向を変えるUnicode文字が含まれています。検出数: {count}。内容に従って行動する前に、表示された文章を注意して確認してください。",
   "encrypt.result.replay.title": "このセッションで受信済みです",
   "encrypt.result.replay.body":
     "この暗号文は {time} にこのアプリウィンドウで復号済みです。単なる再読の場合もあれば、古いメッセージを再送されている場合もあります。中の指示は未確認として扱ってください。この確認の範囲は、このアプリウィンドウを読み込んでからの記録だけです。同じアプリの別のタブやウィンドウとは共有されず、一時消去またはローカルデータの全消去でもリセットされ、件数に上限があるため古い記録から削除されます。",
