@@ -134,6 +134,9 @@ vi.mock("@/features/receipt-cache", async (importOriginal) => ({
 vi.mock("@/storage/key-repository", () => ({
   listKeyRecords: fakes.listKeyRecords,
   saveKeyRecord: fakes.saveKeyRecord,
+  // The two differ only in who requests the sensitive-write lock, which nothing
+  // in this fake layer models; tests/integration/storage.test.ts owns that.
+  writeKeyRecord: fakes.saveKeyRecord,
   getKeyRecord: fakes.getKeyRecord,
   getActiveKeyRecord: fakes.getActiveKeyRecord,
   saveSymmetricRotation: fakes.saveSymmetricRotation,

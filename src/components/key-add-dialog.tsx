@@ -72,7 +72,8 @@ import type {
   StoredKeyRecord,
 } from "@/schemas/domain"
 import { keyNameSchema } from "@/schemas/key-schema"
-import { saveKeyRecord } from "@/storage/key-repository"
+import { withSensitiveWriteLock } from "@/storage/database"
+import { saveKeyRecord, writeKeyRecord } from "@/storage/key-repository"
 import { confirmBundleFingerprint, saveBundle } from "@/storage/pq-bundle-repository"
 import { saveIdentity } from "@/storage/pq-identity-repository"
 
@@ -147,6 +148,12 @@ export function KeyAddDialog({
   const [symmetricImportAcknowledged, setSymmetricImportAcknowledged] = useState(false)
   const [fullscreenOpen, setFullscreenOpen] = useState(false)
   const openingRef = useRef(0)
+  // A React state flag is not a commit boundary: setPersisting only schedules a
+  // render, and the dismiss handlers keep reading the previous render's value
+  // until it paints. The ref is what the handlers check; the state exists only so
+  // the close button and the Escape/outside handlers re-render.
+  const persistingRef = useRef(false)
+  const [persisting, setPersisting] = useState(false)
   const scanSession = useMemo(
     () => new MultipartScanSession(preferences.transferTimeoutMinutes),
     [preferences.transferTimeoutMinutes],
@@ -156,8 +163,10 @@ export function KeyAddDialog({
   const showsDetail = detail !== null
   const abandoned = (opening: number) => openingRef.current !== opening
   // The fingerprint step is a security confirmation: leaving it by dismissing the
-  // modal would save nothing, so this one view refuses every dismiss path.
-  const locked = view.kind === "bundle-confirm"
+  // modal would save nothing, so this one view refuses every dismiss path. A write
+  // in flight refuses them too: dismissing there tells the user the creation was
+  // cancelled and hands them the key anyway.
+  const locked = view.kind === "bundle-confirm" || persisting
 
   // Each opening starts from a clean modal. Adjusting during render rather than in
   // an effect keeps the first paint of a reopened modal from showing the old view.
@@ -173,6 +182,7 @@ export function KeyAddDialog({
       setSymmetricImportName("")
       setSymmetricImportAcknowledged(false)
       setBusy(false)
+      setPersisting(false)
     }
   }
 
@@ -181,8 +191,11 @@ export function KeyAddDialog({
   // Opening or closing abandons whatever was running: this component outlives the
   // modal, so a continuation that survives a close must not write over the next
   // opening's state, and abandoned frames must not sit in the assembler.
+  // The dismiss gate goes with it: a write the parent closed the modal over keeps
+  // running, but it belongs to the abandoned opening and must not lock the next one.
   useEffect(() => {
     openingRef.current += 1
+    persistingRef.current = false
   }, [mode])
   useEffect(() => {
     if (mode === null) scanSession.discard()
@@ -202,6 +215,17 @@ export function KeyAddDialog({
     [setSensitiveSession],
   )
 
+  const persist = async (write: () => Promise<void>) => {
+    persistingRef.current = true
+    setPersisting(true)
+    try {
+      await write()
+    } finally {
+      persistingRef.current = false
+      setPersisting(false)
+    }
+  }
+
   const createSymmetric = async () => {
     const parsed = keyNameSchema.safeParse(keyName)
     if (!parsed.success) {
@@ -217,11 +241,21 @@ export function KeyAddDialog({
     setBusy(true)
     setError(null)
     try {
-      const record = await createSymmetricKeyRecord(parsed.data, Date.now())
-      await saveKeyRecord(record)
-      if (abandoned(opening)) return
+      // The lock spans generation, not just the write: a key that is already
+      // generated and certain to be written must not be invisible to boot's
+      // clean-origin proof, and this continuation survives the Router unmount that
+      // going online performs. writeKeyRecord is the unlocked writer, because Web
+      // Locks has no reentrancy.
+      let created: StoredKeyRecord | undefined
+      await withSensitiveWriteLock(async () => {
+        const record = await createSymmetricKeyRecord(parsed.data, Date.now())
+        if (abandoned(opening)) return
+        await persist(() => writeKeyRecord(record))
+        created = record
+      })
+      if (created === undefined || abandoned(opening)) return
       setKeyName("")
-      await onCreated({ kind: "symmetric", id: record.id })
+      await onCreated({ kind: "symmetric", id: created.id })
       toast.success(t("keys.toast.symmetricCreated"))
     } catch (caught) {
       if (abandoned(opening)) return
@@ -246,14 +280,27 @@ export function KeyAddDialog({
     setBusy(true)
     setError(null)
     try {
+      // No extended span here: getOrCreateVaultKey persists the vault key under the
+      // sensitive-write lock before the Worker keygen begins, and boot counts a
+      // vault key as sensitive data, so the origin is already provably dirty by the
+      // time the slow part starts.
+      //
+      // ponytail: that write survives a modal closed during generation — an orphan
+      // vault key with no identity. Preventing it needs an AbortSignal threaded
+      // through the Worker and vault creation; until then the residual is
+      // fail-closed, since boot reads the orphan as a dirty origin and denies the
+      // online relay.
+      const vaultKey = await getOrCreateVaultKey()
+      if (abandoned(opening)) return
       const identity = await createIdentity({
         client: getPqClient(),
-        vaultKey: await getOrCreateVaultKey(),
+        vaultKey,
         name: parsed.data,
         profile: ACTIVE_PROFILE,
         now: Date.now(),
       })
-      await saveIdentity(identity)
+      if (abandoned(opening)) return
+      await persist(() => saveIdentity(identity))
       if (abandoned(opening)) return
       setKeyName("")
       await onCreated({ kind: "identity", id: identity.id })
@@ -408,7 +455,7 @@ export function KeyAddDialog({
     setBusy(true)
     setError(null)
     try {
-      await saveKeyRecord({ ...view.record, name: parsedName.data })
+      await persist(() => saveKeyRecord({ ...view.record, name: parsedName.data }))
       await onImported()
       if (abandoned(opening)) return
       toast.success(t("keys.toast.symmetricImported"))
@@ -454,7 +501,7 @@ export function KeyAddDialog({
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        if (nextOpen || locked || fullscreenOpen) return
+        if (nextOpen || locked || persistingRef.current || fullscreenOpen) return
         onOpenChange(false)
       }}
     >
