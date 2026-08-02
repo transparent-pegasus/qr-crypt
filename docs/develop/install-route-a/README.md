@@ -280,6 +280,16 @@ it; treating it as required would disagree with the archive copy.
    [threat-model.md](../../security/threat-model.md) §2. Choose one uncommon fixed high
    port (not a collision-prone default such as 8000 or 8080) and reserve that port
    for QR Crypt.
+
+   Most static servers ignore `_headers` entirely, and nothing in the app detects
+   that. If your server does not apply it, the six non-CSP security headers are
+   simply absent — only the meta CSP and the `<meta name="referrer">` fallback
+   survive; see [threat-model.md](../../security/threat-model.md) §2 for exactly
+   what is lost. `scripts/serve-dist.mjs` in the source tree is this repository's
+   reference implementation of the required behaviour and is the definition of
+   "`_headers` semantics" your server must reproduce. Read it to derive your own
+   server's configuration — do **not** carry it onto the offline device as another
+   artifact to verify; it is Node tooling, not part of the signed release.
 4. Open the exact `http://127.0.0.1:PORT` origin and wait until the app reports
    that offline use is ready.
 5. Stop the server, remove the transport medium, physically disconnect
