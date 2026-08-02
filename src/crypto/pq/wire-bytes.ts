@@ -16,11 +16,17 @@ import {
 } from "@/crypto/pq/canonical-cbor"
 import { fromBase64Url } from "@/lib/base64url"
 import { concatBytes, sha256Hex, utf8ToBytes } from "@/lib/bytes"
-import { KEY_ID_PATTERN, KEY_ID_RAW_BYTES } from "@/lib/limits"
+import { IV_BYTES, KEY_ID_PATTERN, KEY_ID_RAW_BYTES } from "@/lib/limits"
 
 // Domain-separation labels are part of the wire protocol.
 export const PQ_MESSAGE_DOMAIN_V2 = "QR-CRYPT-MESSAGE-V2"
 export const SYM_MESSAGE_DOMAIN_V2 = "QR-CRYPT-SYM-MESSAGE-V2"
+const HKDF_SALT_DOMAIN_V2 = "QR-CRYPT-HKDF-SALT-V2"
+
+// A fresh array prevents callers from mutating the process-wide protocol value.
+export function hkdfSaltV2(): Uint8Array {
+  return utf8ToBytes(HKDF_SALT_DOMAIN_V2)
+}
 
 // ML-DSA signing context (fixed; FIPS 204 context, at most 255B).
 export function mlDsaContextV2(): Uint8Array {
@@ -42,28 +48,43 @@ export function keyIdRawBytes(keyId: string): Uint8Array {
 
 // HKDF info (frozen wire contract):
 //   info = UTF8("QR-CRYPT-MESSAGE-V2") || 0x00 || UTF8(wireSuite) || 0x00
-//          || kemKeyIdRaw(16 bytes) || 0x02
-// The trailing 0x02 is the protocol version. Salt is 32 CSPRNG bytes per encryption
-// (HKDF_SALT_BYTES).
-export function hkdfInfoV2(suite: WireSuite, recipientKemKeyId: string): Uint8Array {
+//          || kemKeyIdRaw(16 bytes) || iv(12 bytes) || 0x02
+// The trailing 0x02 is the protocol version. Salt is the fixed protocol-domain value
+// UTF8("QR-CRYPT-HKDF-SALT-V2").
+export function hkdfInfoV2(
+  suite: WireSuite,
+  recipientKemKeyId: string,
+  iv: Uint8Array,
+): Uint8Array {
+  if (!(iv instanceof Uint8Array) || iv.byteLength !== IV_BYTES) {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
   return concatBytes(
     utf8ToBytes(PQ_MESSAGE_DOMAIN_V2),
     Uint8Array.of(0x00),
     utf8ToBytes(suite),
     Uint8Array.of(0x00),
     keyIdRawBytes(recipientKemKeyId),
+    iv,
     Uint8Array.of(0x02),
   )
 }
 
-// Symmetric HKDF info mirrors the PQ layout under a distinct domain label.
-export function hkdfInfoSymV2(keyId: string): Uint8Array {
+// Symmetric HKDF info mirrors the PQ layout under a distinct domain label:
+//   info = UTF8("QR-CRYPT-SYM-MESSAGE-V2") || 0x00
+//          || UTF8("HKDF-SHA256+A256GCM") || 0x00
+//          || keyIdRaw(16 bytes) || iv(12 bytes) || 0x02
+export function hkdfInfoSymV2(keyId: string, iv: Uint8Array): Uint8Array {
+  if (!(iv instanceof Uint8Array) || iv.byteLength !== IV_BYTES) {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
   return concatBytes(
     utf8ToBytes(SYM_MESSAGE_DOMAIN_V2),
     Uint8Array.of(0x00),
     utf8ToBytes(SYM_SUITE),
     Uint8Array.of(0x00),
     keyIdRawBytes(keyId),
+    iv,
     Uint8Array.of(0x02),
   )
 }

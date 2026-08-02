@@ -48,9 +48,6 @@ export const AES_KEY_BYTES = 32
 // v2 wire limits; see docs/spec/qr-protocol-v2.md §3–§7.
 // ---------------------------------------------------------------------------
 
-// HKDF-SHA-256 salt is 32B from the CSPRNG for each encryption.
-export const HKDF_SALT_BYTES = 32
-
 // messageId is a fixed 16B from the CSPRNG; it is not replay prevention.
 export const MESSAGE_ID_BYTES = 16
 
@@ -96,15 +93,15 @@ export function singleFrameBytesFor(artifactByteLength: number): number {
 // density-derived artifact capacity and the algebraic wire budget now coincide.
 // This intentionally permits at most 128,000 bytes of attacker-controlled
 // artifact input across 128 frames; CBOR applies separate structural limits.
-// A maximum 120,000-byte signed message is 126,619 bytes and uses 127 frames.
+// A maximum 120,000-byte signed message is 126,576 bytes and uses 127 frames.
 export const PROTOCOL_MAX_FRAMES = 128
 export const FRAME_CHUNK_MAX_BYTES = FRAME_BYTES_MAX
 export const MAX_ARTIFACT_BYTES_ABSOLUTE =
   PROTOCOL_MAX_FRAMES * FRAME_CHUNK_MAX_BYTES
 
-// At the maximum boundary: 1B map header + 159B fixed fields + 11B encoded
+// At the maximum boundary: 1B map header + 116B fixed fields + 11B encoded
 // ciphertext key + 3B byte-string header. Ciphertext bytes are excluded.
-export const SYM_MESSAGE_OVERHEAD_BYTES = 174
+export const SYM_MESSAGE_OVERHEAD_BYTES = 131
 export const MAX_SYM_PLAINTEXT_BYTES =
   FRAME_CHUNK_MAX_BYTES - SYM_MESSAGE_OVERHEAD_BYTES - AES_GCM_TAG_BYTES
 

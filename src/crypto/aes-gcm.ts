@@ -2,13 +2,12 @@
 import { AppError, toAppError } from "@/crypto/errors"
 import { exportAesKeyRaw } from "@/crypto/key-import-export"
 import { encodeSymAadV2 } from "@/crypto/pq/canonical-cbor"
-import { hkdfInfoSymV2 } from "@/crypto/pq/wire-bytes"
+import { hkdfInfoSymV2, hkdfSaltV2 } from "@/crypto/pq/wire-bytes"
 import { zeroize } from "@/crypto/pq/zeroize"
 import { randomBytes } from "@/crypto/random"
 import { toOwnedArrayBuffer } from "@/lib/bytes"
 import {
   AES_GCM_TAG_BYTES,
-  HKDF_SALT_BYTES,
   IV_BYTES,
   MAX_SYM_PLAINTEXT_BYTES,
 } from "@/lib/limits"
@@ -26,10 +25,14 @@ export async function generateAesKey(): Promise<CryptoKey> {
   }
 }
 
+// With the fixed salt, the message key is a function of the IV, so an IV
+// collision is AES-GCM nonce reuse. For q encryptions under one symmetric key
+// its probability is about q(q-1)/2^97. The PQ path is unaffected because every
+// encapsulation supplies a fresh 32-byte shared secret.
 async function deriveSymMessageKey(
   sourceKey: CryptoKey,
   keyId: string,
-  hkdfSalt: Uint8Array,
+  iv: Uint8Array,
   usage: "encrypt" | "decrypt",
 ): Promise<CryptoKey> {
   let ikm: Uint8Array | undefined
@@ -46,8 +49,8 @@ async function deriveSymMessageKey(
       {
         name: "HKDF",
         hash: "SHA-256",
-        salt: toOwnedArrayBuffer(hkdfSalt),
-        info: toOwnedArrayBuffer(hkdfInfoSymV2(keyId)),
+        salt: toOwnedArrayBuffer(hkdfSaltV2()),
+        info: toOwnedArrayBuffer(hkdfInfoSymV2(keyId, iv)),
       },
       hkdfKey,
       { name: "AES-GCM", length: 256 },
@@ -74,7 +77,6 @@ export async function sealSymMessage(args: {
       throw new AppError("ENCRYPTION_FAILED")
     }
 
-    const hkdfSalt = randomBytes(HKDF_SALT_BYTES)
     const iv = randomBytes(IV_BYTES)
     const aad = encodeSymAadV2({
       version: 2,
@@ -83,10 +85,13 @@ export async function sealSymMessage(args: {
       keyId: args.record.id,
       createdAt: args.now,
     })
+    // IV and createdAt are integrity-bound but not provenance-checked: IV is
+    // both HKDF input and the GCM nonce, and createdAt is AAD, so post-seal
+    // mutation fails while a receiver cannot verify that the sealer used a CSPRNG.
     const messageKey = await deriveSymMessageKey(
       args.record.symmetricKey,
       args.record.id,
-      hkdfSalt,
+      iv,
       "encrypt",
     )
     const ciphertext = new Uint8Array(
@@ -107,7 +112,6 @@ export async function sealSymMessage(args: {
       suite: SYM_SUITE,
       keyId: args.record.id,
       createdAt: args.now,
-      hkdfSalt,
       iv,
       ciphertext,
     }
@@ -124,7 +128,6 @@ export async function openSymMessage(args: {
     const { envelope, record } = args
     if (
       envelope.keyId !== record.id ||
-      envelope.hkdfSalt.byteLength !== HKDF_SALT_BYTES ||
       envelope.iv.byteLength !== IV_BYTES ||
       envelope.ciphertext.byteLength < AES_GCM_TAG_BYTES ||
       envelope.ciphertext.byteLength >
@@ -143,7 +146,7 @@ export async function openSymMessage(args: {
     const messageKey = await deriveSymMessageKey(
       record.symmetricKey,
       record.id,
-      envelope.hkdfSalt,
+      envelope.iv,
       "decrypt",
     )
     const plaintext = new Uint8Array(
