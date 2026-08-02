@@ -19,6 +19,7 @@ import {
   DB_VERSION,
   deleteEntireDatabase,
   getDb,
+  SENSITIVE_WRITE_LOCK,
   STORE_APP_METADATA,
   STORE_KEYS,
   STORE_PQ_IDENTITIES,
@@ -159,6 +160,26 @@ describe("database creation", () => {
   })
 })
 
+// Proves only that the writer queues behind an exclusive holder in this realm.
+// The cross-tab property the design claims would need a two-context browser run.
+const EXCLUSION_TOLERANCE_MS = 50
+
+async function assertRunsAfterExclusiveLock(
+  operation: () => Promise<unknown>,
+): Promise<void> {
+  const order: string[] = []
+  let running: Promise<unknown> = Promise.resolve()
+  await navigator.locks.request(SENSITIVE_WRITE_LOCK, { mode: "exclusive" }, async () => {
+    running = operation().then(() => order.push("writer-finished"))
+    // An unlocked writer finishes inside this hold: the tolerance is orders of
+    // magnitude more than an in-memory IndexedDB write needs.
+    await new Promise((resolve) => setTimeout(resolve, EXCLUSION_TOLERANCE_MS))
+    order.push("lock-released")
+  })
+  await running
+  expect(order).toEqual(["lock-released", "writer-finished"])
+}
+
 describe("key repository", () => {
   it("admits only symmetric stored-key records at the type boundary", () => {
     type HasRetiredKind =
@@ -241,6 +262,12 @@ describe("key repository", () => {
     await expect(getKeyRecord(malformed.id)).rejects.toMatchObject({
       code: "STORAGE_FAILED",
     })
+  })
+
+  it("takes the sensitive-write lock before saving a key record", async () => {
+    const record = await createSymmetricKeyRecord("locked save", NOW)
+    await assertRunsAfterExclusiveLock(() => saveKeyRecord(record))
+    expect(await getKeyRecord(record.id)).toMatchObject({ id: record.id })
   })
 
   it("silently omits a legacy RSA row from the key list without repairing it", async () => {

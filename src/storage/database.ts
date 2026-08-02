@@ -87,6 +87,37 @@ export function resetDatabaseAccessBarrierForTesting(): void {
   databaseAccessBarrier = false
 }
 
+// Boot proves the origin holds no sensitive data before it authorizes the online
+// relay, and that proof is only worth anything if nothing can write while it is
+// being taken. A counter cannot give that: a writer still inside Web Crypto has
+// already incremented it, and a peer tab's writes never touch this realm's
+// variables at all. Web Locks are origin-wide, so an exclusive holder waits out
+// every writer wherever it started and keeps the next one out until the decision
+// is published.
+export const SENSITIVE_WRITE_LOCK = "qr-crypt-sensitive-write"
+
+function lockManager(): LockManager | undefined {
+  return typeof navigator === "undefined" ? undefined : navigator.locks
+}
+
+// Writers hold it shared: they do not exclude each other, only the proof.
+export async function withSensitiveWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+  const locks = lockManager()
+  if (locks === undefined) return operation()
+  return locks.request(SENSITIVE_WRITE_LOCK, { mode: "shared" }, operation)
+}
+
+// The callback is told whether the lock was actually taken. Without Web Locks the
+// origin cannot be proved clean, but the wipe decision still has to be made, so
+// the operation runs either way and the caller fails closed on false.
+export function withSensitiveWritesExcluded(
+  operation: (exclusive: boolean) => Promise<void>,
+): Promise<void> {
+  const locks = lockManager()
+  if (locks === undefined) return operation(false)
+  return locks.request(SENSITIVE_WRITE_LOCK, { mode: "exclusive" }, () => operation(true))
+}
+
 function timeoutOrDefault(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback
   if (!Number.isSafeInteger(value) || value < 0) throw new AppError("STORAGE_FAILED")

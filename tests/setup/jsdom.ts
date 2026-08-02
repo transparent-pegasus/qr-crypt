@@ -1,6 +1,9 @@
 import "@testing-library/jest-dom/vitest"
 import "fake-indexeddb/auto"
 import { webcrypto } from "node:crypto"
+import { installWebLocksStub } from "../helpers/web-locks"
+
+installWebLocksStub()
 
 if (!globalThis.crypto?.subtle) {
   Object.defineProperty(globalThis, "crypto", {

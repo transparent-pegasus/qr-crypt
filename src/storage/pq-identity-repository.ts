@@ -9,7 +9,7 @@
 import type { PostQuantumIdentity } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { keyNameSchema, validatePostQuantumIdentity } from "@/schemas/key-schema"
-import { getDb, STORE_PQ_IDENTITIES } from "@/storage/database"
+import { getDb, STORE_PQ_IDENTITIES, withSensitiveWriteLock } from "@/storage/database"
 
 function checkedIdentity(value: unknown): PostQuantumIdentity {
   try {
@@ -77,51 +77,55 @@ export async function findIdentityBySigningKeyId(
   }
 }
 
-export async function saveIdentity(identity: PostQuantumIdentity): Promise<void> {
-  const checked = checkedIdentity(identity)
-  if (checked.status !== "active") throw new AppError("STORAGE_FAILED")
-  try {
-    await (await getDb()).add(STORE_PQ_IDENTITIES, checked)
-  } catch (error) {
-    throw toAppError(error, "STORAGE_FAILED")
-  }
+export function saveIdentity(identity: PostQuantumIdentity): Promise<void> {
+  return withSensitiveWriteLock(async () => {
+    const checked = checkedIdentity(identity)
+    if (checked.status !== "active") throw new AppError("STORAGE_FAILED")
+    try {
+      await (await getDb()).add(STORE_PQ_IDENTITIES, checked)
+    } catch (error) {
+      throw toAppError(error, "STORAGE_FAILED")
+    }
+  })
 }
 
 // Rotation: store both rows returned by rotateIdentity in one transaction.
-export async function saveRotation(args: {
+export function saveRotation(args: {
   next: PostQuantumIdentity
   previous: PostQuantumIdentity
 }): Promise<void> {
-  const next = checkedIdentity(args.next)
-  const previous = checkedIdentity(args.previous)
-  if (
-    next.status !== "active" ||
-    previous.status !== "rotated" ||
-    next.rotatedFromId !== previous.id ||
-    previous.rotatedAt === undefined ||
-    next.createdAt !== previous.rotatedAt
-  ) {
-    throw new AppError("STORAGE_FAILED")
-  }
-  try {
-    const database = await getDb()
-    const tx = database.transaction(STORE_PQ_IDENTITIES, "readwrite")
-    const persisted = await tx.store.get(previous.id)
+  return withSensitiveWriteLock(async () => {
+    const next = checkedIdentity(args.next)
+    const previous = checkedIdentity(args.previous)
     if (
-      persisted === undefined ||
-      persisted.status !== "active" ||
-      persisted.kem.keyId !== previous.kem.keyId ||
-      persisted.signing.keyId !== previous.signing.keyId ||
-      persisted.identityFingerprint !== previous.identityFingerprint
+      next.status !== "active" ||
+      previous.status !== "rotated" ||
+      next.rotatedFromId !== previous.id ||
+      previous.rotatedAt === undefined ||
+      next.createdAt !== previous.rotatedAt
     ) {
       throw new AppError("STORAGE_FAILED")
     }
-    await tx.store.put(previous)
-    await tx.store.add(next)
-    await tx.done
-  } catch (error) {
-    throw toAppError(error, "STORAGE_FAILED")
-  }
+    try {
+      const database = await getDb()
+      const tx = database.transaction(STORE_PQ_IDENTITIES, "readwrite")
+      const persisted = await tx.store.get(previous.id)
+      if (
+        persisted === undefined ||
+        persisted.status !== "active" ||
+        persisted.kem.keyId !== previous.kem.keyId ||
+        persisted.signing.keyId !== previous.signing.keyId ||
+        persisted.identityFingerprint !== previous.identityFingerprint
+      ) {
+        throw new AppError("STORAGE_FAILED")
+      }
+      await tx.store.put(previous)
+      await tx.store.add(next)
+      await tx.done
+    } catch (error) {
+      throw toAppError(error, "STORAGE_FAILED")
+    }
+  })
 }
 
 export async function revokeIdentity(id: string, revokedAt: number): Promise<void> {

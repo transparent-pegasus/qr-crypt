@@ -8,7 +8,12 @@
 //   - Never overwrite the key, because doing so creates unrecoverable identities.
 import { AppError, toAppError } from "@/crypto/errors"
 import { isVaultKey } from "@/crypto/vault/is-vault-key"
-import { getDb, STORE_APP_METADATA, type KeyValueRow } from "@/storage/database"
+import {
+  getDb,
+  STORE_APP_METADATA,
+  withSensitiveWriteLock,
+  type KeyValueRow,
+} from "@/storage/database"
 
 export const VAULT_KEY_METADATA_KEY = "vault-key"
 
@@ -25,30 +30,37 @@ async function generateVaultKey(): Promise<CryptoKey> {
   return key
 }
 
-async function createOrReadVaultKey(): Promise<CryptoKey> {
-  const database = await getDb()
-  const cachedRow = await database.get(STORE_APP_METADATA, VAULT_KEY_METADATA_KEY)
-  if (cachedRow !== undefined) {
-    if (!isVaultKey(cachedRow.value)) throw new AppError("STORAGE_FAILED")
-    return cachedRow.value
-  }
+// Nesting is vault (exclusive, outer) → sensitive-write (shared, inner): two
+// different lock names, and no writer ever requests the sensitive-write lock
+// exclusively, so no cycle exists. Do not hoist the shared request outside
+// withCrossTabLock — the wrapper is already on this stack and Web Locks has no
+// reentrancy.
+function createOrReadVaultKey(): Promise<CryptoKey> {
+  return withSensitiveWriteLock(async () => {
+    const database = await getDb()
+    const cachedRow = await database.get(STORE_APP_METADATA, VAULT_KEY_METADATA_KEY)
+    if (cachedRow !== undefined) {
+      if (!isVaultKey(cachedRow.value)) throw new AppError("STORAGE_FAILED")
+      return cachedRow.value
+    }
 
-  // Generate the key outside the transaction. This avoids an IDB transaction
-  // auto-committing while WebCrypto is pending, while the existence check and add
-  // still remain within one readwrite transaction.
-  const generated = await generateVaultKey()
-  const transaction = database.transaction(STORE_APP_METADATA, "readwrite")
-  const existing = await transaction.store.get(VAULT_KEY_METADATA_KEY)
-  if (existing !== undefined) {
+    // Generate the key outside the transaction. This avoids an IDB transaction
+    // auto-committing while WebCrypto is pending, while the existence check and add
+    // still remain within one readwrite transaction.
+    const generated = await generateVaultKey()
+    const transaction = database.transaction(STORE_APP_METADATA, "readwrite")
+    const existing = await transaction.store.get(VAULT_KEY_METADATA_KEY)
+    if (existing !== undefined) {
+      await transaction.done
+      if (!isVaultKey(existing.value)) throw new AppError("STORAGE_FAILED")
+      // Do not store the generated key that lost the race; drop its final reference here.
+      return existing.value
+    }
+    const row: KeyValueRow = { key: VAULT_KEY_METADATA_KEY, value: generated }
+    await transaction.store.add(row)
     await transaction.done
-    if (!isVaultKey(existing.value)) throw new AppError("STORAGE_FAILED")
-    // Do not store the generated key that lost the race; drop its final reference here.
-    return existing.value
-  }
-  const row: KeyValueRow = { key: VAULT_KEY_METADATA_KEY, value: generated }
-  await transaction.store.add(row)
-  await transaction.done
-  return generated
+    return generated
+  })
 }
 
 async function withCrossTabLock<T>(action: () => Promise<T>): Promise<T> {
