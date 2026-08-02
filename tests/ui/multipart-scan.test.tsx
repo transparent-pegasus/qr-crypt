@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { QrScannerPanel } from "@/components/qr-scanner-panel"
 import { AppError, messageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
+import { LanguageProvider } from "@/i18n"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import { deferred } from "../helpers/deferred"
 import {
@@ -340,22 +341,43 @@ describe("QrScannerPanel multipart scan", () => {
     expect(scannerStop).toHaveBeenCalled()
   })
 
-  it("does not claim a digest check the assembler never performs", async () => {
-    const user = userEvent.setup()
-    const session = new MultipartScanSession(5)
-    render(scanner(session))
-    await user.click(screen.getByRole("button", { name: "Start camera" }))
-    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+  // Pinned verbatim, not through translate(): the assembler checks frame
+  // bookkeeping and nothing else, so any reword that widens the claim — in
+  // either locale — has to fail here.
+  it.each([
+    [
+      "en" as const,
+      "Start camera",
+      "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+      "These checks detect frames that are missing, duplicated, or mixed in from another transfer. They do not verify the artifact's contents and do not prove the sender's authenticity.",
+    ],
+    [
+      "ja" as const,
+      "カメラを起動",
+      "必要な全フレームを受信しました。フレームのメタデータ・フレーム番号・合計長・形式の整合性を確認しました。",
+      "この確認は転送中の欠損・重複・他転送の混在を検出するものです。成果物の内容は検証せず、送信者の真正性も証明しません。",
+    ],
+  ])(
+    "claims only frame bookkeeping on completion (%s)",
+    async (language, startLabel, completion, caveat) => {
+      const user = userEvent.setup()
+      const session = new MultipartScanSession(5)
+      render(
+        <LanguageProvider initialLanguage={language}>
+          {scanner(session)}
+        </LanguageProvider>,
+      )
+      await user.click(screen.getByRole("button", { name: startLabel }))
+      await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
 
-    await act(async () =>
-      emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
-    )
+      await act(async () =>
+        emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
+      )
 
-    expect(
-      screen.getByText(
-        "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
-      ),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/SHA-256/i)).not.toBeInTheDocument()
-  })
+      expect(screen.getByText(completion)).toBeInTheDocument()
+      expect(screen.getByText(caveat)).toBeInTheDocument()
+      // The exact false claim that used to ship here.
+      expect(screen.queryByText(/SHA-256/i)).not.toBeInTheDocument()
+    },
+  )
 })

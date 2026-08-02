@@ -618,8 +618,13 @@ describe("QrScannerModal frame delivery", () => {
     await act(async () => vi.advanceTimersByTimeAsync(1_000))
     expect(onComplete).toHaveBeenCalledOnce()
 
+    // The claim went back, so only the one-failure latch stops the 1 Hz poller
+    // from re-claiming it; the user is told instead of being retried at.
     await act(async () => vi.advanceTimersByTimeAsync(5_000))
     expect(onComplete).toHaveBeenCalledOnce()
+    expect(
+      screen.getByText(messageFor("UNSUPPORTED_ALGORITHM", "en")),
+    ).toBeInTheDocument()
   })
 
   it("permits exactly one further poll attempt after the dialog is reopened", async () => {
@@ -671,6 +676,15 @@ describe("QrScannerModal frame delivery", () => {
     expect(onClosed).toHaveBeenCalledOnce()
 
     await act(async () => vi.advanceTimersByTimeAsync(5_000))
+    expect(onComplete).toHaveBeenCalledOnce()
+
+    // Reopening clears the one-failure latch over a still-complete session, so
+    // the retained claim is the only thing left that can stop the delivered
+    // artifact from being handed over a second time.
+    fireEvent.click(screen.getByRole("button", { name: "Scan ciphertext frames" }))
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(onComplete).toHaveBeenCalledOnce()
   })
 })
