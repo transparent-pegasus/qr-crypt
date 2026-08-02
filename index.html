@@ -9,6 +9,11 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <meta name="theme-color" content="#0F172A" />
+    <!-- Referrer-Policy is served from public/_headers, but a Route A install
+         is served by whatever static server the operator chose, and most
+         ignore _headers. This is the only one of those six headers with a real
+         meta equivalent; the rest have none. See docs/security/threat-model.md §2. -->
+    <meta name="referrer" content="no-referrer" />
     <meta
       name="description"
       content="Offline encryption PWA: keys and messages stay on a device you keep permanently offline, and ciphertext crosses to your online phone only as a QR code."
