@@ -109,9 +109,11 @@ export function saveRotation(args: {
     try {
       const database = await getDb()
       const tx = database.transaction(STORE_PQ_IDENTITIES, "readwrite")
-      const persisted = await tx.store.get(previous.id)
+      const persistedValue = await tx.store.get(previous.id)
+      if (persistedValue === undefined) throw new AppError("STORAGE_FAILED")
+      // Validated because it is about to be written back, not merely compared.
+      const persisted = checkedIdentity(persistedValue)
       if (
-        persisted === undefined ||
         persisted.status !== "active" ||
         persisted.kem.keyId !== previous.kem.keyId ||
         persisted.signing.keyId !== previous.signing.keyId ||
@@ -119,8 +121,18 @@ export function saveRotation(args: {
       ) {
         throw new AppError("STORAGE_FAILED")
       }
-      await tx.store.put(previous)
-      await tx.store.add(next)
+      // The persisted row wins, exactly as for symmetric rotation: the caller's
+      // snapshot predates any rename or use this generation recorded while the
+      // Worker was generating. identityFingerprint is taken over a name-free
+      // tuple, so the new head can carry the current name without invalidating it.
+      await tx.store.put(
+        checkedIdentity({
+          ...persisted,
+          status: "rotated",
+          rotatedAt: previous.rotatedAt,
+        }),
+      )
+      await tx.store.add(checkedIdentity({ ...next, name: persisted.name }))
       await tx.done
     } catch (error) {
       throw toAppError(error, "STORAGE_FAILED")
