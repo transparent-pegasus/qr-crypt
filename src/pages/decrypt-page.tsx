@@ -237,16 +237,16 @@ export function DecryptPage() {
             id="decrypt-camera-title"
             className="font-semibold leading-none tracking-tight"
           >
-            {t("encrypt.decrypt.cameraTitle")}
+            {t("decrypt.cameraTitle")}
           </h3>
         </CardHeader>
         <CardContent className="space-y-4 p-4 pt-0">
           <QrScannerModal
-            triggerLabel={t("encrypt.decrypt.scanTrigger")}
+            triggerLabel={t("decrypt.scanTrigger")}
             className="space-y-6"
             cameraAvailable={camera}
             triggerDisabled={busy}
-            title={t("encrypt.decrypt.scanTrigger")}
+            title={t("decrypt.scanTrigger")}
             multipart={{
               session: multipartSession,
               onComplete: ({ artifactType, artifactBytes }) => {
@@ -301,7 +301,7 @@ export function DecryptPage() {
         <CardContent className="space-y-4 p-4 pt-0">
           <div className="space-y-2">
             <Label htmlFor="decrypt-payload">
-              {t("encrypt.decrypt.payloadLabel")}
+              {t("decrypt.payloadLabel")}
             </Label>
             <Textarea
               id="decrypt-payload"
@@ -312,7 +312,7 @@ export function DecryptPage() {
                 setError(null)
               }}
               className="min-h-28 break-all font-mono text-base focus-visible:ring-2"
-              placeholder={t("encrypt.decrypt.payloadPlaceholder")}
+              placeholder={t("decrypt.payloadPlaceholder")}
               autoComplete="off"
               spellCheck={false}
               disabled={busy}
@@ -325,9 +325,9 @@ export function DecryptPage() {
               aria-labelledby="decrypt-invalid-title"
             >
               <AlertTitle id="decrypt-invalid-title">
-                {t("encrypt.decrypt.invalidTitle")}
+                {t("decrypt.invalidTitle")}
               </AlertTitle>
-              <AlertDescription>{t("encrypt.decrypt.invalidBody")}</AlertDescription>
+              <AlertDescription>{t("decrypt.invalidBody")}</AlertDescription>
             </Alert>
           )}
           {parsedDecrypt && (
@@ -356,7 +356,7 @@ export function DecryptPage() {
               <AlertTitle id="decrypt-pq-unsupported-title">
                 {t("keyDetail.badge.legacyProfile")}
               </AlertTitle>
-              <AlertDescription>{t("encrypt.pqUnsupported.body")}</AlertDescription>
+              <AlertDescription>{t("decrypt.pqUnsupported.body")}</AlertDescription>
             </Alert>
           )}
           {decryptKeyMissing && (
@@ -380,7 +380,7 @@ export function DecryptPage() {
             ) : (
               <LockOpen aria-hidden="true" />
             )}
-            {t(busy ? "encrypt.decryptButton.busy" : "encrypt.decryptButton.idle")}
+            {t(busy ? "decrypt.button.busy" : "decrypt.button.idle")}
           </Button>
         </CardContent>
       </Card>
@@ -396,12 +396,12 @@ export function DecryptPage() {
           </AlertTitle>
           <AlertDescription>
             {t("errors.SIGNING_KEY_NOT_FOUND")}
-            {t("encrypt.signingKeyId", {
+            {t("decrypt.signingKeyId", {
               id: decrypted.senderSigningKeyId,
             })}
             <br />
             <Link to="/keys" className="font-medium underline">
-              {t("encrypt.importSigningKey")}
+              {t("decrypt.importSigningKey")}
             </Link>
           </AlertDescription>
         </Alert>
@@ -435,13 +435,13 @@ export function DecryptPage() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
-                {t("encrypt.result.decryptedModalTitle")}
+                {t("decrypt.result.modalTitle")}
               </DialogTitle>
             </DialogHeader>
             {decrypted !== null && decrypted.kind !== "signed-key-unknown" && (
               <>
                 {decrypted.kind === "aes" && (
-                  <p className="text-sm font-medium">{t("encrypt.result.symmetric")}</p>
+                  <p className="text-sm font-medium">{t("decrypt.result.symmetric")}</p>
                 )}
                 {decrypted.kind === "signed-valid" && (
                   <>
@@ -453,17 +453,17 @@ export function DecryptPage() {
                             : "font-medium"
                         }
                       >
-                        {t("encrypt.result.signatureValid")}
+                        {t("decrypt.result.signatureValid")}
                       </p>
                       <p className="font-mono text-xs break-all">
-                        {t("encrypt.result.senderSigningKeyId", {
+                        {t("decrypt.result.senderSigningKeyId", {
                           id: decrypted.senderSigningKeyId,
                         })}
                       </p>
                       {decrypted.sender.trust === "fingerprint-confirmed" && (
                         <p className="font-medium text-success">
-                          {t("encrypt.result.identityCheck.label")}{" "}
-                          {t("encrypt.result.identityCheck.confirmed")}
+                          {t("decrypt.result.identityCheck.label")}{" "}
+                          {t("decrypt.result.identityCheck.confirmed")}
                         </p>
                       )}
                     </div>
@@ -474,16 +474,16 @@ export function DecryptPage() {
                         aria-labelledby="decrypt-identity-unconfirmed-title"
                       >
                         <AlertTitle id="decrypt-identity-unconfirmed-title">
-                          {t("encrypt.result.identityUnconfirmed.title")}
+                          {t("decrypt.result.identityUnconfirmed.title")}
                         </AlertTitle>
                         <AlertDescription
                           role="alert"
                           aria-labelledby="decrypt-identity-unconfirmed-title"
                         >
-                          <p>{t("encrypt.result.identityUnconfirmed.body")}</p>
+                          <p>{t("decrypt.result.identityUnconfirmed.body")}</p>
                           <p className="mt-2">
-                            {t("encrypt.result.identityCheck.label")}{" "}
-                            {t("encrypt.result.identityCheck.unverified")}
+                            {t("decrypt.result.identityCheck.label")}{" "}
+                            {t("decrypt.result.identityCheck.unverified")}
                           </p>
                         </AlertDescription>
                       </Alert>
@@ -492,7 +492,7 @@ export function DecryptPage() {
                 )}
                 {decrypted.kind === "signed-valid" && (
                   <p className="text-xs text-muted-foreground">
-                    {t("encrypt.result.senderCreatedAt", {
+                    {t("decrypt.result.senderCreatedAt", {
                       time: formatDateTime(decrypted.senderCreatedAt, language),
                     })}
                   </p>
@@ -504,11 +504,11 @@ export function DecryptPage() {
                     aria-labelledby="decrypt-replay-title"
                   >
                     <AlertTitle id="decrypt-replay-title">
-                      {t("encrypt.result.replay.title")}
+                      {t("decrypt.result.replay.title")}
                     </AlertTitle>
                     <AlertDescription>
                       <p>
-                        {t("encrypt.result.replay.body", {
+                        {t("decrypt.result.replay.body", {
                           time: formatDateTime(
                             decrypted.replay.firstSeenAt,
                             language,
@@ -521,7 +521,7 @@ export function DecryptPage() {
                         className="mt-3"
                         onClick={() => setReplayAcknowledged(true)}
                       >
-                        {t("encrypt.result.replay.reveal")}
+                        {t("decrypt.result.replay.reveal")}
                       </Button>
                     </AlertDescription>
                   </Alert>
@@ -533,10 +533,10 @@ export function DecryptPage() {
                     aria-labelledby="decrypt-invisible-characters-title"
                   >
                     <AlertTitle id="decrypt-invisible-characters-title">
-                      {t("encrypt.result.invisibleCharacters.title")}
+                      {t("decrypt.result.invisibleCharacters.title")}
                     </AlertTitle>
                     <AlertDescription>
-                      {t("encrypt.result.invisibleCharacters.body", {
+                      {t("decrypt.result.invisibleCharacters.body", {
                         count: formatCharacterCount,
                       })}
                     </AlertDescription>
@@ -549,7 +549,7 @@ export function DecryptPage() {
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  {t("encrypt.result.memoryOnly")}
+                  {t("decrypt.result.memoryOnly")}
                 </p>
               </>
             )}
