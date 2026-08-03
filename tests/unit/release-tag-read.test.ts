@@ -13,23 +13,28 @@ const workflowPath = path.join(
   "github-release.yml",
 )
 
-const INDENT = "          "
-
+// The helpers under test live inline in the workflow, because the publish job
+// deliberately has no checkout to load them from. Indentation is therefore
+// whatever the surrounding YAML block happens to use: read it off the opening
+// line rather than pinning it, so reformatting the workflow cannot move the
+// test boundary.
 const extractFunction = (source: string, name: string): string => {
   const lines = source.split("\n")
-  const start = lines.indexOf(`${INDENT}${name}() {`)
+  const opening = new RegExp(`^(\\s*)${name}\\(\\) \\{$`)
+  const start = lines.findIndex((line) => opening.test(line))
   if (start === -1) {
     throw new Error(`HELPER_NOT_FOUND:${name}`)
   }
+  const indent = opening.exec(lines[start] as string)?.[1] ?? ""
   const end = lines.findIndex(
-    (line, index) => index > start && line === `${INDENT}}`,
+    (line, index) => index > start && line === `${indent}}`,
   )
   if (end === -1) {
     throw new Error(`HELPER_UNTERMINATED:${name}`)
   }
   return lines
     .slice(start, end + 1)
-    .map((line) => line.slice(INDENT.length))
+    .map((line) => line.slice(indent.length))
     .join("\n")
 }
 

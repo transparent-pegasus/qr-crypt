@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link } from "react-router"
 import { AlertCircle, CheckCircle2, LoaderCircle, LockOpen } from "lucide-react"
 import { toast } from "sonner"
-import { openSymMessage } from "@/crypto/aes-gcm"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
   decodeMlKemEnvelopeV2,
@@ -10,21 +9,15 @@ import {
   encodeMlKemEnvelopeV2,
   encodeSymMessageEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
-import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
-import { zeroize } from "@/crypto/pq/zeroize"
 import { assertActiveSuite } from "@/crypto/pq/suites"
 import { validateSymMessageEnvelopeV2 } from "@/crypto/pq/validation"
-import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import {
   useFeatureSupport,
   useSensitiveSession,
   useTransientClear,
 } from "@/app/providers"
 import { DetailRow } from "@/components/detail-row"
-import {
-  isUsableBundle,
-  isUsableIdentity,
-} from "@/components/key-detail/identity-policy"
+import { isUsableIdentity } from "@/components/key-detail/identity-policy"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrScannerModal } from "@/components/qr-scanner-modal"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -33,47 +26,22 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  decryptMessage,
+  type DecryptedMessage,
+} from "@/features/decrypt-message"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
 import { formatDateTime } from "@/features/presentation"
-import { recordReceipt, type ReceiptVerdict } from "@/features/receipt-cache"
 import { useAutoClear } from "@/hooks/use-auto-clear"
 import { useKeys } from "@/hooks/use-keys"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
 import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
-import {
-  bytesToHex,
-  bytesToUtf8,
-  countUnicodeFormatCharacters,
-} from "@/lib/bytes"
+import { countUnicodeFormatCharacters } from "@/lib/bytes"
 import { buildV2Payload } from "@/qr/payload-v2"
-import {
-  decodePayload,
-  payloadSha256Hex,
-} from "@/qr/payload"
-import type {
-  PqPublicBundleRecord,
-  WireSuite,
-} from "@/schemas/domain"
-import { markKeyUsed } from "@/storage/key-repository"
-import { findBundleBySigningKeyId } from "@/storage/pq-bundle-repository"
-import {
-  findIdentityByKemKeyId,
-  markIdentityUsed,
-} from "@/storage/pq-identity-repository"
-
-type DecryptionResult =
-  | {
-      kind: "signed-valid"
-      text: string
-      replay: ReceiptVerdict
-      senderCreatedAt: number
-      senderSigningKeyId: string
-      sender: PqPublicBundleRecord
-    }
-  | { kind: "signed-key-unknown"; senderSigningKeyId: string }
-  | { kind: "aes"; text: string; replay: ReceiptVerdict }
+import { decodePayload } from "@/qr/payload"
+import type { WireSuite } from "@/schemas/domain"
 
 function isActiveWireSuite(suite: WireSuite): boolean {
   try {
@@ -99,7 +67,7 @@ export function DecryptPage() {
     error ?? keysError ?? pqError ?? preferencesError,
   )
   const [decryptInput, setDecryptInput] = useState("")
-  const [decrypted, setDecrypted] = useState<DecryptionResult | null>(null)
+  const [decrypted, setDecrypted] = useState<DecryptedMessage | null>(null)
   const [replayAcknowledged, setReplayAcknowledged] = useState(false)
   const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
   const pendingDecryptRef = useRef<string | null>(null)
@@ -236,116 +204,21 @@ export function DecryptPage() {
     clearDecrypted()
     try {
       if (parsed.kind === "sym-message" && symmetricKey) {
-        const decryptedBytes = await openSymMessage({
-          record: symmetricKey,
-          envelope: parsed.envelope,
-        })
-        try {
-          const envelopeHash = await payloadSha256Hex(
-            buildV2Payload(
-              "sym-message",
-              encodeSymMessageEnvelopeV2(parsed.envelope),
-            ),
-          )
-          const verdict = recordReceipt(
-            {
-              kind: "sym",
-              recipientKeyId: symmetricKey.id,
-              envelopeHash,
-            },
-            Date.now(),
-          )
-          // Unreachable for symmetric messages — their receipt identity includes the
-          // ciphertext hash — but the refusal is shared with the PQ path.
-          if (verdict.kind === "message-id-reused") {
-            throw new AppError("MESSAGE_ID_REUSED")
-          }
-          const outcome: DecryptionResult = {
-            kind: "aes",
-            text: bytesToUtf8(decryptedBytes),
-            replay: verdict,
-          }
-          await markKeyUsed(symmetricKey.id, Date.now()).catch(() => undefined)
-          setDecrypted(outcome)
-        } finally {
-          zeroize(decryptedBytes)
-        }
-      } else if (parsed.kind === "pq-message" && identity) {
-        // The cached list only gates the button. Re-resolve from storage at action
-        // time so a generation discarded elsewhere cannot be decrypted from a stale
-        // in-memory object. A delete landing between this lookup and the worker call
-        // is a residual race, recorded in docs/security/threat-model.md T14.
-        const recipient = await findIdentityByKemKeyId(
-          parsed.envelope.recipientKemKeyId,
+        setDecrypted(
+          await decryptMessage({
+            kind: "sym-message",
+            envelope: parsed.envelope,
+            record: symmetricKey,
+          }),
         )
-        if (recipient === undefined || !isUsableIdentity(recipient)) {
-          throw new AppError("KEY_NOT_FOUND")
-        }
-        // Key ids are attacker-assertable, so the record that verifies the signature is
-        // also the record shown as the sender: one exact lookup, no list ordering.
-        let resolvedSender: PqPublicBundleRecord | undefined
-        const pqResult = await decryptPqMessage({
-          client: getPqClient(),
-          envelope: parsed.envelope,
-          recipient,
-          vaultKey: await getOrCreateVaultKey(),
-          resolveSigningKey: async (keyId) => {
-            const record = await findBundleBySigningKeyId(keyId)
-            if (record === undefined || !isUsableBundle(record)) return undefined
-            resolvedSender = record
-            return {
-              algorithm: record.signing.algorithm,
-              publicKey: record.signing.publicKey,
-              revoked: record.revokedAt !== undefined,
-            }
-          },
-        })
-        if (pqResult.kind === "signed-key-unknown") {
-          await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
-          setDecrypted(pqResult)
-        } else {
-          const decryptedBytes = pqResult.plaintext
-          try {
-            // The inner message must be decrypted, and for signed suites verified,
-            // before its message id is known. The guarantee is that refused plaintext
-            // is never displayed or persisted, not that it is never constructed.
-            const envelopeHash = await payloadSha256Hex(
-              buildV2Payload(
-                "pq-message",
-                encodeMlKemEnvelopeV2(parsed.envelope),
-              ),
-            )
-            const messageIdHex = bytesToHex(pqResult.messageId)
-            if (resolvedSender === undefined) {
-              throw new AppError("DECRYPTION_FAILED")
-            }
-            const verdict = recordReceipt(
-              {
-                kind: "pq-signed",
-                senderFingerprint: resolvedSender.signing.fingerprint,
-                recipientKemKeyId: parsed.envelope.recipientKemKeyId,
-                messageIdHex,
-                envelopeHash,
-              },
-              Date.now(),
-            )
-            if (verdict.kind === "message-id-reused") {
-              throw new AppError("MESSAGE_ID_REUSED")
-            }
-            const outcome: DecryptionResult = {
-              kind: "signed-valid",
-              text: bytesToUtf8(decryptedBytes),
-              replay: verdict,
-              senderCreatedAt: pqResult.createdAt,
-              senderSigningKeyId: pqResult.senderSigningKeyId,
-              sender: resolvedSender,
-            }
-            await markIdentityUsed(recipient.id, Date.now()).catch(() => undefined)
-            setDecrypted(outcome)
-          } finally {
-            zeroize(decryptedBytes)
-          }
-        }
+      } else if (parsed.kind === "pq-message") {
+        setDecrypted(
+          await decryptMessage({
+            kind: "pq-message",
+            envelope: parsed.envelope,
+            client: getPqClient(),
+          }),
+        )
       }
     } catch (caught) {
       clearDecrypted()

@@ -127,16 +127,10 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     [],
   )
 
+  // The session hands the claim back itself when delivery rejects, so this runs
+  // purely as the publish step for a run that may already be unmounted.
   const settleDelivery = useCallback(
-    (
-      run: ScannerRun,
-      succeeded: boolean,
-      caught: unknown,
-      successStatus: LocalizedText,
-    ) => {
-      // Released ahead of the publish guard: an unmounted or superseded run
-      // still holds the claim, and nothing else would ever hand it back.
-      if (!succeeded) run.session.releaseCompletion()
+    (run: ScannerRun, succeeded: boolean, caught: unknown) => {
       if (
         !mountedRef.current ||
         nextRunIdRef.current !== run.id
@@ -146,7 +140,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       publishCameraMode("idle")
       if (succeeded) {
         setError(null)
-        setCameraStatus(successStatus)
+        setCameraStatus(localized("scanner.status.allFramesRead"))
         return
       }
       setError(localizedErrorCode(deliveryError(caught).code))
@@ -186,23 +180,37 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       emitted: false,
     }
 
-    const deliver = (
-      operation: () => void | Promise<void>,
-      successStatus: LocalizedText,
-    ) => {
+    const stopAsAlreadyRead = () => {
       run.emitted = true
       cancelRun(run, "idle")
-      publishCameraMode("delivering")
-      setError(null)
-      setCameraStatus(localized("scanner.status.delivering"))
-      void (async () => {
-        try {
-          await operation()
-          settleDelivery(run, true, undefined, successStatus)
-        } catch (caught) {
-          settleDelivery(run, false, caught, successStatus)
-        }
-      })()
+      publishCameraMode("idle")
+      setCameraStatus(localized("scanner.status.allFramesRead"))
+    }
+
+    const deliver = (
+      completed: Extract<TransferState, { kind: "complete" }>,
+    ) => {
+      // The status switch sits inside the delivery so it never runs for a
+      // completion another surface already owns.
+      const pending = run.session.deliverOnce(() => {
+        run.emitted = true
+        cancelRun(run, "idle")
+        publishCameraMode("delivering")
+        setError(null)
+        setCameraStatus(localized("scanner.status.delivering"))
+        return multipartRef.current.onComplete({
+          artifactType: completed.artifactType,
+          artifactBytes: completed.artifactBytes,
+        })
+      })
+      if (pending === null) {
+        stopAsAlreadyRead()
+        return
+      }
+      void pending.then(
+        () => settleDelivery(run, true, undefined),
+        (caught: unknown) => settleDelivery(run, false, caught),
+      )
     }
 
     if (sessionState.kind === "complete") {
@@ -210,21 +218,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       startLockedRef.current = true
       publishTransferState(sessionState)
       setFrameSetComplete(true)
-      if (!session.claimCompletion()) {
-        run.emitted = true
-        cancelRun(run, "idle")
-        publishCameraMode("idle")
-        setCameraStatus(localized("scanner.status.allFramesRead"))
-        return
-      }
-      deliver(
-        () =>
-          multipartRef.current.onComplete({
-            artifactType: sessionState.artifactType,
-            artifactBytes: sessionState.artifactBytes,
-          }),
-        localized("scanner.status.allFramesRead"),
-      )
+      deliver(sessionState)
       return
     }
 
@@ -243,29 +237,6 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
     publishCameraMode("running")
     setError(null)
     setCameraStatus(localized("scanner.status.preparing"))
-
-    const finishMultipartScan = (
-      currentSession: MultipartScanSession,
-      next: Extract<TransferState, { kind: "complete" }>,
-    ) => {
-      const claimed = currentSession.claimCompletion()
-      setFrameSetComplete(true)
-      if (!claimed) {
-        run.emitted = true
-        cancelRun(run, "idle")
-        publishCameraMode("idle")
-        setCameraStatus(localized("scanner.status.allFramesRead"))
-        return
-      }
-      deliver(
-        () =>
-          multipartRef.current.onComplete({
-            artifactType: next.artifactType,
-            artifactBytes: next.artifactBytes,
-          }),
-        localized("scanner.status.allFramesRead"),
-      )
-    }
 
     const onText = (payload: string) => {
       if (
@@ -311,7 +282,8 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
             setCameraStatus(localized("scanner.status.multipartReadingUnordered"))
             return
           }
-          finishMultipartScan(run.session, next)
+          setFrameSetComplete(true)
+          deliver(next)
         })
         .catch((caught: unknown) => {
           if (run.cancelled || activeRunRef.current !== run) return
@@ -479,6 +451,11 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       const next = multipartSession.state()
       previousTransferKindRef.current = next.kind
       if (!mountedRef.current) return
+      // state() rebuilds its result on every call, so publishing it unconditionally
+      // re-renders the panel once a second for its whole mounted life. Frame progress
+      // is published by onText as it arrives; this poller exists only to notice a
+      // kind change it did not cause — an expiry or a discard from another surface.
+      if (next.kind === previousKind) return
       setTransferState(next)
       if (next.kind === "error") setError(localizedErrorCode(next.code))
       if (previousKind === "idle" || next.kind !== "idle") return
