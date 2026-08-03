@@ -5,6 +5,7 @@ import {
   expectOnlineGate,
   loadOnlineGate,
   mainNavigation,
+  setDeviceOffline,
   switchToColdOfflineApp,
   switchToOfflineApp,
   waitForServiceWorkerControl,
@@ -20,11 +21,11 @@ test("hides functionality and transient plaintext online and leaves it cleared a
 
   const plaintext = page.getByLabel("Plaintext", { exact: true })
   await plaintext.fill("オンライン遷移で即時消去する一時平文")
-  await context.setOffline(false)
+  await setDeviceOffline(context, false)
   await expectOnlineGate(page)
   await expect(plaintext).toBeHidden()
 
-  await context.setOffline(true)
+  await setDeviceOffline(context, true)
   await expectOfflineAcknowledgement(page)
   await expect(plaintext).toBeHidden()
   await acknowledgeOfflineRisk(page)
@@ -58,7 +59,7 @@ test("one tab's acknowledgement does not unlock the other tab's active shell and
       waitForServiceWorkerControl(peer),
     ])
 
-    await context.setOffline(true)
+    await setDeviceOffline(context, true)
     await Promise.all([
       expectOfflineAcknowledgement(page),
       expectOfflineAcknowledgement(peer),
@@ -79,4 +80,27 @@ test("one tab's acknowledgement does not unlock the other tab's active shell and
   } finally {
     await peer.close()
   }
+})
+
+// Intentionally the one place that does not fake navigator.onLine: setOffline
+// alone leaves the connectivity hint online, which the boot gate must refuse.
+test("latches NETWORK_SUSPECTED when traffic fails but navigator.onLine stays true", async ({
+  context,
+  page,
+}) => {
+  await loadOnlineGate(page)
+  await waitForServiceWorkerControl(page)
+  await context.setOffline(true)
+  await page.reload({ waitUntil: "domcontentloaded" })
+
+  await expect(page.getByText("NETWORK_SUSPECTED", { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole("heading", { name: "Network connection detected" }),
+  ).toBeVisible()
+  await expect(mainNavigation(page)).toBeHidden()
+  await expect(page.getByRole("button", { name: "Reload", exact: true })).toBeVisible()
+  await expect(page.getByRole("button")).toHaveCount(1)
+  await expect(
+    page.getByRole("button", { name: /retry|continue|accept/i }),
+  ).toHaveCount(0)
 })
