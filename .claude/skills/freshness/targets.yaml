@@ -115,6 +115,9 @@ units:
       - docs/develop/deployment.md # prose mirror of the deploy/CI/release flow
       - docs/develop/install-route-a/README.md # complete Route A procedure; README is summary + link
       - docs/languages/ja/develop/install-route-a/README.md # Japanese mirror under docs/languages/<lang>/; must not diverge from README.md
+      - docs/develop/install-route-a/INSTALL.template.txt # the only copy of the archive's INSTALL.txt text
+      - scripts/generate-install-txt.mjs # renders that template; the workflow and the verifier both call it
+      - tests/unit/generate-install-txt.test.ts # executable derivation, fail-closed, and about/-exclusion contract
       - scripts/serve-dist.mjs # header-aware server called directly by the release workflow
       - tests/unit/serve-dist.test.ts # executable containment and server startup contract
       - tests/unit/release-tag-read.test.ts # extracts assert_canonical_tag and read_canonical_tag from github-release.yml; breaks if either helper is renamed or reshaped
@@ -142,8 +145,11 @@ units:
       Actions to create and approve pull requests is enabled. Reconcile
       docs/develop/deployment.md with the workflows. Reconcile
       docs/develop/install-route-a/README.md (mandatory set, cosign verify-blob variables,
-      rebuild-and-compare) with the INSTALL.txt heredoc and verification contract
-      in github-release.yml; confirm README.md / README.ja.md Route A sections
+      rebuild-and-compare) with INSTALL.template.txt and the verification contract
+      in github-release.yml. The template is the archive text: keep the workflow
+      calling generate-install-txt.mjs rather than inlining a second copy, and keep
+      every rebuild-side comparison excluding the online-only about/ tree the
+      workflow deletes before staging. Confirm README.md / README.ja.md Route A sections
       remain a summary plus a link to that document (not a second incomplete
       procedure) and that their quoted policy values still match the workflow.
     sync: [readme]
@@ -151,6 +157,7 @@ units:
       Local only — a freshness sweep must not push:
       aube run test -- tests/unit/serve-dist.test.ts
       aube run test -- tests/unit/release-tag-read.test.ts
+      aube run test -- tests/unit/generate-install-txt.test.ts
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \

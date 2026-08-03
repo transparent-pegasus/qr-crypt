@@ -201,8 +201,18 @@ They do not close the external `release-approved` blocker.
   procedure, including pre-extraction container validation and an independent
   comparison that accounts for every archive member; both READMEs keep a summary
   plus a link. High-assurance use must use Route A only.
-- **Open — `INSTALL.txt` source derivation:** see
-  [install-route-a/README.md](../develop/install-route-a/README.md) §5.
+- **Closed 2026-08-03 — `INSTALL.txt` source derivation:** the release workflow
+  no longer inlines that text. `docs/develop/install-route-a/INSTALL.template.txt`
+  is the single versioned copy, rendered by `scripts/generate-install-txt.mjs`,
+  whose only caller-supplied input is the independently authenticated source
+  commit; the release version comes from `package.json` and the Cosign version
+  from the release workflow, both inside the authenticated checkout, so no value
+  from the archive under inspection feeds back into the comparison. Route A §5
+  step 4 is now a byte comparison instead of an instruction-level reading, and
+  the whole archive — payload, `INSTALL.txt`, and the regenerated manifest — is
+  byte-compared. Contract pinned by `tests/unit/generate-install-txt.test.ts`.
+  This narrows F-01 only; source-to-binary correspondence still depends on the
+  independent rebuild being performed (§1, zxing-wasm entry).
 
 ### F-02 — Replayed / re-presented ciphertext
 

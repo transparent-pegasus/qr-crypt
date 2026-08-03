@@ -37,8 +37,11 @@ request targeting `main` or `dev`:
 * A `push` to `main` additionally publishes a signed prerelease via
   `.github/workflows/github-release.yml`. That workflow packages `dist` into the
   static install ZIP offered as the default install route A, signs it with Cosign,
-  and generates the `INSTALL.txt` verification and local-server instructions
-  carried inside the ZIP. Before upload, it extracts the exact archive, starts
+  and renders the `INSTALL.txt` verification and local-server instructions carried
+  inside the ZIP from the versioned template
+  `docs/develop/install-route-a/INSTALL.template.txt` through
+  `scripts/generate-install-txt.mjs`, so a verifier can regenerate that member
+  byte-for-byte. Before upload, it extracts the exact archive, starts
   the shared server with `SERVE_DIST_ROOT` set to that extracted tree, checks the
   sentinel body and `no-store` response, required CSP response directives,
   manifest MIME type, and SPA fallback, then runs the e2e suite against those
