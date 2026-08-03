@@ -1109,8 +1109,14 @@ describe("deployment verdict (NS-08)", () => {
   const decisionWithVerdict = (verdict: DeploymentVerdict | undefined) => async () => {
     if (verdict === undefined) {
       const base = decision()
-      const { deploymentVerdict: _omit, ...rest } = base
-      return rest
+      return {
+        wipeOnOnline: base.wipeOnOnline,
+        sensitiveDataExists: base.sensitiveDataExists,
+        cleanOrigin: base.cleanOrigin,
+        maintenanceTokenArmed: base.maintenanceTokenArmed,
+        resetChurnMb: base.resetChurnMb,
+        preferencesReadFailed: base.preferencesReadFailed,
+      }
     }
     return decision({ deploymentVerdict: verdict })
   }

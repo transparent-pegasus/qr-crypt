@@ -43,7 +43,7 @@ export default defineConfig({
           name: "ui",
           environment: "jsdom",
           include: ["tests/ui/**/*.test.tsx"],
-          setupFiles: ["tests/setup/jsdom.ts"],
+          setupFiles: ["tests/setup/jsdom.ts", "tests/helpers/boot-fixtures.ts"],
         },
       },
     ],

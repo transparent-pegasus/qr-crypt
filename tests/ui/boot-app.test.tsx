@@ -177,7 +177,11 @@ describe("App boot gate", () => {
     await renderApp("/encrypt", { bootController: controller })
 
     await screen.findByText(translate("en", "gate.heading"))
-    expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
+    // Display-online while offline-confirmed schedules a reconciliation probe;
+    // wait for that episode to settle back on offline-confirmed.
+    await waitFor(() =>
+      expect(controller.getState()).toEqual({ kind: "offline-confirmed" }),
+    )
     expect(
       screen.queryByText(translate("en", "relay.card.title")),
     ).not.toBeInTheDocument()

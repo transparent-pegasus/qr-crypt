@@ -1,12 +1,24 @@
-import { vi } from "vitest"
+import { vi, beforeEach } from "vitest"
+import {
+  persistDeploymentVerdict,
+} from "@/app/boot/boot-controller"
 import type { BootDecisionSnapshot } from "@/app/boot/boot-controller"
 import type { DeploymentVerdict } from "@/lib/deployment-headers"
+import { resetDatabaseAccessBarrierForTesting } from "@/storage/database"
 
 const PASSING_VERDICT: DeploymentVerdict = {
   status: "pass",
   failedFields: [],
   checkedAt: 1,
 }
+
+// D8: absence refuses. Seed a passing verdict for every UI test so suites that
+// boot the real controller without injecting readDecision still reach
+// offline-confirmed. Also clear the quarantine barrier between tests.
+beforeEach(async () => {
+  resetDatabaseAccessBarrierForTesting()
+  await persistDeploymentVerdict(PASSING_VERDICT).catch(() => undefined)
+})
 
 export function response(
   body: string,
