@@ -170,17 +170,41 @@ describe("TransferAssembler on partitions this generator never emits", () => {
     return frames
   }
 
-  it("assembles an evenly balanced partition whose chunks differ by one byte", async () => {
-    const artifactBytes = pseudoArtifact(1_000)
-    const frameCount = 7
-    const base = Math.floor(artifactBytes.byteLength / frameCount)
-    const remainder = artifactBytes.byteLength % frameCount
-    const chunkLengths = Array.from(
-      { length: frameCount },
-      (_unused, frameIndex) => base + (frameIndex < remainder ? 1 : 0),
-    )
-    expect(Math.max(...chunkLengths) - Math.min(...chunkLengths)).toBeLessThanOrEqual(1)
-    expect(chunkLengths.every((length) => length > 0)).toBe(true)
+  // The generator emits one uniform chunk length with a possibly shorter final
+  // chunk, so an evenly balanced partition is NOT foreign to it: dividing a
+  // 1,028-byte artifact into seven balanced chunks yields exactly what
+  // frameBytes=147 produces. A partition is only out of its reach when two
+  // non-final chunks differ, or when the final chunk outgrows one before it.
+  function generatorCanProduce(
+    totalByteLength: number,
+    chunkLengths: readonly number[],
+  ): boolean {
+    for (
+      let frameBytes = FRAME_BYTES_MIN;
+      frameBytes <= FRAME_BYTES_MAX;
+      frameBytes += 1
+    ) {
+      const generated: number[] = []
+      for (let left = totalByteLength; left > 0; left -= frameBytes) {
+        generated.push(Math.min(frameBytes, left))
+      }
+      if (
+        generated.length === chunkLengths.length &&
+        generated.every((length, index) => length === chunkLengths[index])
+      ) {
+        return true
+      }
+    }
+    return false
+  }
+
+  it("assembles a partition no frameBytes value can produce", async () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(1_028)
+    // Unequal non-final chunks, a single-byte chunk, and a final chunk larger
+    // than both of its predecessors — three independent reasons this generator
+    // could never emit it.
+    const chunkLengths = [500, 1, 527]
+    expect(generatorCanProduce(artifactBytes.byteLength, chunkLengths)).toBe(false)
 
     const frames = handBuiltFrames(artifactBytes, chunkLengths)
     expect(framePayloads(frames).every((payload) => payloadFits(payload, "Q"))).toBe(
@@ -192,17 +216,11 @@ describe("TransferAssembler on partitions this generator never emits", () => {
     expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
   })
 
-  it("assembles a partition whose final chunk is a single byte", async () => {
-    // Every chunk must stay within FRAME_CHUNK_MAX_BYTES, so the leading chunk
-    // bounds how large the artifact may be for a two-frame partition.
-    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_CHUNK_MAX_BYTES + 1)
-    const frames = handBuiltFrames(artifactBytes, [FRAME_CHUNK_MAX_BYTES, 1])
-    expect(frames.map((frame) => frame.chunk.byteLength).at(-1)).toBe(1)
-
-    const assembler = new TransferAssembler({
-      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
-    })
-    expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
+  it("treats the balanced partition it can reproduce as no proof of foreignness", () => {
+    // Guards the test above: if this ever becomes false, the sample partition
+    // stopped being a real interoperability case and must be re-chosen.
+    expect(generatorCanProduce(1_028, [147, 147, 147, 147, 147, 147, 146])).toBe(true)
+    expect(generatorCanProduce(1_001, [1_000, 1])).toBe(true)
   })
 
   it("cannot even encode a chunk over the 1000-byte protocol limit", () => {
