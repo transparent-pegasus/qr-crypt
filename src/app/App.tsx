@@ -15,6 +15,7 @@ import {
   detectFeatures as detectBrowserFeatures,
   type FeatureSupport,
 } from "@/lib/feature-detect"
+import { reloadApplication } from "@/lib/reload"
 import { createAppRouter } from "@/app/router"
 import { AppProviders, ThemeProvider, useSensitiveSession } from "@/app/providers"
 import { Button } from "@/components/ui/button"
@@ -286,15 +287,11 @@ function BootGate({
   }
 }
 
-function reloadCurrentPage(): void {
-  window.location.reload()
-}
-
 function AppContent({
   bootController,
   detectFeatures,
   pwaHook,
-  reloadPage = reloadCurrentPage,
+  reloadPage = reloadApplication,
   routerFactory = createAppRouter,
 }: Omit<AppProps, "initialLanguage">) {
   const detector = detectFeatures ?? detectBrowserFeatures

@@ -122,120 +122,110 @@ describe("splitIntoFrames", () => {
     expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
   })
 
-  it("balances an explicit frame count with non-empty byte-exact chunks", async () => {
-    const artifactBytes = pseudoArtifact(1_000)
-    const frames = await splitIntoFrames({
-      artifactType: "pq-message",
-      artifactBytes,
-      frameCount: 7,
-    })
+  it.each([
+    0,
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    FRAME_BYTES_MIN - 1,
+    FRAME_BYTES_MAX + 1,
+  ])("rejects invalid frameBytes=%s", async (frameBytes) => {
+    await expect(
+      splitIntoFrames({
+        artifactType: "pq-message",
+        artifactBytes: pseudoArtifact(100),
+        frameBytes,
+      }),
+    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
+  })
+})
 
-    expect(frames).toHaveLength(7)
-    const chunkLengths = frames.map((frame) => frame.chunk.byteLength)
-    expect(Math.max(...chunkLengths) - Math.min(...chunkLengths)).toBeLessThanOrEqual(1)
-    expect(
-      chunkLengths.every(
-        (length) => length > 0 && length <= FRAME_CHUNK_MAX_BYTES,
-      ),
-    ).toBe(true)
-    const reconstructed = new Uint8Array(artifactBytes.byteLength)
+// This generator only emits uniform chunks, but a foreign or hostile sender is
+// under no such obligation and the receiver accepts any non-empty partition of
+// the artifact. Retiring the balanced generation mode must not narrow that, so
+// these frames are hand-built rather than produced by splitIntoFrames.
+describe("TransferAssembler on partitions this generator never emits", () => {
+  function handBuiltFrames(
+    artifactBytes: Uint8Array,
+    chunkLengths: readonly number[],
+  ): QrFrameV2[] {
+    const transferId = new Uint8Array(16).fill(7)
+    const frames: QrFrameV2[] = []
     let offset = 0
-    for (const frame of frames) {
-      reconstructed.set(frame.chunk, offset)
-      offset += frame.chunk.byteLength
+    for (const [frameIndex, chunkLength] of chunkLengths.entries()) {
+      frames.push({
+        version: 2,
+        type: "qr-frame",
+        transferId: Uint8Array.from(transferId),
+        artifactType: "pq-message",
+        frameIndex,
+        frameCount: chunkLengths.length,
+        totalByteLength: artifactBytes.byteLength,
+        chunk: artifactBytes.slice(offset, offset + chunkLength),
+      })
+      offset += chunkLength
     }
-    expect(reconstructed).toEqual(artifactBytes)
+    expect(offset).toBe(artifactBytes.byteLength)
+    return frames
+  }
+
+  it("assembles an evenly balanced partition whose chunks differ by one byte", async () => {
+    const artifactBytes = pseudoArtifact(1_000)
+    const frameCount = 7
+    const base = Math.floor(artifactBytes.byteLength / frameCount)
+    const remainder = artifactBytes.byteLength % frameCount
+    const chunkLengths = Array.from(
+      { length: frameCount },
+      (_unused, frameIndex) => base + (frameIndex < remainder ? 1 : 0),
+    )
+    expect(Math.max(...chunkLengths) - Math.min(...chunkLengths)).toBeLessThanOrEqual(1)
+    expect(chunkLengths.every((length) => length > 0)).toBe(true)
+
+    const frames = handBuiltFrames(artifactBytes, chunkLengths)
     expect(framePayloads(frames).every((payload) => payloadFits(payload, "Q"))).toBe(
       true,
     )
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
+    expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
   })
 
-  it("accepts balanced 1000-byte chunks and rejects balanced 1001-byte chunks", async () => {
-    const artifactAtChunkLimit = pseudoArtifactOfTotalBytes(
-      FRAME_CHUNK_MAX_BYTES * 2,
-    )
-    const frames = await splitIntoFrames({
+  it("assembles a partition whose final chunk is a single byte", async () => {
+    // Every chunk must stay within FRAME_CHUNK_MAX_BYTES, so the leading chunk
+    // bounds how large the artifact may be for a two-frame partition.
+    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_CHUNK_MAX_BYTES + 1)
+    const frames = handBuiltFrames(artifactBytes, [FRAME_CHUNK_MAX_BYTES, 1])
+    expect(frames.map((frame) => frame.chunk.byteLength).at(-1)).toBe(1)
+
+    const assembler = new TransferAssembler({
+      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
+    })
+    expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
+  })
+
+  it("cannot even encode a chunk over the 1000-byte protocol limit", () => {
+    const artifactBytes = pseudoArtifactOfTotalBytes(FRAME_CHUNK_MAX_BYTES * 2 + 1)
+    const frame: QrFrameV2 = {
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16).fill(7),
       artifactType: "pq-message",
-      artifactBytes: artifactAtChunkLimit,
+      frameIndex: 0,
       frameCount: 2,
-    })
-    expect(frames.map((frame) => frame.chunk.byteLength)).toEqual([1_000, 1_000])
-
-    await expect(
-      splitIntoFrames({
-        artifactType: "pq-message",
-        artifactBytes: pseudoArtifactOfTotalBytes(
-          FRAME_CHUNK_MAX_BYTES * 2 + 1,
-        ),
-        frameCount: 2,
-      }),
-    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
-  })
-
-  it("supports one-byte balanced chunks without creating empty frames", async () => {
-    const artifactBytes = Uint8Array.of(1, 2, 3, 4)
-    const frames = await splitIntoFrames({
-      artifactType: "pq-message",
-      artifactBytes,
-      frameCount: artifactBytes.byteLength,
-    })
-    expect(frames.map((frame) => frame.chunk.byteLength)).toEqual([1, 1, 1, 1])
-    expect(frames.map((frame) => frame.chunk[0])).toEqual([1, 2, 3, 4])
-  })
-
-  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
-    "rejects invalid frameCount=%s",
-    async (frameCount) => {
-      await expect(
-        splitIntoFrames({
-          artifactType: "pq-message",
-          artifactBytes: pseudoArtifact(100),
-          frameCount,
-        }),
-      ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
-    },
-  )
-
-  it("rejects counts above the artifact length, env limit, or 1000-byte chunk limit", async () => {
-    await expect(
-      splitIntoFrames({
-        artifactType: "pq-message",
-        artifactBytes: Uint8Array.of(1, 2),
-        frameCount: 3,
-      }),
-    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
-    await expect(
-      splitIntoFrames({
-        artifactType: "pq-message",
-        artifactBytes: new Uint8Array(PROTOCOL_MAX_FRAMES + 1),
-        frameCount: PROTOCOL_MAX_FRAMES + 1,
-      }),
-    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
-    await expect(
-      splitIntoFrames({
-        artifactType: "pq-message",
-        artifactBytes: new Uint8Array(FRAME_CHUNK_MAX_BYTES * 2 + 1),
-        frameCount: 2,
-      }),
-    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
-  })
-
-  it("rejects selecting both split modes or neither mode at runtime", async () => {
-    const common = {
-      artifactType: "pq-message" as const,
-      artifactBytes: pseudoArtifact(100),
+      totalByteLength: artifactBytes.byteLength,
+      chunk: artifactBytes.slice(0, FRAME_CHUNK_MAX_BYTES + 1),
     }
-    await expect(
-      splitIntoFrames({
-        ...common,
-        frameBytes: FRAME_BYTES_MAX,
-        frameCount: 1,
-      } as never),
-    ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
-    await expect(splitIntoFrames(common as never)).rejects.toMatchObject({
-      code: "QR_TOO_LARGE",
-    })
+    // The frame codec is the boundary: an over-limit chunk has no valid wire
+    // representation, so a receiver can never be offered one.
+    expect(() => encodeFrameToPayload(frame)).toThrow(
+      expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+    )
   })
+})
+
+describe("splitIntoFrames, continued", () => {
 
   it("accepts the exact absolute ceiling through one slowest full cycle", async () => {
     const artifactBytes = pseudoArtifactOfTotalBytes(MAX_ARTIFACT_BYTES_ABSOLUTE)
@@ -288,7 +278,7 @@ describe("splitIntoFrames", () => {
     },
   )
 
-  it("rejects one byte over the absolute ceiling before hashing in every split mode", async () => {
+  it("rejects one byte over the absolute ceiling before hashing at every density", async () => {
     const artifactBytes = pseudoArtifactOfTotalBytes(
       MAX_ARTIFACT_BYTES_ABSOLUTE + 1,
     )
@@ -304,35 +294,10 @@ describe("splitIntoFrames", () => {
           }),
         ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
       }
-      await expect(
-        splitIntoFrames({
-          artifactType: "pq-message",
-          artifactBytes,
-          frameCount: PROTOCOL_MAX_FRAMES,
-        }),
-      ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
       expect(digest).not.toHaveBeenCalled()
     } finally {
       digest.mockRestore()
     }
-  })
-
-  it("accepts the exact absolute ceiling in balanced frame-count mode", async () => {
-    const artifactBytes = pseudoArtifactOfTotalBytes(MAX_ARTIFACT_BYTES_ABSOLUTE)
-    const frames = await splitIntoFrames({
-      artifactType: "pq-message",
-      artifactBytes,
-      frameCount: PROTOCOL_MAX_FRAMES,
-    })
-    expect(frames).toHaveLength(PROTOCOL_MAX_FRAMES)
-    expect(
-      frames.every((frame) => frame.chunk.byteLength === FRAME_CHUNK_MAX_BYTES),
-    ).toBe(true)
-
-    const assembler = new TransferAssembler({
-      transferTimeoutMinutes: TRANSFER_TIMEOUT_MINUTES_DEFAULT,
-    })
-    expectCompleteBytes(await addFrames(assembler, frames), artifactBytes)
   })
 
   it("rejects generation of the reserved seed-backup artifact", async () => {

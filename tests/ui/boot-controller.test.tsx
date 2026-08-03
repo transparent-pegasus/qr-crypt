@@ -557,7 +557,7 @@ describe("boot decisions", () => {
 
   it("clears session receipts with other transient state", async () => {
     const subject: ReceiptSubject = {
-      kind: "aes",
+      kind: "sym",
       recipientKeyId: "receipt-recipient",
       envelopeHash: "receipt-envelope",
     }
@@ -929,7 +929,7 @@ describe("boot decisions", () => {
 describe("WipeCoordinator order", () => {
   it("clears session receipts during the buffer-drop step", async () => {
     const subject: ReceiptSubject = {
-      kind: "aes",
+      kind: "sym",
       recipientKeyId: "wipe-recipient",
       envelopeHash: "wipe-envelope",
     }

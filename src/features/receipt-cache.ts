@@ -15,7 +15,6 @@
 export const MAX_SESSION_RECEIPTS = 500
 
 export type ReceiptSubject =
-  | { kind: "aes"; recipientKeyId: string; envelopeHash: string }
   | { kind: "sym"; recipientKeyId: string; envelopeHash: string }
   | {
       kind: "pq-signed"
@@ -40,10 +39,6 @@ const receipts = new Map<string, Receipt>()
 
 function subjectKey(subject: ReceiptSubject): string {
   switch (subject.kind) {
-    case "aes":
-      // This AES receipt shape has no message id, so only a matching
-      // ciphertext hash is treated as the same receipt.
-      return `aes\n${subject.recipientKeyId}\n${subject.envelopeHash}`
     case "sym":
       // Sym-v2 likewise has no message id, so the authenticated envelope is its
       // replay identity.
