@@ -35,6 +35,7 @@ import { reloadApplication } from "@/lib/reload"
 import { startQrScan, type QrScanHandle } from "@/qr/decode"
 import { copyTextToClipboard } from "@/qr/export-image"
 import { prepareRelayPlayback } from "@/qr/relay-playback"
+import { acquireRelayLease, type RelayLease } from "@/storage/database"
 import {
   acceptRelayCapture,
   EMPTY_RELAY_CAPTURE,
@@ -119,6 +120,7 @@ export function OnlineRelay({
   const playbackOperationRef = useRef(0)
   const sessionGenerationRef = useRef(0)
   const pendingOpenGenerationRef = useRef(0)
+  const relayLeaseRef = useRef<RelayLease | null>(null)
 
   const detachVideo = useCallback(() => {
     const video = videoRef.current
@@ -139,6 +141,10 @@ export function OnlineRelay({
 
   const endSession = useCallback(
     (reason: LocalEndReason) => {
+      // First, and before the mounted check below returns: an unmounted
+      // component still has to give the lock back.
+      relayLeaseRef.current?.release()
+      relayLeaseRef.current = null
       if (reason !== "eligibility-loss") {
         pendingOpenGenerationRef.current += 1
       }
@@ -260,6 +266,15 @@ export function OnlineRelay({
       return
     }
     endSession("close")
+    // After the clear above, so its release cannot drop the lease this call is
+    // about to take. A writer already inside the lock denies the session.
+    const lease = await acquireRelayLease()
+    if (lease === null || !mountedRef.current) {
+      lease?.release()
+      if (mountedRef.current) setTerminalNotice("relay.error.busy")
+      return
+    }
+    relayLeaseRef.current = lease
     setDialogMode(mode)
   }
 

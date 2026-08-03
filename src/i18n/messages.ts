@@ -193,6 +193,8 @@ const en = {
   "relay.error.inputSize": "The relay text exceeds the protocol limit.",
   "relay.error.timeout":
     "The relay session timed out and its app-held payload references were cleared.",
+  "relay.error.busy":
+    "Another operation is using this device's local storage. Close it, then try again.",
   "relay.error.copy": "The relay text could not be copied.",
 
   "offlineAck.status": "The device is now offline",
@@ -824,6 +826,8 @@ const ja = {
   "relay.error.inputSize": "中継テキストがプロトコル上限を超えています。",
   "relay.error.timeout":
     "中継セッションが時間切れになり、アプリが保持していたペイロード参照を解放しました。",
+  "relay.error.busy":
+    "この端末のローカル保存領域を別の操作が使用中です。終了してからやり直してください。",
   "relay.error.copy": "中継テキストをコピーできませんでした。",
 
   "offlineAck.status": "オフラインへ切り替わりました",
