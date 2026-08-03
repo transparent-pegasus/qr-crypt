@@ -870,29 +870,6 @@ export const deleteBundle = vi.fn(async (recordId: string) => {
 })
 export const markBundleUsed = vi.fn(async () => undefined)
 
-export const groupSymmetricKeys = vi.fn((records: StoredKeyRecord[]) => {
-  const byId = new Map(records.map((record) => [record.id, record]))
-  const superseded = new Set(
-    records
-      .map((record) => record.rotatedFromId)
-      .filter((id): id is string => id !== undefined),
-  )
-  return records
-    .filter((record) => !superseded.has(record.id))
-    .map((head) => {
-      const previous: StoredKeyRecord[] = []
-      const visited = new Set([head.id])
-      for (let cursor = head.rotatedFromId; cursor !== undefined;) {
-        const generation = byId.get(cursor)
-        if (generation === undefined || visited.has(generation.id)) break
-        visited.add(generation.id)
-        previous.push(generation)
-        cursor = generation.rotatedFromId
-      }
-      return { head, previous }
-    })
-})
-
 async function defaultFindBundleBySigningKeyId(keyId: string) {
   return fakeBundles.find(
     (record) => record.signing.keyId === keyId && record.revokedAt === undefined,

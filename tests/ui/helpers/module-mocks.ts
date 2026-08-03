@@ -37,7 +37,6 @@ vi.mock("@/crypto/key-generation", () => ({
   importSymmetricKeyRecordV2: fakes.importSymmetricKeyRecordV2,
   buildSymmetricKeyEnvelopeV2: fakes.buildSymmetricKeyEnvelopeV2,
   rotateSymmetricKeyRecord: fakes.rotateSymmetricKeyRecord,
-  groupSymmetricKeys: fakes.groupSymmetricKeys,
 }))
 vi.mock("@/crypto/pq/worker-client", () => ({
   createPqCryptoClient: fakes.createPqCryptoClient,

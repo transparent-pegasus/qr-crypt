@@ -3,7 +3,9 @@
 // newest-to-oldest, stopping at a missing link or an already-visited id.
 export interface LineageRecord {
   id: string
-  rotatedFromId?: string
+  // Matches StoredKeyRecord (`string | undefined`) under exactOptionalPropertyTypes;
+  // PostQuantumIdentity's optional `string` is still assignable.
+  rotatedFromId?: string | undefined
 }
 
 export interface LineageGroup<T extends LineageRecord> {
