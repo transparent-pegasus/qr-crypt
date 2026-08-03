@@ -272,6 +272,33 @@ Turn Evil*, Black Hat USA 2014（再プログラム可能なUSBコントロー�
 **Touches（関連項目）。** threat-model T6, T15, T21, T22；
 install-route-a/README.md §5–§6。
 
+## E12 — Route A ローカルサーバーの配信設定
+
+**関係。** Route A では、監査済みの静的サーバーを操作者自身が用意する。セキュリティ
+ヘッダー、MIME タイプ、SPA フォールバック、センチネルの `no-store` 規則は、いずれも
+署名済みバンドルではなく*そのサーバーの設定*の性質である。ほとんどの静的サーバーは
+`_headers` を全く解釈しないため、正しいリリースが CSP 以外の6つのセキュリティ
+ヘッダーを欠いたまま配信されうる。
+
+**根拠。** `public/_headers` は一部のサーバーしか解釈しない Cloudflare 形式の
+ファイルであり、`docs/develop/install-route-a/README.md` §3 が要件を記録し、
+`scripts/serve-dist.mjs` をリファレンス動作として挙げている。
+
+**位置づけ。** `DEPLOYMENT_ENFORCED`。境界を定めるアプリ内統制は deployment
+verdict である。Service Worker から除外された唯一の経路である reachability
+センチネル応答に対し、`/*` の7ヘッダー、センチネル自身の `Cache-Control: no-store`、
+content type、ステータス、リダイレクト状態、応答 URL を検査し、判定を永続化して、
+不合格または不在なら Router のマウントを拒否する。
+
+**残余。** 検査対象はセンチネル応答のみである。トップレベルのナビゲーション応答が
+同じヘッダーを持つことは証明しないため、経路ごとの設定ミスや敵対的サーバーは通過
+しうる。これは設定ミスの検出であって独立した保証ではない。実際のナビゲーション応答、
+MIME タイプ、SPA フォールバック、`/sw.js` と `/registerSW.js` のキャッシュヘッダー、
+メソッド制限、パス境界を対象とする、独立に導入されたチェッカーが依然として必要である。
+
+**Touches（関連項目）。** threat-model T18、boot-and-reset-v2.md §2.2、
+install-route-a/README.md §3。
+
 ---
 
 ## 含めなかった項目とその理由

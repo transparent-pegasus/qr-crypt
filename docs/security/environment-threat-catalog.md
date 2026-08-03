@@ -263,6 +263,37 @@ non-dismissible fingerprint confirmation, which exists for this reason.
 
 **Touches.** threat-model T6, T15, T21, T22; install-route-a/README.md §5–§6.
 
+## E12 — Serving configuration of the Route A local server
+
+**Relationship.** Route A requires the operator to supply their own audited
+static server. The security headers, MIME types, SPA fallback, and the
+sentinel's `no-store` rule are all properties of *that server's configuration*,
+not of the signed bundle. Most static servers ignore `_headers` entirely, so a
+correct release can be served with the six non-CSP security headers simply
+absent.
+
+**Evidence.** `public/_headers` is a Cloudflare-style file that only some
+servers interpret; `docs/develop/install-route-a/README.md` §3 records the
+requirement and names `scripts/serve-dist.mjs` as the reference behaviour.
+
+**Position.** `DEPLOYMENT_ENFORCED`. The bounding in-app control is the
+deployment verdict: the app checks the seven `/*` headers, the sentinel's
+`Cache-Control: no-store`, content type, status, redirect state, and response
+URL on the reachability-sentinel response — the only route excluded from the
+service worker — persists the verdict, and refuses to mount the Router on a
+failing or absent one.
+
+**Residual.** The check inspects the sentinel response only. It does not prove
+the top-level navigation response carries the same headers, so a per-path
+misconfiguration or a hostile server can pass it. It is misconfiguration
+detection, not independent assurance; an independently provisioned checker
+covering the real navigation response, MIME types, SPA fallback, `/sw.js` and
+`/registerSW.js` cache headers, method restrictions, and path boundaries is
+still required.
+
+**Touches.** threat-model T18; boot-and-reset-v2.md §2.2;
+install-route-a/README.md §3.
+
 ---
 
 ## Not included, and why

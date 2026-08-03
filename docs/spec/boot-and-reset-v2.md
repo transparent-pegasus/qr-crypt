@@ -10,6 +10,7 @@ Types and constants are frozen in `src/app/boot/boot-contract.ts`.
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Display                         | `navigator.onLine` + the existing probe (HEAD of `/manifest.webmanifest`)                                                            | Switches the OnlineGate display and requests boot reconciliation. **The display edge itself is never the basis for, or a direct trigger of, destructive operations** |
 | Destructive (network-confirmed) | `GET /reachability-sentinel.txt?n=<nonce>` (`cache:"no-store"`), **confirmed only when the response body matches `QR-CRYPT-REACHABLE`** | The sole trigger of wipe-on-online                                                                                                                                   |
+| Non-destructive lock (`blocked`) | The connectivity hint (`navigator.onLine`, three-valued: only an explicit `false` reads as `offline`) and the deployment verdict taken from the same sentinel response | Refuses to mount the Router. **Never wipes, never writes, never deletes** |
 
 - The sentinel is excluded from the SW precache, served via a `NetworkOnly`
   runtime route (vite.config.ts), and delivered with
@@ -19,10 +20,14 @@ Types and constants are frozen in `src/app/boot/boot-contract.ts`.
   delayed responses, StrictMode double invocation. These are absorbed by the
   sentinel body match, the nonce, generation numbers + AbortSignal, and the
   once-per-transition rule.
+- Both probes are same-origin, so under Route A they both fail permanently once
+  the install server is stopped. The app therefore cannot observe a later
+  network reconnection from its own origin, and `navigator.onLine` is the only
+  remaining signal. That signal locks; it never wipes. See §2.1.
 - While the display probe sits in a false-negative window, the InstallScreen is
-  not guaranteed to keep blocking. This is a residual risk of separating the
-  display judgment from the destructive judgment; the next time the display
-  re-commits online, the symmetric reconciliation re-runs the sentinel check.
+  not guaranteed to keep blocking. The connectivity gate in §2.1 is what stops
+  that window from opening the Router; the next time the display re-commits
+  online, the symmetric reconciliation re-runs the sentinel check.
 
 ## 2. Boot State Machine (Ahead of the Router)
 
@@ -35,13 +40,73 @@ unknown → probing → offline-confirmed
                           only after non-destructive post-commit processing
                           has completed)
 offline-confirmed -- display online re-commit --> probing (at most once)
+
+any non-terminal state → blocked(network-suspected | deployment-unverified)
+blocked → (nothing; reload only)
 ```
 
 - Until the state reaches `offline-confirmed`, the Router, `usePreferences`,
   and the repositories are not mounted. **Only the boot controller opens the DB
   first** and reads the wipe setting and the presence of sensitive data.
+- `offline-confirmed` is an invariant, not merely a probe outcome: publishing it
+  asserts that connectivity was proven absent **and** that the deployment
+  verdict for this origin passed.
 - The only destructive trigger is network-confirmed. Even when the initial
   `navigator.onLine` is `true`, no wipe happens if the sentinel fails.
+
+### 2.1 The single offline-publication gate and the `blocked` latch
+
+`offline-confirmed` has four possible publication paths — the sentinel-failure
+branch, the post-commit continuation, the display-offline nudge, and an
+`offline` event delivered while probing. All four go through one gate. Gating
+only the sentinel branch would leave the display-offline nudge as a live bypass:
+stopping the install server while the network stays up makes the display probe
+fail, and the nudge would otherwise publish `offline-confirmed` without ever
+re-consulting the sentinel.
+
+The gate publishes `offline-confirmed` only when both hold:
+
+1. the connectivity hint is exactly `"offline"` — a missing `navigator`, a
+   throwing getter, or any value that is not a boolean resolves to
+   `"indeterminate"` and locks;
+2. the deployment verdict for this episode, or failing that the persisted one,
+   is `pass`. An absent verdict refuses.
+
+Otherwise the controller latches `blocked` with the corresponding reason.
+`blocked` is terminal for the JavaScript lifetime: `emit` refuses to leave it,
+and `probe` / `start` / `stop` / `release` / the online and offline handlers all
+guard on it. There is deliberately no in-app recovery affordance — a retry
+button would let an operator click past the only connectivity signal the app
+has. A page reload is the sole exit.
+
+Entering `blocked` engages the runtime access barrier, disposes the PQ crypto
+clients, drops the Vault key cache and receipts, and broadcasts a
+non-destructive quarantine request to peer tabs. **It does not itself begin any
+IndexedDB read, write, or delete.** (That is not the same as claiming the
+session never touched IndexedDB: arriving from `network-confirmed` means
+`readBootDecision` already ran.)
+
+`navigator.onLine === false` is not proof of a physical air gap. It reduces
+false negatives under an honest browser; a compromised OS or browser can fake
+both the value and the events. Physical disconnection remains the requirement.
+
+### 2.2 Deployment verdict
+
+The reachability sentinel is the only route excluded from the service worker, so
+its response is the one response guaranteed to come from the real server rather
+than the precache. The same response the destructive probe already fetches is
+checked against the policy extracted from `public/_headers` at build time: the
+seven `/*` security headers, the sentinel's own `Cache-Control: no-store`, a
+`text/plain` content type, status 200, not redirected, and the expected
+same-origin URL. The verdict is persisted once under the
+`deployment-verdict` app-metadata key and read back in the same transaction as
+the wipe decision.
+
+**Scope limit.** This detects an honest server that ignores `_headers`. It does
+**not** prove the top-level navigation response carries the same headers — a
+per-path misconfiguration, or a hostile server, can serve the sentinel correctly
+and `/index.html` incorrectly. An independent, pre-provisioned deployment
+checker remains required.
 - A preferences read failure is recorded as `preferencesReadFailed=true` and
   forces `wipeOnOnline=true`. However, the destructive operation additionally
   requires independent confirmation that at least one of keys /

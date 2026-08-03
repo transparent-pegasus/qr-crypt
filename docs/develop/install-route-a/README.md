@@ -298,11 +298,19 @@ it; treating it as required would disagree with the archive copy.
    port (not a collision-prone default such as 8000 or 8080) and reserve that port
    for QR Crypt.
 
-   Most static servers ignore `_headers` entirely, and nothing in the app detects
-   that. If your server does not apply it, the six non-CSP security headers are
-   simply absent — only the meta CSP and the `<meta name="referrer">` fallback
-   survive; see [threat-model.md](../../security/threat-model.md) §2 for exactly
-   what is lost. `scripts/serve-dist.mjs` in the source tree is this repository's
+   Most static servers ignore `_headers` entirely. The app now checks the
+   headers on the reachability-sentinel response while your server is still
+   reachable, persists the verdict, and **refuses to mount the application** on a
+   failing or absent verdict — so a server that drops them fails closed instead
+   of silently degrading. That check is misconfiguration detection, not
+   independent assurance: it inspects the sentinel response only, so a server
+   that applies the headers to the sentinel but not to `/index.html` still
+   passes. An independent checker against the real navigation response is still
+   required. If your server does not apply `_headers` at all, the six non-CSP
+   security headers are simply absent — only the meta CSP and the
+   `<meta name="referrer">` fallback survive; see
+   [threat-model.md](../../security/threat-model.md) §2 for exactly what is
+   lost. `scripts/serve-dist.mjs` in the source tree is this repository's
    reference implementation of the required behaviour and is the definition of
    "`_headers` semantics" your server must reproduce. Read it to derive your own
    server's configuration — do **not** carry it onto the offline device as another
@@ -314,6 +322,14 @@ it; treating it as required would disagree with the archive copy.
    restoring any secret. The install server's own sentinel deliberately makes the
    app treat that origin as reachable, so never enter secrets while it is
    running.
+
+   Order matters, and the app now enforces it. If you stop the server but reload
+   before disconnecting the network, the app cannot reach its own origin while
+   the browser still reports a connection, so it locks with **"Network
+   connection detected"** and will not open. That is the intended instruction,
+   not a fault: disconnect the network — including virtual interfaces such as
+   VPN or container bridges, which also make the browser report a connection —
+   and reload. Nothing is deleted; stored keys are untouched.
 
 Opening `index.html` with `file://` is unsupported. Plain HTTP on a LAN address
 is unsupported.
