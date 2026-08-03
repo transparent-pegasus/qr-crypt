@@ -1,6 +1,6 @@
 import { ChevronDown, QrCode, RefreshCw, Trash2 } from "lucide-react"
+import { isUsableIdentity } from "@/crypto/pq/identity-policy"
 import { Fingerprint } from "@/components/fingerprint"
-import { isUsableIdentity } from "@/components/key-detail/identity-policy"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
