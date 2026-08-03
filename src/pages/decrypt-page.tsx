@@ -9,6 +9,7 @@ import {
   encodeMlKemEnvelopeV2,
   encodeSymMessageEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
+import { isUsableIdentity } from "@/crypto/pq/identity-policy"
 import { assertActiveSuite } from "@/crypto/pq/suites"
 import { validateSymMessageEnvelopeV2 } from "@/crypto/pq/validation"
 import {
@@ -17,7 +18,6 @@ import {
   useTransientClear,
 } from "@/app/providers"
 import { DetailRow } from "@/components/detail-row"
-import { isUsableIdentity } from "@/components/key-detail/identity-policy"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrScannerModal } from "@/components/qr-scanner-modal"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"

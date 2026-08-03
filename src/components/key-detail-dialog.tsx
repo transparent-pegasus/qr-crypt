@@ -10,7 +10,6 @@ import {
 import { toast } from "sonner"
 import { useSensitiveSession } from "@/app/providers"
 import { IdentityDetails } from "@/components/key-detail/identity-details"
-import { assertUsableIdentity } from "@/components/key-detail/identity-policy"
 import { IdentityQrSession } from "@/components/key-detail/identity-qr-session"
 import { SymmetricDetails } from "@/components/key-detail/symmetric-details"
 import type { DetailView } from "@/components/key-detail/types"
@@ -47,6 +46,7 @@ import {
   encodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import { buildPublicBundle, rotateIdentity } from "@/crypto/pq/identity"
+import { assertUsableIdentity } from "@/crypto/pq/identity-policy"
 import { zeroize } from "@/crypto/pq/zeroize"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { formatDateTime } from "@/features/presentation"

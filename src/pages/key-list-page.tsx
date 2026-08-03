@@ -1,15 +1,15 @@
 import { useMemo, useState } from "react"
 import { LoaderCircle, Plus, ScanLine } from "lucide-react"
 import { toast } from "sonner"
+import {
+  isUsableBundle,
+  isUsableIdentity,
+} from "@/crypto/pq/identity-policy"
 import { KeyAddDialog, type KeyAddMode } from "@/components/key-add-dialog"
 import {
   KeyDetailDialog,
   type KeySelection,
 } from "@/components/key-detail-dialog"
-import {
-  isUsableBundle,
-  isUsableIdentity,
-} from "@/components/key-detail/identity-policy"
 import { Fingerprint } from "@/components/fingerprint"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { PeerBundleDetailDialog } from "@/components/peer-bundle-detail-dialog"
