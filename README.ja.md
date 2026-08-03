@@ -39,9 +39,9 @@ QR Cryptは、恒久的にオフラインにするデバイスにインストー
 
 ### インストール方法A：署名付きZIP
 
-これがデフォルトの方法です。オフラインデバイスがライブのアプリオリジンに一切接続しないようにします。署名付きZIPの独立検証（別チャネルからのCosignポリシー値、チェックサム確認、独立したリビルドと比較）は、インストール前に必須です。完全な手順は[docs/languages/ja/develop/install-route-a/README.md](docs/languages/ja/develop/install-route-a/README.md)にあります。アーカイブ内の`INSTALL.txt`は、オフラインデバイスに届く自己完結型のコピーです。
+これがデフォルトの方法です。オフラインデバイスがライブのアプリオリジンに一切接続しないようにします。署名付きZIPの独立検証（別チャネルからのCosignポリシー値、チェックサム確認、独立したリビルドと比較）は、インストール前に必須です。完全な手順は[docs/locales/ja/develop/install-route-a/README.md](docs/locales/ja/develop/install-route-a/README.md)にあります。アーカイブ内の`INSTALL.txt`は、オフラインデバイスに届く自己完結型のコピーです。
 
-[docs/languages/ja/develop/install-route-a/README.md](docs/languages/ja/develop/install-route-a/README.md) §8。
+[docs/locales/ja/develop/install-route-a/README.md](docs/locales/ja/develop/install-route-a/README.md) §8。
 
 ### インストール方法B：ダイレクトオリジンPWA
 
@@ -51,7 +51,7 @@ QR Cryptは、恒久的にオフラインにするデバイスにインストー
 4. そのデバイスをすべてのネットワークから切断し、そのままにしておきます。
 5. デバイスがオフラインになると表示される通常の画面からアプリを使用します。
 
-方法Bでは、受信者が実施できる完全性チェックがありません。高い保証が必要な用途では方法Aのみを使用してください。方法Aの`127.0.0.1`オリジンがライブビーコン残差を避ける理由を含む詳細：[docs/languages/ja/develop/install-route-a/README.md](docs/languages/ja/develop/install-route-a/README.md)。
+方法Bでは、受信者が実施できる完全性チェックがありません。高い保証が必要な用途では方法Aのみを使用してください。方法Aの`127.0.0.1`オリジンがライブビーコン残差を避ける理由を含む詳細：[docs/locales/ja/develop/install-route-a/README.md](docs/locales/ja/develop/install-route-a/README.md)。
 
 ### オンラインデバイスを経由したメッセージペイロード送信
 
@@ -87,7 +87,7 @@ AES-256-GCM（`sym-message` / `OCA2`）では、オフラインデバイスは�
 * [docs/security/security-review.md](docs/security/security-review.md) — セキュリティレビュー記録（v2、監査分類）
 * [docs/develop/development.md](docs/develop/development.md) — 技術スタック、セットアップ、コマンド、環境変数
 * [docs/develop/deployment.md](docs/develop/deployment.md) — Cloudflare PagesデプロイメントおよびCI フロー
-* [docs/languages/ja/develop/install-route-a/README.md](docs/languages/ja/develop/install-route-a/README.md) — 方法A 署名付きZIPインストール完全手順（[English](docs/develop/install-route-a/README.md)）
+* [docs/locales/ja/develop/install-route-a/README.md](docs/locales/ja/develop/install-route-a/README.md) — 方法A 署名付きZIPインストール完全手順（[English](docs/develop/install-route-a/README.md)）
 * [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — ブラウザ検証マトリクスおよびリファレンス計測
 * [docs/develop/deviations.md](docs/develop/deviations.md) — 仕様からの管理された逸脱
 * [SECURITY.md](SECURITY.md) — 脆弱性の報告

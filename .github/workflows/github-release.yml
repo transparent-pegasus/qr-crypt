@@ -419,185 +419,29 @@ jobs:
 
           cp -a dist/. "$stage_dir/"
 
-          cat > "$stage_dir/INSTALL.txt" <<EOF
-          QR Crypt static offline deployment bundle
-          =======================================
+          # INSTALL.txt is rendered from a versioned template so an independent
+          # verifier can reproduce it byte for byte like every payload file.
+          # docs/develop/install-route-a/INSTALL.template.txt is the only copy of
+          # this text; never inline a second one here.
+          QR_CRYPT_SOURCE_SHA="$SOURCE_SHA" \
+            node scripts/generate-install-txt.mjs > "$stage_dir/INSTALL.txt"
+          [[ -s "$stage_dir/INSTALL.txt" ]] ||
+            fail "generated INSTALL.txt is empty"
 
-          Version: $version
-          Source commit: $SOURCE_SHA
-          Release tag: $release_tag
-
-          STATUS
-          This is an automated experimental build. It is not independently
-          audited or security-approved.
-
-          AUTHENTICATE BEFORE USE
-          Treat this file, the ZIP, its signature bundle, the release page, and
-          the transport medium as untrusted until verification succeeds.
-          Independently provision and authenticate all of the following:
-          - Cosign $COSIGN_VERSION and a current Sigstore trusted_root.json
-          - a QR Crypt verifier policy pinning the workflow identity, OIDC issuer,
-            repository, main ref, and allowed "push" trigger
-          - the intended release tag and full source commit
-          Never copy expected policy values from the media being verified.
-          Same-media checksums and trust roots are not independent trust anchors.
-          Keyless signing publishes identity and digest to Sigstore transparency.
-
-          From the directory containing all three release assets, use only the
-          independently provisioned policy values to verify:
-
-            cosign verify-blob "$archive_name" \\
-              --bundle "$bundle_name" \\
-              --trusted-root /independently/provisioned/trusted_root.json \\
-              --certificate-identity "\$QR_CRYPT_TRUSTED_WORKFLOW_IDENTITY" \\
-              --certificate-oidc-issuer "\$QR_CRYPT_TRUSTED_OIDC_ISSUER" \\
-              --certificate-github-workflow-repository "\$QR_CRYPT_TRUSTED_REPOSITORY" \\
-              --certificate-github-workflow-ref "\$QR_CRYPT_TRUSTED_REF" \\
-              --certificate-github-workflow-sha "\$QR_CRYPT_EXPECTED_SOURCE_SHA" \\
-              --certificate-github-workflow-trigger "\$QR_CRYPT_TRUSTED_TRIGGER"
-
-            sha256sum -c SHA256SUMS
-
-          Only after verification may this file's displayed source commit and tag
-          be compared with the independently authenticated intended values.
-          The signature authenticates this ZIP. It does not make removable
-          media, firmware, the operating system, browser, or local server safe.
-
-          REBUILD AND COMPARE
-          The signed ZIP contains SHA256SUMS.files. The ZIP signature authenticates
-          that manifest, and the manifest authenticates every other archive file,
-          including INSTALL.txt. To compare those authenticated bytes with a local
-          rebuild:
-
-          1. Prepare a clean checkout at the independently authenticated Source
-             commit. Extract the authenticated ZIP into a new empty directory
-             outside that checkout. Never put the extracted archive or a
-             copied/stale build tree under the checkout: Tailwind scans the
-             project tree, and such leftovers can change generated CSS and cause
-             a false mismatch.
-
-            set -euo pipefail
-            export QR_CRYPT_SOURCE_SHA=$SOURCE_SHA
-            export QR_CRYPT_CHECKOUT=/absolute/path/to/clean-checkout
-            export QR_CRYPT_ARCHIVE_ROOT=/absolute/path/outside-checkout/$root_name
-            test "\$(git -C "\$QR_CRYPT_CHECKOUT" rev-parse HEAD)" = \\
-              "\$QR_CRYPT_SOURCE_SHA"
-            test -z "\$(git -C "\$QR_CRYPT_CHECKOUT" status \\
-              --porcelain --untracked-files=all)"
-
-          2. Install and use the Node and aube versions pinned by mise.toml, then
-             build with the authenticated commit as the build identity:
-
-            (
-              cd "\$QR_CRYPT_CHECKOUT"
-              mise install
-              mise exec -- aube ci
-              VITE_BUILD_SHA="\$QR_CRYPT_SOURCE_SHA" \\
-                mise exec -- aube run build:prod
-            )
-
-          3. From inside the extracted archive root, verify the manifest format,
-             the complete member set (the manifest excludes only itself), and
-             every listed hash:
-
-            export QR_CRYPT_COMPARE_TMP="\$(mktemp -d)"
-            (
-              cd "\$QR_CRYPT_ARCHIVE_ROOT"
-              test -s SHA256SUMS.files
-              if grep -Evq \\
-                '^[0-9a-f]{64}  [A-Za-z0-9._/-]+$' SHA256SUMS.files; then
-                printf 'invalid SHA256SUMS.files entry\n' >&2
-                exit 1
-              fi
-              test -z "\$(find . -mindepth 1 ! -type d ! -type f \\
-                -print -quit)"
-              cut -c67- SHA256SUMS.files |
-                LC_ALL=C sort > "\$QR_CRYPT_COMPARE_TMP/archive.listed"
-              find . -type f ! -path './SHA256SUMS.files' -printf '%P\n' |
-                LC_ALL=C sort > "\$QR_CRYPT_COMPARE_TMP/archive.actual"
-              grep -Fxq INSTALL.txt "\$QR_CRYPT_COMPARE_TMP/archive.listed"
-              diff -u "\$QR_CRYPT_COMPARE_TMP/archive.listed" \\
-                "\$QR_CRYPT_COMPARE_TMP/archive.actual"
-              sha256sum -c SHA256SUMS.files
-            )
-
-          4. Compare both the sorted payload file set and each per-file hash.
-             The production build's online-only about/ tree is excluded on the
-             rebuild side; packaging-only INSTALL.txt and SHA256SUMS.files are
-             excluded on the archive side:
-
-            (
-              cd "\$QR_CRYPT_CHECKOUT/dist"
-              find . -type f ! -path './about/*' -printf '%P\n' |
-                LC_ALL=C sort
-            ) > "\$QR_CRYPT_COMPARE_TMP/rebuilt.files"
-            (
-              cd "\$QR_CRYPT_ARCHIVE_ROOT"
-              find . -type f \\
-                ! -path './INSTALL.txt' \\
-                ! -path './SHA256SUMS.files' \\
-                -printf '%P\n' |
-                LC_ALL=C sort
-            ) > "\$QR_CRYPT_COMPARE_TMP/archive-payload.files"
-            diff -u "\$QR_CRYPT_COMPARE_TMP/rebuilt.files" \\
-              "\$QR_CRYPT_COMPARE_TMP/archive-payload.files"
-            (
-              cd "\$QR_CRYPT_CHECKOUT/dist"
-              while IFS= read -r file; do
-                sha256sum -- "\$file"
-              done < "\$QR_CRYPT_COMPARE_TMP/rebuilt.files"
-            ) > "\$QR_CRYPT_COMPARE_TMP/rebuilt.sha256"
-            (
-              cd "\$QR_CRYPT_ARCHIVE_ROOT"
-              while IFS= read -r file; do
-                sha256sum -- "\$file"
-              done < "\$QR_CRYPT_COMPARE_TMP/archive-payload.files"
-            ) > "\$QR_CRYPT_COMPARE_TMP/archive-payload.sha256"
-            diff -u "\$QR_CRYPT_COMPARE_TMP/rebuilt.sha256" \\
-              "\$QR_CRYPT_COMPARE_TMP/archive-payload.sha256"
-            rm -rf -- "\$QR_CRYPT_COMPARE_TMP"
-
-          The workflow's double build establishes determinism only within the
-          same CI environment; environment-independent reproducibility remains
-          unverified. A Cosign signature attests provenance (the workflow and
-          source commit), not source-to-binary correspondence. An attacker who
-          controls the CI environment can still publish a correctly signed
-          backdoor; only an independent rebuild comparison can detect that case.
-
-          DEPLOY ON THE OFFLINE DEVICE
-          1. Extract this ZIP. It creates one $root_name directory; use that
-             directory as the server document root.
-          2. Use an audited static server already preinstalled through an
-             independent trusted process. Bind it only to 127.0.0.1.
-             It must enforce the included _headers and _redirects semantics:
-             security headers, correct MIME types, SPA fallback to /index.html,
-             and no-store for the reachability sentinel. Avoid collision-prone
-             ports such as 8000 or 8080; choose one fixed uncommon high port.
-          3. Open the exact http://127.0.0.1:PORT origin chosen for this
-             installation and wait until the PWA reports that offline use is ready.
-          4. Stop the local server, remove the transport medium, physically
-             disconnect networking, and confirm QR Crypt reports offline before
-             entering or restoring any secret.
-
-          ORIGIN BOUNDARY
-          The stored keys and Vault key belong to IndexedDB at the exact
-          http://127.0.0.1:PORT origin. Browser origin is determined only by
-          scheme, host, and port; this local HTTP deployment has neither TLS nor
-          host authentication. localhost and 127.0.0.1 are different origins, so
-          always use 127.0.0.1.
-
-          If another page is later served from that same host:port, it is
-          same-origin and can reach the stored keys and Vault key handle. Even a
-          non-extractable key can still decrypt through crypto.subtle. Treat the
-          host:port as a defense boundary: never serve anything else there and
-          keep the chosen port fixed. Changing the port after installation makes
-          the app a different origin that cannot reach its stored data.
-
-          Opening index.html with file:// is unsupported. Plain HTTP on a LAN
-          address is unsupported. Do not enter secrets while the install server
-          is running: its sentinel deliberately makes QR Crypt treat that origin as
-          reachable.
-          EOF
+          # The generator derives the release identity from package.json and this
+          # workflow rather than from arguments. Disagreement with the values this
+          # job computed means one of the two derivations drifted.
+          for expected_line in \
+            "Version: $version" \
+            "Source commit: $SOURCE_SHA" \
+            "Release tag: $release_tag"; do
+            grep -Fxq "$expected_line" "$stage_dir/INSTALL.txt" ||
+              fail "generated INSTALL.txt does not state: $expected_line"
+          done
+          grep -Fq "$archive_name" "$stage_dir/INSTALL.txt" ||
+            fail "generated INSTALL.txt does not name the release archive"
+          grep -Fq "$COSIGN_VERSION" "$stage_dir/INSTALL.txt" ||
+            fail "generated INSTALL.txt does not name the pinned Cosign version"
 
           (
             cd "$stage_dir"

@@ -53,6 +53,14 @@ What this app guarantees extends only to: **the application does not intentional
 6. The user themselves accidentally sharing a secret QR
 7. Loss of keys through browser data deletion
 
+Out of scope is not the same as unexamined. Physical and operational environment
+techniques — optical capture of a displayed QR, screen emanation, acoustic
+keyboard emanation, device custody, removable media, air-gap covert channels,
+operator conditions — are catalogued with their evidence and control class in
+[environment-threat-catalog.md](environment-threat-catalog.md). That catalog
+mints no `T` identifier and claims no countermeasure this application has; it
+records what the deployment, not the code, has to answer for.
+
 The "offline" indicator is auxiliary information about network state; it is never treated or presented as proof of safety (§4 OnlineGate note).
 The explanatory screen and acknowledgement checkbox shown when the device returns to offline do not verify or restore the safety of the device.
 
