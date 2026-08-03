@@ -8,6 +8,10 @@
 //   - Destructive connectivity (network-confirmed): perform a no-store GET of the dedicated
 //     sentinel and confirm connectivity only after verifying that the response body matches.
 //
+// offline-confirmed means connectivity was proven absent *and* the deployment verdict
+// passed. blocked is terminal for the JavaScript lifetime and is non-destructive — reload
+// is the only exit. navigator.onLine may lock (enter blocked) but never wipe.
+//
 // Once the sentinel succeeds, latch the token-consumption/wipe decision; display-offline
 // nudges and generation updates must not revoke it. Recommitting display-online may normally
 // start at most one sentinel probe. Before publishing network-confirmed, fail closed while
@@ -26,15 +30,21 @@
 export const REACHABILITY_SENTINEL_PATH = "/reachability-sentinel.txt"
 export const REACHABILITY_SENTINEL_BODY = "QR-CRYPT-REACHABLE"
 export const WIPE_BROADCAST_CHANNEL = "qr-crypt-wipe"
+export const DEPLOYMENT_VERDICT_METADATA_KEY = "deployment-verdict"
 
 export type CleanOriginProof = "confirmed-clean" | "dirty" | "indeterminate"
 export type RelayEligibility = "pending" | "eligible" | "ineligible"
+
+export type ConnectivityHint = "offline" | "online" | "indeterminate"
+
+export type BlockedReason = "network-suspected" | "deployment-unverified"
 
 export type BootState =
   | { kind: "unknown" }
   | { kind: "probing"; generation: number }
   | { kind: "offline-confirmed" }
   | { kind: "network-confirmed"; relayEligibility: RelayEligibility }
+  | { kind: "blocked"; reason: BlockedReason }
   | { kind: "wiping" }
   | { kind: "wiped" }
   | { kind: "partial-failure"; failedSteps: readonly string[] }

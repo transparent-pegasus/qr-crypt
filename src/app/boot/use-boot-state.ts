@@ -1,7 +1,10 @@
 import { useEffect, useSyncExternalStore } from "react"
 import type { BootState } from "@/app/boot/boot-contract"
 import { getDefaultBootController, type BootController } from "@/app/boot/boot-controller"
-import { installWipeBroadcastListener } from "@/app/boot/wipe-coordinator"
+import {
+  installQuarantineBroadcastListener,
+  installWipeBroadcastListener,
+} from "@/app/boot/wipe-coordinator"
 
 const SERVER_STATE: BootState = { kind: "unknown" }
 
@@ -30,6 +33,12 @@ export function useBootState(options: UseBootStateOptions = {}): BootState {
       resetTransient: options.resetTransient,
     })
   }, [controller, options.resetTransient])
+
+  useEffect(() => {
+    return installQuarantineBroadcastListener({
+      onQuarantine: () => controller.enterQuarantine(),
+    })
+  }, [controller])
 
   useEffect(() => {
     controller.acquire()

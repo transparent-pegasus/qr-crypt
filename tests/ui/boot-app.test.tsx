@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   createBootController,
+  type BootController,
   type BootDecisionSnapshot,
 } from "@/app/boot/boot-controller"
 import { translate } from "@/i18n/messages"
@@ -60,13 +61,14 @@ describe("App boot gate", () => {
             resolveFetch = resolve
           }),
       ),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: controller })
 
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(getPreferences).not.toHaveBeenCalled()
-    await act(async () => resolveFetch?.(response("offline", 503)))
+    await act(async () => resolveFetch?.(response("not-the-sentinel")))
 
     expect(
       await screen.findByRole("navigation", { name: "Main navigation" }),
@@ -168,13 +170,18 @@ describe("App boot gate", () => {
   it("does not expose the relay in the transient offline-confirmed plus display-online render", async () => {
     setTestOnlineStatus(true)
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("offline", 503)),
+      fetchImpl: vi.fn(async () => response("not-the-sentinel")),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: controller })
 
     await screen.findByText(translate("en", "gate.heading"))
-    expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
+    // Display-online while offline-confirmed schedules a reconciliation probe;
+    // wait for that episode to settle back on offline-confirmed.
+    await waitFor(() =>
+      expect(controller.getState()).toEqual({ kind: "offline-confirmed" }),
+    )
     expect(
       screen.queryByText(translate("en", "relay.card.title")),
     ).not.toBeInTheDocument()
@@ -225,6 +232,72 @@ describe("App boot gate", () => {
     expect(
       screen.queryByText(translate("en", "relay.card.title")),
     ).not.toBeInTheDocument()
+    controller.stop()
+  })
+
+  it("shows the network-suspected lock with no way back but reload", async () => {
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => Promise.reject(new TypeError("offline"))),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+    })
+    await renderApp("/encrypt", { bootController: controller })
+    // Title is "Network connection detected" (no "was") — match the catalogue.
+    expect(
+      await screen.findByText(translate("en", "boot.networkSuspected.title")),
+    ).toBeVisible()
+    expect(screen.queryByRole("link")).toBeNull()
+    expect(screen.queryByRole("button", { name: /retry|continue/i })).toBeNull()
+    expect(screen.getByRole("button", { name: /reload/i })).toBeVisible()
+    controller.stop()
+  })
+
+  it("shows the deployment-unverified block", async () => {
+    // Pin the reason through a fixed-state stub so this screen test does not
+    // depend on Task 5's deployment-verdict probe path. Cache getState's return
+    // so useSyncExternalStore does not loop.
+    const blockedState = {
+      kind: "blocked" as const,
+      reason: "deployment-unverified" as const,
+    }
+    const bootController: BootController = {
+      acquire() {},
+      addTransientResetHandler() {
+        return () => undefined
+      },
+      endRelaySession() {},
+      enterQuarantine() {},
+      getState: () => blockedState,
+      nudgeDisplayOffline: () => false,
+      probe: async () => undefined,
+      refreshRelayEligibility: async () => false,
+      beginUserRequestedReset() {},
+      reportResetFailure() {},
+      registerRelaySessionEndHandler() {
+        return () => undefined
+      },
+      release() {},
+      start() {},
+      stop() {},
+      subscribe() {
+        return () => undefined
+      },
+    }
+    await renderApp("/encrypt", { bootController })
+    expect(
+      await screen.findByText(translate("en", "boot.deploymentUnverified.title")),
+    ).toBeVisible()
+  })
+
+  it("never mounts the router while blocked", async () => {
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => Promise.reject(new TypeError("offline"))),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+    })
+    await renderApp("/encrypt", { bootController: controller })
+    await screen.findByText(translate("en", "boot.networkSuspected.title"))
+    expect(screen.queryByRole("navigation")).toBeNull()
     controller.stop()
   })
 })

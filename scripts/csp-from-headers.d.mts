@@ -10,3 +10,10 @@ export declare function cspForRootPattern(text: string): string
 export declare const META_UNSUPPORTED_DIRECTIVES: readonly string[]
 
 export declare function metaCspFromHeaders(text: string): string
+
+export interface DeploymentPolicy {
+  root: Record<string, string>
+  sentinelCacheControl: string
+}
+
+export declare function deploymentPolicyFromHeaders(text: string): DeploymentPolicy
