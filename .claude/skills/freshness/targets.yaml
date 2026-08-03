@@ -377,7 +377,7 @@ units:
       - src/components/online-relay.tsx # independent replay cadence and deliberately absent switch
       - src/qr/relay-playback.ts # canonical round-trip check and whole-set render admissibility before any frame is shown
       - src/qr/relay-frames.ts # two-message allowlist, session binding, and assembled-artifact validation
-      - tests/fixtures/relay-legacy.ts # retired OCM1 strings retained only as rejection fixtures
+      - tests/fixtures/relay-legacy.ts # retired v1 strings (OCM1/OCK1/OCP1) retained only as rejection fixtures
       - tests/unit/relay-frames.test.ts # parser contract and node-environment fixture pins
       - tests/ui/online-relay.test.tsx # jsdom relay behavior and rejection boundaries
       - tests/pq/sym-envelope.golden.test.ts # frozen sym envelope, AAD, HKDF info, and size boundary

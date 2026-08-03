@@ -19,7 +19,7 @@ import {
   OCK1_SYMMETRIC_KEY,
   OCM1_MESSAGE_33,
   OCP1_PUBLIC_KEY,
-} from "../fixtures/relay-v1"
+} from "../fixtures/relay-legacy"
 
 const KEY_ID = "B".repeat(22)
 const FRAME_PAYLOAD = "OCF2:ZnJhbWUtb25seQ"
