@@ -99,6 +99,13 @@ const en = {
   "browser.featureList.ariaLabel": "Browser feature list",
 
   "boot.probing.status": "Checking network reachability and local data…",
+  "boot.networkSuspected.title": "Network connection detected",
+  "boot.networkSuspected.body":
+    "This device appears to be connected to a network, and the application could not confirm otherwise. Secret operations stay closed. Disconnect the network — including virtual interfaces such as VPN or container bridges — and reload. Your stored keys have not been changed or deleted.",
+  "boot.deploymentUnverified.title": "Server security headers not verified",
+  "boot.deploymentUnverified.body":
+    "The server did not return the required security headers, or the check never completed. This installation cannot be trusted for secret operations. Serve the application with a configuration that applies _headers, then reload. Your stored keys have not been changed or deleted.",
+  "boot.blocked.reload": "Reload",
   "boot.wiping.title": "Resetting local data",
   "boot.wiping.body": "Do not close this screen until the operation finishes.",
   "boot.wiped.title": "Local data was reset after an online connection was detected",
@@ -720,6 +727,13 @@ const ja = {
   "browser.featureList.ariaLabel": "ブラウザー機能一覧",
 
   "boot.probing.status": "ネットワーク到達性とローカルデータを確認しています…",
+  "boot.networkSuspected.title": "ネットワーク接続を検出しました",
+  "boot.networkSuspected.body":
+    "この端末はネットワークに接続されている可能性があり、接続がないことを確認できませんでした。秘密操作は閉じたままにします。VPN やコンテナブリッジなどの仮想インターフェースを含めてネットワークを切断し、再読み込みしてください。保存済みの鍵は変更も削除もされていません。",
+  "boot.deploymentUnverified.title": "サーバのセキュリティヘッダーを検証できません",
+  "boot.deploymentUnverified.body":
+    "サーバが必要なセキュリティヘッダーを返さなかったか、検査が完了しませんでした。このインストールは秘密操作に使用できません。_headers を適用する構成で配信し直してから再読み込みしてください。保存済みの鍵は変更も削除もされていません。",
+  "boot.blocked.reload": "再読み込み",
   "boot.wiping.title": "ローカルデータを初期化しています",
   "boot.wiping.body": "完了するまでこの画面を閉じないでください。",
   "boot.wiped.title": "オンラインを検出したため、ローカルデータを初期化しました",

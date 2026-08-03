@@ -222,6 +222,36 @@ function BootGate({
           onContinue={acceptOfflineRisk}
         />
       )
+    case "blocked": {
+      // Reload is the only exit. A retry button here would let an operator
+      // click past the one connectivity signal the app has.
+      if (state.reason === "network-suspected") {
+        return (
+          <BootStatusScreen>
+            <p className="font-mono text-xs text-destructive">NETWORK_SUSPECTED</p>
+            <h1 className="text-xl font-bold">{t("boot.networkSuspected.title")}</h1>
+            <p className="text-sm text-muted-foreground">
+              {t("boot.networkSuspected.body")}
+            </p>
+            <Button type="button" className="h-11 w-full whitespace-normal" onClick={reloadPage}>
+              {t("boot.blocked.reload")}
+            </Button>
+          </BootStatusScreen>
+        )
+      }
+      return (
+        <BootStatusScreen>
+          <p className="font-mono text-xs text-destructive">DEPLOYMENT_UNVERIFIED</p>
+          <h1 className="text-xl font-bold">{t("boot.deploymentUnverified.title")}</h1>
+          <p className="text-sm text-muted-foreground">
+            {t("boot.deploymentUnverified.body")}
+          </p>
+          <Button type="button" className="h-11 w-full whitespace-normal" onClick={reloadPage}>
+            {t("boot.blocked.reload")}
+          </Button>
+        </BootStatusScreen>
+      )
+    }
     case "network-confirmed":
       return (
         <OnlineInstallScreen
