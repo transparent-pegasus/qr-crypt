@@ -198,6 +198,61 @@ describe("decrypt page v2", () => {
     expect(markKeyUsed).toHaveBeenCalledWith(previous.id, expect.any(Number))
   })
 
+  it("decrypts with a rotated generation, using the re-resolved record", async () => {
+    // Rotated records stay decryptable by design. Renaming it elsewhere after
+    // the list snapshot is what proves the page re-resolved instead of using
+    // its own cached object — openSymMessage is mocked, so plaintext alone
+    // would pass on the unfixed code too.
+    const user = userEvent.setup()
+    const key = addSymmetricKey("R", "sym-v2 to rotate")
+    const { envelope, payload } = await prepareSymPayload(key)
+    key.status = "rotated"
+    key.rotatedAt = Date.now()
+
+    await renderApp("/decrypt")
+    await screen.findByRole("heading", { name: "Scan with the camera" })
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: payload },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+
+    const rotated = { ...key, name: "renamed-elsewhere" }
+    const index = fakeKeys.findIndex((record) => record.id === key.id)
+    fakeKeys[index] = rotated
+
+    await user.click(decryptButton)
+
+    expect(await screen.findByText("sym-v2復号済み平文")).toBeVisible()
+    expect(openSymMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ record: rotated, envelope }),
+    )
+  })
+
+  it("refuses to decrypt with a key another tab deleted", async () => {
+    const user = userEvent.setup()
+    const key = addSymmetricKey("D", "sym-v2 doomed key")
+    const { payload } = await prepareSymPayload(key)
+
+    await renderApp("/decrypt")
+    await screen.findByRole("heading", { name: "Scan with the camera" })
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: payload },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+
+    // Deletion after the snapshot match and before the action — deleting
+    // earlier would return at the list match without reaching re-resolution.
+    fakeKeys.length = 0
+
+    await user.click(decryptButton)
+    expect(
+      await screen.findByText(messageFor("KEY_NOT_FOUND", "en")),
+    ).toBeVisible()
+    expect(openSymMessage).not.toHaveBeenCalled()
+  })
+
   it("warns above unchanged symmetric plaintext containing a zero-width space", async () => {
     const user = userEvent.setup()
     const plaintext = "visible\u200Binvisible"

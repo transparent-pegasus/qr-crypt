@@ -56,7 +56,7 @@ import type {
   PqPublicBundleRecord,
   WireSuite,
 } from "@/schemas/domain"
-import { markKeyUsed } from "@/storage/key-repository"
+import { getKeyRecord, markKeyUsed } from "@/storage/key-repository"
 import { findBundleBySigningKeyId } from "@/storage/pq-bundle-repository"
 import {
   findIdentityByKemKeyId,
@@ -236,8 +236,14 @@ export function DecryptPage() {
     clearDecrypted()
     try {
       if (parsed.kind === "sym-message" && symmetricKey) {
+        // The cached list only gates the button. Re-resolve from storage at action
+        // time so a key deleted elsewhere cannot be used from a stale snapshot.
+        // Any generation may decrypt — rotated records stay usable by design — so
+        // this is getKeyRecord, not getActiveKeyRecord.
+        const record = await getKeyRecord(symmetricKey.id)
+        if (record === undefined) throw new AppError("KEY_NOT_FOUND")
         const decryptedBytes = await openSymMessage({
-          record: symmetricKey,
+          record,
           envelope: parsed.envelope,
         })
         try {
@@ -250,7 +256,7 @@ export function DecryptPage() {
           const verdict = recordReceipt(
             {
               kind: "sym",
-              recipientKeyId: symmetricKey.id,
+              recipientKeyId: record.id,
               envelopeHash,
             },
             Date.now(),
@@ -265,7 +271,7 @@ export function DecryptPage() {
             text: bytesToUtf8(decryptedBytes),
             replay: verdict,
           }
-          await markKeyUsed(symmetricKey.id, Date.now()).catch(() => undefined)
+          await markKeyUsed(record.id, Date.now()).catch(() => undefined)
           setDecrypted(outcome)
         } finally {
           zeroize(decryptedBytes)
