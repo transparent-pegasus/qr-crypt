@@ -220,6 +220,35 @@ units:
       resolve.
     sync: [ui-security-copy, readme]
 
+  - id: environment-threats
+    category: security-knowledge
+    cadence_days: 90 # same rhythm as threat-model; a review reads both together
+    last_checked: 2026-08-03
+    files:
+      - docs/security/environment-threat-catalog.md
+    why: >
+      Physical and operational environment techniques age from the outside:
+      published attacks improve, hardware changes what is reachable, and dated
+      sources are superseded. The nation-state-security skill treats this file
+      as authoritative, so a stale catalog silently narrows every review.
+    method: |
+      Re-check each entry's dated sources and replace superseded ones rather
+      than accumulating citations. Add a technique only with a stated
+      relationship to this system; keep Evidence and Speculation labels honest
+      and never upgrade one to the other without a source or a measurement.
+      Promote any entry that becomes application-addressable into
+      docs/security/threat-model.md as a T row and cross-reference it back.
+      Record the review date in the Currency section.
+    constraint: >
+      No new T identifiers are minted here, and no entry may imply a control
+      the application does not have. Absolute security or side-channel claims
+      stay prohibited (docs/security/security-review.md §2).
+    verify: >
+      Every cross-referenced T row and document path still resolves; entries
+      claiming Evidence cite a dated source or an in-repo measurement; no entry
+      contradicts docs/security/threat-model.md §3 non-goals.
+    sync: [threat-model]
+
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
