@@ -144,6 +144,7 @@ vi.mock("@/storage/key-repository", () => ({
 }))
 vi.mock("@/storage/pq-identity-repository", () => ({
   listIdentities: fakes.listIdentities,
+  getIdentity: fakes.getIdentity,
   saveIdentity: fakes.saveIdentity,
   saveRotation: fakes.saveRotation,
   renameIdentity: fakes.renameIdentity,
@@ -156,6 +157,7 @@ vi.mock("@/storage/pq-identity-repository", () => ({
 }))
 vi.mock("@/storage/pq-bundle-repository", () => ({
   listBundles: fakes.listBundles,
+  getBundle: fakes.getBundle,
   saveBundle: fakes.saveBundle,
   confirmBundleFingerprint: fakes.confirmBundleFingerprint,
   revokeBundle: fakes.revokeBundle,
