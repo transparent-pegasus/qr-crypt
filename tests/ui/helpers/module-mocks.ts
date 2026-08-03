@@ -78,10 +78,6 @@ vi.mock("@/crypto/pq/canonical-cbor", async (importOriginal) => {
     decodeSymmetricKeyEnvelopeV2: fakes.decodeSymmetricKeyEnvelopeV2,
     encodePublicIdentityBundleV2: fakes.encodePublicIdentityBundleV2,
     decodePublicIdentityBundleV2: fakes.decodePublicIdentityBundleV2,
-    encodeKemPublicKeyEnvelopeV2: fakes.encodeKemPublicKeyEnvelopeV2,
-    decodeKemPublicKeyEnvelopeV2: fakes.decodeKemPublicKeyEnvelopeV2,
-    encodeDsaPublicKeyEnvelopeV2: fakes.encodeDsaPublicKeyEnvelopeV2,
-    decodeDsaPublicKeyEnvelopeV2: fakes.decodeDsaPublicKeyEnvelopeV2,
   }
 })
 vi.mock("@/crypto/vault/vault-key", async (importOriginal) => ({

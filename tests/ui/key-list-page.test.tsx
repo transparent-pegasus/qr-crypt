@@ -170,7 +170,7 @@ describe("key list page", () => {
     expect(rows[0]).toHaveTextContent("自分のPQ ID")
     expect(rows[1]).toHaveTextContent("共通鍵A")
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
-    expect(screen.getByText(/Post-quantum identity ·/)).toBeInTheDocument()
+    expect(screen.getByText(/Public key ·/)).toBeInTheDocument()
     expect(screen.getByText("共通鍵A")).toBeInTheDocument()
     expect(screen.getByText(/Shared key ·/)).toBeInTheDocument()
     // Both badges report lifecycle state, never key type.
@@ -192,7 +192,7 @@ describe("key list page", () => {
     await user.click(kindFilter)
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
       "All",
-      "Post-quantum identity",
+      "Public key",
       "Shared key",
     ])
     await user.click(screen.getByRole("option", { name: "Shared key" }))
@@ -365,8 +365,8 @@ describe("key list page", () => {
 
     await user.click(rowFor("自分のPQ ID"))
     let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
-    dialog = await screen.findByRole("dialog", { name: /public-key bundle/ })
+    await user.click(within(dialog).getByRole("button", { name: "Show public-key QR" }))
+    dialog = await screen.findByRole("dialog", { name: /public key/ })
     expect(within(dialog).getByText(/OCF2 frames/)).toBeInTheDocument()
     expect(
       within(dialog).getByRole("button", { name: "Back to details" }),
@@ -392,58 +392,11 @@ describe("key list page", () => {
     expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
     await user.click(bundleFullscreen)
     let fullscreen = await screen.findByRole("dialog", {
-      name: /View .*public-key bundle.* full screen/,
+      name: /View .*public key.* full screen/,
     })
     await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
-    expect(screen.getByRole("dialog", { name: /public-key bundle/ })).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: /public key/ })).toBeInTheDocument()
 
-    await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
-    await user.click(
-      within(dialog).getByRole("button", { name: "Encryption public-key QR" }),
-    )
-    await waitFor(() =>
-      expect(splitIntoFrames).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          artifactType: "pq-kem-public-key",
-        }),
-      ),
-    )
-    expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
-    const kemFullscreenTriggers = within(dialog).getAllByRole("button", {
-      name: "View full screen",
-    })
-    expect(kemFullscreenTriggers).toHaveLength(1)
-    await waitFor(() => expect(kemFullscreenTriggers[0]).toBeEnabled())
-    await user.click(kemFullscreenTriggers[0]!)
-    fullscreen = await screen.findByRole("dialog", {
-      name: /View .*encryption public key.* full screen/,
-    })
-    await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
-
-    await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
-    await user.click(
-      within(dialog).getByRole("button", {
-        name: "Signature-verification public-key QR",
-      }),
-    )
-    await waitFor(() =>
-      expect(splitIntoFrames).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          artifactType: "pq-dsa-public-key",
-        }),
-      ),
-    )
-    expect(splitIntoFrames.mock.calls.at(-1)?.[0]).not.toHaveProperty("frameCount")
-    const signingFullscreenTriggers = within(dialog).getAllByRole("button", {
-      name: "View full screen",
-    })
-    expect(signingFullscreenTriggers).toHaveLength(1)
-    await waitFor(() => expect(signingFullscreenTriggers[0]).toBeEnabled())
-    await user.click(signingFullscreenTriggers[0]!)
-    fullscreen = await screen.findByRole("dialog", {
-      name: /View .*signature-verification public key.* full screen/,
-    })
-    await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
     await user.click(rowFor("共通鍵A"))
@@ -609,7 +562,7 @@ describe("key list page", () => {
     await user.click(rowFor("自分のPQ ID"))
     const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
     await user.click(
-      within(dialog).getByRole("button", { name: "Public-key bundle QR" }),
+      within(dialog).getByRole("button", { name: "Show public-key QR" }),
     )
     await waitFor(() =>
       expect(splitIntoFrames).toHaveBeenLastCalledWith(
@@ -627,7 +580,7 @@ describe("key list page", () => {
     await waitFor(() => expect(fullscreenTrigger).toBeEnabled())
     await user.click(fullscreenTrigger)
     const fullscreen = await screen.findByRole("dialog", {
-      name: /View .*public-key bundle.* full screen/,
+      name: /View .*public key.* full screen/,
     })
     if (within(fullscreen).queryByText("1 / 4")) {
       await user.click(within(fullscreen).getByRole("button", { name: "Next" }))
@@ -677,7 +630,7 @@ describe("key list page", () => {
     expect(
       screen.getByRole("dialog", {
         name: new RegExp(
-          `View .*public-key bundle.*1 / ${compatibleFrames.length} full screen`,
+          `View .*public key.*1 / ${compatibleFrames.length} full screen`,
         ),
       }),
     ).toBe(fullscreen)
@@ -721,8 +674,8 @@ describe("key list page", () => {
 
     await user.click(rowFor("自分のPQ ID"))
     let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
-    dialog = await screen.findByRole("dialog", { name: /public-key bundle/ })
+    await user.click(within(dialog).getByRole("button", { name: "Show public-key QR" }))
+    dialog = await screen.findByRole("dialog", { name: /public key/ })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledOnce())
 
     const triggers = within(dialog).getAllByRole("button", {
@@ -745,8 +698,8 @@ describe("key list page", () => {
 
     await user.click(rowFor("自分のPQ ID"))
     let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
-    dialog = await screen.findByRole("dialog", { name: /public-key bundle/ })
+    await user.click(within(dialog).getByRole("button", { name: "Show public-key QR" }))
+    dialog = await screen.findByRole("dialog", { name: /public key/ })
     await within(dialog).findByRole("alert")
 
     const triggers = within(dialog).getAllByRole("button", {
@@ -1212,7 +1165,7 @@ describe("key list page", () => {
     listIdentities.mockRejectedValueOnce(new Error("identity read failed"))
     await renderKeyList()
     expect(
-      await screen.findByText("Post-quantum identities could not be loaded"),
+      await screen.findByText("Public keys could not be loaded"),
     ).toBeInTheDocument()
     expect(await screen.findByText("共通鍵A")).toBeInTheDocument()
 
@@ -1238,7 +1191,7 @@ describe("key list page", () => {
       ),
     ).toBeInTheDocument()
     expect(
-      within(dialog).queryByRole("button", { name: "Public-key bundle QR" }),
+      within(dialog).queryByRole("button", { name: "Show public-key QR" }),
     ).toBeNull()
     expect(within(dialog).queryByRole("button", { name: "Rotate" })).toBeNull()
     expect(

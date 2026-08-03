@@ -14,8 +14,6 @@
 // from version-dependent behavior in external encoders. Decoding structurally enforces shortest forms,
 // ascending keys, and a single value, then defensively checks re-encoded byte equality.
 import type {
-  DsaPublicKeyEnvelopeV2,
-  KemPublicKeyEnvelopeV2,
   MlKemAadV2,
   MlKemMessageEnvelopeV2,
   PublicIdentityBundleV2,
@@ -679,76 +677,6 @@ export function encodePublicIdentityBundleV2(
 
 export function decodePublicIdentityBundleV2(bytes: Uint8Array): PublicIdentityBundleV2 {
   return guardPublicIdentityBundleV2(decodeCanonicalCbor(bytes))
-}
-
-// ---------------------------------------------------------------------------
-// Single public-key envelopes (OCP2/OCS2).
-// ---------------------------------------------------------------------------
-
-export function guardKemPublicKeyEnvelopeV2(value: unknown): KemPublicKeyEnvelopeV2 {
-  const record = guardKeys(
-    value,
-    ["version", "type", "identityId", "algorithm", "keyId", "publicKey", "createdAt"],
-    ["name"],
-  )
-  const algorithm = guardEnum(record["algorithm"], ML_KEM_ALGORITHMS)
-  const name = guardOptionalName(record["name"])
-  const envelope: KemPublicKeyEnvelopeV2 = {
-    version: guardLiteral(record["version"], 2),
-    type: guardLiteral(record["type"], "pq-kem-public-key"),
-    identityId: guardKeyId(record["identityId"]),
-    algorithm,
-    keyId: guardKeyId(record["keyId"]),
-    publicKey: guardBytes(record["publicKey"], KEM_SIZES[algorithm].publicKeyBytes),
-    createdAt: guardInt(record["createdAt"], 0, Number.MAX_SAFE_INTEGER),
-  }
-  if (name !== undefined) envelope.name = name
-  return envelope
-}
-
-export function guardDsaPublicKeyEnvelopeV2(value: unknown): DsaPublicKeyEnvelopeV2 {
-  const record = guardKeys(
-    value,
-    ["version", "type", "identityId", "algorithm", "keyId", "publicKey", "createdAt"],
-    ["name"],
-  )
-  const algorithm = guardEnum(record["algorithm"], ML_DSA_ALGORITHMS)
-  const name = guardOptionalName(record["name"])
-  const envelope: DsaPublicKeyEnvelopeV2 = {
-    version: guardLiteral(record["version"], 2),
-    type: guardLiteral(record["type"], "pq-dsa-public-key"),
-    identityId: guardKeyId(record["identityId"]),
-    algorithm,
-    keyId: guardKeyId(record["keyId"]),
-    publicKey: guardBytes(record["publicKey"], DSA_SIZES[algorithm].publicKeyBytes),
-    createdAt: guardInt(record["createdAt"], 0, Number.MAX_SAFE_INTEGER),
-  }
-  if (name !== undefined) envelope.name = name
-  return envelope
-}
-
-export function encodeKemPublicKeyEnvelopeV2(
-  envelope: KemPublicKeyEnvelopeV2,
-): Uint8Array {
-  return encodeCanonicalCbor(
-    guardKemPublicKeyEnvelopeV2(envelope) as unknown as CanonicalCborValue,
-  )
-}
-
-export function decodeKemPublicKeyEnvelopeV2(bytes: Uint8Array): KemPublicKeyEnvelopeV2 {
-  return guardKemPublicKeyEnvelopeV2(decodeCanonicalCbor(bytes))
-}
-
-export function encodeDsaPublicKeyEnvelopeV2(
-  envelope: DsaPublicKeyEnvelopeV2,
-): Uint8Array {
-  return encodeCanonicalCbor(
-    guardDsaPublicKeyEnvelopeV2(envelope) as unknown as CanonicalCborValue,
-  )
-}
-
-export function decodeDsaPublicKeyEnvelopeV2(bytes: Uint8Array): DsaPublicKeyEnvelopeV2 {
-  return guardDsaPublicKeyEnvelopeV2(decodeCanonicalCbor(bytes))
 }
 
 // ---------------------------------------------------------------------------

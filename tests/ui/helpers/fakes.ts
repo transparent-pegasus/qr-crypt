@@ -10,8 +10,6 @@ import type { FeatureSupport } from "@/lib/feature-detect"
 import type { QrExportOptions } from "@/qr/export-image"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import type {
-  DsaPublicKeyEnvelopeV2,
-  KemPublicKeyEnvelopeV2,
   MlKemMessageEnvelopeV2,
   PostQuantumIdentity,
   PqDecryptResult,
@@ -151,8 +149,6 @@ let lastPqEnvelope: MlKemMessageEnvelopeV2 = {
   ciphertext: new Uint8Array(128),
 }
 let lastPublicBundle: PublicIdentityBundleV2 | null = null
-let lastKemEnvelope: KemPublicKeyEnvelopeV2 | null = null
-let lastDsaEnvelope: DsaPublicKeyEnvelopeV2 | null = null
 
 export const detectFeatures = vi.fn(() => ({ ...fakeFeatures }))
 let webAssemblyRuntimeSettled: boolean | undefined
@@ -324,38 +320,6 @@ export const decodePayload = vi.fn((payload: string) => {
     return {
       kind: "pq-public-identity" as const,
       envelope: lastPublicBundle ?? buildPublicBundle(fakeIdentities[0]!),
-    }
-  }
-  if (payload.startsWith("OCP2:")) {
-    return {
-      kind: "pq-kem-public-key" as const,
-      envelope:
-        lastKemEnvelope ??
-        ({
-          version: 2,
-          type: "pq-kem-public-key",
-          identityId: IDENTITY_ID,
-          algorithm: "ML-KEM-1024",
-          keyId: KEM_KEY_ID,
-          publicKey: new Uint8Array(1568),
-          createdAt: 1_723_000_000_000,
-        } satisfies KemPublicKeyEnvelopeV2),
-    }
-  }
-  if (payload.startsWith("OCS2:")) {
-    return {
-      kind: "pq-dsa-public-key" as const,
-      envelope:
-        lastDsaEnvelope ??
-        ({
-          version: 2,
-          type: "pq-dsa-public-key",
-          identityId: IDENTITY_ID,
-          algorithm: "ML-DSA-87",
-          keyId: SIGNING_KEY_ID,
-          publicKey: new Uint8Array(2592),
-          createdAt: 1_723_000_000_000,
-        } satisfies DsaPublicKeyEnvelopeV2),
     }
   }
   throw new AppError("INVALID_QR_PREFIX")
@@ -551,24 +515,6 @@ export const encodePublicIdentityBundleV2 = vi.fn((bundle: PublicIdentityBundleV
 })
 export const decodePublicIdentityBundleV2 = vi.fn(
   () => lastPublicBundle ?? buildPublicBundle(fakeIdentities[0]!),
-)
-export const encodeKemPublicKeyEnvelopeV2 = vi.fn((envelope: KemPublicKeyEnvelopeV2) => {
-  lastKemEnvelope = envelope
-  return new Uint8Array(1_350)
-})
-export const decodeKemPublicKeyEnvelopeV2 = vi.fn(
-  () =>
-    lastKemEnvelope ??
-    (decodePayload("OCP2:fake") as { envelope: KemPublicKeyEnvelopeV2 }).envelope,
-)
-export const encodeDsaPublicKeyEnvelopeV2 = vi.fn((envelope: DsaPublicKeyEnvelopeV2) => {
-  lastDsaEnvelope = envelope
-  return new Uint8Array(2_150)
-})
-export const decodeDsaPublicKeyEnvelopeV2 = vi.fn(
-  () =>
-    lastDsaEnvelope ??
-    (decodePayload("OCS2:fake") as { envelope: DsaPublicKeyEnvelopeV2 }).envelope,
 )
 
 export const splitIntoFrames = vi.fn(
@@ -1020,8 +966,6 @@ export function resetFakes(): void {
     ciphertext: new Uint8Array(32),
   }
   lastPublicBundle = null
-  lastKemEnvelope = null
-  lastDsaEnvelope = null
   fakePqDecrypt.kind = "signed-valid"
   scanTextCallback = null
   nextMultipartAddGate = null
