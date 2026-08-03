@@ -4,7 +4,9 @@ import { wipeOnOnline } from "@/app/boot/wipe-coordinator"
 import {
   REACHABILITY_SENTINEL_BODY,
   REACHABILITY_SENTINEL_PATH,
+  type BlockedReason,
   type BootState,
+  type ConnectivityHint,
   type WipeDecisionInput,
 } from "@/app/boot/boot-contract"
 import {
@@ -96,7 +98,21 @@ export interface BootControllerOptions {
   nonce?: () => string
   performWipe?: WipeExecutor
   probeTimeoutMs?: number
+  readConnectivityHint?: () => ConnectivityHint
   readDecision?: () => Promise<BootDecisionSnapshot>
+}
+
+// Default hint. A getter that throws, or a missing navigator, is
+// indeterminate — only an explicit false may permit offline-confirmed.
+export function readConnectivityHint(): ConnectivityHint {
+  try {
+    if (typeof navigator === "undefined") return "indeterminate"
+    const value = navigator.onLine
+    if (typeof value !== "boolean") return "indeterminate"
+    return value ? "online" : "offline"
+  } catch {
+    return "indeterminate"
+  }
 }
 
 export interface BootController {
@@ -439,6 +455,7 @@ export function createBootController(
   const readDecision = options.readDecision ?? readBootDecision
   const consumeToken = options.consumeMaintenanceToken ?? consumeMaintenanceToken
   const performWipe = options.performWipe ?? defaultWipeExecutor
+  const connectivityHint = options.readConnectivityHint ?? readConnectivityHint
   const eventTarget =
     options.eventTarget ?? (typeof window === "undefined" ? undefined : window)
 
@@ -466,10 +483,17 @@ export function createBootController(
     candidate.kind === "wiped" ||
     candidate.kind === "partial-failure"
 
+  // Blocked is non-destructive but equally one-way: it exists because the app
+  // could not prove it is safe to open, and a same-lifetime exit would let a
+  // retry click past the only signal available.
+  const terminal = (candidate: BootState): boolean =>
+    candidate.kind === "blocked" || destructive(candidate)
+
   const emit = (nextState: BootState) => {
-    // Destructive states are monotonic. Once a wipe or reset has engaged the
-    // one-way access barrier, no probe result that was already in flight may
-    // hand the application back a usable Router state.
+    // Blocked is an absolute latch — nothing leaves it, not even a wipe.
+    if (state.kind === "blocked") return
+    // Unchanged: destructive states stay monotonic but must still be able to
+    // advance among themselves (wiping -> wiped / partial-failure).
     if (destructive(state) && !destructive(nextState)) return
     state = nextState
     for (const listener of listeners) listener()
@@ -518,7 +542,28 @@ export function createBootController(
     networkTransitionHandled = false
   }
 
-  const isDestructiveTerminal = () => destructive(state)
+  const isTerminal = () => terminal(state)
+
+  // The one place offline-confirmed is published. Every caller that used to
+  // emit it directly routes through here, because the sentinel branch is not
+  // the only way to reach it — nudgeDisplayOffline and the probing-time
+  // offline event both did, and both would otherwise bypass the check.
+  const enterBlocked = (reason: BlockedReason): void => {
+    if (isTerminal()) return
+    retireActiveProbe()
+    emit({ kind: "blocked", reason })
+  }
+
+  const publishOfflineCandidate = (): void => {
+    if (isTerminal()) return
+    if (connectivityHint() !== "offline") {
+      enterBlocked("network-suspected")
+      return
+    }
+    networkTransitionHandled = false
+    invalidateRelay("display-offline")
+    emit({ kind: "offline-confirmed" })
+  }
 
   // The snapshot is only a proof of cleanliness while sensitive writers are
   // excluded, so eligibility requires that the exclusion was actually held.
@@ -568,16 +613,14 @@ export function createBootController(
       episode.offlineRequested &&
       state.kind === "network-confirmed"
     ) {
-      networkTransitionHandled = false
-      invalidateRelay("display-offline")
-      emit({ kind: "offline-confirmed" })
+      publishOfflineCandidate()
       return
     }
     publishRelayDecision(episode, decision, exclusive)
   }
 
   const probe = async (): Promise<void> => {
-    if (isDestructiveTerminal() || confirmationEpisode?.continuationPending) return
+    if (isTerminal() || confirmationEpisode?.continuationPending) return
     const probeGeneration = ++generation
     invalidateRelay("new-probe")
     const peerWipeGenerationAtStart = peerWipeGeneration
@@ -599,9 +642,7 @@ export function createBootController(
     if (probeGeneration !== generation || controller.signal.aborted) return
     activeProbe = undefined
     if (!confirmed) {
-      networkTransitionHandled = false
-      invalidateRelay("display-offline")
-      emit({ kind: "offline-confirmed" })
+      publishOfflineCandidate()
       return
     }
 
@@ -672,35 +713,33 @@ export function createBootController(
     invalidateRelay("display-offline")
     episode.offlineRequested = true
     if (!episode.continuationPending) {
-      networkTransitionHandled = false
-      emit({ kind: "offline-confirmed" })
+      publishOfflineCandidate()
     }
     return true
   }
 
   const handleOnline = () => {
-    if (networkTransitionHandled || isDestructiveTerminal()) return
+    if (networkTransitionHandled || isTerminal()) return
     void probe()
   }
 
   const handleOffline = () => {
-    if (isDestructiveTerminal()) return
+    if (isTerminal()) return
     if (state.kind === "network-confirmed") {
       nudgeDisplayOffline()
       return
     }
     networkTransitionHandled = false
     if (state.kind === "probing") {
-      invalidateRelay("display-offline")
       activeProbe?.abort()
       activeProbe = undefined
       generation += 1
-      emit({ kind: "offline-confirmed" })
+      publishOfflineCandidate()
     }
   }
 
   const start = () => {
-    if (started || isDestructiveTerminal()) return
+    if (started || isTerminal()) return
     started = true
     eventTarget?.addEventListener("online", handleOnline)
     eventTarget?.addEventListener("offline", handleOffline)
@@ -718,7 +757,7 @@ export function createBootController(
     activeProbe = undefined
     generation += 1
     networkTransitionHandled = false
-    if (!isDestructiveTerminal()) emit({ kind: "unknown" })
+    if (!isTerminal()) emit({ kind: "unknown" })
   }
 
   const refreshRelayEligibility = async (): Promise<boolean> => {

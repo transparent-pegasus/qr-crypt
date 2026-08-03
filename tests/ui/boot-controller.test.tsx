@@ -129,6 +129,7 @@ describe("destructive reachability probe", () => {
   ])("treats %s as offline", async (_name, fetchImpl) => {
     const controller = createBootController({
       fetchImpl,
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await controller.probe()
@@ -140,6 +141,7 @@ describe("destructive reachability probe", () => {
     const controller = createBootController({
       fetchImpl: vi.fn(() => new Promise<Response>(() => undefined)),
       probeTimeoutMs: BOOT_PROBE_TIMEOUT_MS,
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     const pending = controller.probe()
@@ -209,6 +211,7 @@ describe("destructive reachability probe", () => {
     )
     const controller = createBootController({
       fetchImpl,
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     const first = controller.probe()
@@ -411,6 +414,7 @@ describe("boot decisions", () => {
         consumeMaintenanceToken,
         fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
         performWipe,
+        readConnectivityHint: () => "offline",
         readDecision: async () =>
           decision({ maintenanceTokenArmed: true, sensitiveDataExists: true }),
       })
@@ -475,6 +479,7 @@ describe("boot decisions", () => {
     )
     const controller = createBootController({
       fetchImpl,
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     const listener = vi.fn()
@@ -923,6 +928,127 @@ describe("boot decisions", () => {
     await waitFor(() => expect(screen.getByText("wiped")).toBeInTheDocument())
     expect(fetchImpl).toHaveBeenCalledTimes(1)
     expect(performWipe).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("connectivity-hint gating (NS-02)", () => {
+  const failingFetch = () =>
+    vi.fn(async () => Promise.reject(new TypeError("offline")))
+  const succeedingSentinelFetch = () =>
+    vi.fn(async () => response("QR-CRYPT-REACHABLE"))
+  const hangingFetch = () => vi.fn(() => new Promise<Response>(() => undefined))
+
+  it("confirms offline when the sentinel fails and the hint is offline", async () => {
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "offline",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
+  })
+
+  it("blocks when the sentinel fails but the hint is online", async () => {
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+  })
+
+  it("blocks on an indeterminate hint", async () => {
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "indeterminate",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+  })
+
+  it("blocks instead of confirming offline via nudgeDisplayOffline", async () => {
+    const controller = createBootController({
+      fetchImpl: succeedingSentinelFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState().kind).toBe("network-confirmed")
+
+    controller.nudgeDisplayOffline()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+  })
+
+  it("blocks instead of confirming offline on an offline event while probing", async () => {
+    const target = new EventTarget()
+    const controller = createBootController({
+      fetchImpl: hangingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+      eventTarget: target as Pick<Window, "addEventListener" | "removeEventListener">,
+    })
+    controller.start()
+    target.dispatchEvent(new Event("offline"))
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+  })
+
+  it("is terminal: stop, start, probe, and events leave it unchanged", async () => {
+    const target = new EventTarget()
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+      eventTarget: target as Pick<Window, "addEventListener" | "removeEventListener">,
+    })
+    await controller.probe()
+    const blocked = controller.getState()
+
+    controller.stop()
+    expect(controller.getState()).toEqual(blocked)
+    controller.start()
+    expect(controller.getState()).toEqual(blocked)
+    await controller.probe()
+    expect(controller.getState()).toEqual(blocked)
+    target.dispatchEvent(new Event("online"))
+    target.dispatchEvent(new Event("offline"))
+    expect(controller.getState()).toEqual(blocked)
+    controller.release()
+    controller.acquire()
+    expect(controller.getState()).toEqual(blocked)
+  })
+
+  it("blocks without invoking the wipe executor", async () => {
+    // The state assertion is the one that fails if the lock is missing; a
+    // bare "performWipe was not called" assertion passes on today's code too,
+    // because a failing sentinel already reaches offline-confirmed without
+    // wiping. Keep both, and never keep only the second.
+    const performWipe = vi.fn()
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+      performWipe,
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+    expect(performWipe).not.toHaveBeenCalled()
   })
 })
 
