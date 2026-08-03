@@ -19,9 +19,15 @@ QR Cryptと信頼性のある関係を持つ**物理的およびオペレーシ�
 
 - **Relationship（関係性）** — なぜこの技法が*本システム*に具体的に関わるか。
   これがないエントリは本カタログに属さない。
-- **Evidence（証拠）** — 日付のある公開出典またはリポジトリ内の計測により
-  実現可能性が裏付けられている場合は`Evidence`、本スタックに対してメカニズムが
-  もっともらしいが未計測の場合は`Speculation`。後者を前者へ暗黙に格上げしてはならない。
+- **Evidence（証拠）** — 3 つのラベルのいずれか。`Evidence`方向へ暗黙に
+  格上げしてはならない。
+  - `Evidence` — 日付のある公開出典、リポジトリ内の計測、または本リポジトリの
+    他所にすでに記録された挙動により実現可能性が裏付けられている。
+  - `Observed` — プラットフォームまたは設計の直接観測可能な性質であり、
+    研究成果ではなく定義的であるため引用すべき出典が存在しない。
+    `Evidence`を無理に広げる代わりにこちらを用いる。引用が必要なのに
+    それを欠くエントリは`Observed`ではない。
+  - `Speculation` — 本スタックに対してもっともらしいが未計測。
 - **Position（位置づけ）** — レビュースキルに基づく制御分類：
   `REPOSITORY_IMPLEMENTABLE`、`DEPLOYMENT_ENFORCED`、`EXTERNAL_ASSURANCE`、
   または`ARCHITECTURAL_RESIDUAL`。
@@ -48,8 +54,9 @@ QR Cryptと信頼性のある関係を持つ**物理的およびオペレーシ�
 レンダリングされる。これは本システムに対する最も直接的な環境技法であり、
 ソフトウェアの侵害を必要とせず、デバイス上に痕跡を残さない。
 
-**Evidence（証拠）。** 直接撮影は引用を要しない。間接的な光路は実証済み：
-Backes, Dürmuth, Unruh, *Compromising Reflections — or How to Read
+**Evidence（証拠）。** 直接撮影については`Observed` — レンダリングされたQRは
+レンズを持つあらゆるものが読み取れる。それこそが転送メカニズムたる所以である。
+間接的な光路については`Evidence`：Backes, Dürmuth, Unruh, *Compromising Reflections — or How to Read
 LCD Monitors Around the Corner*, IEEE S&P 2008; Backes et al., *Tempest in a
 Teapot: Compromising Reflections Revisited*, IEEE S&P 2009
 （眼鏡、ティーポット、および目の反射からの離れた距離での復元）。
@@ -68,8 +75,9 @@ QRの背後にあるもの——机上の書類、他の画面、部屋にいる
 デバイスは自身の視野を狭めることができず、操作者はコードを見ており
 フレーム端を見ていない。
 
-**Evidence（証拠）。** Evidence — `getUserMedia`によるビデオキャプチャに
-固有のものであり、メカニズムの引用は不要。
+**Evidence（証拠）。** `Observed` — カメラは目の前のフレームを返し、
+`getUserMedia`は視野の制限手段を公開していない。研究成果ではなく定義的であり、
+引用すべきものも計測すべきものも存在しない。
 
 **Position（位置づけ）。** `DEPLOYMENT_ENFORCED`（スキャンを行う場所）に加え、
 カメラが稼動する*時間*を制限するアプリ内のティアダウン。
@@ -126,11 +134,13 @@ JS/JITの下では定数時間実行が保証されないことを文書化し�
 ML-KEMの暗黙棄却パスが明示的に名指しされている。タイミング、電力、
 およびEMチャネルは、これを鍵回復に転じる古典的な手段である。
 
-**Evidence（証拠）。** 格子KEMおよび署名実装に対する一般的なクラスについて
-Evidence（活発な公表文献が存在）、および実装上の注意事項自体について
-Evidence（`@noble/post-quantum`ドキュメント、
+**Evidence（証拠）。** CCA安全な格子KEM実装に対する一般的なクラスについて
+`Evidence`：Ravi, Roy, Chattopadhyay, Bhasin, *Generic Side-channel attacks
+on CCA-secure lattice-based PKE and KEMs*, IACR TCHES 2020(3)。
+実装上の注意事項自体についてはリポジトリ内の記録として`Evidence`
+（`@noble/post-quantum`ドキュメント、
 [security-review.md](../../../security/security-review.md) §1に記録）。
-本システムについてはSpeculation：このJSスタックでこのハードウェア上での
+本システムについては`Speculation`：このJSスタックでこのハードウェア上での
 鍵回復攻撃は実証されておらず、ここでは試行もされていない。
 
 **Position（位置づけ）。** `EXTERNAL_ASSURANCE` — 独立監査がこれを制限する
@@ -147,9 +157,12 @@ threat-model T14 残留リスク。禁止主張ルールにより、
 これはまさにevil-maidやインプラント技法が必要とする条件であり、
 ネットワーク接続された標的と異なり、デバイス上には変更を監視するものがない。
 
-**Evidence（証拠）。** クラスとしてはEvidence（ブートキット/ファームウェア
-インプラントおよび無人改ざんは長年確立されている）。
-特定の個人設置への蔓延についてはSpeculation。
+**Evidence（証拠）。** クラスとしては`Evidence`：Rutkowska, *Evil Maid goes
+after TrueCrypt!*, Invisible Things Lab, 2009年10月（暗号化ノートPCに対する
+無人でのブートパス改ざん）；ESET, *LoJax: First UEFI rootkit found in the
+wild*, 2018年9月（ディスク交換後も残存するファームウェアレベルの永続化）。
+特定の個人設置への蔓延については`Speculation` — その種の攻撃者が
+1台のデバイスに到達する確率を制限する計測はここに存在しない。
 
 **Position（位置づけ）。** `DEPLOYMENT_ENFORCED`（管理、改ざん証跡、保管）——
 アプリケーションのワイプおよびブートゲートは、その下のプラットフォームが

@@ -235,8 +235,11 @@ units:
     method: |
       Re-check each entry's dated sources and replace superseded ones rather
       than accumulating citations. Add a technique only with a stated
-      relationship to this system; keep Evidence and Speculation labels honest
-      and never upgrade one to the other without a source or a measurement.
+      relationship to this system; keep the Evidence / Observed / Speculation
+      labels honest and never upgrade one toward Evidence without a source, a
+      measurement, or an in-repo record. Observed is for directly observable
+      platform or design behaviour only — reach for it instead of calling an
+      uncited claim Evidence, never as a way to avoid finding a citation.
       Promote any entry that becomes application-addressable into
       docs/security/threat-model.md as a T row and cross-reference it back.
       Record the review date in the Currency section, and carry every change
@@ -247,9 +250,11 @@ units:
       the application does not have. Absolute security or side-channel claims
       stay prohibited (docs/security/security-review.md §2).
     verify: >
-      Every cross-referenced T row and document path still resolves; entries
-      claiming Evidence cite a dated source or an in-repo measurement; no entry
-      contradicts docs/security/threat-model.md §3 non-goals.
+      Every cross-referenced T row and document path still resolves; every
+      entry labelled Evidence names a dated source, an in-repo measurement, or
+      an in-repo record, and every entry labelled Observed is genuinely
+      definitional rather than uncited research; no entry contradicts
+      docs/security/threat-model.md §3 non-goals.
     sync: [threat-model]
 
   - id: security-review

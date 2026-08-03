@@ -21,9 +21,14 @@ model and cross-referenced from here.
 
 - **Relationship** — why this technique touches *this* system specifically. An
   entry without one does not belong here.
-- **Evidence** — `Evidence` when a dated public source or an in-repo measurement
-  supports feasibility, `Speculation` when the mechanism is plausible for this
-  stack but unmeasured here. Never silently upgrade the second into the first.
+- **Evidence** — one of three labels, never silently upgraded toward the first:
+  - `Evidence` — a dated public source, an in-repo measurement, or a behaviour
+    already recorded elsewhere in this repository supports feasibility.
+  - `Observed` — the mechanism is a directly observable property of the
+    platform or the design, definitional rather than researched, so no source
+    exists to cite. Use this instead of stretching `Evidence`; an entry that
+    needs a citation and lacks one is not `Observed`.
+  - `Speculation` — plausible for this stack but unmeasured here.
 - **Position** — the control class from the review skill:
   `REPOSITORY_IMPLEMENTABLE`, `DEPLOYMENT_ENFORCED`, `EXTERNAL_ASSURANCE`, or
   `ARCHITECTURAL_RESIDUAL`.
@@ -51,8 +56,9 @@ that anything with a lens can read, including from an angle the operator cannot
 see. This is the most direct environment technique against the system: it needs
 no software compromise and leaves no trace on the device.
 
-**Evidence.** Direct photography needs no citation. Indirect optical paths are
-demonstrated: Backes, Dürmuth, Unruh, *Compromising Reflections — or How to Read
+**Evidence.** `Observed` for direct photography — a rendered QR is readable by
+any lens, which is what makes it a transfer mechanism. `Evidence` for the
+indirect optical paths: Backes, Dürmuth, Unruh, *Compromising Reflections — or How to Read
 LCD Monitors Around the Corner*, IEEE S&P 2008; Backes et al., *Tempest in a
 Teapot: Compromising Reflections Revisited*, IEEE S&P 2009 (reconstruction from
 reflections in eyeglasses, teapots, and eyes at a distance).
@@ -71,8 +77,9 @@ whatever is behind the QR: documents on the desk, other screens, people in the
 room. The device cannot narrow its own field of view, and the operator is
 looking at the code, not the frame edges.
 
-**Evidence.** Evidence — inherent to `getUserMedia` video capture; no citation
-needed for the mechanism.
+**Evidence.** `Observed` — a camera returns the frame in front of it, and
+`getUserMedia` exposes no field-of-view restriction. Definitional, not
+researched; there is nothing to cite and nothing to measure.
 
 **Position.** `DEPLOYMENT_ENFORCED` (where scanning happens) plus the in-app
 teardown that bounds *when* the camera is live.
@@ -128,10 +135,12 @@ not guaranteed under JS/JIT, and the ML-KEM implicit-rejection path is named
 explicitly. Timing, power, and EM channels are the classical way to turn that
 into key recovery.
 
-**Evidence.** Evidence for the general class against lattice KEM/signature
-implementations (an active published literature) and Evidence for the
-implementation caveat itself (`@noble/post-quantum` documentation, recorded in
-[security-review.md](security-review.md) §1). Speculation for this system: no
+**Evidence.** `Evidence` for the general class against CCA-secure lattice KEM
+implementations: Ravi, Roy, Chattopadhyay, Bhasin, *Generic Side-channel attacks
+on CCA-secure lattice-based PKE and KEMs*, IACR TCHES 2020(3). `Evidence` for
+the implementation caveat itself as an in-repo record
+(`@noble/post-quantum` documentation, recorded in
+[security-review.md](security-review.md) §1). `Speculation` for this system: no
 key-recovery attack has been demonstrated against this JS stack on this
 hardware, and none has been attempted here.
 
@@ -149,9 +158,12 @@ reconnects, which means it spends most of its life unattended and holding keys.
 That is precisely the condition an evil-maid or implant technique needs; unlike
 a networked target, nothing on the device is watching for a change.
 
-**Evidence.** Evidence for the class (bootkit/firmware implants and unattended
-tampering are long-established). Speculation for prevalence against a specific
-private installation.
+**Evidence.** `Evidence` for the class: Rutkowska, *Evil Maid goes after
+TrueCrypt!*, Invisible Things Lab, October 2009 (unattended boot-path tampering
+against an encrypted laptop); ESET, *LoJax: First UEFI rootkit found in the
+wild*, September 2018 (firmware-level persistence surviving disk replacement).
+`Speculation` for prevalence against a specific private installation — no
+measurement here bounds how likely such an actor is to reach one device.
 
 **Position.** `DEPLOYMENT_ENFORCED` (custody, tamper-evidence, storage) — the
 application's wipe and boot gates do not survive a platform below them.
