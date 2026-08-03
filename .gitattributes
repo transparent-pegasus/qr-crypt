@@ -1,0 +1,9 @@
+# Route A rebuild-and-compare requires two clean checkouts of one commit to hold
+# byte-identical files: the verifier rebuilds dist/ and regenerates INSTALL.txt
+# from the working tree and byte-compares both against the signed archive. Git
+# would otherwise rewrite line endings per core.autocrlf / core.eol, so a
+# CRLF-configured checkout would fail that comparison on an honest release —
+# and a verification step that cries tampering every time stops being run.
+* text=auto eol=lf
+
+*.png binary

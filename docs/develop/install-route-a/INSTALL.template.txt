@@ -41,6 +41,44 @@ be compared with the independently authenticated intended values.
 The signature authenticates this ZIP. It does not make removable
 media, firmware, the operating system, browser, or local server safe.
 
+VALIDATE THE CONTAINER BEFORE EXTRACTION
+A valid signature proves who published these bytes. It does not make a
+hostile ZIP safe to parse or extract, and the compromised-CI attacker
+this procedure exists to detect can publish a correctly signed malicious
+container. Do every check below before anything is written to disk.
+
+Inspect the central directory and local entry headers with an archive
+reader obtained and authenticated independently of this release. Reject
+the ZIP unless all of these hold:
+- Every member sits beneath exactly one expected root directory whose
+  name is derived from the independently authenticated release tag.
+  Reject absolute, drive-qualified, UNC, empty, "." or ".." path
+  components, and any backslash or other alternate separator.
+- Member names are unique and unambiguous after separator
+  normalization, Unicode normalization, and case folding. Reject
+  duplicate local/central-header names, case-only aliases,
+  trailing-dot or trailing-space aliases, and header disagreements.
+- Every payload entry is a regular file or an expected directory.
+  Reject symbolic links, hard links, devices, FIFOs, sockets,
+  sparse/special files, and entries whose external attributes or mode
+  disagree with their declared type.
+- Entry count, each declared and expanded file size, and total expanded
+  size are within conservative limits you chose before reading this
+  archive, from the independently authenticated expected build layout.
+  Reject integer overflows, overlapping entries, encrypted entries,
+  unsupported compression methods, and suspicious compression ratios.
+- The root layout contains only the expected application tree plus
+  INSTALL.txt and SHA256SUMS.files. No member sits beside or outside
+  that root.
+
+Only after all checks pass, extract with a no-link, traversal-safe
+mechanism that revalidates every destination beneath a new empty root
+and enforces the same count and size limits while expanding. Do this in
+a disposable isolated environment with no secrets, credentials,
+sensitive mounts, or network access. Never extract with a mechanism
+that follows archive-created links. The extraction root must be outside
+the source checkout used below.
+
 REBUILD AND COMPARE
 The signed ZIP contains SHA256SUMS.files. The ZIP signature authenticates
 that manifest, and the manifest authenticates every other archive file,
@@ -48,9 +86,9 @@ including INSTALL.txt. To compare those authenticated bytes with a local
 rebuild:
 
 1. Prepare a clean checkout at the independently authenticated Source
-   commit. Extract the authenticated ZIP into a new empty directory
-   outside that checkout. Never put the extracted archive or a
-   copied/stale build tree under the checkout: Tailwind scans the
+   commit. Use the validated, safely extracted root produced by the
+   previous section; never extract here. Never put the extracted archive
+   or a copied/stale build tree under the checkout: Tailwind scans the
    project tree, and such leftovers can change generated CSS and cause
    a false mismatch.
 
@@ -146,7 +184,6 @@ rebuild:
   ) > "$QR_CRYPT_COMPARE_TMP/rebuilt-INSTALL.txt"
   diff -u "$QR_CRYPT_COMPARE_TMP/rebuilt-INSTALL.txt" \
     "$QR_CRYPT_ARCHIVE_ROOT/INSTALL.txt"
-  rm -rf -- "$QR_CRYPT_COMPARE_TMP"
 
    The generator takes the source commit from your independently
    authenticated value and reads the release version from package.json and
@@ -154,6 +191,38 @@ rebuild:
    authenticated checkout. No value from this archive is fed back into the
    comparison. Any difference is a tampering signal: stop and reject the
    release; do not repair this file locally.
+
+6. Recreate SHA256SUMS.files locally instead of trusting or merely
+   checking the archive's manifest. Step 3 verifies what the manifest
+   claims; this pins its bytes and accounts for every remaining member:
+
+  export QR_CRYPT_REBUILT_ROOT="$QR_CRYPT_COMPARE_TMP/rebuilt-root"
+  mkdir -p "$QR_CRYPT_REBUILT_ROOT"
+  cp -a "$QR_CRYPT_CHECKOUT/dist/." "$QR_CRYPT_REBUILT_ROOT/"
+  rm -rf -- "$QR_CRYPT_REBUILT_ROOT/about"
+  cp -- "$QR_CRYPT_COMPARE_TMP/rebuilt-INSTALL.txt" \
+    "$QR_CRYPT_REBUILT_ROOT/INSTALL.txt"
+  (
+    cd "$QR_CRYPT_REBUILT_ROOT"
+    find . -type f ! -path './SHA256SUMS.files' -printf '%P\0' |
+      LC_ALL=C sort -z |
+      xargs -0 -r sha256sum
+  ) > "$QR_CRYPT_REBUILT_ROOT/SHA256SUMS.files"
+  test -s "$QR_CRYPT_REBUILT_ROOT/SHA256SUMS.files"
+  if grep -Evq \
+    '^[0-9a-f]{64}  [A-Za-z0-9._/-]+$' \
+    "$QR_CRYPT_REBUILT_ROOT/SHA256SUMS.files"; then
+    printf 'locally generated invalid SHA256SUMS.files entry\n' >&2
+    exit 1
+  fi
+  diff -u "$QR_CRYPT_REBUILT_ROOT/SHA256SUMS.files" \
+    "$QR_CRYPT_ARCHIVE_ROOT/SHA256SUMS.files"
+  diff -qr "$QR_CRYPT_REBUILT_ROOT" "$QR_CRYPT_ARCHIVE_ROOT"
+  rm -rf -- "$QR_CRYPT_COMPARE_TMP"
+
+   The last diff must report no difference. It covers every permitted
+   member; it does not replace the pre-extraction path, type,
+   duplicate-name, and expansion checks above.
 
 The workflow's double build establishes determinism only within the
 same CI environment; environment-independent reproducibility remains
@@ -163,8 +232,9 @@ controls the CI environment can still publish a correctly signed
 backdoor; only an independent rebuild comparison can detect that case.
 
 DEPLOY ON THE OFFLINE DEVICE
-1. Extract this ZIP. It creates one {{ROOT_NAME}} directory; use that
-   directory as the server document root.
+1. Use the container-validated, safely extracted {{ROOT_NAME}} directory
+   from above as the server document root. Never extract this ZIP with a
+   mechanism that skipped those checks.
 2. Use an audited static server already preinstalled through an
    independent trusted process. Bind it only to 127.0.0.1.
    It must enforce the included _headers and _redirects semantics:

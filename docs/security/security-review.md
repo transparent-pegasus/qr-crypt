@@ -210,7 +210,12 @@ They do not close the external `release-approved` blocker.
   from the archive under inspection feeds back into the comparison. Route A §5
   step 4 is now a byte comparison instead of an instruction-level reading, and
   the whole archive — payload, `INSTALL.txt`, and the regenerated manifest — is
-  byte-compared. Contract pinned by `tests/unit/generate-install-txt.test.ts`.
+  byte-compared. The archive copy carries the same operational contract as this
+  repository's document: pre-extraction container validation before anything is
+  written to disk, and the manifest reconstruction plus full-root comparison.
+  A `.gitattributes` LF pin keeps two clean checkouts of one commit rendering
+  identical bytes, so the mandatory diff cannot fail on an honest release.
+  Contract pinned by `tests/unit/generate-install-txt.test.ts`.
   This narrows F-01 only; source-to-binary correspondence still depends on the
   independent rebuild being performed (§1, zxing-wasm entry).
 

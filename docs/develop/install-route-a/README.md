@@ -215,9 +215,13 @@ diff -u "$QR_CRYPT_COMPARE_TMP/rebuilt-INSTALL.txt" \
    “repair” the archive copy locally. Then read the regenerated file once
    against this document. A byte match already proves the archive states what
    the authenticated source states, so this reading checks the source itself —
-   that it still requires the §4 pre-extraction validation and the audited,
-   already-preinstalled, independently obtained server in §7 — rather than
-   re-checking the archive.
+   that it still carries the §4 pre-extraction validation contract, the
+   manifest reconstruction in step 5, and the audited, already-preinstalled,
+   independently obtained server in §7 — rather than re-checking the archive.
+   The archive copy states each of those requirements itself, so a verifier who
+   has only `INSTALL.txt` performs the same procedure; `tests/unit/generate-install-txt.test.ts`
+   pins that. This document holds the fuller rationale, which the archive may
+   condense, but it must not hold a requirement the archive lacks.
 
 5. Recreate `SHA256SUMS.files` locally instead of trusting or merely checking the
    archive's manifest. Assemble an expected root from the independently rebuilt

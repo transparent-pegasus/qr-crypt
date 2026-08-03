@@ -65,6 +65,58 @@ describe("INSTALL.txt generation", () => {
     expect(workflow).toContain("node scripts/generate-install-txt.mjs")
     expect(workflow).not.toContain('INSTALL.txt" <<')
   })
+
+  // Two clean checkouts of one commit must render identical bytes, or the
+  // mandatory diff in Route A §5 reports tampering on an honest release.
+  it("renders LF only, and the repository pins that", async () => {
+    const { stdout } = await generate(SOURCE_SHA)
+    expect(stdout).not.toContain("\r")
+    expect(await readFile(path.join(REPO_ROOT, ".gitattributes"), "utf8"))
+      .toMatch(/^\* text=auto eol=lf$/m)
+  })
+})
+
+// INSTALL.txt is the copy that reaches the offline device. Route A §5 requires
+// the archive copy to state every operational requirement the repository
+// document states; a weaker archive copy is the divergence that procedure
+// treats as a tampering signal.
+describe("INSTALL.txt as the self-contained procedure", () => {
+  const template = () =>
+    readFile(
+      path.join(REPO_ROOT, "docs/develop/install-route-a/INSTALL.template.txt"),
+      "utf8",
+    )
+
+  it("validates the container before anything is extracted", async () => {
+    const text = await template()
+    const validation = text.indexOf("VALIDATE THE CONTAINER BEFORE EXTRACTION")
+    const extraction = text.indexOf("Only after all checks pass, extract")
+    const sectionEnd = text.indexOf("REBUILD AND COMPARE")
+    expect(validation).toBeGreaterThan(-1)
+    expect(extraction).toBeGreaterThan(validation)
+    expect(sectionEnd).toBeGreaterThan(extraction)
+    // Every later mention of extraction points back at the validated root.
+    expect(text.indexOf("Extract this ZIP")).toBe(-1)
+    expect(text).toContain("Use the validated, safely extracted root")
+    const section = text.slice(validation, sectionEnd)
+    for (const requirement of [
+      "symbolic links",
+      "Unicode normalization",
+      "compression ratios",
+      "no-link, traversal-safe",
+    ]) {
+      expect(section).toContain(requirement)
+    }
+  })
+
+  it("regenerates the manifest and compares the complete roots", async () => {
+    const text = await template()
+    expect(text).toContain('> "$QR_CRYPT_REBUILT_ROOT/SHA256SUMS.files"')
+    expect(text).toContain('diff -u "$QR_CRYPT_REBUILT_ROOT/SHA256SUMS.files"')
+    expect(text).toContain(
+      'diff -qr "$QR_CRYPT_REBUILT_ROOT" "$QR_CRYPT_ARCHIVE_ROOT"',
+    )
+  })
 })
 
 // The release workflow deletes dist/about before staging, so a rebuild that
