@@ -25,10 +25,7 @@ export function IdentityDetails({
   identity: PostQuantumIdentity
   previous: PostQuantumIdentity[]
   busy: boolean
-  onShow: (
-    identity: PostQuantumIdentity,
-    kind: "bundle" | "kem" | "signing",
-  ) => Promise<void>
+  onShow: (identity: PostQuantumIdentity) => Promise<void>
   onRotate: (identity: PostQuantumIdentity) => Promise<void>
   onRevoke: (identity: PostQuantumIdentity) => Promise<void>
   onDestroySuperseded: (generations: PostQuantumIdentity[]) => void
@@ -77,39 +74,15 @@ export function IdentityDetails({
       </p>
       <div className="grid grid-cols-1 gap-2">
         {supported && !old && (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11"
-              disabled={busy}
-              onClick={() => void onShow(identity, "bundle")}
-            >
-              <QrCode aria-hidden="true" />
-              {t("keyDetail.button.bundleQr")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11"
-              disabled={busy}
-              onClick={() => void onShow(identity, "kem")}
-            >
-              <QrCode aria-hidden="true" />
-              {t("keyDetail.button.kemQr")}
-            </Button>
-          </>
-        )}
-        {supported && (
           <Button
             type="button"
             variant="outline"
             className="h-11"
             disabled={busy}
-            onClick={() => void onShow(identity, "signing")}
+            onClick={() => void onShow(identity)}
           >
             <QrCode aria-hidden="true" />
-            {t("keyDetail.button.signingQr")}
+            {t("keyDetail.button.showPublicKeyQr")}
           </Button>
         )}
         {supported && identity.status === "active" && (
@@ -199,18 +172,6 @@ export function IdentityDetails({
                     })}
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {generationSupported && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void onShow(generation, "signing")}
-                      >
-                        <QrCode aria-hidden="true" />
-                        {t("keyDetail.button.signingQr")}
-                      </Button>
-                    )}
                     <Button
                       type="button"
                       variant="destructive"

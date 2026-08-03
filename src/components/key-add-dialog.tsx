@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, CheckCircle2, KeyRound, LoaderCircle, ShieldCheck } from "lucide-react"
+import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { useFeatureSupport, useSensitiveSession } from "@/app/providers"
 import {
@@ -37,13 +37,10 @@ import {
   importSymmetricKeyRecordV2,
 } from "@/crypto/key-generation"
 import {
-  decodeDsaPublicKeyEnvelopeV2,
-  decodeKemPublicKeyEnvelopeV2,
   decodePublicIdentityBundleV2,
   decodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import { createIdentity } from "@/crypto/pq/identity"
-import { PQ_PROFILES } from "@/crypto/pq/profiles"
 import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
 import { validateSymmetricKeyEnvelopeV2 } from "@/crypto/pq/validation"
 import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
@@ -65,8 +62,6 @@ import {
 import { cn } from "@/lib/utils"
 import { decodePayload } from "@/qr/payload"
 import type {
-  DsaPublicKeyEnvelopeV2,
-  KemPublicKeyEnvelopeV2,
   PqPublicBundleRecord,
   PublicIdentityBundleV2,
   StoredKeyRecord,
@@ -81,12 +76,9 @@ export type KeyAddMode = "create" | "import"
 
 type CreateKeyType = "pq-identity" | "symmetric"
 
-type SingleKeyRead = KemPublicKeyEnvelopeV2 | DsaPublicKeyEnvelopeV2
-
 type AddView =
   | { kind: "create" }
   | { kind: "import" }
-  | { kind: "single-key"; envelope: SingleKeyRead; fingerprint: string }
   | { kind: "symmetric-import"; record: StoredKeyRecord }
   | { kind: "bundle-confirm"; bundle: PqPublicBundleRecord }
 
@@ -106,17 +98,6 @@ export interface KeyAddDialogProps {
 
 function assertUsableBundle(bundle: PublicIdentityBundleV2 | PqPublicBundleRecord): void {
   assertActiveSuite(resolveSuite(bundle.kem.algorithm, bundle.signing.algorithm))
-}
-
-function assertUsableSingleKey(envelope: SingleKeyRead): void {
-  const suite =
-    envelope.type === "pq-kem-public-key"
-      ? resolveSuite(
-          envelope.algorithm,
-          PQ_PROFILES[ACTIVE_PROFILE].signature.algorithm,
-        )
-      : resolveSuite(PQ_PROFILES[ACTIVE_PROFILE].kem.algorithm, envelope.algorithm)
-  assertActiveSuite(suite)
 }
 
 export function KeyAddDialog({
@@ -338,15 +319,6 @@ export function KeyAddDialog({
     })
   }
 
-  const handleSingleKey = async (envelope: SingleKeyRead) => {
-    assertUsableSingleKey(envelope)
-    const fingerprint =
-      envelope.type === "pq-kem-public-key"
-        ? await pqKeyFingerprint("kem", envelope.algorithm, envelope.publicKey)
-        : await pqKeyFingerprint("signing", envelope.algorithm, envelope.publicKey)
-    setView({ kind: "single-key", envelope, fingerprint })
-  }
-
   const beginSymmetricImport = (record: StoredKeyRecord) => {
     setSymmetricImportName(record.name)
     setSymmetricImportAcknowledged(false)
@@ -375,10 +347,6 @@ export function KeyAddDialog({
       }
       case "pq-public-identity":
         await prepareBundleImport(decoded.envelope)
-        return
-      case "pq-kem-public-key":
-      case "pq-dsa-public-key":
-        await handleSingleKey(decoded.envelope)
         return
       default:
         throw new AppError("INVALID_QR_PAYLOAD")
@@ -410,14 +378,6 @@ export function KeyAddDialog({
     try {
       if (args.artifactType === "pq-public-identity") {
         await prepareBundleImport(decodePublicIdentityBundleV2(args.artifactBytes))
-        return
-      }
-      if (args.artifactType === "pq-kem-public-key") {
-        await handleSingleKey(decodeKemPublicKeyEnvelopeV2(args.artifactBytes))
-        return
-      }
-      if (args.artifactType === "pq-dsa-public-key") {
-        await handleSingleKey(decodeDsaPublicKeyEnvelopeV2(args.artifactBytes))
         return
       }
       if (args.artifactType === "symmetric-key") {
@@ -492,11 +452,6 @@ export function KeyAddDialog({
     } finally {
       if (!abandoned(opening)) setBusy(false)
     }
-  }
-
-  const backToImport = () => {
-    setView({ kind: "import" })
-    setError(null)
   }
 
   return (
@@ -621,37 +576,6 @@ export function KeyAddDialog({
                   </div>
                 </CardContent>
               </Card>
-            </div>
-          )}
-
-          {view.kind === "single-key" && (
-            <div className="space-y-4">
-              <Alert>
-                <CheckCircle2 aria-hidden="true" className="size-4" />
-                <AlertTitle>{t("keys.singleKey.title")}</AlertTitle>
-                <AlertDescription className="space-y-2">
-                  <p>
-                    {view.envelope.type === "pq-kem-public-key"
-                      ? t("keys.singleKey.kemLabel")
-                      : t("keys.singleKey.signingLabel")}{" "}
-                    / {view.envelope.algorithm}
-                  </p>
-                  <Fingerprint
-                    label={t("keys.singleKey.fingerprintLabel")}
-                    value={view.fingerprint}
-                  />
-                  <p>{t("keys.singleKey.persistHint")}</p>
-                </AlertDescription>
-              </Alert>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 w-fit"
-                onClick={backToImport}
-              >
-                <ArrowLeft aria-hidden="true" />
-                {t("keyDetail.backToDetail")}
-              </Button>
             </div>
           )}
 

@@ -18,9 +18,10 @@ retained four-suite wire/codec contract. Boot alone keeps a read-only
   all of the following in-repository conditions satisfied while this document
   still records "independent third-party audit: not performed".
   - The maximum identity, Worker, encryption, decryption, storage,
-    OCP2/OCS2/OCF2, and OCA2/OCK2 paths pass composition/integration/UI tests.
-  - Negative tests reject removed vocabulary (v1 prefixes, unsigned suite
-    strings, 768/65, `balanced`) before any cryptographic processing.
+    OCI2/OCF2, and OCA2/OCK2 paths pass composition/integration/UI tests.
+  - Negative tests reject removed vocabulary (v1 prefixes, the retired single-key
+    `OCP2` / `OCS2` prefixes, unsigned suite strings, 768/65, `balanced`) before
+    any cryptographic processing.
   - Boot can read the retired `RSA-HYBRID` algorithm solely to preserve an old
     `wipeOnOnline=false`, after which the repository returns the active
     `A256GCM` default. Removed `defaultPqProfile` and `requireSignature` fields
@@ -52,7 +53,6 @@ fixture string):
 |---|---:|---:|---:|
 | signed empty / max | 6,570 / 126,576 | 66 / 127* | 7 / 127 |
 | OCI2 bundle | 4,402 | 45 | 5 |
-| OCP2 KEM / OCS2 DSA | 1,733 / 2,755 | 18 / 28 | 2 / 3 |
 | OCB2 reserved sizing fixture | 4,637 | 47 | 5 |
 | sym-message at plaintext ceiling | 1,000 (exactly one frame) | 1 | 1 |
 

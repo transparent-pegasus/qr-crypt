@@ -392,7 +392,7 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
   await goToOfflinePage(page, "/keys")
   await page.getByRole("button", { name: new RegExp(identityName) }).click()
   const detail = page.getByRole("dialog", { name: identityName })
-  await detail.getByRole("button", { name: "Public-key bundle QR", exact: true }).click()
+  await detail.getByRole("button", { name: "Show public-key QR", exact: true }).click()
 
   for (const viewport of [
     { width: 360, height: 640, portrait: true },
@@ -401,7 +401,7 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
     await expectAnimatedFullscreenLayout(page, detail, viewport, {
       close: "Close",
       compatibility: "Compatibility mode",
-      dialogName: /View .*public-key bundle.* full screen/,
+      dialogName: /View .*public key.* full screen/,
       next: "Next",
       pause: "Pause",
       previous: "Previous",
@@ -414,7 +414,7 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
   await page.getByRole("button", { name: new RegExp(identityName) }).click()
   const japaneseDetail = page.getByRole("dialog", { name: identityName })
   await japaneseDetail
-    .getByRole("button", { name: "公開鍵セットQR", exact: true })
+    .getByRole("button", { name: "公開鍵QRを表示", exact: true })
     .click()
   for (const viewport of [
     { width: 360, height: 640, portrait: true },

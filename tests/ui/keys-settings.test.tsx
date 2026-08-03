@@ -13,8 +13,6 @@ import { reloadApplication } from "@/lib/reload"
 import { buildV2Payload } from "@/qr/payload-v2"
 import { resetDefaultBootControllerForTesting } from "@/app/boot/boot-controller"
 import type {
-  DsaPublicKeyEnvelopeV2,
-  KemPublicKeyEnvelopeV2,
   PublicIdentityBundleV2,
   StoredKeyRecord,
 } from "@/schemas/domain"
@@ -29,8 +27,6 @@ import {
   createIdentity,
   createSymmetricKeyRecord,
   emitScannedPayload,
-  encodeDsaPublicKeyEnvelopeV2,
-  encodeKemPublicKeyEnvelopeV2,
   encodePublicIdentityBundleV2,
   encodeSymmetricKeyEnvelopeV2,
   fakeBundles,
@@ -183,15 +179,15 @@ describe("key management v2", () => {
     await user.click(await screen.findByRole("combobox", { name: "Key type" }))
     await user.click(
       screen.getByRole("option", {
-        name: "Post-quantum identity ML-KEM-1024 + ML-DSA-87",
+        name: "Public key ML-KEM-1024 + ML-DSA-87",
       }),
     )
     expect(
       await screen.findByText("experimental · not independently audited"),
     ).toBeInTheDocument()
-    await user.type(screen.getByLabelText("Post-quantum identity name"), "新しいPQ ID")
+    await user.type(screen.getByLabelText("Public-key name"), "新しいPQ ID")
     await user.click(
-      screen.getByRole("button", { name: "Create a post-quantum identity" }),
+      screen.getByRole("button", { name: "Create a public key" }),
     )
     await waitFor(() => expect(createIdentity).toHaveBeenCalledOnce())
     expect(fakeIdentities).toHaveLength(identityCount + 1)
@@ -239,45 +235,39 @@ describe("key management v2", () => {
     await user.click(await screen.findByRole("combobox", { name: "Key type" }))
     await user.click(
       screen.getByRole("option", {
-        name: "Post-quantum identity ML-KEM-1024 + ML-DSA-87",
+        name: "Public key ML-KEM-1024 + ML-DSA-87",
       }),
     )
     await user.type(
-      await screen.findByLabelText("Post-quantum identity name"),
+      await screen.findByLabelText("Public-key name"),
       "全画面PQ ID",
     )
     await user.click(
-      screen.getByRole("button", { name: "Create a post-quantum identity" }),
+      screen.getByRole("button", { name: "Create a public key" }),
     )
     dialog = await screen.findByRole("dialog", { name: "全画面PQ ID" })
 
-    for (const [buttonName, title] of [
-      ["Public-key bundle QR", /public-key bundle/],
-      ["Encryption public-key QR", /encryption public key/],
-      ["Signature-verification public-key QR", /signature-verification public key/],
-    ] as const) {
-      await user.click(within(dialog).getByRole("button", { name: buttonName }))
-      const fullscreenTriggers = within(dialog).getAllByRole("button", {
-        name: "View full screen",
-      })
-      expect(fullscreenTriggers).toHaveLength(1)
-      await waitFor(() => expect(fullscreenTriggers[0]).toBeEnabled())
-      await user.click(fullscreenTriggers[0]!)
-      fullscreen = await screen.findByRole("dialog", {
-        name: new RegExp(`View .*${title.source}.* full screen`),
-      })
-      expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
-      await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
-      await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
-    }
+    await user.click(within(dialog).getByRole("button", { name: "Show public-key QR" }))
+    const identityFullscreenTriggers = within(dialog).getAllByRole("button", {
+      name: "View full screen",
+    })
+    expect(identityFullscreenTriggers).toHaveLength(1)
+    await waitFor(() => expect(identityFullscreenTriggers[0]).toBeEnabled())
+    await user.click(identityFullscreenTriggers[0]!)
+    fullscreen = await screen.findByRole("dialog", {
+      name: /View .*public key.* full screen/,
+    })
+    expect(within(fullscreen).getByRole("img")).toBeInTheDocument()
+    await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
+    await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
 
-    await user.click(within(dialog).getByRole("button", { name: "Public-key bundle QR" }))
+    await user.click(within(dialog).getByRole("button", { name: "Show public-key QR" }))
     expect(
       within(dialog).getAllByRole("button", { name: "View full screen" }),
     ).toHaveLength(1)
     expect(
       await within(dialog).findByRole("region", {
-        name: /public-key bundle frame display/,
+        name: /public key frame display/,
       }),
     ).toBeInTheDocument()
   })
@@ -374,47 +364,22 @@ describe("key management v2", () => {
     expect(saveBundle).not.toHaveBeenCalled()
   })
 
-  it("rejects balanced OCP2 and OCS2 single keys before exposing fingerprints", async () => {
-    const legacyKem = {
-      version: 2,
-      type: "pq-kem-public-key",
-      identityId: "B".repeat(22),
-      algorithm: "ML-KEM-768",
-      keyId: "K".repeat(22),
-      publicKey: new Uint8Array(1184),
-      createdAt: 1_700_000_000_000,
-    } as unknown as KemPublicKeyEnvelopeV2
-    const legacyDsa = {
-      version: 2,
-      type: "pq-dsa-public-key",
-      identityId: "B".repeat(22),
-      algorithm: "ML-DSA-65",
-      keyId: "S".repeat(22),
-      publicKey: new Uint8Array(1952),
-      createdAt: 1_700_000_000_000,
-    } as unknown as DsaPublicKeyEnvelopeV2
+  it("rejects retired OCP2 and OCS2 single-key prefixes on paste", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")
     await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
     await user.click(screen.getByRole("button", { name: "Scan a key QR" }))
     const input = screen.getByLabelText("Key payload")
 
-    encodeKemPublicKeyEnvelopeV2(legacyKem)
-    await user.type(input, "OCP2:legacy-balanced")
-    await user.click(screen.getByRole("button", { name: "Read the key" }))
-    expect(
-      await screen.findByText("This cryptographic algorithm is not supported."),
-    ).toBeInTheDocument()
-    expect(screen.queryByText("A single key was read")).not.toBeInTheDocument()
-
-    await user.clear(input)
-    encodeDsaPublicKeyEnvelopeV2(legacyDsa)
-    await user.type(input, "OCS2:legacy-balanced")
-    await user.click(screen.getByRole("button", { name: "Read the key" }))
-    expect(
-      await screen.findByText("This cryptographic algorithm is not supported."),
-    ).toBeInTheDocument()
-    expect(screen.queryByText("A single key was read")).not.toBeInTheDocument()
+    for (const retired of ["OCP2:retired", "OCS2:retired"]) {
+      await user.clear(input)
+      await user.type(input, retired)
+      await user.click(screen.getByRole("button", { name: "Read the key" }))
+      expect(
+        await screen.findByText("This QR code is not in this app's format."),
+      ).toBeInTheDocument()
+      expect(saveBundle).not.toHaveBeenCalled()
+    }
   })
 
   it("imports a shared OCK2 frame through multipart completion with the source fingerprint", async () => {

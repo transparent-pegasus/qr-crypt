@@ -443,8 +443,8 @@ describe("online relay UI", () => {
     ["bare OCA2", "OCA2:AA"],
     ["bare OCM2", "OCM2:AA"],
     ["bare OCK2", "OCK2:AA"],
-    ["bare OCP2", "OCP2:AA"],
-    ["bare OCS2", "OCS2:AA"],
+    ["retired OCP2", "OCP2:AA"],
+    ["retired OCS2", "OCS2:AA"],
     ["bare OCI2", "OCI2:AA"],
   ])("refuses %s at playback and renders nothing", async (_label, hostile) => {
     const user = userEvent.setup()
@@ -500,8 +500,6 @@ describe("online relay UI", () => {
   it.each([
     "symmetric-key",
     "pq-public-identity",
-    "pq-kem-public-key",
-    "pq-dsa-public-key",
     "encrypted-seed-backup",
   ] satisfies V2ArtifactType[])(
     "refuses outer type %s at playback and renders nothing",
@@ -710,8 +708,8 @@ describe("online relay UI", () => {
     ["OCA2", "OCA2:AA", translate("en", "relay.error.prefix")],
     ["OCM2", "OCM2:AA", translate("en", "relay.error.prefix")],
     ["OCK2", "OCK2:AA", translate("en", "relay.error.prefix")],
-    ["OCP2", "OCP2:AA", translate("en", "relay.error.prefix")],
-    ["OCS2", "OCS2:AA", translate("en", "relay.error.prefix")],
+    ["retired OCP2", "OCP2:AA", translate("en", "relay.error.prefix")],
+    ["retired OCS2", "OCS2:AA", translate("en", "relay.error.prefix")],
     ["OCI2", "OCI2:AA", translate("en", "relay.error.prefix")],
     ["OCM1-after-frames", OCM1_MESSAGE_33, translate("en", "relay.error.prefix")],
     ["sym-message", symPayload(), translate("en", "relay.error.mismatch")],
@@ -719,16 +717,6 @@ describe("online relay UI", () => {
     [
       "symmetric-key",
       wrongOuterPayload("symmetric-key"),
-      translate("en", "relay.error.outerType"),
-    ],
-    [
-      "pq-kem-public-key",
-      wrongOuterPayload("pq-kem-public-key"),
-      translate("en", "relay.error.outerType"),
-    ],
-    [
-      "pq-dsa-public-key",
-      wrongOuterPayload("pq-dsa-public-key"),
       translate("en", "relay.error.outerType"),
     ],
     [

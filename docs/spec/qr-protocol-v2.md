@@ -14,13 +14,11 @@ every boundary.
 | `OCM2:` | `pq-message` | ML-KEM message envelope |
 | `OCA2:` | `sym-message` | Symmetric HKDF-AES message envelope |
 | `OCK2:` | `symmetric-key` | Symmetric AES-256 key envelope |
-| `OCP2:` | `pq-kem-public-key` | ML-KEM public key (single key) |
-| `OCS2:` | `pq-dsa-public-key` | ML-DSA signature-verification public key (single key) |
-| `OCI2:` | `pq-public-identity` | Public key set (KEM+DSA) |
+| `OCI2:` | `pq-public-identity` | Public key (KEM+DSA) |
 | `OCB2:` | `encrypted-seed-backup` | Reserved (neither produced nor accepted) |
 | `OCF2:` | frame | Multi-frame QR |
 
-- `OCM2` / `OCA2` / `OCK2` / `OCP2` / `OCS2` / `OCI2` are single-payload
+- `OCM2` / `OCA2` / `OCK2` / `OCI2` are single-payload
   representations (paste / file import) and logical types. **QR display always
   goes through `OCF2` (frameCount ≥ 1)**.
 - Import supports both (a) `OCF2` assembly → inner artifact, and (b) a bare
@@ -28,10 +26,10 @@ every boundary.
 - `OCB2` is a reserved prefix, rejected unconditionally as
   `UNSUPPORTED_ALGORITHM` at classification time. There is no feature flag: it
   is never generated and never accepted.
-- Managed deviation: `pq-kem-public-key` / `pq-dsa-public-key` were added beyond
-  the three artifactType values of the original draft specification (single
-  keys are also always carried via framing; see
-  [../develop/deviations.md](../develop/deviations.md)).
+- Retired vocabulary: `OCP2` / `OCS2` and the single-key artifact types
+  `pq-kem-public-key` / `pq-dsa-public-key` are removed. A public key travels
+  only as the `OCI2` KEM+DSA pair, so those prefixes are unrecognized at
+  classification time (`INVALID_QR_PREFIX`).
 
 ## 2. Canonical CBOR profile (shared by all v2 structures)
 
@@ -349,7 +347,7 @@ QrFrameV2 = {
   from the frames alone is equally computable by anyone who photographs one,
   and a hostile sender can compute it over their own artifact. `pq-message`
   and `sym-message` authenticity come from the inner AEAD tag. Public-key
-  artifacts (OCI2/OCP2/OCS2) have no AEAD, so their authenticity rests on the
+  artifacts (OCI2) have no AEAD, so their authenticity rests on the
   out-of-band fingerprint comparison at import. Accidental corruption that
   still decodes as canonical CBOR of the declared type is not detected during
   assembly
@@ -415,9 +413,6 @@ PublicIdentityBundleV2 = {
 }
 ```
 
-`OCP2` / `OCS2` are single-key maps whose `type` is `pq-kem-public-key` /
-`pq-dsa-public-key` respectively, with the common keys
-`version, type, identityId, name?, algorithm, keyId, publicKey, createdAt`.
 `identityId` and each `keyId` are 22 base64url characters, `name` (when
 present) is 1–100 UTF-16 units, and `createdAt` is a non-negative safe
 integer.
@@ -487,7 +482,7 @@ Shared fixture key id as in §8.1. Active suite only.
 | Sender signing key not imported (import flow offered) | `SIGNING_KEY_NOT_FOUND` |
 | Frame from another transferId mixed in / frame inconsistency | `FRAME_MISMATCH` |
 | Generation capacity exceeded (artifact >128,000B, frameCount>128, even-chunk >1,000B, OCF2 payload >1,663 characters, or sym single-frame violation) | `QR_TOO_LARGE` |
-| OCB2 (reserved) / removed vocabulary (v1 prefixes, unsigned suites, 768/65, `balanced`) | `UNSUPPORTED_ALGORITHM` or `INVALID_QR_PREFIX` / `INVALID_QR_PAYLOAD` |
+| OCB2 (reserved) / removed vocabulary (v1 prefixes, `OCP2` / `OCS2`, unsigned suites, 768/65, `balanced`) | `UNSUPPORTED_ALGORITHM` or `INVALID_QR_PREFIX` / `INVALID_QR_PAYLOAD` |
 | Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
 | Partial failure of local reset | `RESET_FAILED` |
 
@@ -496,10 +491,10 @@ Shared fixture key id as in §8.1. Active suite only.
 This section describes the **transport contract** for the clean-origin online
 relay. The accepted set is canonical `OCF2:` frames whose outer header declares
 `artifactType ∈ {"pq-message", "sym-message"}`. One transfer carries one kind,
-never both. Bare `OCA2:` / `OCM2:` / `OCK2:` / `OCP2:` / `OCS2:` / `OCI2:` lines
+never both. Bare `OCA2:` / `OCM2:` / `OCK2:` / `OCI2:` lines
 and every other OCF2 outer type (including `symmetric-key` and public-key
 artifacts) are rejected. Retired v1 prefixes (`OCM1` / `OCK1` / `OCP1` / …)
-are prefix-rejected.
+are prefix-rejected, as are the retired `OCP2` / `OCS2`.
 
 The relay is an untrusted hop: it performs **no** AEAD, signature verification,
 or decryption. After a capture or playback set completes (all frames present,

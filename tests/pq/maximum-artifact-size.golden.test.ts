@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
   encodeCanonicalCbor,
-  encodeDsaPublicKeyEnvelopeV2,
-  encodeKemPublicKeyEnvelopeV2,
   encodeMlKemEnvelopeV2,
   encodePublicIdentityBundleV2,
   encodeSignedMessageV2,
@@ -97,26 +95,6 @@ function publicIdentityArtifact(name: string): Uint8Array {
 }
 
 function artifactFixtures(): ArtifactFixture[] {
-  const kemKey = {
-    version: 2 as const,
-    type: "pq-kem-public-key" as const,
-    identityId: KEY_ID,
-    name: "テスト",
-    algorithm: "ML-KEM-1024" as const,
-    keyId: KEY_ID,
-    publicKey: new Uint8Array(1568).fill(0x88),
-    createdAt: CREATED_AT,
-  }
-  const dsaKey = {
-    version: 2 as const,
-    type: "pq-dsa-public-key" as const,
-    identityId: KEY_ID,
-    name: "テスト",
-    algorithm: "ML-DSA-87" as const,
-    keyId: KEY_ID,
-    publicKey: new Uint8Array(2592).fill(0x99),
-    createdAt: CREATED_AT,
-  }
   // OCB2 is reserved and does not yet have a wire schema. Pin this as a capacity fixture
   // for the maximum public keys + encrypted seeds currently stored, not as a contract
   // for future enablement.
@@ -200,42 +178,6 @@ function artifactFixtures(): ArtifactFixture[] {
         800: 6,
         900: 5,
         1_000: 5,
-      },
-    },
-    {
-      label: "OCP2 ML-KEM public key",
-      artifactType: "pq-kem-public-key",
-      bytes: encodeKemPublicKeyEnvelopeV2(kemKey),
-      expectedBytes: 1733,
-      expectedFrames: {
-        100: 18,
-        200: 9,
-        300: 6,
-        400: 5,
-        500: 4,
-        600: 3,
-        700: 3,
-        800: 3,
-        900: 2,
-        1_000: 2,
-      },
-    },
-    {
-      label: "OCS2 ML-DSA public key",
-      artifactType: "pq-dsa-public-key",
-      bytes: encodeDsaPublicKeyEnvelopeV2(dsaKey),
-      expectedBytes: 2755,
-      expectedFrames: {
-        100: 28,
-        200: 14,
-        300: 10,
-        400: 7,
-        500: 6,
-        600: 5,
-        700: 4,
-        800: 4,
-        900: 4,
-        1_000: 3,
       },
     },
     {
@@ -462,15 +404,9 @@ describe("maximum canonical CBOR artifact sizing", () => {
     ).toThrow("Invalid environment variables")
   })
 
-  it("uses the compatible 100B preference for identity and single-key artifacts", async () => {
+  it("uses the compatible 100B preference for public-key artifacts", async () => {
     for (const fixture of artifactFixtures()) {
-      if (
-        fixture.artifactType !== "pq-public-identity" &&
-        fixture.artifactType !== "pq-kem-public-key" &&
-        fixture.artifactType !== "pq-dsa-public-key"
-      ) {
-        continue
-      }
+      if (fixture.artifactType !== "pq-public-identity") continue
       const frames = await splitIntoFrames({
         artifactType: fixture.artifactType,
         artifactBytes: fixture.bytes,

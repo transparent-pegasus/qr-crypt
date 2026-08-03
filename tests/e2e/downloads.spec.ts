@@ -138,13 +138,13 @@ test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no
   await page.getByRole("button", { name: new RegExp(identityName) }).click()
   dialog = page.getByRole("dialog", { name: identityName })
   await dialog
-    .getByRole("button", { name: "Public-key bundle QR", exact: true })
+    .getByRole("button", { name: "Show public-key QR", exact: true })
     .click()
   dialog = page.getByRole("dialog", {
-    name: `${identityName} public-key bundle`,
+    name: `${identityName} public key`,
   })
   const frames = dialog.getByRole("region", {
-    name: `${identityName} public-key bundle frame display`,
+    name: `${identityName} public key frame display`,
   })
   await expect
     .poll(() => animatedFrameCount(frames), { timeout: 30_000 })
@@ -162,7 +162,7 @@ test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no
   await publicDownload.click()
   const publicZip = await publicZipPromise
   expect(publicZip.suggestedFilename()).toMatch(
-    /public-key bundle-.+-frames\.zip$/,
+    /public key-.+-frames\.zip$/,
   )
   const archive = parseStoreOnlyZip(await downloadBuffer(publicZip))
   expect(archive.centralCount).toBe(publicFrameCount)

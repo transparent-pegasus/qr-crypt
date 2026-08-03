@@ -244,8 +244,8 @@ describe("relay frame-set parser", () => {
     ["bare OCA2", "OCA2:AA"],
     ["bare OCM2", "OCM2:AA"],
     ["bare OCK2", "OCK2:AA"],
-    ["bare OCP2", "OCP2:AA"],
-    ["bare OCS2", "OCS2:AA"],
+    ["retired OCP2", "OCP2:AA"],
+    ["retired OCS2", "OCS2:AA"],
     ["bare OCI2", "OCI2:AA"],
     ["reserved OCB2", "OCB2:AA"],
     ["foreign", "https://example.invalid/"],
@@ -263,8 +263,6 @@ describe("relay frame-set parser", () => {
   it.each([
     "symmetric-key",
     "pq-public-identity",
-    "pq-kem-public-key",
-    "pq-dsa-public-key",
     "encrypted-seed-backup",
   ] satisfies V2ArtifactType[])('rejects wrong outer type "%s"', (artifactType) => {
     const original = encodeFrameToPayload({

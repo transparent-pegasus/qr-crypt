@@ -113,15 +113,15 @@ describe("KeyAddDialog abandonment", () => {
     await user.click(screen.getByRole("combobox", { name: "Key type" }))
     await user.click(
       screen.getByRole("option", {
-        name: "Post-quantum identity ML-KEM-1024 + ML-DSA-87",
+        name: "Public key ML-KEM-1024 + ML-DSA-87",
       }),
     )
     await user.type(
-      await screen.findByLabelText("Post-quantum identity name"),
+      await screen.findByLabelText("Public-key name"),
       "abandoned id",
     )
     await user.click(
-      screen.getByRole("button", { name: "Create a post-quantum identity" }),
+      screen.getByRole("button", { name: "Create a public key" }),
     )
     await waitFor(() => expect(createIdentity).toHaveBeenCalledOnce())
 

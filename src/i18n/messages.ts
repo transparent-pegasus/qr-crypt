@@ -241,19 +241,17 @@ const en = {
   "keyDetail.rename.label": "Key name",
   "keyDetail.rename.submit": "Rename",
   "keyDetail.rename.saved": "Key renamed",
-  "keyDetail.qr.bundleTitle": "{name} public-key bundle",
-  "keyDetail.qr.kemTitle": "{name} encryption public key",
-  "keyDetail.qr.signingTitle": "{name} signature-verification public key",
   "keyDetail.qr.outputName": "{title}-{date}",
-  "keyDetail.toast.rotated": "The identity was rotated",
+  "keyDetail.toast.rotated": "The public key was rotated",
   "keyDetail.toast.symmetricRotated": "The shared key was rotated",
-  "keyDetail.toast.revoked": "The identity was revoked on this device",
+  "keyDetail.toast.revoked": "The public key was revoked on this device",
   "keyDetail.toast.symmetricDeleted": "The shared key was deleted",
-  "keyDetail.toast.identityDeleted": "The post-quantum identity was deleted",
+  "keyDetail.toast.identityDeleted": "The public key was deleted",
   "keyDetail.toast.supersededDestroyed": "Older key material was discarded",
   "keyDetail.toast.copied":
     "Copied. Be aware that the clipboard may be synchronized.",
   "keyDetail.symmetricQr.title": "Shared-key QR",
+  "keyDetail.identityQr.title": "{name} public key",
   "keyDetail.identityQr.desc":
     "All content is displayed as OCF2 frames with Q error correction.",
   "keyDetail.symmetricQr.desc":
@@ -265,7 +263,7 @@ const en = {
   "keyDetail.delete.titleNamed": 'Delete "{name}"?',
   "keyDetail.delete.titleGeneric": "Delete the key?",
   "keyDetail.delete.body.identity":
-    "Ciphertext addressed to this identity will no longer be decryptable. Unlike revocation, this cannot be undone.",
+    "Ciphertext addressed to this public key will no longer be decryptable. Unlike revocation, this cannot be undone.",
   "keyDetail.delete.body.symmetric":
     "Ciphertext encrypted with this key will no longer be decryptable. This cannot be undone.",
   "keyDetail.delete.confirm": "Delete",
@@ -280,13 +278,11 @@ const en = {
   "keyDetail.identity.activeNote": "Available for encryption and signing",
   "keyDetail.identity.kemFingerprintLabel": "KEM {algorithm}",
   "keyDetail.identity.signingFingerprintLabel": "Signing {algorithm}",
-  "keyDetail.button.bundleQr": "Public-key bundle QR",
-  "keyDetail.button.kemQr": "Encryption public-key QR",
-  "keyDetail.button.signingQr": "Signature-verification public-key QR",
+  "keyDetail.button.showPublicKeyQr": "Show public-key QR",
   "keyDetail.button.rotate": "Rotate",
   "keyDetail.button.revoke": "Revoke on this device",
   "keyDetail.revokeNote":
-    "Revocation stops this identity from signing and from being published as a current recipient on this device, and is not propagated to other parties. It does not stop decryption with this identity: use Delete to discard its key material.",
+    "Revocation stops this public key from signing and from being published as a current recipient on this device, and is not propagated to other parties. It does not stop decryption with this public key: use Delete to discard its key material.",
   "keyDetail.previous.toggle":
     "{count} previous generations, decryption only",
   "keyDetail.previous.destroyAll":
@@ -300,16 +296,16 @@ const en = {
 
   "keyList.action.create": "Create a key",
   "keyList.action.import": "Scan a key QR",
-  "keyList.error.identity": "Post-quantum identities could not be loaded",
+  "keyList.error.identity": "Public keys could not be loaded",
   "keyList.error.symmetric": "Shared keys could not be loaded",
   "keyList.error.peer": "The other party's keys could not be updated",
   "keyList.tab.own": "My keys",
   "keyList.tab.peer": "Other parties' keys",
   "keyList.filter.label": "Type",
   "keyList.filter.all": "All",
-  "keyList.filter.pqIdentity": "Post-quantum identity",
+  "keyList.filter.pqIdentity": "Public key",
   "keyList.filter.symmetric": "Shared key",
-  "keyList.item.identityMeta": "Post-quantum identity · {datetime}",
+  "keyList.item.identityMeta": "Public key · {datetime}",
   "keyList.item.supersededWarning":
     "{count} older generation(s) can still decrypt",
   "keyList.item.symmetricMeta": "Shared key · {datetime}",
@@ -340,9 +336,9 @@ const en = {
   "keyList.toast.bundleConfirmed": "The fingerprint was confirmed",
 
   "keys.validation.keyNameFallback": "Check the key name.",
-  "keys.validation.idNameFallback": "Check the identity name.",
+  "keys.validation.idNameFallback": "Check the public-key name.",
   "keys.toast.symmetricCreated": "The shared key was created",
-  "keys.toast.identityCreated": "The post-quantum identity was created",
+  "keys.toast.identityCreated": "The public key was created",
   "keys.toast.symmetricImported": "The shared key was imported",
   "keys.toast.bundleConfirmed": "Saved with the fingerprint verified",
   "keys.toast.bundleUnverified": "Saved without verification",
@@ -352,14 +348,8 @@ const en = {
   "keys.import.cameraTitle": "Scan with the camera",
   "keys.import.scanTrigger": "Scan a key QR code",
   "keys.import.payloadLabel": "Key payload",
-  "keys.import.payloadPlaceholder": "Paste OCK2: / OCP2: / OCS2: / OCI2:",
+  "keys.import.payloadPlaceholder": "Paste OCK2: / OCI2:",
   "keys.import.readButton": "Read the key",
-  "keys.singleKey.title": "A single key was read",
-  "keys.singleKey.kemLabel": "Encryption public key",
-  "keys.singleKey.signingLabel": "Signature-verification public key",
-  "keys.singleKey.fingerprintLabel": "Single-key fingerprint",
-  "keys.singleKey.persistHint":
-    "To verify the association with a person and use this key persistently, import the OCI2 public-key bundle.",
   "keys.bundle.dialogTitle": "Compare the fingerprint through another channel",
   "keys.bundle.dialogDesc":
     "Before completing the import, compare the full hex with the other party through another channel, such as a call or in person. A self-signature alone does not prove a person's identity. If you save without verification, this identity cannot be selected for encryption until you confirm it later under Saved keys.",
@@ -379,13 +369,12 @@ const en = {
   "keys.symmetricImport.saveButton": "Save the shared key",
   "keys.demo.hint":
     "Ask the other party to increase their screen brightness, hold the camera about 15–20 cm away, and keep it still until the image is in focus.",
-  "keys.create.nameLabel.pq": "Post-quantum identity name",
+  "keys.create.nameLabel.pq": "Public-key name",
   "keys.create.nameLabel.symmetric": "Shared-key name",
-  "keys.create.button.pq": "Create a post-quantum identity",
+  "keys.create.button.pq": "Create a public key",
   "keys.create.button.symmetric": "Create a shared key",
   "keys.create.kindLabel": "Key type",
-  "keys.create.kind.pqIdentity":
-    "Post-quantum identity ML-KEM-1024 + ML-DSA-87",
+  "keys.create.kind.pqIdentity": "Public key ML-KEM-1024 + ML-DSA-87",
   "keys.create.experimentalNote": "experimental · not independently audited",
 
   "encrypt.toast.autoCleared": "Plaintext and transient results were cleared",
@@ -628,8 +617,7 @@ const en = {
     "Settings could not be loaded. Default values will be used.",
   "hooks.keys.loadFailed":
     "Keys could not be loaded. Check local storage.",
-  "hooks.pqRecords.loadFailed":
-    "Post-quantum identities and public keys could not be loaded.",
+  "hooks.pqRecords.loadFailed": "Public keys could not be loaded.",
 } as const
 
 export type MessageKey = keyof typeof en
@@ -874,19 +862,17 @@ const ja = {
   "keyDetail.rename.label": "鍵の名前",
   "keyDetail.rename.submit": "改名",
   "keyDetail.rename.saved": "鍵を改名しました",
-  "keyDetail.qr.bundleTitle": "{name} 公開鍵セット",
-  "keyDetail.qr.kemTitle": "{name} 暗号化用公開鍵",
-  "keyDetail.qr.signingTitle": "{name} 署名検証用公開鍵",
   "keyDetail.qr.outputName": "{title}-{date}",
-  "keyDetail.toast.rotated": "IDをローテーションしました",
+  "keyDetail.toast.rotated": "公開鍵をローテーションしました",
   "keyDetail.toast.symmetricRotated": "共有鍵をローテーションしました",
-  "keyDetail.toast.revoked": "この端末でIDを失効しました",
+  "keyDetail.toast.revoked": "この端末で公開鍵を失効しました",
   "keyDetail.toast.symmetricDeleted": "共有鍵を削除しました",
-  "keyDetail.toast.identityDeleted": "ポスト量子IDを削除しました",
+  "keyDetail.toast.identityDeleted": "公開鍵を削除しました",
   "keyDetail.toast.supersededDestroyed": "旧世代の鍵素材を破棄しました",
   "keyDetail.toast.copied":
     "コピーしました。クリップボード同期に注意してください。",
   "keyDetail.symmetricQr.title": "共有鍵QR",
+  "keyDetail.identityQr.title": "{name} 公開鍵",
   "keyDetail.identityQr.desc":
     "すべてOCF2フレーム・誤り訂正Qで表示します。",
   "keyDetail.symmetricQr.desc":
@@ -898,7 +884,7 @@ const ja = {
   "keyDetail.delete.titleNamed": "「{name}」を削除しますか?",
   "keyDetail.delete.titleGeneric": "鍵を削除しますか?",
   "keyDetail.delete.body.identity":
-    "このID宛の暗号文は復号できなくなります。失効と異なり元に戻せません。",
+    "この公開鍵宛の暗号文は復号できなくなります。失効と異なり元に戻せません。",
   "keyDetail.delete.body.symmetric":
     "この鍵で暗号化した暗号文は復号できなくなります。元に戻せません。",
   "keyDetail.delete.confirm": "削除する",
@@ -913,13 +899,11 @@ const ja = {
   "keyDetail.identity.activeNote": "暗号化・署名に使用可能",
   "keyDetail.identity.kemFingerprintLabel": "暗号化用公開鍵 {algorithm}",
   "keyDetail.identity.signingFingerprintLabel": "署名検証用公開鍵 {algorithm}",
-  "keyDetail.button.bundleQr": "公開鍵セットQR",
-  "keyDetail.button.kemQr": "暗号化用単鍵QR",
-  "keyDetail.button.signingQr": "署名検証用単鍵QR",
+  "keyDetail.button.showPublicKeyQr": "公開鍵QRを表示",
   "keyDetail.button.rotate": "ローテーション",
   "keyDetail.button.revoke": "この端末で失効",
   "keyDetail.revokeNote":
-    "失効はこの識別子での署名と、現在の宛先としての公開をこの端末で止めるもので、外部の相手には伝播しません。この識別子での復号は止まりません。鍵素材を手放すには削除を使ってください。",
+    "失効はこの公開鍵での署名と、現在の宛先としての公開をこの端末で止めるもので、外部の相手には伝播しません。この公開鍵での復号は止まりません。鍵素材を手放すには削除を使ってください。",
   "keyDetail.previous.toggle": "旧世代 {count} 件、復号専用",
   "keyDetail.previous.destroyAll": "旧世代 {count} 件の鍵素材を破棄",
   "keyDetail.symmetric.fingerprintLabel": "鍵指紋",
@@ -931,16 +915,16 @@ const ja = {
 
   "keyList.action.create": "鍵を作成",
   "keyList.action.import": "鍵QRを読み取る",
-  "keyList.error.identity": "ポスト量子IDを読み込めません",
+  "keyList.error.identity": "公開鍵を読み込めません",
   "keyList.error.symmetric": "共有鍵を読み込めません",
   "keyList.error.peer": "相手の鍵を更新できません",
   "keyList.tab.own": "自分の鍵",
   "keyList.tab.peer": "相手の鍵",
   "keyList.filter.label": "種別",
   "keyList.filter.all": "すべて",
-  "keyList.filter.pqIdentity": "ポスト量子ID",
+  "keyList.filter.pqIdentity": "公開鍵",
   "keyList.filter.symmetric": "共有鍵",
-  "keyList.item.identityMeta": "ポスト量子ID · {datetime}",
+  "keyList.item.identityMeta": "公開鍵 · {datetime}",
   "keyList.item.supersededWarning": "旧世代 {count} 件が復号可能",
   "keyList.item.symmetricMeta": "共有鍵 · {datetime}",
   "keyList.empty.ownAll": "自分の鍵がありません。",
@@ -970,9 +954,9 @@ const ja = {
   "keyList.toast.bundleConfirmed": "指紋を確認しました",
 
   "keys.validation.keyNameFallback": "鍵名を確認してください。",
-  "keys.validation.idNameFallback": "ID名を確認してください。",
+  "keys.validation.idNameFallback": "公開鍵名を確認してください。",
   "keys.toast.symmetricCreated": "共有鍵を作成しました",
-  "keys.toast.identityCreated": "ポスト量子IDを作成しました",
+  "keys.toast.identityCreated": "公開鍵を作成しました",
   "keys.toast.symmetricImported": "共有鍵を取り込みました",
   "keys.toast.bundleConfirmed": "指紋確認済みで保存しました",
   "keys.toast.bundleUnverified": "未確認のまま保存しました",
@@ -982,14 +966,8 @@ const ja = {
   "keys.import.cameraTitle": "カメラで読み取る",
   "keys.import.scanTrigger": "鍵QRを読み取る",
   "keys.import.payloadLabel": "鍵ペイロード",
-  "keys.import.payloadPlaceholder": "OCK2: / OCP2: / OCS2: / OCI2: を貼り付け",
+  "keys.import.payloadPlaceholder": "OCK2: / OCI2: を貼り付け",
   "keys.import.readButton": "鍵を読み取る",
-  "keys.singleKey.title": "単鍵を読み取りました",
-  "keys.singleKey.kemLabel": "暗号化用公開鍵",
-  "keys.singleKey.signingLabel": "署名検証用公開鍵",
-  "keys.singleKey.fingerprintLabel": "単鍵指紋",
-  "keys.singleKey.persistHint":
-    "人物との対応を確認して永続利用するには、OCI2公開鍵セットを取り込んでください。",
   "keys.bundle.dialogTitle": "別経路で指紋を比較してください",
   "keys.bundle.dialogDesc":
     "取込を完了する前に、相手と通話・対面など別経路で full hex を照合します。自己署名だけでは人物を証明しません。未確認のまま保存した識別子は暗号化の宛先に選べませんが、保存済み鍵の画面から後で指紋を確認できます。",
@@ -1009,13 +987,12 @@ const ja = {
   "keys.symmetricImport.saveButton": "共有鍵を保存",
   "keys.demo.hint":
     "相手の画面の輝度を上げてもらい、カメラを15〜20cmほど離してピントが合うまで静止すると読み取りやすくなります。",
-  "keys.create.nameLabel.pq": "ポスト量子ID名",
+  "keys.create.nameLabel.pq": "公開鍵名",
   "keys.create.nameLabel.symmetric": "共有鍵名",
-  "keys.create.button.pq": "ポスト量子IDを作成",
+  "keys.create.button.pq": "公開鍵を作成",
   "keys.create.button.symmetric": "共有鍵を作成",
   "keys.create.kindLabel": "鍵の種類",
-  "keys.create.kind.pqIdentity":
-    "ポスト量子ID ML-KEM-1024 + ML-DSA-87",
+  "keys.create.kind.pqIdentity": "公開鍵 ML-KEM-1024 + ML-DSA-87",
   "keys.create.experimentalNote": "experimental・未独立監査",
 
   "encrypt.toast.autoCleared": "平文と一時結果を自動消去しました",
@@ -1265,8 +1242,7 @@ const ja = {
     "設定を読み込めませんでした。既定値を使用します。",
   "hooks.keys.loadFailed":
     "鍵を読み込めませんでした。保存領域を確認してください。",
-  "hooks.pqRecords.loadFailed":
-    "ポスト量子IDと公開鍵を読み込めませんでした。",
+  "hooks.pqRecords.loadFailed": "公開鍵を読み込めませんでした。",
 } as const satisfies MessageCatalog
 
 export const messages: Readonly<Record<Language, MessageCatalog>> = { en, ja }

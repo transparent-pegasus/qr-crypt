@@ -271,8 +271,6 @@ export const V2_ARTIFACT_TYPES = [
   "sym-message",
   "symmetric-key",
   "pq-public-identity",
-  "pq-kem-public-key",
-  "pq-dsa-public-key",
   "encrypted-seed-backup",
 ] as const
 export type V2ArtifactType = (typeof V2_ARTIFACT_TYPES)[number]
@@ -290,32 +288,6 @@ export interface QrFrameV2 {
   frameCount: number // 1..PROTOCOL_MAX_FRAMES(128)
   totalByteLength: number // Total raw artifact-CBOR byte length.
   chunk: Uint8Array // Slice of raw artifact-CBOR bytes; double base64url is prohibited (§D1).
-}
-
-// ---------------------------------------------------------------------------
-// v2 single public-key envelopes (OCP2/OCS2); see docs/spec/qr-protocol-v2.md §1 and §7.1.
-// ---------------------------------------------------------------------------
-
-export interface KemPublicKeyEnvelopeV2 {
-  version: 2
-  type: "pq-kem-public-key"
-  identityId: string
-  name?: string
-  algorithm: MlKemAlgorithm
-  keyId: string
-  publicKey: Uint8Array
-  createdAt: number
-}
-
-export interface DsaPublicKeyEnvelopeV2 {
-  version: 2
-  type: "pq-dsa-public-key"
-  identityId: string
-  name?: string
-  algorithm: MlDsaAlgorithm
-  keyId: string
-  publicKey: Uint8Array
-  createdAt: number
 }
 
 // ---------------------------------------------------------------------------
