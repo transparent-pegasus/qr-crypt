@@ -264,7 +264,7 @@ export function EncryptPage() {
       const now = Date.now()
       let request: EncryptMessageRequest | null = null
       if (algorithm === "A256GCM" && selectedKey?.symmetricKey) {
-        request = { kind: "sym", record: selectedKey, plaintext: plaintextBytes, now }
+        request = { kind: "sym", keyId: selectedKey.id, plaintext: plaintextBytes, now }
       } else if (selectedRecipient) {
         if (selectedSender === undefined) throw new AppError("KEY_NOT_FOUND")
         request = {

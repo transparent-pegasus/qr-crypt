@@ -18,15 +18,14 @@ import type {
   MlKemMessageEnvelopeV2,
   PostQuantumIdentity,
   PqPublicBundleRecord,
-  StoredKeyRecord,
   SymMessageEnvelopeV2,
 } from "@/schemas/domain"
-import { markKeyUsed } from "@/storage/key-repository"
+import { getActiveKeyRecord, markKeyUsed } from "@/storage/key-repository"
 import { markBundleUsed } from "@/storage/pq-bundle-repository"
 import { markIdentityUsed } from "@/storage/pq-identity-repository"
 
 export type EncryptMessageRequest =
-  | { kind: "sym"; record: StoredKeyRecord; plaintext: Uint8Array; now: number }
+  | { kind: "sym"; keyId: string; plaintext: Uint8Array; now: number }
   | {
       kind: "pq"
       client: PqCryptoClient
@@ -69,6 +68,14 @@ export type EncryptedMessage =
  * result cannot skip it. Both branches share one boundary for the same reason — the
  * cipher differs, the policy around it must not drift apart.
  *
+ * The symmetric key is re-resolved from storage at action time, and it must be the
+ * active head: a caller's cached list only gates its button, and a key rotated or
+ * deleted in another tab must not still encrypt from a stale in-memory object. A rotated
+ * id is not followed to its successor — that would silently encrypt to a key the
+ * operator did not choose — so it fails and the operator re-selects. A lifecycle write
+ * landing between this lookup and the cipher call is the residual race recorded in
+ * docs/security/threat-model.md T14.
+ *
  * Rejects with an AppError; nothing partial is returned. `QR_TOO_LARGE` means the
  * artifact cannot be carried by any admissible frame size, which is a property of the
  * ciphertext, not of the display.
@@ -77,8 +84,10 @@ export async function encryptMessage(
   request: EncryptMessageRequest,
 ): Promise<EncryptedMessage> {
   if (request.kind === "sym") {
+    const record = await getActiveKeyRecord(request.keyId)
+    if (record === undefined) throw new AppError("KEY_NOT_FOUND")
     const envelope = await sealSymMessage({
-      record: request.record,
+      record,
       plaintext: request.plaintext,
       now: request.now,
     })
@@ -90,7 +99,7 @@ export async function encryptMessage(
       throw new AppError("QR_TOO_LARGE")
     }
     const sha256 = await sha256Hex(artifactBytes)
-    await markKeyUsed(request.record.id, request.now).catch(() => undefined)
+    await markKeyUsed(record.id, request.now).catch(() => undefined)
     return {
       kind: "sym",
       payload: buildV2Payload("sym-message", artifactBytes),

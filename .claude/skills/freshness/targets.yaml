@@ -265,8 +265,10 @@ units:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
       - scripts/serve-dist.mjs # header-aware server behind the executable CSP claims
-      - scripts/csp-from-headers.mjs # derives the meta CSP injected into index.html
+      - scripts/csp-from-headers.mjs # derives the meta CSP injected into index.html, and the runtime deployment policy mirrored into __DEPLOYMENT_HEADER_POLICY__
       - scripts/csp-from-headers.d.mts # declaration companion for the above
+      - src/lib/deployment-headers.ts # runtime gate comparing the sentinel response against that mirrored policy
+      - tests/unit/deployment-headers.test.ts # executable contract for the per-field verdict
       - tests/e2e/security.spec.ts # executable half of the CSP claims
       - tests/e2e/online-relay.spec.ts # relay request/persistence leakage matrix and byte-oracle self-test
       - tests/e2e/persistence-inspector.ts # recursive byte-aware IndexedDB/CacheStorage oracle

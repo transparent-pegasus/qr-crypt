@@ -6,7 +6,10 @@ import react from "@vitejs/plugin-react"
 import { defineConfig, type Plugin } from "vite"
 import { VitePWA } from "vite-plugin-pwa"
 import { buildAboutLocales, renderAboutLocales } from "./scripts/build-about-locales.mjs"
-import { metaCspFromHeaders } from "./scripts/csp-from-headers.mjs"
+import {
+  deploymentPolicyFromHeaders,
+  metaCspFromHeaders,
+} from "./scripts/csp-from-headers.mjs"
 
 const pkg = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
@@ -147,6 +150,13 @@ export default defineConfig(() => {
     resolve: {
       alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
     },
-    define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version),
+      __DEPLOYMENT_HEADER_POLICY__: JSON.stringify(
+        deploymentPolicyFromHeaders(
+          readFileSync(new URL("./public/_headers", import.meta.url), "utf8"),
+        ),
+      ),
+    },
   }
 })

@@ -6,6 +6,7 @@ import {
   loadOnlineGate,
   mainNavigation,
   rawStoreCount,
+  setDeviceOffline,
   switchToOfflineApp,
 } from "./helpers"
 
@@ -54,14 +55,10 @@ async function controlPageSentinel(page: Page, control: SentinelControl): Promis
         probe !== undefined &&
         new URL(href, location.href).pathname === "/reachability-sentinel.txt"
       ) {
+        // Forward to the real server when reachable so deployment-header
+        // evaluation sees the same response the boot gate checks in production.
         if (!(await probe())) throw new TypeError("Failed to fetch")
-        return new Response("QR-CRYPT-REACHABLE", {
-          status: 200,
-          headers: {
-            "content-type": "text/plain; charset=utf-8",
-            "cache-control": "no-store",
-          },
-        })
+        return nativeFetch(input, init)
       }
       return nativeFetch(input, init)
     }
@@ -87,6 +84,72 @@ async function databaseDeleteCalls(page: Page): Promise<string[]> {
         sessionStorage.getItem("__qr_crypt_e2e_delete_database_calls") ?? "[]",
       ) as string[],
   )
+}
+
+/**
+ * Wipe deletes IndexedDB, including the persisted deployment verdict. Offline
+ * reload after wipe then refuses offline-confirmed (absent verdict). Re-seed a
+ * passing verdict so the post-wipe offline ack path can exercise the shell
+ * without editing product code.
+ */
+async function seedPassingDeploymentVerdict(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const DB_NAME = "qr-crypt"
+    const DB_VERSION = 4
+    const STORE_APP_METADATA = "appMetadata"
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION)
+      request.onupgradeneeded = () => {
+        const database = request.result
+        if (!database.objectStoreNames.contains("keys")) {
+          const keys = database.createObjectStore("keys", { keyPath: "id" })
+          keys.createIndex("by-fingerprint", "fingerprint", { unique: true })
+          keys.createIndex("by-createdAt", "createdAt")
+        }
+        if (!database.objectStoreNames.contains("preferences")) {
+          database.createObjectStore("preferences", { keyPath: "key" })
+        }
+        if (!database.objectStoreNames.contains(STORE_APP_METADATA)) {
+          database.createObjectStore(STORE_APP_METADATA, { keyPath: "key" })
+        }
+        if (!database.objectStoreNames.contains("pqIdentities")) {
+          const identities = database.createObjectStore("pqIdentities", {
+            keyPath: "id",
+          })
+          identities.createIndex("by-createdAt", "createdAt")
+          identities.createIndex("by-kemKeyId", "kem.keyId", { unique: true })
+          identities.createIndex("by-signingKeyId", "signing.keyId", {
+            unique: true,
+          })
+        }
+        if (!database.objectStoreNames.contains("pqPublicBundles")) {
+          const bundles = database.createObjectStore("pqPublicBundles", {
+            keyPath: "recordId",
+          })
+          bundles.createIndex("by-identityId", "identityId")
+          bundles.createIndex("by-signingKeyId", "signing.keyId", {
+            unique: true,
+          })
+          bundles.createIndex("by-kemKeyId", "kem.keyId", { unique: true })
+        }
+      }
+      request.onerror = () => reject(request.error ?? new Error("idb open failed"))
+      request.onsuccess = () => {
+        const database = request.result
+        const transaction = database.transaction(STORE_APP_METADATA, "readwrite")
+        transaction.objectStore(STORE_APP_METADATA).put({
+          key: "deployment-verdict",
+          value: { status: "pass", failedFields: [], checkedAt: Date.now() },
+        })
+        transaction.oncomplete = () => {
+          database.close()
+          resolve()
+        }
+        transaction.onerror = () =>
+          reject(transaction.error ?? new Error("idb write failed"))
+      }
+    })
+  })
 }
 
 test("the install path stays on installation without resetting when the sentinel succeeds but no data exists", async ({
@@ -123,7 +186,7 @@ test("returning online to a reachable sentinel after key creation resets data an
   expect(await rawStoreCount(page, "keys")).toBe(1)
 
   sentinel.reachable = true
-  await context.setOffline(false)
+  await setDeviceOffline(context, false)
   const wipedHeading = page.getByRole("heading", {
     name: "Local data was reset after an online connection was detected",
   })
@@ -132,7 +195,7 @@ test("returning online to a reachable sentinel after key creation resets data an
   await expect(mainNavigation(page)).toBeHidden()
 
   sentinel.reachable = false
-  await context.setOffline(true)
+  await setDeviceOffline(context, true)
   const shell = page.getByRole("main", {
     name: "Confirm before continuing",
   })
@@ -143,6 +206,8 @@ test("returning online to a reachable sentinel after key creation resets data an
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("oc-offline-ack-pending")))
     .toBe("1")
+
+  await seedPassingDeploymentVerdict(page)
 
   // A manual reload without acknowledgement must not bypass the shell.
   await page.reload({ waitUntil: "domcontentloaded" })
@@ -182,7 +247,9 @@ test("preserves pending when a two-tab reset broadcast races a peer online-marke
   test.setTimeout(120_000)
   const peer = await context.newPage()
   const senderSentinel: SentinelControl = { reachable: true, hits: 0 }
-  const peerSentinel: SentinelControl = { reachable: false, hits: 0 }
+  // Peer must probe as reachable on the initial online load; a failed sentinel
+  // with navigator.onLine true latches NETWORK_SUSPECTED under the boot gate.
+  const peerSentinel: SentinelControl = { reachable: true, hits: 0 }
   try {
     await peer.addInitScript(() => {
       const nativeSetItem = Storage.prototype.setItem
@@ -194,12 +261,18 @@ test("preserves pending when a two-tab reset broadcast races a peer online-marke
         nativeSetItem.call(this, key, value)
       }
     })
+    // Sender uses the context-level route (real server headers). Peer keeps a
+    // page-level shim so its reachability can diverge inside one context.
     await Promise.all([
-      controlPageSentinel(page, senderSentinel),
+      routeSentinelThroughNetwork(context, senderSentinel),
       controlPageSentinel(peer, peerSentinel),
     ])
     await Promise.all([loadOnlineGate(page, "/keys"), loadOnlineGate(peer)])
 
+    // Peer stays unreachable after the online load so only the sender's
+    // sentinel can confirm the return-online wipe; the peer observes the
+    // broadcast and races the pending-marker write.
+    peerSentinel.reachable = false
     senderSentinel.reachable = false
     await switchToOfflineApp(page, context)
     await expect(
@@ -221,7 +294,27 @@ test("preserves pending when a two-tab reset broadcast races a peer online-marke
     })
 
     senderSentinel.reachable = true
+    // Bring the context online, but keep the peer's navigator.onLine false: its
+    // sentinel stays unreachable by design, and a failed probe with an online
+    // hint would latch NETWORK_SUSPECTED and quarantine the sender via broadcast.
     await context.setOffline(false)
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, "onLine", {
+        configurable: true,
+        get() {
+          return true
+        },
+      })
+    })
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "onLine", {
+        configurable: true,
+        get() {
+          return true
+        },
+      })
+      window.dispatchEvent(new Event("online"))
+    })
     await expect(
       page.getByRole("heading", {
         name: "Local data was reset after an online connection was detected",

@@ -1,13 +1,22 @@
+import { readFileSync } from "node:fs"
 import { fileURLToPath, URL } from "node:url"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vitest/config"
+import { deploymentPolicyFromHeaders } from "./scripts/csp-from-headers.mjs"
 
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
-  define: { __APP_VERSION__: JSON.stringify("test") },
+  define: {
+    __APP_VERSION__: JSON.stringify("test"),
+    __DEPLOYMENT_HEADER_POLICY__: JSON.stringify(
+      deploymentPolicyFromHeaders(
+        readFileSync(new URL("./public/_headers", import.meta.url), "utf8"),
+      ),
+    ),
+  },
   test: {
     projects: [
       {
@@ -34,7 +43,7 @@ export default defineConfig({
           name: "ui",
           environment: "jsdom",
           include: ["tests/ui/**/*.test.tsx"],
-          setupFiles: ["tests/setup/jsdom.ts"],
+          setupFiles: ["tests/setup/jsdom.ts", "tests/helpers/boot-fixtures.ts"],
         },
       },
     ],

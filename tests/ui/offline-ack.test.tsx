@@ -25,6 +25,7 @@ import {
   renderApp,
   resetUi,
 } from "./helpers/render-app"
+import { resetDatabaseAccessBarrierForTesting } from "@/storage/database"
 
 const ACK_TITLE = "Confirm before continuing"
 const JA_ACK_TITLE = "続行前の確認"
@@ -84,6 +85,7 @@ describe("offline acknowledgement shell", () => {
 
   afterEach(() => {
     resetDefaultBootControllerForTesting()
+    resetDatabaseAccessBarrierForTesting()
     resetUi()
     setVisibility("visible")
     document.documentElement.style.removeProperty("zoom")
@@ -443,6 +445,7 @@ describe("offline acknowledgement shell", () => {
       consumeMaintenanceToken,
       fetchImpl: sentinelFetch,
       performWipe,
+      readConnectivityHint: () => "offline",
       readDecision,
     })
 
@@ -486,7 +489,8 @@ describe("offline acknowledgement shell", () => {
     resetUi({ clearStorage: false })
     setTestOnlineStatus(false)
     const pendingController = createBootController({
-      fetchImpl: vi.fn(async () => response("offline", 503)),
+      fetchImpl: vi.fn(async () => response("not-the-sentinel")),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: pendingController })
@@ -503,7 +507,8 @@ describe("offline acknowledgement shell", () => {
     pendingController.stop()
     resetUi({ clearStorage: false })
     const coldController = createBootController({
-      fetchImpl: vi.fn(async () => response("offline", 503)),
+      fetchImpl: vi.fn(async () => response("not-the-sentinel")),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: coldController })
@@ -525,7 +530,8 @@ describe("offline acknowledgement shell", () => {
         createMemoryRouter([{ path: "*", element: <p>mounted child</p> }]),
       )
       const controller = createBootController({
-        fetchImpl: vi.fn(async () => response("offline", 503)),
+        fetchImpl: vi.fn(async () => response("not-the-sentinel")),
+      readConnectivityHint: () => "offline",
         readDecision: async () => decision(),
       })
 
@@ -547,7 +553,8 @@ describe("offline acknowledgement shell", () => {
       createMemoryRouter([{ path: "*", element: <p>unexpected child</p> }]),
     )
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("offline", 503)),
+      fetchImpl: vi.fn(async () => response("not-the-sentinel")),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
 
@@ -561,7 +568,8 @@ describe("offline acknowledgement shell", () => {
     controller.stop()
     resetUi({ clearStorage: false })
     const nextController = createBootController({
-      fetchImpl: vi.fn(async () => response("offline", 503)),
+      fetchImpl: vi.fn(async () => response("not-the-sentinel")),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", {
@@ -584,6 +592,7 @@ describe("offline acknowledgement shell", () => {
     setTestOnlineStatus(true)
     const controller = createBootController({
       fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: controller })
@@ -597,7 +606,8 @@ describe("offline acknowledgement shell", () => {
     controller.stop()
     resetUi({ clearStorage: false })
     const nextController = createBootController({
-      fetchImpl: vi.fn(async () => response("offline", 503)),
+      fetchImpl: vi.fn(async () => response("not-the-sentinel")),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: nextController })
@@ -616,7 +626,8 @@ describe("offline acknowledgement shell", () => {
         throw new DOMException("denied", "SecurityError")
       })
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("offline", 503)),
+      fetchImpl: vi.fn(async () => response("not-the-sentinel")),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: controller })
@@ -630,7 +641,8 @@ describe("offline acknowledgement shell", () => {
     controller.stop()
     resetUi({ clearStorage: false })
     const nextController = createBootController({
-      fetchImpl: vi.fn(async () => response("offline", 503)),
+      fetchImpl: vi.fn(async () => response("not-the-sentinel")),
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: nextController })

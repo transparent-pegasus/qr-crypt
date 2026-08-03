@@ -223,6 +223,71 @@ const DEFAULT_BROADCAST_LISTENER_DEPENDENCIES: WipeBroadcastListenerDependencies
   engageBarrier,
 }
 
+export const QUARANTINE_REQUEST_TYPE = "qr-crypt-quarantine-request"
+
+interface QuarantineRequestMessage {
+  type: typeof QUARANTINE_REQUEST_TYPE
+  version: 1
+}
+
+/**
+ * The non-destructive half of the wipe sequence: fail closed, drop every
+ * in-memory secret holder, and stop. It must not delete, write, or read any
+ * persisted record — the app is being locked because connectivity could not be
+ * proven absent, not because the data is condemned.
+ */
+export async function quarantine(): Promise<void> {
+  engageBarrier()
+  try {
+    disposeCrypto()
+  } catch {
+    // Continue clearing the other secret holders.
+  }
+  await dropVaultKeyCacheAndReceipts()
+}
+
+export function broadcastQuarantineRequest(): void {
+  if (typeof BroadcastChannel !== "function") return
+  const channel = new BroadcastChannel(WIPE_BROADCAST_CHANNEL)
+  try {
+    channel.postMessage({
+      type: QUARANTINE_REQUEST_TYPE,
+      version: 1,
+    } satisfies QuarantineRequestMessage)
+  } finally {
+    queueMicrotask(() => channel.close())
+  }
+}
+
+function isQuarantineRequest(value: unknown): value is QuarantineRequestMessage {
+  if (typeof value !== "object" || value === null) return false
+  const message = value as Partial<QuarantineRequestMessage>
+  return message.type === QUARANTINE_REQUEST_TYPE && message.version === 1
+}
+
+/**
+ * Receivers do not re-evaluate the condition. A forged message costs
+ * availability only, which is the same trade the lock itself makes.
+ */
+export function installQuarantineBroadcastListener(options: {
+  onQuarantine: () => void
+}): () => void {
+  if (typeof BroadcastChannel !== "function") return () => undefined
+  const channel = new BroadcastChannel(WIPE_BROADCAST_CHANNEL)
+  const handleMessage = (event: MessageEvent<unknown>) => {
+    if (!isQuarantineRequest(event.data)) return
+    // Notify only. The controller's enterBlocked performs the single
+    // quarantine for this realm; quarantining here too would run it twice and
+    // re-broadcast.
+    options.onQuarantine()
+  }
+  channel.addEventListener("message", handleMessage)
+  return () => {
+    channel.removeEventListener("message", handleMessage)
+    channel.close()
+  }
+}
+
 /** Installs the peer side of step 4: fail closed, clear secrets, then close DB. */
 export function installWipeBroadcastListener(
   options: WipeBroadcastListenerOptions,

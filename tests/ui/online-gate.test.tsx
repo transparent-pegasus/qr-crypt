@@ -11,6 +11,7 @@ import {
 } from "./helpers/render-app"
 import { createBootController } from "@/app/boot/boot-controller"
 import { translate } from "@/i18n/messages"
+import { decision, response } from "../helpers/boot-fixtures"
 
 describe("OnlineGate", () => {
   beforeEach(resetUi)
@@ -210,18 +211,8 @@ describe("OnlineGate", () => {
     setTestOnlineStatus(true)
     const user = userEvent.setup()
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => ({
-        status: 200,
-        text: vi.fn(async () => "QR-CRYPT-REACHABLE"),
-      })) as unknown as typeof fetch,
-      readDecision: async () => ({
-        wipeOnOnline: true,
-        sensitiveDataExists: false,
-        cleanOrigin: "confirmed-clean",
-        maintenanceTokenArmed: false,
-        resetChurnMb: 0,
-        preferencesReadFailed: false,
-      }),
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      readDecision: async () => decision(),
     })
     await renderApp("/encrypt", { bootController: controller })
 

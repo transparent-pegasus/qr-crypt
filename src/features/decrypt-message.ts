@@ -16,10 +16,9 @@ import { payloadSha256Hex } from "@/qr/payload"
 import type {
   MlKemMessageEnvelopeV2,
   PqPublicBundleRecord,
-  StoredKeyRecord,
   SymMessageEnvelopeV2,
 } from "@/schemas/domain"
-import { markKeyUsed } from "@/storage/key-repository"
+import { getKeyRecord, markKeyUsed } from "@/storage/key-repository"
 import { findBundleBySigningKeyId } from "@/storage/pq-bundle-repository"
 import {
   findIdentityByKemKeyId,
@@ -30,7 +29,6 @@ export type DecryptMessageRequest =
   | {
       kind: "sym-message"
       envelope: SymMessageEnvelopeV2
-      record: StoredKeyRecord
     }
   | {
       kind: "pq-message"
@@ -57,10 +55,13 @@ export type DecryptedMessage =
  * Everything that decides whether a plaintext is allowed on screen lives inside this
  * boundary, so no surface can display a result without it:
  *
- * - The recipient identity is re-resolved from storage at action time. A caller's cached
- *   list only gates its button; a generation discarded elsewhere must not decrypt from a
- *   stale in-memory object. A delete landing between this lookup and the worker call is a
- *   residual race, recorded in docs/security/threat-model.md T14.
+ * - The recipient is re-resolved from storage at action time, on both branches, from the
+ *   key id the envelope itself carries. A caller's cached list only gates its button; a
+ *   key or generation deleted elsewhere must not decrypt from a stale in-memory object.
+ *   Any generation may decrypt a symmetric message — rotated records stay usable by
+ *   design — so that lookup is getKeyRecord, not getActiveKeyRecord. A delete landing
+ *   between this lookup and the cipher call is a residual race, recorded in
+ *   docs/security/threat-model.md T14.
  * - A replayed message id rejects rather than returns. Refused plaintext is necessarily
  *   constructed — the message id is inside the ciphertext — but never returned.
  * - Plaintext bytes are zeroized in `finally`, so they do not outlive the call on any
@@ -70,8 +71,10 @@ export async function decryptMessage(
   request: DecryptMessageRequest,
 ): Promise<DecryptedMessage> {
   if (request.kind === "sym-message") {
+    const record = await getKeyRecord(request.envelope.keyId)
+    if (record === undefined) throw new AppError("KEY_NOT_FOUND")
     const decryptedBytes = await openSymMessage({
-      record: request.record,
+      record,
       envelope: request.envelope,
     })
     try {
@@ -84,7 +87,7 @@ export async function decryptMessage(
       const verdict = recordReceipt(
         {
           kind: "sym",
-          recipientKeyId: request.record.id,
+          recipientKeyId: record.id,
           envelopeHash,
         },
         Date.now(),
@@ -94,7 +97,7 @@ export async function decryptMessage(
       if (verdict.kind === "message-id-reused") {
         throw new AppError("MESSAGE_ID_REUSED")
       }
-      await markKeyUsed(request.record.id, Date.now()).catch(() => undefined)
+      await markKeyUsed(record.id, Date.now()).catch(() => undefined)
       return {
         kind: "aes",
         text: bytesToUtf8(decryptedBytes),

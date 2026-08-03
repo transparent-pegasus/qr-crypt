@@ -208,7 +208,6 @@ export function DecryptPage() {
           await decryptMessage({
             kind: "sym-message",
             envelope: parsed.envelope,
-            record: symmetricKey,
           }),
         )
       } else if (parsed.kind === "pq-message") {

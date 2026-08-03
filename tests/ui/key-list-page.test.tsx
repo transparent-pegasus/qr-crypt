@@ -62,9 +62,20 @@ function rowFor(text: string): HTMLButtonElement {
   return row
 }
 
-async function renderKeyList(): Promise<void> {
+/**
+ * `settle` defaults to true because the "My keys" tab renders before useKeys and
+ * usePqRecords resolve: returning at the tab leaves the list still loading, and
+ * every synchronous getByText below then races an empty list. Only a test that
+ * deliberately holds a source pending — and therefore asserts the loading state
+ * itself — passes false.
+ */
+async function renderKeyList({ settle = true } = {}): Promise<void> {
   await renderApp("/keys")
   await screen.findByRole("tab", { name: "My keys" })
+  if (!settle) return
+  await waitFor(() =>
+    expect(screen.queryByLabelText(translate("en", "common.loading"))).toBeNull(),
+  )
 }
 
 async function seedRotation(now: number): Promise<{
@@ -1150,7 +1161,7 @@ describe("key list page", () => {
           resolveIdentities = resolve
         }),
     )
-    await renderKeyList()
+    await renderKeyList({ settle: false })
     expect(screen.queryByText("You have no keys.")).toBeNull()
 
     resolveIdentities?.([])
