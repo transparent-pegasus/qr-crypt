@@ -68,7 +68,7 @@ describe("App boot gate", () => {
 
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(getPreferences).not.toHaveBeenCalled()
-    await act(async () => resolveFetch?.(response("offline", 503)))
+    await act(async () => resolveFetch?.(response("not-the-sentinel")))
 
     expect(
       await screen.findByRole("navigation", { name: "Main navigation" }),
@@ -170,7 +170,7 @@ describe("App boot gate", () => {
   it("does not expose the relay in the transient offline-confirmed plus display-online render", async () => {
     setTestOnlineStatus(true)
     const controller = createBootController({
-      fetchImpl: vi.fn(async () => response("offline", 503)),
+      fetchImpl: vi.fn(async () => response("not-the-sentinel")),
       readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })

@@ -6,6 +6,7 @@ import {
   wipeOnOnline,
 } from "@/app/boot/wipe-coordinator"
 import {
+  DEPLOYMENT_VERDICT_METADATA_KEY,
   REACHABILITY_SENTINEL_BODY,
   REACHABILITY_SENTINEL_PATH,
   type BlockedReason,
@@ -13,6 +14,10 @@ import {
   type ConnectivityHint,
   type WipeDecisionInput,
 } from "@/app/boot/boot-contract"
+import {
+  evaluateDeploymentHeaders,
+  type DeploymentVerdict,
+} from "@/lib/deployment-headers"
 import {
   isBootReadableFrameBytes,
   isBootReadableFrameIntervalMs,
@@ -77,11 +82,19 @@ interface MaintenanceToken {
 export interface BootDecisionSnapshot extends WipeDecisionInput {
   resetChurnMb: number
   preferencesReadFailed: boolean
+  /** Absent or malformed rows are treated as no pass — D8 refuses offline. */
+  deploymentVerdict?: DeploymentVerdict
+}
+
+export interface SentinelProbeResult {
+  confirmed: boolean
+  verdict: DeploymentVerdict | undefined
 }
 
 export interface SentinelProbeOptions {
   fetchImpl?: typeof fetch
   nonce?: string
+  now?: () => number
   signal?: AbortSignal
   timeoutMs?: number
 }
@@ -173,9 +186,9 @@ function abortError(): DOMException {
  */
 export async function probeNetworkSentinel(
   options: SentinelProbeOptions = {},
-): Promise<boolean> {
+): Promise<SentinelProbeResult> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
-  if (typeof fetchImpl !== "function") return false
+  if (typeof fetchImpl !== "function") return { confirmed: false, verdict: undefined }
 
   const timeoutMs = Math.max(0, options.timeoutMs ?? BOOT_PROBE_TIMEOUT_MS)
   const controller = new AbortController()
@@ -186,25 +199,31 @@ export async function probeNetworkSentinel(
   const abort = () => controller.abort()
   const rejectAbort = () => rejectOnAbort?.(abortError())
 
-  if (options.signal?.aborted) return false
+  if (options.signal?.aborted) return { confirmed: false, verdict: undefined }
   options.signal?.addEventListener("abort", abort, { once: true })
   controller.signal.addEventListener("abort", rejectAbort, { once: true })
   const timeoutId = setTimeout(abort, timeoutMs)
 
   try {
     const nonce = options.nonce ?? probeNonce()
+    const url = `${REACHABILITY_SENTINEL_PATH}?n=${encodeURIComponent(nonce)}`
     const response = await Promise.race([
-      fetchImpl(`${REACHABILITY_SENTINEL_PATH}?n=${encodeURIComponent(nonce)}`, {
+      fetchImpl(url, {
         method: "GET",
         cache: "no-store",
         signal: controller.signal,
       }),
       aborted,
     ])
-    if (response.status !== 200) return false
-    return (await Promise.race([response.text(), aborted])) === REACHABILITY_SENTINEL_BODY
+    const now = options.now ?? Date.now
+    const expectedUrl =
+      typeof location !== "undefined" ? new URL(url, location.href).href : url
+    const verdict = evaluateDeploymentHeaders(response, expectedUrl, now())
+    if (response.status !== 200) return { confirmed: false, verdict }
+    const body = await Promise.race([response.text(), aborted])
+    return { confirmed: body === REACHABILITY_SENTINEL_BODY, verdict }
   } catch {
-    return false
+    return { confirmed: false, verdict: undefined }
   } finally {
     clearTimeout(timeoutId)
     options.signal?.removeEventListener("abort", abort)
@@ -228,6 +247,22 @@ function maintenanceToken(value: unknown): MaintenanceToken | undefined {
   return typeof armedAt === "number" && Number.isFinite(armedAt) && armedAt >= 0
     ? { armedAt }
     : undefined
+}
+
+function deploymentVerdict(value: unknown): DeploymentVerdict | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  const row = value as Partial<DeploymentVerdict>
+  if (row.status !== "pass" && row.status !== "fail") return undefined
+  if (typeof row.checkedAt !== "number" || !Number.isFinite(row.checkedAt)) {
+    return undefined
+  }
+  if (!Array.isArray(row.failedFields)) return undefined
+  if (!row.failedFields.every((field) => typeof field === "string")) return undefined
+  return {
+    status: row.status,
+    failedFields: row.failedFields,
+    checkedAt: row.checkedAt,
+  }
 }
 
 function metadataValue(row: unknown): unknown {
@@ -334,6 +369,7 @@ export async function readBootDecision(
         pqIdentityCountValue,
         vaultKeyRow,
         maintenanceTokenRow,
+        deploymentVerdictRow,
         preferencesRow,
       ],
     ] = await Promise.all([
@@ -342,6 +378,7 @@ export async function readBootDecision(
         pqIdentities.count(),
         appMetadata.get(VAULT_KEY_METADATA_KEY),
         appMetadata.get(MAINTENANCE_TOKEN_METADATA_KEY),
+        appMetadata.get(DEPLOYMENT_VERDICT_METADATA_KEY),
         preferences.get(PREFERENCES_KEY),
       ]),
       transaction.done,
@@ -354,6 +391,9 @@ export async function readBootDecision(
     const cleanOrigin = sensitiveDataExists ? "dirty" : "confirmed-clean"
     const maintenanceTokenArmed =
       maintenanceToken(metadataValue(maintenanceTokenRow)) !== undefined
+    const storedDeploymentVerdict = deploymentVerdict(
+      metadataValue(deploymentVerdictRow),
+    )
 
     let wipeOnOnline = true
     let resetChurnMb = 0
@@ -391,6 +431,9 @@ export async function readBootDecision(
       maintenanceTokenArmed,
       resetChurnMb,
       preferencesReadFailed,
+      ...(storedDeploymentVerdict !== undefined
+        ? { deploymentVerdict: storedDeploymentVerdict }
+        : {}),
     }
   } catch {
     return { ...FALLBACK_DECISION }
@@ -400,6 +443,33 @@ export async function readBootDecision(
 function appMetadataTransaction(database: BootDatabase): BootTransaction {
   if (!hasStore(database, STORE_APP_METADATA)) throw new AppError("STORAGE_FAILED")
   return database.transaction(STORE_APP_METADATA, "readwrite")
+}
+
+export async function persistDeploymentVerdict(
+  verdict: DeploymentVerdict,
+): Promise<void> {
+  const database = (await getDb()) as unknown as BootDatabase
+  const transaction = appMetadataTransaction(database)
+  await transaction.store.put({
+    key: DEPLOYMENT_VERDICT_METADATA_KEY,
+    value: {
+      status: verdict.status,
+      failedFields: [...verdict.failedFields],
+      checkedAt: verdict.checkedAt,
+    },
+  } satisfies MetadataRow)
+  await transaction.done
+}
+
+export async function readDeploymentVerdict(): Promise<DeploymentVerdict | undefined> {
+  try {
+    const database = (await getDb()) as unknown as BootDatabase
+    if (!hasStore(database, STORE_APP_METADATA)) return undefined
+    const row = await database.get(STORE_APP_METADATA, DEPLOYMENT_VERDICT_METADATA_KEY)
+    return deploymentVerdict(metadataValue(row))
+  } catch {
+    return undefined
+  }
 }
 
 /** Storage API for the strongly confirmed, one-update-only offline maintenance flow. */
@@ -478,6 +548,8 @@ export function createBootController(
   let peerWipeGeneration = 0
   let relaySessionEndHandler: ((reason: RelaySessionEndReason) => void) | undefined
   let networkTransitionHandled = false
+  let episodeVerdict: DeploymentVerdict | undefined
+  let decisionVerdict: DeploymentVerdict | undefined
   let confirmationEpisode:
     | {
         generation: number
@@ -573,6 +645,11 @@ export function createBootController(
       enterBlocked("network-suspected")
       return
     }
+    const effectiveVerdict = episodeVerdict ?? decisionVerdict
+    if (effectiveVerdict?.status !== "pass") {
+      enterBlocked("deployment-unverified")
+      return
+    }
     networkTransitionHandled = false
     invalidateRelay("display-offline")
     emit({ kind: "offline-confirmed" })
@@ -639,12 +716,13 @@ export function createBootController(
     const peerWipeGenerationAtStart = peerWipeGeneration
     activeProbe?.abort()
     confirmationEpisode = undefined
+    episodeVerdict = undefined
     const controller = new AbortController()
     activeProbe = controller
     emit({ kind: "probing", generation: probeGeneration })
 
     const configuredNonce = options.nonce?.()
-    const confirmed = await probeNetworkSentinel({
+    const { confirmed, verdict } = await probeNetworkSentinel({
       ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       ...(configuredNonce !== undefined ? { nonce: configuredNonce } : {}),
       signal: controller.signal,
@@ -654,7 +732,16 @@ export function createBootController(
     })
     if (probeGeneration !== generation || controller.signal.aborted) return
     activeProbe = undefined
+    if (verdict !== undefined) {
+      episodeVerdict = verdict
+      await persistDeploymentVerdict(verdict).catch(() => undefined)
+      if (verdict.status === "fail") {
+        enterBlocked("deployment-unverified")
+        return
+      }
+    }
     if (!confirmed) {
+      decisionVerdict = (await safeDecision(readDecision)).deploymentVerdict
       publishOfflineCandidate()
       return
     }
@@ -682,6 +769,7 @@ export function createBootController(
     let wipeDecision: BootDecisionSnapshot | undefined
     await withSensitiveWritesExcluded(async (exclusive) => {
       const decision = await safeDecision(readDecision)
+      decisionVerdict = decision.deploymentVerdict
       if (decision.maintenanceTokenArmed) {
         const tokenConsumed = await consumeToken()
         if (tokenConsumed) {
@@ -747,7 +835,16 @@ export function createBootController(
       activeProbe?.abort()
       activeProbe = undefined
       generation += 1
-      publishOfflineCandidate()
+      // Hint check stays synchronous so an online/indeterminate latch does not
+      // wait on storage. Only the offline path needs the persisted verdict.
+      if (connectivityHint() !== "offline") {
+        enterBlocked("network-suspected")
+        return
+      }
+      void (async () => {
+        decisionVerdict = (await safeDecision(readDecision)).deploymentVerdict
+        publishOfflineCandidate()
+      })()
     }
   }
 

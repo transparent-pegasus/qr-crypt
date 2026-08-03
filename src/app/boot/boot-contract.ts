@@ -30,6 +30,7 @@
 export const REACHABILITY_SENTINEL_PATH = "/reachability-sentinel.txt"
 export const REACHABILITY_SENTINEL_BODY = "QR-CRYPT-REACHABLE"
 export const WIPE_BROADCAST_CHANNEL = "qr-crypt-wipe"
+export const DEPLOYMENT_VERDICT_METADATA_KEY = "deployment-verdict"
 
 export type CleanOriginProof = "confirmed-clean" | "dirty" | "indeterminate"
 export type RelayEligibility = "pending" | "eligible" | "ineligible"
