@@ -79,7 +79,7 @@ import {
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { qrNameSchema } from "@/schemas/key-schema"
-import { markKeyUsed } from "@/storage/key-repository"
+import { getActiveKeyRecord, markKeyUsed } from "@/storage/key-repository"
 import { markBundleUsed } from "@/storage/pq-bundle-repository"
 import { markIdentityUsed } from "@/storage/pq-identity-repository"
 
@@ -305,8 +305,15 @@ export function EncryptPage() {
         date: formatSuggestedDate(now),
       })
       if (algorithm === "A256GCM" && selectedKey?.symmetricKey) {
+        // The cached list only gates the button. Re-resolve from storage at action
+        // time so a key rotated or deleted in another tab cannot be used from a
+        // stale snapshot, and seal with the record storage just returned. A rotated
+        // id does not silently follow its lineage to the new head — the operator
+        // re-selects.
+        const record = await getActiveKeyRecord(selectedKey.id)
+        if (record === undefined) throw new AppError("KEY_NOT_FOUND")
         const envelope = await sealSymMessage({
-          record: selectedKey,
+          record,
           plaintext: plaintextBytes,
           now,
         })
@@ -332,7 +339,7 @@ export function EncryptPage() {
           totalBytes: artifactBytes.byteLength,
           sha256,
         })
-        await markKeyUsed(selectedKey.id, now).catch(() => undefined)
+        await markKeyUsed(record.id, now).catch(() => undefined)
       } else if (selectedRecipient) {
         const sender = selectedSender
         if (sender === undefined) throw new AppError("KEY_NOT_FOUND")

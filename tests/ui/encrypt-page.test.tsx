@@ -376,6 +376,71 @@ describe("encrypt page v2", () => {
     })
   })
 
+  it("refuses to encrypt with a key another tab deleted", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Shared-key.*AES-256-GCM/,
+    )
+    await chooseSelectOption(user, "Key", "共通鍵A")
+    await user.type(screen.getByLabelText("Plaintext"), "stale deleted key")
+
+    // Another tab deletes the key between selection and submit.
+    fakeKeys.length = 0
+
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    expect(
+      await screen.findByText(messageFor("KEY_NOT_FOUND", "en")),
+    ).toBeVisible()
+    expect(sealSymMessage).not.toHaveBeenCalled()
+  })
+
+  it("refuses to encrypt with a key another tab rotated", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Shared-key.*AES-256-GCM/,
+    )
+    await chooseSelectOption(user, "Key", "共通鍵A")
+    await user.type(screen.getByLabelText("Plaintext"), "stale rotated key")
+
+    // Another tab rotates it: the record survives but is no longer active, so
+    // the real getActiveKeyRecord fake returns undefined for it.
+    fakeKeys[0] = { ...fakeKeys[0]!, status: "rotated", rotatedAt: Date.now() }
+
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    expect(
+      await screen.findByText(messageFor("KEY_NOT_FOUND", "en")),
+    ).toBeVisible()
+    expect(sealSymMessage).not.toHaveBeenCalled()
+  })
+
+  it("seals with the re-resolved record, not the list snapshot", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /Shared-key.*AES-256-GCM/,
+    )
+    await chooseSelectOption(user, "Key", "共通鍵A")
+    await user.type(screen.getByLabelText("Plaintext"), "fresh storage record")
+
+    // Another tab renames it. Only a re-resolving page sees the new name.
+    const renamed = { ...fakeKeys[0]!, name: "renamed-elsewhere" }
+    fakeKeys[0] = renamed
+
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    await screen.findByRole("dialog", { name: "Encryption complete" })
+    expect(sealSymMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ record: renamed }),
+    )
+  })
+
   it("counts UTF-8 bytes against the sym-v2 ceiling and refuses one byte more while PQ accepts it", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
