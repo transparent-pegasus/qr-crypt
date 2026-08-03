@@ -252,13 +252,19 @@ describe("App boot gate", () => {
     controller.stop()
   })
 
-  it("shows the deployment-unverified block", async () => {
+  it.each([
+    ["deployment-unverified", "boot.deploymentUnverified.title"],
+    ["deployment-failed", "boot.deploymentFailed.title"],
+  ] as const)("shows the %s block with its own copy", async (reason, titleKey) => {
+    // The two deployment refusals must not share copy: "unverified" is the
+    // normal state of a fresh or wiped origin and must not accuse the server,
+    // while "failed" means the server really did answer with wrong headers.
     // Pin the reason through a fixed-state stub so this screen test does not
     // depend on Task 5's deployment-verdict probe path. Cache getState's return
     // so useSyncExternalStore does not loop.
     const blockedState = {
       kind: "blocked" as const,
-      reason: "deployment-unverified" as const,
+      reason,
     }
     const bootController: BootController = {
       acquire() {},
@@ -284,9 +290,7 @@ describe("App boot gate", () => {
       },
     }
     await renderApp("/encrypt", { bootController })
-    expect(
-      await screen.findByText(translate("en", "boot.deploymentUnverified.title")),
-    ).toBeVisible()
+    expect(await screen.findByText(translate("en", titleKey))).toBeVisible()
   })
 
   it("never mounts the router while blocked", async () => {

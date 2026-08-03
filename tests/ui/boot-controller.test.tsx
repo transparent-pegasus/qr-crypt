@@ -141,13 +141,14 @@ describe("destructive reachability probe", () => {
       readDecision: async () => decision(),
     })
     await controller.probe()
-    // A non-200 response is still a obtained response: evaluateDeploymentHeaders
-    // marks status as failed, so the deployment gate latches blocked instead of
-    // confirming offline. Body mismatch / fetch rejection stay offline-confirmed.
+    // A non-200 response is still an obtained response: evaluateDeploymentHeaders
+    // marks the status field failed, so the deployment gate latches blocked
+    // instead of confirming offline — and it is a checked failure, not a missing
+    // verdict. Body mismatch / fetch rejection stay offline-confirmed.
     if (name === "non-200") {
       expect(controller.getState()).toEqual({
         kind: "blocked",
-        reason: "deployment-unverified",
+        reason: "deployment-failed",
       })
       return
     }
@@ -1141,7 +1142,7 @@ describe("deployment verdict (NS-08)", () => {
     await controller.probe()
     expect(controller.getState()).toEqual({
       kind: "blocked",
-      reason: "deployment-unverified",
+      reason: "deployment-failed",
     })
   })
 
@@ -1198,7 +1199,7 @@ describe("deployment verdict (NS-08)", () => {
     // implementation, the wipe assertion is what detects an over-reaction.
     expect(controller.getState()).toEqual({
       kind: "blocked",
-      reason: "deployment-unverified",
+      reason: "deployment-failed",
     })
     expect(performWipe).not.toHaveBeenCalled()
   })

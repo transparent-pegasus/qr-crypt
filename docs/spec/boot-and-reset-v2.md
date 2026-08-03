@@ -41,7 +41,8 @@ unknown → probing → offline-confirmed
                           has completed)
 offline-confirmed -- display online re-commit --> probing (at most once)
 
-any non-terminal state → blocked(network-suspected | deployment-unverified)
+any non-terminal state → blocked(network-suspected
+                              | deployment-failed | deployment-unverified)
 blocked → (nothing; reload only)
 ```
 
@@ -72,7 +73,12 @@ The gate publishes `offline-confirmed` only when both hold:
 2. the deployment verdict for this episode, or failing that the persisted one,
    is `pass`. An absent verdict refuses.
 
-Otherwise the controller latches `blocked` with the corresponding reason.
+Otherwise the controller latches `blocked` with the corresponding reason. The
+two deployment refusals are kept apart on purpose: `deployment-failed` means the
+server answered and its headers did not conform, and `deployment-unverified`
+means no verdict exists for this origin at all — the normal state of a fresh
+install, and of any origin whose database was wiped, where accusing the server
+would send the operator to debug something that is very likely fine.
 `blocked` is terminal for the JavaScript lifetime: `emit` refuses to leave it,
 and `probe` / `start` / `stop` / `release` / the online and offline handlers all
 guard on it. There is deliberately no in-app recovery affordance — a retry

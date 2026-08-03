@@ -239,6 +239,23 @@ function BootGate({
           </BootStatusScreen>
         )
       }
+      if (state.reason === "deployment-failed") {
+        return (
+          <BootStatusScreen>
+            <p className="font-mono text-xs text-destructive">DEPLOYMENT_FAILED</p>
+            <h1 className="text-xl font-bold">{t("boot.deploymentFailed.title")}</h1>
+            <p className="text-sm text-muted-foreground">
+              {t("boot.deploymentFailed.body")}
+            </p>
+            <Button type="button" className="h-11 w-full whitespace-normal" onClick={reloadPage}>
+              {t("boot.blocked.reload")}
+            </Button>
+          </BootStatusScreen>
+        )
+      }
+      // No verdict recorded at all — a fresh install or a wiped origin. Saying
+      // the headers failed here would send the operator to debug a server that
+      // is very likely fine.
       return (
         <BootStatusScreen>
           <p className="font-mono text-xs text-destructive">DEPLOYMENT_UNVERIFIED</p>

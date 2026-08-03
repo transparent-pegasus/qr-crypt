@@ -37,7 +37,17 @@ export type RelayEligibility = "pending" | "eligible" | "ineligible"
 
 export type ConnectivityHint = "offline" | "online" | "indeterminate"
 
-export type BlockedReason = "network-suspected" | "deployment-unverified"
+// Two distinct deployment refusals, because they send the operator to
+// different places. `deployment-failed` means the server answered and its
+// headers did not conform — go fix the server. `deployment-unverified` means no
+// verdict exists for this origin at all, which is the state of a fresh install
+// and of any origin whose database was wiped: the server may well be fine, and
+// telling the operator its headers failed would send them to debug a healthy
+// server.
+export type BlockedReason =
+  | "network-suspected"
+  | "deployment-failed"
+  | "deployment-unverified"
 
 export type BootState =
   | { kind: "unknown" }

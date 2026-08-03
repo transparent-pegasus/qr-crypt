@@ -646,8 +646,12 @@ export function createBootController(
       return
     }
     const effectiveVerdict = episodeVerdict ?? decisionVerdict
-    if (effectiveVerdict?.status !== "pass") {
+    if (effectiveVerdict === undefined) {
       enterBlocked("deployment-unverified")
+      return
+    }
+    if (effectiveVerdict.status !== "pass") {
+      enterBlocked("deployment-failed")
       return
     }
     networkTransitionHandled = false
@@ -736,7 +740,7 @@ export function createBootController(
       episodeVerdict = verdict
       await persistDeploymentVerdict(verdict).catch(() => undefined)
       if (verdict.status === "fail") {
-        enterBlocked("deployment-unverified")
+        enterBlocked("deployment-failed")
         return
       }
     }
