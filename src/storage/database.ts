@@ -146,6 +146,39 @@ export async function withSensitiveWritesExcluded(
   }
 }
 
+export interface RelayLease {
+  release: () => void
+}
+
+// The boot proof excludes writers only while it runs, so an origin can be
+// proved clean and then have a key written into it while the relay session that
+// proof authorised is still open. A session therefore takes the same lock and
+// keeps it: not every write holds the shared side, but the create-and-rotate
+// set that can move an origin from clean to dirty does, which is exactly what
+// the proof counts. ifAvailable means a writer already inside the lock denies
+// the session instead of queueing it — fail closed, and never make the operator
+// wait on a lock to open a dialog.
+export async function acquireRelayLease(): Promise<RelayLease | null> {
+  const locks = lockManager()
+  if (locks === undefined) return null
+  let release = (): void => {}
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return new Promise<RelayLease | null>((resolve) => {
+    void locks
+      .request(SENSITIVE_WRITE_LOCK, { mode: "exclusive", ifAvailable: true }, (lock) => {
+        if (lock === null) {
+          resolve(null)
+          return Promise.resolve()
+        }
+        resolve({ release })
+        return held
+      })
+      .catch(() => resolve(null))
+  })
+}
+
 function timeoutOrDefault(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback
   if (!Number.isSafeInteger(value) || value < 0) throw new AppError("STORAGE_FAILED")

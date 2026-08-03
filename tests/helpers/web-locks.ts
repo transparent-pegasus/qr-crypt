@@ -35,6 +35,16 @@ function pump(name: string): void {
   }
 }
 
+// `ifAvailable` never queues: when the lock cannot be granted at once the
+// callback receives null and the request settles with whatever it returns.
+// Granted waiters stay on the queue until their callback settles, so one
+// non-empty check covers both held and pending.
+function grantableNow(queue: Waiter[], mode: LockMode): boolean {
+  return mode === "exclusive"
+    ? queue.length === 0
+    : queue.every((waiter) => waiter.mode === "shared")
+}
+
 function request<T>(
   name: string,
   optionsOrCallback: LockOptions | LockCallback<T>,
@@ -49,6 +59,10 @@ function request<T>(
   const signal = options.signal ?? undefined
   const queue = queues.get(name) ?? []
   queues.set(name, queue)
+
+  if (options.ifAvailable === true && !grantableNow(queue, mode)) {
+    return Promise.resolve().then(() => callback(null))
+  }
 
   return new Promise<T>((resolve, reject) => {
     const release = (settle: () => void) => {
