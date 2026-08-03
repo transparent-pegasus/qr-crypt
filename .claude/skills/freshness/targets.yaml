@@ -114,7 +114,7 @@ units:
       - .github/workflows/github-release.yml
       - docs/develop/deployment.md # prose mirror of the deploy/CI/release flow
       - docs/develop/install-route-a/README.md # complete Route A procedure; README is summary + link
-      - docs/languages/ja/develop/install-route-a/README.md # Japanese mirror under docs/languages/<lang>/; must not diverge from README.md
+      - docs/locales/ja/develop/install-route-a/README.md # Japanese mirror under docs/locales/<lang>/; must not diverge from README.md
       - docs/develop/install-route-a/INSTALL.template.txt # the only copy of the archive's INSTALL.txt text
       - scripts/generate-install-txt.mjs # renders that template; the workflow and the verifier both call it
       - tests/unit/generate-install-txt.test.ts # executable derivation, fail-closed, and about/-exclusion contract
@@ -173,7 +173,7 @@ units:
       and confirm pinned release-workflow SHAs match.
       # Relative links in the Route A install document and deployment prose must
       # resolve (README is summary + link; this document is the authority).
-      for f in docs/develop/install-route-a/README.md docs/languages/ja/develop/install-route-a/README.md docs/develop/deployment.md; do
+      for f in docs/develop/install-route-a/README.md docs/locales/ja/develop/install-route-a/README.md docs/develop/deployment.md; do
         for target in $(rg -oN --no-filename '\]\(([^):#]+)\)' -r '$1' "$f" |
           sort -u); do
           case "$target" in http*|mailto:*) continue;; esac
@@ -226,7 +226,7 @@ units:
     last_checked: 2026-08-03
     files:
       - docs/security/environment-threat-catalog.md
-      - docs/languages/ja/security/environment-threat-catalog.md # Japanese mirror; entries, labels, and sources must not diverge
+      - docs/locales/ja/security/environment-threat-catalog.md # Japanese mirror; entries, labels, and sources must not diverge
     why: >
       Physical and operational environment techniques age from the outside:
       published attacks improve, hardware changes what is reachable, and dated
@@ -531,7 +531,7 @@ units:
       # Every relative link in the registered Markdown files resolves.
       # Must print nothing; --no-filename is required or every match is
       # prefixed with its file and tested as a nonexistent path.
-      for f in README.md README.ja.md SECURITY.md docs/develop/deviations.md docs/develop/install-route-a/README.md docs/languages/ja/develop/install-route-a/README.md; do
+      for f in README.md README.ja.md SECURITY.md docs/develop/deviations.md docs/develop/install-route-a/README.md docs/locales/ja/develop/install-route-a/README.md; do
         for target in $(rg -oN --no-filename '\]\(([^):#]+)\)' -r '$1' "$f" |
           sort -u); do
           case "$target" in http*|mailto:*) continue;; esac

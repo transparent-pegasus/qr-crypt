@@ -74,7 +74,7 @@ describe("Route A rebuild comparison", () => {
   const documents = [
     "docs/develop/install-route-a/INSTALL.template.txt",
     "docs/develop/install-route-a/README.md",
-    "docs/languages/ja/develop/install-route-a/README.md",
+    "docs/locales/ja/develop/install-route-a/README.md",
   ]
 
   it.each(documents)("%s excludes the online-only about/ tree", async (file) => {

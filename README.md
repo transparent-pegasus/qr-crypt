@@ -163,7 +163,7 @@ validation or an independent security assessment. Current status and blockers:
 * [docs/security/security-review.md](docs/security/security-review.md) — Security review record (v2, audit classification)
 * [docs/develop/development.md](docs/develop/development.md) — Tech stack, setup, commands, environment variables
 * [docs/develop/deployment.md](docs/develop/deployment.md) — Cloudflare Pages deployment and CI flow
-* [docs/develop/install-route-a/](docs/develop/install-route-a/README.md) — Complete Route A signed-ZIP install procedure ([日本語](docs/languages/ja/develop/install-route-a/README.md))
+* [docs/develop/install-route-a/](docs/develop/install-route-a/README.md) — Complete Route A signed-ZIP install procedure ([日本語](docs/locales/ja/develop/install-route-a/README.md))
 * [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — Browser verification matrix and reference measurements
 * [docs/develop/deviations.md](docs/develop/deviations.md) — Managed deviations from the specification
 * [SECURITY.md](SECURITY.md) — Reporting a vulnerability

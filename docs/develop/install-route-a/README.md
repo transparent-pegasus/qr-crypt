@@ -1,6 +1,6 @@
 # Install route A: signed ZIP
 
-日本語版: [docs/languages/ja/develop/install-route-a/README.md](../../languages/ja/develop/install-route-a/README.md)
+日本語版: [docs/locales/ja/develop/install-route-a/README.md](../../locales/ja/develop/install-route-a/README.md)
 
 The complete procedure for high-assurance offline installation. The archive's
 `INSTALL.txt` is the self-contained copy that reaches the offline device. For
