@@ -300,16 +300,19 @@ describe("QrScannerPanel multipart scan", () => {
     )
     await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
 
-    // The panel is unmounted while the delivery is still in flight, so the
-    // publish guard in settleDelivery short-circuits. Releasing after that guard
-    // would strand the claim on a session the next mount can never deliver.
+    // The panel is unmounted while the delivery is still in flight, so the publish
+    // guard in settleDelivery short-circuits. The session releases on the rejection
+    // itself; a release owned by the panel would strand the claim on a session the
+    // next mount can never deliver.
     view.unmount()
     await act(async () => {
       delivery.reject(new AppError("STORAGE_FAILED"))
       await delivery.promise.catch(() => undefined)
     })
 
-    expect(session.claimCompletion()).toBe(true)
+    const reclaimed = session.deliverOnce(() => undefined)
+    expect(reclaimed).not.toBeNull()
+    await reclaimed
   })
 
   it("detects timeout, stops, and returns to idle", async () => {

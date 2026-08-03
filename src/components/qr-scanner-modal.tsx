@@ -137,16 +137,19 @@ export function QrScannerModal(props: QrScannerModalProps) {
       if (closedDeliveryFailedRef.current) return
       if (!beginDelivery()) return
       try {
-        if (!multipartSession.claimCompletion()) return
-        try {
-          await multipartRef.current.onComplete({
+        const pending = multipartSession.deliverOnce(() =>
+          multipartRef.current.onComplete({
             artifactType: next.artifactType,
             artifactBytes: next.artifactBytes,
-          })
+          }),
+        )
+        if (pending === null) return
+        try {
+          await pending
         } catch (caught) {
-          // Only the delivery releases. onClosed below is a UI callback: a
+          // The session hands the claim back on a rejected delivery. onClosed
+          // below is outside that promise on purpose: it is a UI callback, and a
           // throw there must not hand back an artifact that did arrive.
-          multipartSession.releaseCompletion()
           closedDeliveryFailedRef.current = true
           if (canPublish()) {
             setClosedNotice(localizedErrorCode(deliveryError(caught).code))
@@ -212,23 +215,23 @@ export function QrScannerModal(props: QrScannerModalProps) {
         setOpen(false)
       }
     } catch (caught) {
+      // Always rethrown: the claim belongs to the panel's deliverOnce, and only a
+      // rejection reaching it hands the claim back. When the panel is gone or
+      // superseded it never surfaces the failure, so the notice is the modal's.
       if (
-        openRef.current &&
-        mountedRef.current &&
-        openGenerationRef.current === generation
+        !openRef.current ||
+        !mountedRef.current ||
+        openGenerationRef.current !== generation
       ) {
-        throw caught
+        closedDeliveryFailedRef.current = true
+        if (
+          mountedRef.current &&
+          openGenerationRef.current === generation
+        ) {
+          setClosedNotice(localizedErrorCode(deliveryError(caught).code))
+        }
       }
-      // The panel is gone or superseded, so it never learns of this failure and
-      // cannot hand the claim back on the modal's behalf.
-      props.multipart.session.releaseCompletion()
-      closedDeliveryFailedRef.current = true
-      if (
-        mountedRef.current &&
-        openGenerationRef.current === generation
-      ) {
-        setClosedNotice(localizedErrorCode(deliveryError(caught).code))
-      }
+      throw caught
     } finally {
       endDelivery()
     }

@@ -34,19 +34,16 @@ import {
 import { reloadApplication } from "@/lib/reload"
 import { startQrScan, type QrScanHandle } from "@/qr/decode"
 import { copyTextToClipboard } from "@/qr/export-image"
-import { renderQrDataUrl } from "@/qr/encode"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { prepareRelayPlayback } from "@/qr/relay-playback"
 import {
   acceptRelayCapture,
   EMPTY_RELAY_CAPTURE,
   missingRelayIndexes,
   orderedRelayEntries,
-  parseRelayText,
   type RelayCapture,
   type RelayParseErrorCode,
 } from "@/qr/relay-frames"
 import type { QrFrameV2 } from "@/schemas/domain"
-import { env } from "@/schemas/env-schema"
 import { useI18n, type MessageKey } from "@/i18n"
 
 const RELAY_LIFETIME_MS = TRANSFER_TIMEOUT_MINUTES_DEFAULT * 60_000
@@ -387,46 +384,9 @@ export function OnlineRelay({
     const input = playbackTextRef.current
     const operation = ++playbackOperationRef.current
     const generation = sessionGenerationRef.current
-    const parsed = parseRelayText(input)
-    if (!parsed.ok) {
-      setPlaybackError(PARSE_ERROR_KEYS[parsed.code])
-      setPlaybackMissingIndexes(parsed.missingIndexes ?? [])
-      return
-    }
-    // Re-encoding is a canonical round-trip check; retain only the decoded
-    // frame objects after every original string matches byte-for-byte.
-    if (
-      parsed.frames.some(
-        (frame, index) => encodeFrameToPayload(frame) !== parsed.originals[index],
-      )
-    ) {
-      setPlaybackError("relay.error.invalidFrame")
-      setPlaybackMissingIndexes([])
-      return
-    }
-    try {
-      await Promise.all(
-        parsed.frames.map((frame) =>
-          renderQrDataUrl(encodeFrameToPayload(frame), {
-            ecLevel: "Q",
-            size: env.qrRenderSize,
-          }),
-        ),
-      )
-    } catch {
-      if (
-        operation !== playbackOperationRef.current ||
-        generation !== sessionGenerationRef.current ||
-        !mountedRef.current
-      ) {
-        return
-      }
-      endSession("render-error")
-      if (mountedRef.current) {
-        setTerminalNotice(errorMessageKey("QR_TOO_LARGE"))
-      }
-      return
-    }
+    const prepared = await prepareRelayPlayback(input)
+    // One staleness gate for every outcome: a superseded input or an ended session
+    // must not publish its verdict, error included.
     if (
       operation !== playbackOperationRef.current ||
       generation !== sessionGenerationRef.current ||
@@ -434,11 +394,23 @@ export function OnlineRelay({
     ) {
       return
     }
+    if (!prepared.ok) {
+      if (prepared.reason === "render") {
+        endSession("render-error")
+        if (mountedRef.current) {
+          setTerminalNotice(errorMessageKey("QR_TOO_LARGE"))
+        }
+        return
+      }
+      setPlaybackError(PARSE_ERROR_KEYS[prepared.code])
+      setPlaybackMissingIndexes(prepared.missingIndexes)
+      return
+    }
     playbackAnimationAbortRef.current?.abort()
     const animationAbort = new AbortController()
     playbackAnimationAbortRef.current = animationAbort
-    playbackFramesRef.current = parsed.frames
-    setPlaybackFrames(parsed.frames)
+    playbackFramesRef.current = prepared.frames
+    setPlaybackFrames(prepared.frames)
     setPlaybackAnimationSignal(animationAbort.signal)
     setPlaybackError(null)
     setPlaybackMissingIndexes([])

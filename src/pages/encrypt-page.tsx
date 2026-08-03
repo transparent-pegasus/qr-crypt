@@ -10,21 +10,14 @@ import {
   Lock,
 } from "lucide-react"
 import { toast } from "sonner"
-import { sealSymMessage } from "@/crypto/aes-gcm"
 import { AppError, toAppError } from "@/crypto/errors"
 import { groupSymmetricKeys } from "@/crypto/key-generation"
-import {
-  encodeMlKemEnvelopeV2,
-  encodeSymMessageEnvelopeV2,
-} from "@/crypto/pq/canonical-cbor"
-import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
+import { isUsableBundle, isUsableIdentity } from "@/crypto/pq/identity-policy"
 import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
 import { generateArtifactId, shortId } from "@/crypto/random"
-import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { useSensitiveSession, useTransientClear } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
 import { DetailRow } from "@/components/detail-row"
-import { isUsableBundle, isUsableIdentity } from "@/components/key-detail/identity-policy"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrDisplay } from "@/components/qr-display"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -41,6 +34,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  encryptMessage,
+  type EncryptedMessage,
+  type EncryptMessageRequest,
+} from "@/features/encrypt-message"
 import {
   ALGORITHM_LABELS,
   formatDateTime,
@@ -59,56 +57,19 @@ import {
   useLocalizedMessage,
   type LocalizedMessage,
 } from "@/i18n"
-import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
+import { utf8ToBytes } from "@/lib/bytes"
 import { effectiveGeneratedDisplay } from "@/lib/generated-display"
-import {
-  FRAME_BYTES_MAX,
-  MAX_SYM_PLAINTEXT_BYTES,
-  minimumFrameBytesForArtifact,
-  singleFrameBytesFor,
-} from "@/lib/limits"
+import { MAX_SYM_PLAINTEXT_BYTES } from "@/lib/limits"
 import { copyTextToClipboard } from "@/qr/export-image"
 import { exportQrFramePayloads } from "@/qr/export-frames"
-import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
-import {
-  type MlKemMessageEnvelopeV2,
-  type PostQuantumIdentity,
-  type PqPublicBundleRecord,
-  type SymMessageEnvelopeV2,
-  type UiAlgorithm,
-} from "@/schemas/domain"
+import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { type UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { qrNameSchema } from "@/schemas/key-schema"
-import { getActiveKeyRecord, markKeyUsed } from "@/storage/key-repository"
-import { markBundleUsed } from "@/storage/pq-bundle-repository"
-import { markIdentityUsed } from "@/storage/pq-identity-repository"
 
-type EncryptionResult =
-  | {
-      kind: "sym"
-      payload: string
-      envelope: SymMessageEnvelopeV2
-      artifactType: "sym-message"
-      artifactBytes: Uint8Array
-      frameBytes: number
-      generation: number
-      createdAt: number
-      totalBytes: number
-      sha256: string
-    }
-  | {
-      kind: "pq"
-      payload: string
-      envelope: MlKemMessageEnvelopeV2
-      artifactType: "pq-message"
-      artifactBytes: Uint8Array
-      generation: number
-      recipient: PqPublicBundleRecord
-      sender: PostQuantumIdentity
-      createdAt: number
-      totalBytes: number
-      sha256: string
-    }
+// The generation is the page's own: it distinguishes the result currently on screen
+// from one a later encryption superseded while an export was still running.
+type EncryptionResult = EncryptedMessage & { generation: number }
 
 const EMPTY_ARTIFACT_BYTES = new Uint8Array()
 
@@ -301,78 +262,27 @@ export function EncryptPage() {
     setResult(null)
     try {
       const now = Date.now()
-      const suggestedOutputName = t("encrypt.output.suggestedName", {
-        date: formatSuggestedDate(now),
-      })
+      let request: EncryptMessageRequest | null = null
       if (algorithm === "A256GCM" && selectedKey?.symmetricKey) {
-        // The cached list only gates the button. Re-resolve from storage at action
-        // time so a key rotated or deleted in another tab cannot be used from a
-        // stale snapshot, and seal with the record storage just returned. A rotated
-        // id does not silently follow its lineage to the new head — the operator
-        // re-selects.
-        const record = await getActiveKeyRecord(selectedKey.id)
-        if (record === undefined) throw new AppError("KEY_NOT_FOUND")
-        const envelope = await sealSymMessage({
-          record,
-          plaintext: plaintextBytes,
-          now,
-        })
-        const artifactBytes = encodeSymMessageEnvelopeV2(envelope)
-        let frameBytes: number
-        try {
-          frameBytes = singleFrameBytesFor(artifactBytes.byteLength)
-        } catch {
-          throw new AppError("QR_TOO_LARGE")
-        }
-        const sha256 = await sha256Hex(artifactBytes)
-        resultGenerationRef.current += 1
-        setOutputName(suggestedOutputName)
-        setResult({
-          kind: "sym",
-          payload: buildV2Payload("sym-message", artifactBytes),
-          envelope,
-          artifactType: "sym-message",
-          artifactBytes,
-          frameBytes,
-          generation: resultGenerationRef.current,
-          createdAt: now,
-          totalBytes: artifactBytes.byteLength,
-          sha256,
-        })
-        await markKeyUsed(record.id, now).catch(() => undefined)
+        request = { kind: "sym", keyId: selectedKey.id, plaintext: plaintextBytes, now }
       } else if (selectedRecipient) {
-        const sender = selectedSender
-        if (sender === undefined) throw new AppError("KEY_NOT_FOUND")
-        const envelope = await encryptPq({
+        if (selectedSender === undefined) throw new AppError("KEY_NOT_FOUND")
+        request = {
+          kind: "pq",
           client: getPqClient(),
           recipient: selectedRecipient,
+          sender: selectedSender,
           plaintext: plaintextBytes,
-          sign: { identity: sender, vaultKey: await getOrCreateVaultKey() },
           now,
-        })
-        const artifactBytes = encodeMlKemEnvelopeV2(envelope)
-        const minimumFrameBytes = minimumFrameBytesForArtifact(artifactBytes.byteLength)
-        if (minimumFrameBytes > FRAME_BYTES_MAX) {
-          throw new AppError("QR_TOO_LARGE")
         }
-        const sha256 = await sha256Hex(artifactBytes)
+      }
+      if (request !== null) {
+        const message = await encryptMessage(request)
         resultGenerationRef.current += 1
-        setOutputName(suggestedOutputName)
-        setResult({
-          kind: "pq",
-          payload: buildV2Payload("pq-message", artifactBytes),
-          envelope,
-          artifactType: "pq-message",
-          artifactBytes,
-          generation: resultGenerationRef.current,
-          recipient: selectedRecipient,
-          sender,
-          createdAt: now,
-          totalBytes: artifactBytes.byteLength,
-          sha256,
-        })
-        await markBundleUsed(selectedRecipient.recordId, now).catch(() => undefined)
-        await markIdentityUsed(sender.id, now).catch(() => undefined)
+        setOutputName(
+          t("encrypt.output.suggestedName", { date: formatSuggestedDate(now) }),
+        )
+        setResult({ ...message, generation: resultGenerationRef.current })
       }
       if (preferences.autoClearPlaintextAfterEncrypt) {
         setPlaintext("")
