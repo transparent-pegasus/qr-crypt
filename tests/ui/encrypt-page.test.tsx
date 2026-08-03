@@ -409,6 +409,69 @@ describe("encrypt page v2", () => {
     expect(sealSymMessage).not.toHaveBeenCalled()
   })
 
+  it("refuses to encrypt to a recipient another tab deleted", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /^Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES-256-GCM$/,
+    )
+    await choosePqRecipient(user)
+    await user.type(screen.getByLabelText("Plaintext"), "stale deleted recipient")
+
+    // Another tab deletes the imported bundle between selection and submit.
+    fakeBundles.length = 0
+
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    expect(
+      await screen.findByText(messageFor("KEY_NOT_FOUND", "en")),
+    ).toBeVisible()
+    expect(encryptPq).not.toHaveBeenCalled()
+  })
+
+  it("refuses to encrypt with a signing identity another tab deleted", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /^Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES-256-GCM$/,
+    )
+    await choosePqRecipient(user)
+    await user.type(screen.getByLabelText("Plaintext"), "stale deleted identity")
+
+    fakeIdentities.length = 0
+
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+    expect(
+      await screen.findByText(messageFor("KEY_NOT_FOUND", "en")),
+    ).toBeVisible()
+    expect(encryptPq).not.toHaveBeenCalled()
+  })
+
+  it("hands PQ encryption the recipient as it exists at press time", async () => {
+    const user = userEvent.setup()
+    await renderApp("/encrypt")
+    await chooseSelectOption(
+      user,
+      "Cryptographic algorithm",
+      /^Public-key ML-KEM-1024 \+ ML-DSA-87 \+ AES-256-GCM$/,
+    )
+    await choosePqRecipient(user)
+    await user.type(screen.getByLabelText("Plaintext"), "renamed recipient")
+
+    // encryptPq owns the revoked / unconfirmed / inactive rejections and is a
+    // fake here, so what this pins is the other half: the record reaching the
+    // cipher is the stored one, not the one the page cached at selection.
+    fakeBundles[0] = { ...fakeBundles[0]!, name: "renamed in another tab" }
+
+    await user.click(screen.getByRole("button", { name: "Encrypt" }))
+
+    await waitFor(() => expect(encryptPq).toHaveBeenCalled())
+    expect(encryptPq.mock.calls[0]![0].recipient.name).toBe("renamed in another tab")
+  })
+
   it("refuses to encrypt with a key another tab rotated", async () => {
     const user = userEvent.setup()
     await renderApp("/encrypt")
