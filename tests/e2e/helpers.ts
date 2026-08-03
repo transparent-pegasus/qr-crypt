@@ -132,12 +132,57 @@ export async function precachedUrls(page: Page): Promise<string[]> {
   })
 }
 
+/**
+ * Model a genuinely disconnected (or connected) device for e2e.
+ * `context.setOffline` blocks traffic but does not flip `navigator.onLine` in
+ * this Chromium; the boot gate now reads that signal, so redefine it for every
+ * current and future document. Order matters: going offline applies the false
+ * getter before setOffline so the offline event cannot latch NETWORK_SUSPECTED;
+ * going online restores the network first, then applies the true getter and
+ * dispatches online so the boot probe runs against a live network. Later calls
+ * win: each registration redefines the instance getter, and init scripts run
+ * in registration order.
+ */
+export async function setDeviceOffline(
+  context: BrowserContext,
+  offline: boolean,
+): Promise<void> {
+  const installGetter = (isOffline: boolean) => {
+    Object.defineProperty(navigator, "onLine", {
+      configurable: true,
+      get() {
+        return !isOffline
+      },
+    })
+  }
+  await context.addInitScript(installGetter, offline)
+  if (offline) {
+    for (const openPage of context.pages()) {
+      await openPage.evaluate(installGetter, offline)
+    }
+    await context.setOffline(true)
+    return
+  }
+  await context.setOffline(false)
+  for (const openPage of context.pages()) {
+    await openPage.evaluate((isOffline) => {
+      Object.defineProperty(navigator, "onLine", {
+        configurable: true,
+        get() {
+          return !isOffline
+        },
+      })
+      window.dispatchEvent(new Event("online"))
+    }, offline)
+  }
+}
+
 export async function switchToOfflineApp(
   page: Page,
   context: BrowserContext,
 ): Promise<void> {
   await waitForServiceWorkerControl(page)
-  await context.setOffline(true)
+  await setDeviceOffline(context, true)
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
     page.getByText("Install the PWA or relay a message-payload QR"),
@@ -158,7 +203,7 @@ export async function switchToColdOfflineApp(
 ): Promise<void> {
   await waitForServiceWorkerControl(page)
   await page.evaluate(() => localStorage.removeItem("oc-offline-ack-pending"))
-  await context.setOffline(true)
+  await setDeviceOffline(context, true)
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
     page.getByRole("heading", {
@@ -173,7 +218,7 @@ export async function switchToOfflineAppInSession(
   context: BrowserContext,
 ): Promise<void> {
   await waitForServiceWorkerControl(page)
-  await context.setOffline(true)
+  await setDeviceOffline(context, true)
   await expectOfflineAcknowledgement(page)
   await acknowledgeOfflineRisk(page)
   await expect(mainNavigation(page)).toBeVisible()

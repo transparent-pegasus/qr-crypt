@@ -1,12 +1,23 @@
 import type { BestEffortResetReport } from "@/storage/best-effort-reset"
 import { AppError } from "@/crypto/errors"
-import { wipeOnOnline } from "@/app/boot/wipe-coordinator"
 import {
+  broadcastQuarantineRequest,
+  quarantine,
+  wipeOnOnline,
+} from "@/app/boot/wipe-coordinator"
+import {
+  DEPLOYMENT_VERDICT_METADATA_KEY,
   REACHABILITY_SENTINEL_BODY,
   REACHABILITY_SENTINEL_PATH,
+  type BlockedReason,
   type BootState,
+  type ConnectivityHint,
   type WipeDecisionInput,
 } from "@/app/boot/boot-contract"
+import {
+  evaluateDeploymentHeaders,
+  type DeploymentVerdict,
+} from "@/lib/deployment-headers"
 import {
   isBootReadableFrameBytes,
   isBootReadableFrameIntervalMs,
@@ -71,11 +82,19 @@ interface MaintenanceToken {
 export interface BootDecisionSnapshot extends WipeDecisionInput {
   resetChurnMb: number
   preferencesReadFailed: boolean
+  /** Absent or malformed rows are treated as no pass — D8 refuses offline. */
+  deploymentVerdict?: DeploymentVerdict
+}
+
+export interface SentinelProbeResult {
+  confirmed: boolean
+  verdict: DeploymentVerdict | undefined
 }
 
 export interface SentinelProbeOptions {
   fetchImpl?: typeof fetch
   nonce?: string
+  now?: () => number
   signal?: AbortSignal
   timeoutMs?: number
 }
@@ -90,19 +109,36 @@ export interface WipeExecutionArgs {
 export type WipeExecutor = (args: WipeExecutionArgs) => Promise<BestEffortResetReport>
 
 export interface BootControllerOptions {
+  broadcastQuarantine?: () => void
   consumeMaintenanceToken?: () => Promise<boolean>
   eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">
   fetchImpl?: typeof fetch
   nonce?: () => string
   performWipe?: WipeExecutor
   probeTimeoutMs?: number
+  quarantine?: () => Promise<void>
+  readConnectivityHint?: () => ConnectivityHint
   readDecision?: () => Promise<BootDecisionSnapshot>
+}
+
+// Default hint. A getter that throws, or a missing navigator, is
+// indeterminate — only an explicit false may permit offline-confirmed.
+export function readConnectivityHint(): ConnectivityHint {
+  try {
+    if (typeof navigator === "undefined") return "indeterminate"
+    const value = navigator.onLine
+    if (typeof value !== "boolean") return "indeterminate"
+    return value ? "online" : "offline"
+  } catch {
+    return "indeterminate"
+  }
 }
 
 export interface BootController {
   acquire(): void
   addTransientResetHandler(handler: () => void): () => void
   endRelaySession(reason: RelaySessionEndReason): void
+  enterQuarantine(): void
   getState(): BootState
   nudgeDisplayOffline(): boolean
   probe(): Promise<void>
@@ -150,9 +186,9 @@ function abortError(): DOMException {
  */
 export async function probeNetworkSentinel(
   options: SentinelProbeOptions = {},
-): Promise<boolean> {
+): Promise<SentinelProbeResult> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
-  if (typeof fetchImpl !== "function") return false
+  if (typeof fetchImpl !== "function") return { confirmed: false, verdict: undefined }
 
   const timeoutMs = Math.max(0, options.timeoutMs ?? BOOT_PROBE_TIMEOUT_MS)
   const controller = new AbortController()
@@ -163,25 +199,31 @@ export async function probeNetworkSentinel(
   const abort = () => controller.abort()
   const rejectAbort = () => rejectOnAbort?.(abortError())
 
-  if (options.signal?.aborted) return false
+  if (options.signal?.aborted) return { confirmed: false, verdict: undefined }
   options.signal?.addEventListener("abort", abort, { once: true })
   controller.signal.addEventListener("abort", rejectAbort, { once: true })
   const timeoutId = setTimeout(abort, timeoutMs)
 
   try {
     const nonce = options.nonce ?? probeNonce()
+    const url = `${REACHABILITY_SENTINEL_PATH}?n=${encodeURIComponent(nonce)}`
     const response = await Promise.race([
-      fetchImpl(`${REACHABILITY_SENTINEL_PATH}?n=${encodeURIComponent(nonce)}`, {
+      fetchImpl(url, {
         method: "GET",
         cache: "no-store",
         signal: controller.signal,
       }),
       aborted,
     ])
-    if (response.status !== 200) return false
-    return (await Promise.race([response.text(), aborted])) === REACHABILITY_SENTINEL_BODY
+    const now = options.now ?? Date.now
+    const expectedUrl =
+      typeof location !== "undefined" ? new URL(url, location.href).href : url
+    const verdict = evaluateDeploymentHeaders(response, expectedUrl, now())
+    if (response.status !== 200) return { confirmed: false, verdict }
+    const body = await Promise.race([response.text(), aborted])
+    return { confirmed: body === REACHABILITY_SENTINEL_BODY, verdict }
   } catch {
-    return false
+    return { confirmed: false, verdict: undefined }
   } finally {
     clearTimeout(timeoutId)
     options.signal?.removeEventListener("abort", abort)
@@ -205,6 +247,22 @@ function maintenanceToken(value: unknown): MaintenanceToken | undefined {
   return typeof armedAt === "number" && Number.isFinite(armedAt) && armedAt >= 0
     ? { armedAt }
     : undefined
+}
+
+function deploymentVerdict(value: unknown): DeploymentVerdict | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  const row = value as Partial<DeploymentVerdict>
+  if (row.status !== "pass" && row.status !== "fail") return undefined
+  if (typeof row.checkedAt !== "number" || !Number.isFinite(row.checkedAt)) {
+    return undefined
+  }
+  if (!Array.isArray(row.failedFields)) return undefined
+  if (!row.failedFields.every((field) => typeof field === "string")) return undefined
+  return {
+    status: row.status,
+    failedFields: row.failedFields,
+    checkedAt: row.checkedAt,
+  }
 }
 
 function metadataValue(row: unknown): unknown {
@@ -311,6 +369,7 @@ export async function readBootDecision(
         pqIdentityCountValue,
         vaultKeyRow,
         maintenanceTokenRow,
+        deploymentVerdictRow,
         preferencesRow,
       ],
     ] = await Promise.all([
@@ -319,6 +378,7 @@ export async function readBootDecision(
         pqIdentities.count(),
         appMetadata.get(VAULT_KEY_METADATA_KEY),
         appMetadata.get(MAINTENANCE_TOKEN_METADATA_KEY),
+        appMetadata.get(DEPLOYMENT_VERDICT_METADATA_KEY),
         preferences.get(PREFERENCES_KEY),
       ]),
       transaction.done,
@@ -331,6 +391,9 @@ export async function readBootDecision(
     const cleanOrigin = sensitiveDataExists ? "dirty" : "confirmed-clean"
     const maintenanceTokenArmed =
       maintenanceToken(metadataValue(maintenanceTokenRow)) !== undefined
+    const storedDeploymentVerdict = deploymentVerdict(
+      metadataValue(deploymentVerdictRow),
+    )
 
     let wipeOnOnline = true
     let resetChurnMb = 0
@@ -368,6 +431,9 @@ export async function readBootDecision(
       maintenanceTokenArmed,
       resetChurnMb,
       preferencesReadFailed,
+      ...(storedDeploymentVerdict !== undefined
+        ? { deploymentVerdict: storedDeploymentVerdict }
+        : {}),
     }
   } catch {
     return { ...FALLBACK_DECISION }
@@ -377,6 +443,33 @@ export async function readBootDecision(
 function appMetadataTransaction(database: BootDatabase): BootTransaction {
   if (!hasStore(database, STORE_APP_METADATA)) throw new AppError("STORAGE_FAILED")
   return database.transaction(STORE_APP_METADATA, "readwrite")
+}
+
+export async function persistDeploymentVerdict(
+  verdict: DeploymentVerdict,
+): Promise<void> {
+  const database = (await getDb()) as unknown as BootDatabase
+  const transaction = appMetadataTransaction(database)
+  await transaction.store.put({
+    key: DEPLOYMENT_VERDICT_METADATA_KEY,
+    value: {
+      status: verdict.status,
+      failedFields: [...verdict.failedFields],
+      checkedAt: verdict.checkedAt,
+    },
+  } satisfies MetadataRow)
+  await transaction.done
+}
+
+export async function readDeploymentVerdict(): Promise<DeploymentVerdict | undefined> {
+  try {
+    const database = (await getDb()) as unknown as BootDatabase
+    if (!hasStore(database, STORE_APP_METADATA)) return undefined
+    const row = await database.get(STORE_APP_METADATA, DEPLOYMENT_VERDICT_METADATA_KEY)
+    return deploymentVerdict(metadataValue(row))
+  } catch {
+    return undefined
+  }
 }
 
 /** Storage API for the strongly confirmed, one-update-only offline maintenance flow. */
@@ -439,6 +532,9 @@ export function createBootController(
   const readDecision = options.readDecision ?? readBootDecision
   const consumeToken = options.consumeMaintenanceToken ?? consumeMaintenanceToken
   const performWipe = options.performWipe ?? defaultWipeExecutor
+  const connectivityHint = options.readConnectivityHint ?? readConnectivityHint
+  const quarantineFn = options.quarantine ?? quarantine
+  const broadcastQuarantine = options.broadcastQuarantine ?? broadcastQuarantineRequest
   const eventTarget =
     options.eventTarget ?? (typeof window === "undefined" ? undefined : window)
 
@@ -452,6 +548,8 @@ export function createBootController(
   let peerWipeGeneration = 0
   let relaySessionEndHandler: ((reason: RelaySessionEndReason) => void) | undefined
   let networkTransitionHandled = false
+  let episodeVerdict: DeploymentVerdict | undefined
+  let decisionVerdict: DeploymentVerdict | undefined
   let confirmationEpisode:
     | {
         generation: number
@@ -466,10 +564,17 @@ export function createBootController(
     candidate.kind === "wiped" ||
     candidate.kind === "partial-failure"
 
+  // Blocked is non-destructive but equally one-way: it exists because the app
+  // could not prove it is safe to open, and a same-lifetime exit would let a
+  // retry click past the only signal available.
+  const terminal = (candidate: BootState): boolean =>
+    candidate.kind === "blocked" || destructive(candidate)
+
   const emit = (nextState: BootState) => {
-    // Destructive states are monotonic. Once a wipe or reset has engaged the
-    // one-way access barrier, no probe result that was already in flight may
-    // hand the application back a usable Router state.
+    // Blocked is an absolute latch — nothing leaves it, not even a wipe.
+    if (state.kind === "blocked") return
+    // Unchanged: destructive states stay monotonic but must still be able to
+    // advance among themselves (wiping -> wiped / partial-failure).
     if (destructive(state) && !destructive(nextState)) return
     state = nextState
     for (const listener of listeners) listener()
@@ -518,7 +623,41 @@ export function createBootController(
     networkTransitionHandled = false
   }
 
-  const isDestructiveTerminal = () => destructive(state)
+  const isTerminal = () => terminal(state)
+
+  // The one place offline-confirmed is published. Every caller that used to
+  // emit it directly routes through here, because the sentinel branch is not
+  // the only way to reach it — nudgeDisplayOffline and the probing-time
+  // offline event both did, and both would otherwise bypass the check.
+  const enterBlocked = (reason: BlockedReason): void => {
+    if (isTerminal()) return
+    retireActiveProbe()
+    invalidateRelay("display-offline")
+    resetTransient()
+    void quarantineFn()
+    broadcastQuarantine()
+    emit({ kind: "blocked", reason })
+  }
+
+  const publishOfflineCandidate = (): void => {
+    if (isTerminal()) return
+    if (connectivityHint() !== "offline") {
+      enterBlocked("network-suspected")
+      return
+    }
+    const effectiveVerdict = episodeVerdict ?? decisionVerdict
+    if (effectiveVerdict === undefined) {
+      enterBlocked("deployment-unverified")
+      return
+    }
+    if (effectiveVerdict.status !== "pass") {
+      enterBlocked("deployment-failed")
+      return
+    }
+    networkTransitionHandled = false
+    invalidateRelay("display-offline")
+    emit({ kind: "offline-confirmed" })
+  }
 
   // The snapshot is only a proof of cleanliness while sensitive writers are
   // excluded, so eligibility requires that the exclusion was actually held.
@@ -568,27 +707,26 @@ export function createBootController(
       episode.offlineRequested &&
       state.kind === "network-confirmed"
     ) {
-      networkTransitionHandled = false
-      invalidateRelay("display-offline")
-      emit({ kind: "offline-confirmed" })
+      publishOfflineCandidate()
       return
     }
     publishRelayDecision(episode, decision, exclusive)
   }
 
   const probe = async (): Promise<void> => {
-    if (isDestructiveTerminal() || confirmationEpisode?.continuationPending) return
+    if (isTerminal() || confirmationEpisode?.continuationPending) return
     const probeGeneration = ++generation
     invalidateRelay("new-probe")
     const peerWipeGenerationAtStart = peerWipeGeneration
     activeProbe?.abort()
     confirmationEpisode = undefined
+    episodeVerdict = undefined
     const controller = new AbortController()
     activeProbe = controller
     emit({ kind: "probing", generation: probeGeneration })
 
     const configuredNonce = options.nonce?.()
-    const confirmed = await probeNetworkSentinel({
+    const { confirmed, verdict } = await probeNetworkSentinel({
       ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
       ...(configuredNonce !== undefined ? { nonce: configuredNonce } : {}),
       signal: controller.signal,
@@ -598,10 +736,17 @@ export function createBootController(
     })
     if (probeGeneration !== generation || controller.signal.aborted) return
     activeProbe = undefined
+    if (verdict !== undefined) {
+      episodeVerdict = verdict
+      await persistDeploymentVerdict(verdict).catch(() => undefined)
+      if (verdict.status === "fail") {
+        enterBlocked("deployment-failed")
+        return
+      }
+    }
     if (!confirmed) {
-      networkTransitionHandled = false
-      invalidateRelay("display-offline")
-      emit({ kind: "offline-confirmed" })
+      decisionVerdict = (await safeDecision(readDecision)).deploymentVerdict
+      publishOfflineCandidate()
       return
     }
 
@@ -628,6 +773,7 @@ export function createBootController(
     let wipeDecision: BootDecisionSnapshot | undefined
     await withSensitiveWritesExcluded(async (exclusive) => {
       const decision = await safeDecision(readDecision)
+      decisionVerdict = decision.deploymentVerdict
       if (decision.maintenanceTokenArmed) {
         const tokenConsumed = await consumeToken()
         if (tokenConsumed) {
@@ -672,35 +818,42 @@ export function createBootController(
     invalidateRelay("display-offline")
     episode.offlineRequested = true
     if (!episode.continuationPending) {
-      networkTransitionHandled = false
-      emit({ kind: "offline-confirmed" })
+      publishOfflineCandidate()
     }
     return true
   }
 
   const handleOnline = () => {
-    if (networkTransitionHandled || isDestructiveTerminal()) return
+    if (networkTransitionHandled || isTerminal()) return
     void probe()
   }
 
   const handleOffline = () => {
-    if (isDestructiveTerminal()) return
+    if (isTerminal()) return
     if (state.kind === "network-confirmed") {
       nudgeDisplayOffline()
       return
     }
     networkTransitionHandled = false
     if (state.kind === "probing") {
-      invalidateRelay("display-offline")
       activeProbe?.abort()
       activeProbe = undefined
       generation += 1
-      emit({ kind: "offline-confirmed" })
+      // Hint check stays synchronous so an online/indeterminate latch does not
+      // wait on storage. Only the offline path needs the persisted verdict.
+      if (connectivityHint() !== "offline") {
+        enterBlocked("network-suspected")
+        return
+      }
+      void (async () => {
+        decisionVerdict = (await safeDecision(readDecision)).deploymentVerdict
+        publishOfflineCandidate()
+      })()
     }
   }
 
   const start = () => {
-    if (started || isDestructiveTerminal()) return
+    if (started || isTerminal()) return
     started = true
     eventTarget?.addEventListener("online", handleOnline)
     eventTarget?.addEventListener("offline", handleOffline)
@@ -718,7 +871,7 @@ export function createBootController(
     activeProbe = undefined
     generation += 1
     networkTransitionHandled = false
-    if (!isDestructiveTerminal()) emit({ kind: "unknown" })
+    if (!isTerminal()) emit({ kind: "unknown" })
   }
 
   const refreshRelayEligibility = async (): Promise<boolean> => {
@@ -766,6 +919,9 @@ export function createBootController(
       return () => transientResetHandlers.delete(handler)
     },
     endRelaySession,
+    enterQuarantine() {
+      enterBlocked("network-suspected")
+    },
     getState: () => state,
     nudgeDisplayOffline,
     probe,

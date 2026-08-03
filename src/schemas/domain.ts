@@ -1,17 +1,15 @@
 // Sole owner of shared domain types.
 // This module is dependency-free; adding imports is prohibited because UI-test module
-// mocks would become cyclic. UI-layer algorithm IDs and wire (envelope) algorithm IDs
-// are distinct. Always convert between them through this module's mappers; direct string
-// comparison is prohibited. v2 suite derivation (resolveSuite/suiteComponents) lives in
-// crypto/pq/suites.ts.
+// mocks would become cyclic. v2 suite derivation (resolveSuite/suiteComponents) lives in
+// crypto/pq/suites.ts, and it is the only conversion the active protocol needs: the one
+// symmetric identifier is spelled the same in the UI and on the wire, so no UI-to-wire
+// mapper exists to route through.
 
 // ---------------------------------------------------------------------------
 // Algorithm IDs and suites (symmetric and post-quantum).
 // ---------------------------------------------------------------------------
 
 export type UiAlgorithm = "A256GCM" | "MLKEM1024_MLDSA87_A256GCM"
-
-export type WireAlgorithm = "A256GCM"
 
 export const SYM_SUITE = "HKDF-SHA256+A256GCM" as const
 export type SymSuite = typeof SYM_SUITE
@@ -33,17 +31,6 @@ export interface StoredKeyRecord {
   rotatedFromId?: string | undefined
   rotatedAt?: number | undefined
   symmetricKey: CryptoKey
-}
-
-// Mapper exclusively for the symmetric A256GCM UI/wire identifier. Resolve PQ suites with
-// resolveSuite in crypto/pq/suites.ts. This dependency-free module cannot throw AppError.
-export function toWireAlgorithm(algorithm: UiAlgorithm): WireAlgorithm {
-  if (algorithm === "A256GCM") return "A256GCM"
-  throw new TypeError("v2 algorithm requires resolveSuite (crypto/pq/suites)")
-}
-
-export function toUiAlgorithm(algorithm: WireAlgorithm): UiAlgorithm {
-  return algorithm
 }
 
 // ---------------------------------------------------------------------------

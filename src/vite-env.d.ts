@@ -3,6 +3,11 @@
 
 declare const __APP_VERSION__: string
 
+declare const __DEPLOYMENT_HEADER_POLICY__: {
+  root: Record<string, string>
+  sentinelCacheControl: string
+}
+
 interface ImportMetaEnv {
   readonly VITE_APP_NAME?: string
   readonly VITE_APP_SHORT_NAME?: string

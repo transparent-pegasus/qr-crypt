@@ -15,6 +15,7 @@ import {
   detectFeatures as detectBrowserFeatures,
   type FeatureSupport,
 } from "@/lib/feature-detect"
+import { reloadApplication } from "@/lib/reload"
 import { createAppRouter } from "@/app/router"
 import { AppProviders, ThemeProvider, useSensitiveSession } from "@/app/providers"
 import { Button } from "@/components/ui/button"
@@ -221,6 +222,53 @@ function BootGate({
           onContinue={acceptOfflineRisk}
         />
       )
+    case "blocked": {
+      // Reload is the only exit. A retry button here would let an operator
+      // click past the one connectivity signal the app has.
+      if (state.reason === "network-suspected") {
+        return (
+          <BootStatusScreen>
+            <p className="font-mono text-xs text-destructive">NETWORK_SUSPECTED</p>
+            <h1 className="text-xl font-bold">{t("boot.networkSuspected.title")}</h1>
+            <p className="text-sm text-muted-foreground">
+              {t("boot.networkSuspected.body")}
+            </p>
+            <Button type="button" className="h-11 w-full whitespace-normal" onClick={reloadPage}>
+              {t("boot.blocked.reload")}
+            </Button>
+          </BootStatusScreen>
+        )
+      }
+      if (state.reason === "deployment-failed") {
+        return (
+          <BootStatusScreen>
+            <p className="font-mono text-xs text-destructive">DEPLOYMENT_FAILED</p>
+            <h1 className="text-xl font-bold">{t("boot.deploymentFailed.title")}</h1>
+            <p className="text-sm text-muted-foreground">
+              {t("boot.deploymentFailed.body")}
+            </p>
+            <Button type="button" className="h-11 w-full whitespace-normal" onClick={reloadPage}>
+              {t("boot.blocked.reload")}
+            </Button>
+          </BootStatusScreen>
+        )
+      }
+      // No verdict recorded at all — a fresh install or a wiped origin. Saying
+      // the headers failed here would send the operator to debug a server that
+      // is very likely fine.
+      return (
+        <BootStatusScreen>
+          <p className="font-mono text-xs text-destructive">DEPLOYMENT_UNVERIFIED</p>
+          <h1 className="text-xl font-bold">{t("boot.deploymentUnverified.title")}</h1>
+          <p className="text-sm text-muted-foreground">
+            {t("boot.deploymentUnverified.body")}
+          </p>
+          <Button type="button" className="h-11 w-full whitespace-normal" onClick={reloadPage}>
+            {t("boot.blocked.reload")}
+          </Button>
+        </BootStatusScreen>
+      )
+    }
     case "network-confirmed":
       return (
         <OnlineInstallScreen
@@ -286,15 +334,11 @@ function BootGate({
   }
 }
 
-function reloadCurrentPage(): void {
-  window.location.reload()
-}
-
 function AppContent({
   bootController,
   detectFeatures,
   pwaHook,
-  reloadPage = reloadCurrentPage,
+  reloadPage = reloadApplication,
   routerFactory = createAppRouter,
 }: Omit<AppProps, "initialLanguage">) {
   const detector = detectFeatures ?? detectBrowserFeatures

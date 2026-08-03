@@ -6,23 +6,30 @@ import {
   createBootController,
   probeNetworkSentinel,
   readBootDecision,
+  readDeploymentVerdict,
   type BootDecisionSnapshot,
 } from "@/app/boot/boot-controller"
+import { WIPE_BROADCAST_CHANNEL } from "@/app/boot/boot-contract"
+import type { DeploymentVerdict } from "@/lib/deployment-headers"
 import { useBootState } from "@/app/boot/use-boot-state"
 import {
   createWipeCoordinator,
+  installQuarantineBroadcastListener,
   installWipeBroadcastListener,
+  QUARANTINE_REQUEST_TYPE,
 } from "@/app/boot/wipe-coordinator"
 import {
   clearReceipts,
   recordReceipt,
   type ReceiptSubject,
 } from "@/features/receipt-cache"
+import * as databaseModule from "@/storage/database"
 import {
+  resetDatabaseAccessBarrierForTesting,
   SENSITIVE_WRITE_EXCLUSION_TIMEOUT_MS,
   withSensitiveWriteLock,
 } from "@/storage/database"
-import { decision, response } from "../helpers/boot-fixtures"
+import { decision, response, responseMissingHeader } from "../helpers/boot-fixtures"
 import { deferred } from "../helpers/deferred"
 import { MemoryStorage } from "../helpers/memory-storage"
 
@@ -98,6 +105,7 @@ afterEach(() => {
   clearReceipts()
   cleanup()
   window.localStorage.clear()
+  resetDatabaseAccessBarrierForTesting()
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -108,7 +116,7 @@ describe("destructive reachability probe", () => {
     const fetchImpl = vi.fn(async () => response("QR-CRYPT-REACHABLE"))
     await expect(
       probeNetworkSentinel({ fetchImpl, nonce: "fixed", timeoutMs: 50 }),
-    ).resolves.toBe(true)
+    ).resolves.toMatchObject({ confirmed: true })
     expect(fetchImpl).toHaveBeenCalledWith(
       "/reachability-sentinel.txt?n=fixed",
       expect.objectContaining({ method: "GET", cache: "no-store" }),
@@ -119,19 +127,31 @@ describe("destructive reachability probe", () => {
         fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE\n")),
         timeoutMs: 50,
       }),
-    ).resolves.toBe(false)
+    ).resolves.toMatchObject({ confirmed: false })
   })
 
   it.each([
     ["non-200", vi.fn(async () => response("QR-CRYPT-REACHABLE", 204))],
     ["body mismatch", vi.fn(async () => response("captive portal"))],
     ["fetch rejection", vi.fn(async () => Promise.reject(new TypeError("offline")))],
-  ])("treats %s as offline", async (_name, fetchImpl) => {
+  ])("treats %s as offline", async (name, fetchImpl) => {
     const controller = createBootController({
       fetchImpl,
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     await controller.probe()
+    // A non-200 response is still an obtained response: evaluateDeploymentHeaders
+    // marks the status field failed, so the deployment gate latches blocked
+    // instead of confirming offline — and it is a checked failure, not a missing
+    // verdict. Body mismatch / fetch rejection stay offline-confirmed.
+    if (name === "non-200") {
+      expect(controller.getState()).toEqual({
+        kind: "blocked",
+        reason: "deployment-failed",
+      })
+      return
+    }
     expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
   })
 
@@ -140,6 +160,7 @@ describe("destructive reachability probe", () => {
     const controller = createBootController({
       fetchImpl: vi.fn(() => new Promise<Response>(() => undefined)),
       probeTimeoutMs: BOOT_PROBE_TIMEOUT_MS,
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     const pending = controller.probe()
@@ -209,6 +230,7 @@ describe("destructive reachability probe", () => {
     )
     const controller = createBootController({
       fetchImpl,
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     const first = controller.probe()
@@ -411,6 +433,7 @@ describe("boot decisions", () => {
         consumeMaintenanceToken,
         fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
         performWipe,
+        readConnectivityHint: () => "offline",
         readDecision: async () =>
           decision({ maintenanceTokenArmed: true, sensitiveDataExists: true }),
       })
@@ -475,6 +498,7 @@ describe("boot decisions", () => {
     )
     const controller = createBootController({
       fetchImpl,
+      readConnectivityHint: () => "offline",
       readDecision: async () => decision(),
     })
     const listener = vi.fn()
@@ -489,7 +513,7 @@ describe("boot decisions", () => {
     expect(listener).toHaveBeenCalledTimes(probingEmits)
     expect(fetchImpl).toHaveBeenCalledTimes(1)
 
-    resolveFetch?.(response("offline", 503))
+    resolveFetch?.(response("not-the-sentinel"))
     await pending
     const offlineEmits = listener.mock.calls.length
     expect(controller.nudgeDisplayOffline()).toBe(false)
@@ -557,7 +581,7 @@ describe("boot decisions", () => {
 
   it("clears session receipts with other transient state", async () => {
     const subject: ReceiptSubject = {
-      kind: "aes",
+      kind: "sym",
       recipientKeyId: "receipt-recipient",
       envelopeHash: "receipt-envelope",
     }
@@ -926,10 +950,284 @@ describe("boot decisions", () => {
   })
 })
 
+describe("connectivity-hint gating (NS-02)", () => {
+  const failingFetch = () =>
+    vi.fn(async () => Promise.reject(new TypeError("offline")))
+  const succeedingSentinelFetch = () =>
+    vi.fn(async () => response("QR-CRYPT-REACHABLE"))
+  const hangingFetch = () => vi.fn(() => new Promise<Response>(() => undefined))
+
+  it("confirms offline when the sentinel fails and the hint is offline", async () => {
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "offline",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
+  })
+
+  it("blocks when the sentinel fails but the hint is online", async () => {
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+  })
+
+  it("blocks on an indeterminate hint", async () => {
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "indeterminate",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+  })
+
+  it("blocks instead of confirming offline via nudgeDisplayOffline", async () => {
+    const controller = createBootController({
+      fetchImpl: succeedingSentinelFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState().kind).toBe("network-confirmed")
+
+    controller.nudgeDisplayOffline()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+  })
+
+  it("blocks instead of confirming offline on an offline event while probing", async () => {
+    const target = new EventTarget()
+    const controller = createBootController({
+      fetchImpl: hangingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+      eventTarget: target as Pick<Window, "addEventListener" | "removeEventListener">,
+    })
+    controller.start()
+    target.dispatchEvent(new Event("offline"))
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+  })
+
+  it("is terminal: stop, start, probe, and events leave it unchanged", async () => {
+    const target = new EventTarget()
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+      eventTarget: target as Pick<Window, "addEventListener" | "removeEventListener">,
+    })
+    await controller.probe()
+    const blocked = controller.getState()
+
+    controller.stop()
+    expect(controller.getState()).toEqual(blocked)
+    controller.start()
+    expect(controller.getState()).toEqual(blocked)
+    await controller.probe()
+    expect(controller.getState()).toEqual(blocked)
+    target.dispatchEvent(new Event("online"))
+    target.dispatchEvent(new Event("offline"))
+    expect(controller.getState()).toEqual(blocked)
+    controller.release()
+    controller.acquire()
+    expect(controller.getState()).toEqual(blocked)
+  })
+
+  it("blocks without invoking the wipe executor", async () => {
+    // The state assertion is the one that fails if the lock is missing; a
+    // bare "performWipe was not called" assertion passes on today's code too,
+    // because a failing sentinel already reaches offline-confirmed without
+    // wiping. Keep both, and never keep only the second.
+    const performWipe = vi.fn()
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+      performWipe,
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "network-suspected",
+    })
+    expect(performWipe).not.toHaveBeenCalled()
+  })
+
+  it("quarantines without wiping and without opening the database", async () => {
+    const performWipe = vi.fn()
+    // Spying on getDb is what actually proves the design's claim. Asserting that
+    // a later getDb() rejects only proves the barrier engaged — it would still
+    // pass if the lock path had opened a readwrite transaction first.
+    const openSpy = vi.spyOn(databaseModule, "getDb")
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+      performWipe,
+    })
+    await controller.probe()
+
+    expect(controller.getState().kind).toBe("blocked")
+    expect(performWipe).not.toHaveBeenCalled()
+    expect(openSpy).not.toHaveBeenCalled()
+  })
+
+  it("enters blocked when a peer broadcasts a quarantine request", async () => {
+    const onQuarantine = vi.fn()
+    const stop = installQuarantineBroadcastListener({ onQuarantine })
+    const channel = new BroadcastChannel(WIPE_BROADCAST_CHANNEL)
+    channel.postMessage({ type: QUARANTINE_REQUEST_TYPE, version: 1 })
+    await vi.waitFor(() => expect(onQuarantine).toHaveBeenCalled())
+    stop()
+    channel.close()
+  })
+})
+
+describe("deployment verdict (NS-08)", () => {
+  const conformingSentinelFetch = () =>
+    vi.fn(async () => response("QR-CRYPT-REACHABLE"))
+  const failingFetch = () =>
+    vi.fn(async () => Promise.reject(new TypeError("offline")))
+  const sentinelFetchWithout = (header: string) =>
+    vi.fn(async () => responseMissingHeader("QR-CRYPT-REACHABLE", header))
+  const decisionWithVerdict = (verdict: DeploymentVerdict | undefined) => async () => {
+    if (verdict === undefined) {
+      const base = decision()
+      return {
+        wipeOnOnline: base.wipeOnOnline,
+        sensitiveDataExists: base.sensitiveDataExists,
+        cleanOrigin: base.cleanOrigin,
+        maintenanceTokenArmed: base.maintenanceTokenArmed,
+        resetChurnMb: base.resetChurnMb,
+        preferencesReadFailed: base.preferencesReadFailed,
+      }
+    }
+    return decision({ deploymentVerdict: verdict })
+  }
+
+  it("persists a passing verdict from the sentinel response", async () => {
+    const controller = createBootController({
+      fetchImpl: conformingSentinelFetch(),
+      readConnectivityHint: () => "offline",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    const stored = await readDeploymentVerdict()
+    expect(stored?.status).toBe("pass")
+  })
+
+  it("blocks when the sentinel response is missing security headers", async () => {
+    const controller = createBootController({
+      fetchImpl: sentinelFetchWithout("x-frame-options"),
+      readConnectivityHint: () => "offline",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "deployment-failed",
+    })
+  })
+
+  it("blocks on a later boot when no verdict was ever persisted", async () => {
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "offline",
+      readDecision: decisionWithVerdict(undefined),
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "deployment-unverified",
+    })
+  })
+
+  it("blocks on a later boot when the persisted verdict failed", async () => {
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "offline",
+      readDecision: decisionWithVerdict({
+        status: "fail",
+        failedFields: ["x-frame-options"],
+        checkedAt: 5,
+      }),
+    })
+    await controller.probe()
+    expect(controller.getState().kind).toBe("blocked")
+  })
+
+  it("honours this episode's pass without re-reading storage", async () => {
+    // network-confirmed -> PASS -> server stopped -> display offline
+    const controller = createBootController({
+      fetchImpl: conformingSentinelFetch(),
+      readConnectivityHint: () => "offline",
+      readDecision: async () => decision(),
+    })
+    await controller.probe()
+    expect(controller.getState().kind).toBe("network-confirmed")
+    controller.nudgeDisplayOffline()
+    expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
+  })
+
+  it("blocks without wiping when the verdict fails", async () => {
+    const performWipe = vi.fn()
+    const controller = createBootController({
+      fetchImpl: sentinelFetchWithout("cross-origin-opener-policy"),
+      readConnectivityHint: () => "offline",
+      readDecision: async () => decision(),
+      performWipe,
+    })
+    await controller.probe()
+    // Both halves matter: the state assertion is what detects a missing
+    // implementation, the wipe assertion is what detects an over-reaction.
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "deployment-failed",
+    })
+    expect(performWipe).not.toHaveBeenCalled()
+  })
+
+  it("refuses the router when the boot decision could not be read", async () => {
+    // readBootDecision returns FALLBACK_DECISION on an open failure
+    // (boot-controller.ts), which carries no verdict. Under D8 an
+    // absent verdict refuses, and it must still not wipe.
+    const performWipe = vi.fn()
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "offline",
+      readDecision: () => Promise.reject(new Error("storage open failed")),
+      performWipe,
+    })
+    await controller.probe()
+    expect(controller.getState()).toEqual({
+      kind: "blocked",
+      reason: "deployment-unverified",
+    })
+    expect(performWipe).not.toHaveBeenCalled()
+  })
+})
+
 describe("WipeCoordinator order", () => {
   it("clears session receipts during the buffer-drop step", async () => {
     const subject: ReceiptSubject = {
-      kind: "aes",
+      kind: "sym",
       recipientKeyId: "wipe-recipient",
       envelopeHash: "wipe-envelope",
     }

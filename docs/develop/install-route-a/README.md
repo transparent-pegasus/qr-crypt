@@ -1,15 +1,17 @@
 # Install route A: signed ZIP
 
-日本語版: [docs/languages/ja/develop/install-route-a/README.md](../../languages/ja/develop/install-route-a/README.md)
+日本語版: [docs/locales/ja/develop/install-route-a/README.md](../../locales/ja/develop/install-route-a/README.md)
 
 The complete procedure for high-assurance offline installation. The archive's
 `INSTALL.txt` is the self-contained copy that reaches the offline device. For
 independent verification, the copy of this document at the authenticated source
 commit is the authority: compare the archive instructions against it and treat
 any added, omitted, weakened, or otherwise changed requirement as a tampering
-signal. The current release workflow generates `INSTALL.txt` from an inline
-heredoc rather than versioned source, so that member cannot yet be reproduced
-byte-for-byte; this open limitation is stated in §5 and in the security review.
+signal. `INSTALL.txt` is rendered from the versioned template
+[`INSTALL.template.txt`](INSTALL.template.txt) by
+[`scripts/generate-install-txt.mjs`](../../../scripts/generate-install-txt.mjs),
+so §5 reproduces that member byte-for-byte from the authenticated checkout, like
+every payload file.
 
 ## 1. Scope
 
@@ -154,13 +156,17 @@ test -z "$(git -C "$QR_CRYPT_CHECKOUT" status \
 ```
 
 3. Compare the complete application payload file set and every payload byte.
-   Do not exclude `about/` or any other archive payload member:
+   Account for every archive member; the only exclusions are the two named
+   below and the online-only `about/` landing page, which the release workflow
+   deletes from `dist/` before staging (it has external links and no place on
+   an air-gapped device). A rebuild keeps `about/`, so comparing it against the
+   archive would report a difference on every honest release:
 
 ```bash
 export QR_CRYPT_COMPARE_TMP="$(mktemp -d)"
 (
   cd "$QR_CRYPT_CHECKOUT/dist"
-  find . -type f -printf '%P\n' |
+  find . -type f ! -path './about/*' -printf '%P\n' |
     LC_ALL=C sort
 ) > "$QR_CRYPT_COMPARE_TMP/rebuilt.files"
 (
@@ -189,21 +195,37 @@ diff -u "$QR_CRYPT_COMPARE_TMP/rebuilt.sha256" \
   "$QR_CRYPT_COMPARE_TMP/archive-payload.sha256"
 ```
 
-4. Open the archive's `INSTALL.txt` and
-   `$QR_CRYPT_CHECKOUT/docs/develop/install-route-a/README.md` from the authenticated
-   checkout side by side. Check the archive's displayed version, tag, and full
-   source commit against the independently authenticated values. Then compare
-   every instruction, prohibition, prerequisite, security assumption, and server
-   requirement against this document. The archive may condense rationale and may
-   substitute the independently verified release metadata, but it must not add,
-   omit, weaken, or change an operational requirement. In particular, it must
-   require the §4 pre-extraction validation and the audited, already-preinstalled,
-   independently obtained server in §7. Any divergence is a tampering signal:
-   stop and reject the release; do not “repair” the archive copy locally.
+4. Regenerate `INSTALL.txt` from the authenticated checkout and compare it byte
+   for byte. The generator takes the source commit from your independently
+   authenticated value and reads the release version from `package.json` and the
+   Cosign version from the release workflow, both inside that checkout, so no
+   value from the archive under inspection feeds back into the comparison:
+
+```bash
+(
+  cd "$QR_CRYPT_CHECKOUT"
+  QR_CRYPT_SOURCE_SHA="$QR_CRYPT_SOURCE_SHA" \
+    mise exec -- node scripts/generate-install-txt.mjs
+) > "$QR_CRYPT_COMPARE_TMP/rebuilt-INSTALL.txt"
+diff -u "$QR_CRYPT_COMPARE_TMP/rebuilt-INSTALL.txt" \
+  "$QR_CRYPT_ARCHIVE_ROOT/INSTALL.txt"
+```
+
+   Any difference is a tampering signal: stop and reject the release; do not
+   “repair” the archive copy locally. Then read the regenerated file once
+   against this document. A byte match already proves the archive states what
+   the authenticated source states, so this reading checks the source itself —
+   that it still carries the §4 pre-extraction validation contract, the
+   manifest reconstruction in step 5, and the audited, already-preinstalled,
+   independently obtained server in §7 — rather than re-checking the archive.
+   The archive copy states each of those requirements itself, so a verifier who
+   has only `INSTALL.txt` performs the same procedure; `tests/unit/generate-install-txt.test.ts`
+   pins that. This document holds the fuller rationale, which the archive may
+   condense, but it must not hold a requirement the archive lacks.
 
 5. Recreate `SHA256SUMS.files` locally instead of trusting or merely checking the
    archive's manifest. Assemble an expected root from the independently rebuilt
-   payload and the exact `INSTALL.txt` bytes that passed step 4, generate a sorted
+   payload and the `INSTALL.txt` regenerated in step 4, generate a sorted
    manifest locally, compare the manifest bytes, and finally compare the complete
    roots. This accounts for the payload, `INSTALL.txt`, and
    `SHA256SUMS.files`:
@@ -212,7 +234,8 @@ diff -u "$QR_CRYPT_COMPARE_TMP/rebuilt.sha256" \
 export QR_CRYPT_REBUILT_ROOT="$QR_CRYPT_COMPARE_TMP/rebuilt-root"
 mkdir -p "$QR_CRYPT_REBUILT_ROOT"
 cp -a "$QR_CRYPT_CHECKOUT/dist/." "$QR_CRYPT_REBUILT_ROOT/"
-cp -- "$QR_CRYPT_ARCHIVE_ROOT/INSTALL.txt" \
+rm -rf -- "$QR_CRYPT_REBUILT_ROOT/about"
+cp -- "$QR_CRYPT_COMPARE_TMP/rebuilt-INSTALL.txt" \
   "$QR_CRYPT_REBUILT_ROOT/INSTALL.txt"
 (
   cd "$QR_CRYPT_REBUILT_ROOT"
@@ -240,16 +263,10 @@ expansion checks in §4.
 What the CI gate does **not** prove: the in-CI double build shows same-environment
 determinism only, not environment-independent reproducibility. The Cosign
 signature attests that that workflow published that artifact (workflow and source
-commit provenance). Neither establishes source-to-binary correspondence.
-`INSTALL.txt` is currently generated inside the release workflow and is not
-derived from versioned source, so it cannot be byte-reproduced independently
-today; step 4 is an instruction-level comparison, and copying its reviewed bytes
-into the expected root does not remove that residual. Moving a deterministic
-generator or template into versioned source is an open release-pipeline item
-outside this branch. Until that is fixed, any `INSTALL.txt` divergence from the
-authenticated repository document is grounds to reject the release. The
-remaining payload and locally regenerated manifest are byte-compared
-independently.
+commit provenance). Neither establishes source-to-binary correspondence. Only
+this procedure does, and only for the party that runs it: every member of the
+archive — payload, `INSTALL.txt`, and the manifest — is rebuilt or regenerated
+from the authenticated source commit and byte-compared here.
 
 ## 6. Recommended practice, beyond INSTALL.txt
 
@@ -281,11 +298,19 @@ it; treating it as required would disagree with the archive copy.
    port (not a collision-prone default such as 8000 or 8080) and reserve that port
    for QR Crypt.
 
-   Most static servers ignore `_headers` entirely, and nothing in the app detects
-   that. If your server does not apply it, the six non-CSP security headers are
-   simply absent — only the meta CSP and the `<meta name="referrer">` fallback
-   survive; see [threat-model.md](../../security/threat-model.md) §2 for exactly
-   what is lost. `scripts/serve-dist.mjs` in the source tree is this repository's
+   Most static servers ignore `_headers` entirely. The app now checks the
+   headers on the reachability-sentinel response while your server is still
+   reachable, persists the verdict, and **refuses to mount the application** on a
+   failing or absent verdict — so a server that drops them fails closed instead
+   of silently degrading. That check is misconfiguration detection, not
+   independent assurance: it inspects the sentinel response only, so a server
+   that applies the headers to the sentinel but not to `/index.html` still
+   passes. An independent checker against the real navigation response is still
+   required. If your server does not apply `_headers` at all, the six non-CSP
+   security headers are simply absent — only the meta CSP and the
+   `<meta name="referrer">` fallback survive; see
+   [threat-model.md](../../security/threat-model.md) §2 for exactly what is
+   lost. `scripts/serve-dist.mjs` in the source tree is this repository's
    reference implementation of the required behaviour and is the definition of
    "`_headers` semantics" your server must reproduce. Read it to derive your own
    server's configuration — do **not** carry it onto the offline device as another
@@ -297,6 +322,14 @@ it; treating it as required would disagree with the archive copy.
    restoring any secret. The install server's own sentinel deliberately makes the
    app treat that origin as reachable, so never enter secrets while it is
    running.
+
+   Order matters, and the app now enforces it. If you stop the server but reload
+   before disconnecting the network, the app cannot reach its own origin while
+   the browser still reports a connection, so it locks with **"Network
+   connection detected"** and will not open. That is the intended instruction,
+   not a fault: disconnect the network — including virtual interfaces such as
+   VPN or container bridges, which also make the browser report a connection —
+   and reload. Nothing is deleted; stored keys are untouched.
 
 Opening `index.html` with `file://` is unsupported. Plain HTTP on a LAN address
 is unsupported.

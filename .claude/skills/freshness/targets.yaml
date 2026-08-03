@@ -114,7 +114,10 @@ units:
       - .github/workflows/github-release.yml
       - docs/develop/deployment.md # prose mirror of the deploy/CI/release flow
       - docs/develop/install-route-a/README.md # complete Route A procedure; README is summary + link
-      - docs/languages/ja/develop/install-route-a/README.md # Japanese mirror under docs/languages/<lang>/; must not diverge from README.md
+      - docs/locales/ja/develop/install-route-a/README.md # Japanese mirror under docs/locales/<lang>/; must not diverge from README.md
+      - docs/develop/install-route-a/INSTALL.template.txt # the only copy of the archive's INSTALL.txt text
+      - scripts/generate-install-txt.mjs # renders that template; the workflow and the verifier both call it
+      - tests/unit/generate-install-txt.test.ts # executable derivation, fail-closed, and about/-exclusion contract
       - scripts/serve-dist.mjs # header-aware server called directly by the release workflow
       - tests/unit/serve-dist.test.ts # executable containment and server startup contract
       - tests/unit/release-tag-read.test.ts # extracts assert_canonical_tag and read_canonical_tag from github-release.yml; breaks if either helper is renamed or reshaped
@@ -142,8 +145,11 @@ units:
       Actions to create and approve pull requests is enabled. Reconcile
       docs/develop/deployment.md with the workflows. Reconcile
       docs/develop/install-route-a/README.md (mandatory set, cosign verify-blob variables,
-      rebuild-and-compare) with the INSTALL.txt heredoc and verification contract
-      in github-release.yml; confirm README.md / README.ja.md Route A sections
+      rebuild-and-compare) with INSTALL.template.txt and the verification contract
+      in github-release.yml. The template is the archive text: keep the workflow
+      calling generate-install-txt.mjs rather than inlining a second copy, and keep
+      every rebuild-side comparison excluding the online-only about/ tree the
+      workflow deletes before staging. Confirm README.md / README.ja.md Route A sections
       remain a summary plus a link to that document (not a second incomplete
       procedure) and that their quoted policy values still match the workflow.
     sync: [readme]
@@ -151,6 +157,7 @@ units:
       Local only — a freshness sweep must not push:
       aube run test -- tests/unit/serve-dist.test.ts
       aube run test -- tests/unit/release-tag-read.test.ts
+      aube run test -- tests/unit/generate-install-txt.test.ts
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \
@@ -166,7 +173,7 @@ units:
       and confirm pinned release-workflow SHAs match.
       # Relative links in the Route A install document and deployment prose must
       # resolve (README is summary + link; this document is the authority).
-      for f in docs/develop/install-route-a/README.md docs/languages/ja/develop/install-route-a/README.md docs/develop/deployment.md; do
+      for f in docs/develop/install-route-a/README.md docs/locales/ja/develop/install-route-a/README.md docs/develop/deployment.md; do
         for target in $(rg -oN --no-filename '\]\(([^):#]+)\)' -r '$1' "$f" |
           sort -u); do
           case "$target" in http*|mailto:*) continue;; esac
@@ -213,6 +220,43 @@ units:
       resolve.
     sync: [ui-security-copy, readme]
 
+  - id: environment-threats
+    category: security-knowledge
+    cadence_days: 90 # same rhythm as threat-model; a review reads both together
+    last_checked: 2026-08-03
+    files:
+      - docs/security/environment-threat-catalog.md
+      - docs/locales/ja/security/environment-threat-catalog.md # Japanese mirror; entries, labels, and sources must not diverge
+    why: >
+      Physical and operational environment techniques age from the outside:
+      published attacks improve, hardware changes what is reachable, and dated
+      sources are superseded. The nation-state-security skill treats this file
+      as authoritative, so a stale catalog silently narrows every review.
+    method: |
+      Re-check each entry's dated sources and replace superseded ones rather
+      than accumulating citations. Add a technique only with a stated
+      relationship to this system; keep the Evidence / Observed / Speculation
+      labels honest and never upgrade one toward Evidence without a source, a
+      measurement, or an in-repo record. Observed is for directly observable
+      platform or design behaviour only — reach for it instead of calling an
+      uncited claim Evidence, never as a way to avoid finding a citation.
+      Promote any entry that becomes application-addressable into
+      docs/security/threat-model.md as a T row and cross-reference it back.
+      Record the review date in the Currency section, and carry every change
+      into the Japanese mirror in the same sweep — English is the source of
+      record (docs/develop/development.md), so a translated-only edit is drift.
+    constraint: >
+      No new T identifiers are minted here, and no entry may imply a control
+      the application does not have. Absolute security or side-channel claims
+      stay prohibited (docs/security/security-review.md §2).
+    verify: >
+      Every cross-referenced T row and document path still resolves; every
+      entry labelled Evidence names a dated source, an in-repo measurement, or
+      an in-repo record, and every entry labelled Observed is genuinely
+      definitional rather than uncited research; no entry contradicts
+      docs/security/threat-model.md §3 non-goals.
+    sync: [threat-model]
+
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
@@ -221,8 +265,10 @@ units:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
       - scripts/serve-dist.mjs # header-aware server behind the executable CSP claims
-      - scripts/csp-from-headers.mjs # derives the meta CSP injected into index.html
+      - scripts/csp-from-headers.mjs # derives the meta CSP injected into index.html, and the runtime deployment policy mirrored into __DEPLOYMENT_HEADER_POLICY__
       - scripts/csp-from-headers.d.mts # declaration companion for the above
+      - src/lib/deployment-headers.ts # runtime gate comparing the sentinel response against that mirrored policy
+      - tests/unit/deployment-headers.test.ts # executable contract for the per-field verdict
       - tests/e2e/security.spec.ts # executable half of the CSP claims
       - tests/e2e/online-relay.spec.ts # relay request/persistence leakage matrix and byte-oracle self-test
       - tests/e2e/persistence-inspector.ts # recursive byte-aware IndexedDB/CacheStorage oracle
@@ -319,13 +365,16 @@ units:
       - src/schemas/domain.ts # exact default and compatible generated-display pairs
       - src/storage/preferences-repository.ts # atomic pair writes and boot-readable pair canonicalization
       - src/pages/encrypt-page.tsx # message-display preference and per-artifact effective clamp
+      - src/features/encrypt-message.ts # the one seal-to-artifact operation: QR_TOO_LARGE admissibility and key-usage recording
       - src/pages/decrypt-page.tsx # decoded-artifact ceilings on the paste and scan paths
+      - src/features/decrypt-message.ts # the one open operation: action-time identity re-resolution, replay refusal, and plaintext zeroize
       - src/lib/generated-display.ts # the one effectiveGeneratedDisplay (pair + per-artifact clamp), shared by every display surface
       - src/components/qr-display.tsx # renders at the caller-supplied env.qrRenderSize; holds no size default of its own
       - src/components/key-detail-dialog.tsx # identity-display preference and per-artifact effective clamp
       - src/components/key-detail/identity-qr-session.tsx # the identity display surface that consumes the pair
       - src/components/animated-qr-frames.tsx # labelled compatibility switch, commit-gated dwell, and one-button export
       - src/components/online-relay.tsx # independent replay cadence and deliberately absent switch
+      - src/qr/relay-playback.ts # canonical round-trip check and whole-set render admissibility before any frame is shown
       - src/qr/relay-frames.ts # two-message allowlist, session binding, and assembled-artifact validation
       - tests/fixtures/relay-legacy.ts # retired OCM1 strings retained only as rejection fixtures
       - tests/unit/relay-frames.test.ts # parser contract and node-environment fixture pins
@@ -492,7 +541,7 @@ units:
       # Every relative link in the registered Markdown files resolves.
       # Must print nothing; --no-filename is required or every match is
       # prefixed with its file and tested as a nonexistent path.
-      for f in README.md README.ja.md SECURITY.md docs/develop/deviations.md docs/develop/install-route-a/README.md docs/languages/ja/develop/install-route-a/README.md; do
+      for f in README.md README.ja.md SECURITY.md docs/develop/deviations.md docs/develop/install-route-a/README.md docs/locales/ja/develop/install-route-a/README.md; do
         for target in $(rg -oN --no-filename '\]\(([^):#]+)\)' -r '$1' "$f" |
           sort -u); do
           case "$target" in http*|mailto:*) continue;; esac

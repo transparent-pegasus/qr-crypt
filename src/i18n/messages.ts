@@ -99,6 +99,16 @@ const en = {
   "browser.featureList.ariaLabel": "Browser feature list",
 
   "boot.probing.status": "Checking network reachability and local data…",
+  "boot.networkSuspected.title": "Network connection detected",
+  "boot.networkSuspected.body":
+    "This device appears to be connected to a network, and the application could not confirm otherwise. Secret operations stay closed. Disconnect the network — including virtual interfaces such as VPN or container bridges — and reload. Your stored keys have not been changed or deleted.",
+  "boot.deploymentFailed.title": "Server security headers are wrong",
+  "boot.deploymentFailed.body":
+    "The server answered, but its response did not carry the required security headers. This installation cannot be trusted for secret operations. Serve the application with a configuration that applies _headers, then reload. Your stored keys have not been changed or deleted.",
+  "boot.deploymentUnverified.title": "Installation not verified yet",
+  "boot.deploymentUnverified.body":
+    "No server check has been recorded for this address, so the application cannot confirm it was installed correctly. This is normal before the first installation, and after a data reset. Load the application once from its server, then disconnect and reload. Nothing is wrong with your server, and your stored keys have not been changed or deleted.",
+  "boot.blocked.reload": "Reload",
   "boot.wiping.title": "Resetting local data",
   "boot.wiping.body": "Do not close this screen until the operation finishes.",
   "boot.wiped.title": "Local data was reset after an online connection was detected",
@@ -720,6 +730,16 @@ const ja = {
   "browser.featureList.ariaLabel": "ブラウザー機能一覧",
 
   "boot.probing.status": "ネットワーク到達性とローカルデータを確認しています…",
+  "boot.networkSuspected.title": "ネットワーク接続を検出しました",
+  "boot.networkSuspected.body":
+    "この端末はネットワークに接続されている可能性があり、接続がないことを確認できませんでした。秘密操作は閉じたままにします。VPN やコンテナブリッジなどの仮想インターフェースを含めてネットワークを切断し、再読み込みしてください。保存済みの鍵は変更も削除もされていません。",
+  "boot.deploymentFailed.title": "サーバのセキュリティヘッダーが不正です",
+  "boot.deploymentFailed.body":
+    "サーバは応答しましたが、その応答に必要なセキュリティヘッダーが含まれていませんでした。このインストールは秘密操作に使用できません。_headers を適用する構成で配信し直してから再読み込みしてください。保存済みの鍵は変更も削除もされていません。",
+  "boot.deploymentUnverified.title": "インストールが未検証です",
+  "boot.deploymentUnverified.body":
+    "このアドレスに対するサーバ検査の記録がないため、正しくインストールされたことを確認できません。初回インストール前とデータ初期化後には正常な状態です。サーバから一度アプリケーションを読み込み、その後ネットワークを切断して再読み込みしてください。サーバに異常はなく、保存済みの鍵も変更・削除されていません。",
+  "boot.blocked.reload": "再読み込み",
   "boot.wiping.title": "ローカルデータを初期化しています",
   "boot.wiping.body": "完了するまでこの画面を閉じないでください。",
   "boot.wiped.title": "オンラインを検出したため、ローカルデータを初期化しました",

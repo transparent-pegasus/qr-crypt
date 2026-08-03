@@ -50,3 +50,40 @@ export function metaCspFromHeaders(text) {
     })
     .join("; ")
 }
+
+// The exact header set the runtime deployment gate compares against. Derived
+// from _headers so a policy edit can never disagree with the check.
+const ROOT_SECURITY_HEADERS = Object.freeze([
+  "Content-Security-Policy",
+  "Referrer-Policy",
+  "X-Content-Type-Options",
+  "X-Frame-Options",
+  "Permissions-Policy",
+  "Cross-Origin-Opener-Policy",
+  "Cross-Origin-Resource-Policy",
+])
+
+export function deploymentPolicyFromHeaders(text) {
+  const rules = parseHeadersFile(text)
+  const root = rules.find((rule) => rule.pattern === "/*")
+  if (!root) throw new Error("HEADERS_ROOT_MISSING")
+
+  const extracted = {}
+  for (const name of ROOT_SECURITY_HEADERS) {
+    const value = root.headers[name]
+    if (typeof value !== "string" || value.trim() === "") {
+      throw new Error("HEADERS_ROOT_INCOMPLETE")
+    }
+    extracted[name.toLowerCase()] = value
+  }
+
+  const sentinel = rules.find(
+    (rule) => rule.pattern === "/reachability-sentinel.txt",
+  )
+  const sentinelCacheControl = sentinel?.headers["Cache-Control"]
+  if (typeof sentinelCacheControl !== "string" || sentinelCacheControl.trim() === "") {
+    throw new Error("HEADERS_SENTINEL_MISSING")
+  }
+
+  return { root: extracted, sentinelCacheControl }
+}

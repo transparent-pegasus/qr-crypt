@@ -11,6 +11,7 @@ import {
   mainNavigation,
   precachedUrls,
   seedSelfPublicBundle,
+  setDeviceOffline,
   waitForServiceWorkerControl,
   workerObservations,
 } from "./helpers"
@@ -82,7 +83,7 @@ test("warms the precached same-origin reader WASM before offline camera capture"
     )
   })
 
-  await context.setOffline(true)
+  await setDeviceOffline(context, true)
   await expectOfflineAcknowledgement(page)
   await acknowledgeOfflineRisk(page)
   await expect(mainNavigation(page)).toBeVisible()
@@ -149,7 +150,7 @@ test("completes offline PQ keygen, Encaps, Decaps, and signature verification us
   expect(cachedWorkerPaths.length).toBeGreaterThanOrEqual(1)
 
   // First prove the committed online -> offline acknowledgement edge, then reload.
-  await context.setOffline(true)
+  await setDeviceOffline(context, true)
   await expectOfflineAcknowledgement(page)
   await acknowledgeOfflineRisk(page)
   await expect(mainNavigation(page)).toBeVisible()

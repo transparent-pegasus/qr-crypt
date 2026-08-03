@@ -9,36 +9,24 @@ import { randomBytes } from "@/crypto/random"
 import {
   FRAME_BYTES_MAX,
   FRAME_BYTES_MIN,
-  FRAME_CHUNK_MAX_BYTES,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
 } from "@/lib/limits"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import { payloadFits } from "@/qr/encode"
 import { env } from "@/schemas/env-schema"
 
-interface SplitIntoFramesBaseArgs {
+export interface SplitIntoFramesArgs {
   artifactType: V2ArtifactType
   artifactBytes: Uint8Array
+  // FRAME_BYTES_MIN..FRAME_BYTES_MAX (from Preferences or an automatic
+  // per-artifact clamp). Every chunk but the last carries exactly this many
+  // bytes; receivers accept any chunk partition, so an uneven one from another
+  // sender still assembles.
+  frameBytes: number
 }
 
-export type SplitIntoFramesArgs = SplitIntoFramesBaseArgs &
-  (
-    | {
-        // FRAME_BYTES_MIN..FRAME_BYTES_MAX (from Preferences or an automatic
-        // per-artifact clamp).
-        frameBytes: number
-        frameCount?: never
-      }
-    | {
-        // Split evenly into the requested number of non-empty frames.
-        // This is mutually exclusive with frameBytes mode.
-        frameCount: number
-        frameBytes?: never
-      }
-  )
-
 export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFrameV2[]> {
-  const { artifactType, artifactBytes } = args
+  const { artifactType, artifactBytes, frameBytes } = args
   if (artifactType === "encrypted-seed-backup") {
     throw new AppError("UNSUPPORTED_ALGORITHM")
   }
@@ -48,42 +36,15 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
   if (artifactBytes.byteLength > MAX_ARTIFACT_BYTES_ABSOLUTE) {
     throw new AppError("QR_TOO_LARGE")
   }
-
-  const frameBytes = "frameBytes" in args ? args.frameBytes : undefined
-  const requestedFrameCount = "frameCount" in args ? args.frameCount : undefined
-  if ((frameBytes === undefined) === (requestedFrameCount === undefined)) {
+  if (
+    !Number.isSafeInteger(frameBytes) ||
+    frameBytes < FRAME_BYTES_MIN ||
+    frameBytes > FRAME_BYTES_MAX
+  ) {
     throw new AppError("QR_TOO_LARGE")
   }
 
-  let frameCount: number
-  let balancedChunkBytes = 0
-  let largerBalancedChunks = 0
-  if (frameBytes !== undefined) {
-    if (
-      !Number.isSafeInteger(frameBytes) ||
-      frameBytes < FRAME_BYTES_MIN ||
-      frameBytes > FRAME_BYTES_MAX
-    ) {
-      throw new AppError("QR_TOO_LARGE")
-    }
-    frameCount = Math.ceil(artifactBytes.byteLength / frameBytes)
-  } else {
-    if (
-      typeof requestedFrameCount !== "number" ||
-      !Number.isSafeInteger(requestedFrameCount) ||
-      requestedFrameCount < 1 ||
-      requestedFrameCount > env.qrMaxFrames ||
-      requestedFrameCount > artifactBytes.byteLength
-    ) {
-      throw new AppError("QR_TOO_LARGE")
-    }
-    frameCount = requestedFrameCount
-    balancedChunkBytes = Math.floor(artifactBytes.byteLength / frameCount)
-    largerBalancedChunks = artifactBytes.byteLength % frameCount
-    if (balancedChunkBytes + (largerBalancedChunks > 0 ? 1 : 0) > FRAME_CHUNK_MAX_BYTES) {
-      throw new AppError("QR_TOO_LARGE")
-    }
-  }
+  const frameCount = Math.ceil(artifactBytes.byteLength / frameBytes)
   if (frameCount > env.qrMaxFrames) throw new AppError("QR_TOO_LARGE")
 
   // Pin an owned copy first so every chunk is sliced from the same snapshot even
@@ -94,9 +55,7 @@ export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFram
   let chunkStart = 0
 
   for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
-    const chunkLength =
-      frameBytes ?? balancedChunkBytes + (frameIndex < largerBalancedChunks ? 1 : 0)
-    const chunkEnd = Math.min(stableArtifactBytes.byteLength, chunkStart + chunkLength)
+    const chunkEnd = Math.min(stableArtifactBytes.byteLength, chunkStart + frameBytes)
     const frame: QrFrameV2 = {
       version: 2,
       type: "qr-frame",

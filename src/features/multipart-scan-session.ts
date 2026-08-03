@@ -43,17 +43,29 @@ export class MultipartScanSession {
     this.#completionClaimed = false
   }
 
-  claimCompletion(): boolean {
-    if (this.#completionClaimed) return false
+  /**
+   * Runs `deliver` at most once per completed transfer. Returns null — synchronously,
+   * before `deliver` is called — when another caller already owns the completion, so a
+   * second scanner surface can tell "someone else has it" from "it is mine to send"
+   * without a separate claim call.
+   *
+   * A rejected delivery hands the claim back and rethrows. Without that the scanner
+   * re-enables its Start button over a session that can never deliver again, and the
+   * only way out is rescanning every frame. Release lives here rather than in the
+   * caller because delivery nests — the panel calls through the modal — and only the
+   * outermost owner can release exactly once. Whoever retries after a failure owns not
+   * re-claiming on a timer; see the closed-session poller in QrScannerModal.
+   */
+  deliverOnce(deliver: () => void | Promise<void>): Promise<void> | null {
+    if (this.#completionClaimed) return null
     this.#completionClaimed = true
-    return true
-  }
-
-  // Delivery failed, so the claim goes back. Without this the scanner re-enables
-  // its Start button over a session that can never deliver again, and the only
-  // way out is rescanning every frame. Whoever releases owns not re-claiming on
-  // a timer — see the closed-session poller in QrScannerModal.
-  releaseCompletion(): void {
-    this.#completionClaimed = false
+    return (async () => {
+      try {
+        await deliver()
+      } catch (error) {
+        this.#completionClaimed = false
+        throw error
+      }
+    })()
   }
 }

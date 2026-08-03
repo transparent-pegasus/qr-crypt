@@ -201,8 +201,23 @@ They do not close the external `release-approved` blocker.
   procedure, including pre-extraction container validation and an independent
   comparison that accounts for every archive member; both READMEs keep a summary
   plus a link. High-assurance use must use Route A only.
-- **Open — `INSTALL.txt` source derivation:** see
-  [install-route-a/README.md](../develop/install-route-a/README.md) §5.
+- **Closed 2026-08-03 — `INSTALL.txt` source derivation:** the release workflow
+  no longer inlines that text. `docs/develop/install-route-a/INSTALL.template.txt`
+  is the single versioned copy, rendered by `scripts/generate-install-txt.mjs`,
+  whose only caller-supplied input is the independently authenticated source
+  commit; the release version comes from `package.json` and the Cosign version
+  from the release workflow, both inside the authenticated checkout, so no value
+  from the archive under inspection feeds back into the comparison. Route A §5
+  step 4 is now a byte comparison instead of an instruction-level reading, and
+  the whole archive — payload, `INSTALL.txt`, and the regenerated manifest — is
+  byte-compared. The archive copy carries the same operational contract as this
+  repository's document: pre-extraction container validation before anything is
+  written to disk, and the manifest reconstruction plus full-root comparison.
+  A `.gitattributes` LF pin keeps two clean checkouts of one commit rendering
+  identical bytes, so the mandatory diff cannot fail on an honest release.
+  Contract pinned by `tests/unit/generate-install-txt.test.ts`.
+  This narrows F-01 only; source-to-binary correspondence still depends on the
+  independent rebuild being performed (§1, zxing-wasm entry).
 
 ### F-02 — Replayed / re-presented ciphertext
 
@@ -262,7 +277,9 @@ guaranteed; JS memory erasure has limits
    `tests/e2e/online-relay.spec.ts`) must assert:
    - **Allowlist (methods, paths, and query keys):** static/PWA resources;
      recurring `HEAD /manifest.webmanifest?reach=…` (display probe); boot
-     `GET /reachability-sentinel.txt?n=…` (destructive probe). No other
+     `GET /reachability-sentinel.txt?n=…` (destructive probe; the same
+     response also yields the deployment-header verdict, so no additional
+     request is made for it). No other
      runtime requests. Every allowed request must carry no query key beyond
      the two named above — checking method and path alone would let an allowed
      static GET carry a payload field in its query.

@@ -30,6 +30,36 @@ export default tseslint.config(
     },
   },
   {
+    // src/lib/reload.ts is the single owner of full-page reload, because jsdom
+    // defines Location.reload non-configurable and tests mock that module
+    // instead of the global. A direct call is silently untestable.
+    //
+    // Matching on the receiver would mean enumerating spellings — window,
+    // globalThis, self, document, and their computed forms all reach the same
+    // Location — so this matches the `reload` property itself and scopes the
+    // ban to application code, where nothing else legitimately owns one.
+    // Matching the access rather than the call also covers the indirections a
+    // call-only selector misses: rebinding, `.call`, `Reflect.apply`, and
+    // comma-operator escapes all have to read the property first.
+    // Playwright's page.reload lives in tests/ and is deliberately out of scope,
+    // as is public/, whose plain browser modules cannot import the owner.
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/lib/reload.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "MemberExpression[property.name='reload']",
+          message: "Call reloadApplication from @/lib/reload instead.",
+        },
+        {
+          selector: "MemberExpression[property.value='reload']",
+          message: "Call reloadApplication from @/lib/reload instead.",
+        },
+      ],
+    },
+  },
+  {
     files: [
       "scripts/**/*.mjs",
       "vite.config.ts",
