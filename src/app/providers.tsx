@@ -11,6 +11,7 @@ import type { FeatureSupport } from "@/lib/feature-detect"
 import { DisplayGateProvider } from "@/app/display-gate"
 import { PwaOfflineReady, type UseRegisterSwHook } from "@/components/pwa-offline-ready"
 import { Toaster } from "@/components/ui/sonner"
+import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
 
 export type Theme = "light" | "dark" | "system"
 
@@ -21,9 +22,11 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
+export const THEME_STORAGE_KEY = "oc-theme"
+
 function storedTheme(): Theme {
   try {
-    const value = window.localStorage.getItem("oc-theme")
+    const value = window.localStorage.getItem(THEME_STORAGE_KEY)
     return value === "light" || value === "dark" || value === "system" ? value : "system"
   } catch {
     return "system"
@@ -44,7 +47,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback((nextTheme: Theme) => {
     try {
-      window.localStorage.setItem("oc-theme", nextTheme)
+      window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme)
     } catch {
       // Theme persistence is best-effort; rendering must survive denied storage.
     }
@@ -52,8 +55,24 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    const resetToSystem = () => setThemeState("system")
+    const handlePeerStorageReset = (event: StorageEvent) => {
+      if (event.key === THEME_STORAGE_KEY && event.newValue === null) {
+        resetToSystem()
+      }
+    }
+
+    window.addEventListener(OC_LOCAL_STORAGE_CLEARED_EVENT, resetToSystem)
+    window.addEventListener("storage", handlePeerStorageReset)
+    return () => {
+      window.removeEventListener(OC_LOCAL_STORAGE_CLEARED_EVENT, resetToSystem)
+      window.removeEventListener("storage", handlePeerStorageReset)
+    }
+  }, [])
+
+  useEffect(() => {
     try {
-      window.localStorage.setItem("oc-theme", theme)
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme)
     } catch {
       // Keep the in-memory theme when persistence is unavailable.
     }

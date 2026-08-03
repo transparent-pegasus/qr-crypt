@@ -1,7 +1,5 @@
 // Decode canonical v2 payload strings and hash complete payload text.
 import type {
-  DsaPublicKeyEnvelopeV2,
-  KemPublicKeyEnvelopeV2,
   MlKemMessageEnvelopeV2,
   PublicIdentityBundleV2,
   QrFrameV2,
@@ -10,8 +8,6 @@ import type {
 } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
-  decodeDsaPublicKeyEnvelopeV2,
-  decodeKemPublicKeyEnvelopeV2,
   decodeMlKemEnvelopeV2,
   decodePublicIdentityBundleV2,
   decodeSymMessageEnvelopeV2,
@@ -31,8 +27,6 @@ export type DecodedPayload =
   | { kind: "pq-message"; envelope: MlKemMessageEnvelopeV2 }
   | { kind: "sym-message"; envelope: SymMessageEnvelopeV2 }
   | { kind: "symmetric-key"; envelope: SymmetricKeyEnvelopeV2 }
-  | { kind: "pq-kem-public-key"; envelope: KemPublicKeyEnvelopeV2 }
-  | { kind: "pq-dsa-public-key"; envelope: DsaPublicKeyEnvelopeV2 }
   | { kind: "pq-public-identity"; envelope: PublicIdentityBundleV2 }
   | { kind: "frame"; envelope: QrFrameV2; frame: QrFrameV2 }
 
@@ -74,16 +68,6 @@ function decodeV2Payload(text: string): DecodedPayload {
         envelope: validatePublicIdentityBundleV2(
           decodePublicIdentityBundleV2(artifact.bytes),
         ),
-      }
-    case "pq-kem-public-key":
-      return {
-        kind: artifact.kind,
-        envelope: decodeKemPublicKeyEnvelopeV2(artifact.bytes),
-      }
-    case "pq-dsa-public-key":
-      return {
-        kind: artifact.kind,
-        envelope: decodeDsaPublicKeyEnvelopeV2(artifact.bytes),
       }
     case "encrypted-seed-backup":
       throw new AppError("UNSUPPORTED_ALGORITHM")

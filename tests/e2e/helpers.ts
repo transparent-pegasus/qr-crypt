@@ -223,10 +223,10 @@ export async function createSymmetricKey(page: Page, name: string): Promise<void
 export async function createPqIdentity(page: Page, name: string): Promise<void> {
   await goToOfflinePage(page, "/keys")
   await page.getByRole("button", { name: "Create a key", exact: true }).click()
-  await chooseOption(page, "Key type", "Post-quantum identity")
-  await page.getByLabel("Post-quantum identity name", { exact: true }).fill(name)
+  await chooseOption(page, "Key type", "Public key")
+  await page.getByLabel("Public-key name", { exact: true }).fill(name)
   await page
-    .getByRole("button", { name: "Create a post-quantum identity", exact: true })
+    .getByRole("button", { name: "Create a public key", exact: true })
     .click()
   const dialog = page.getByRole("dialog", { name, exact: true })
   await expect(dialog).toBeVisible({

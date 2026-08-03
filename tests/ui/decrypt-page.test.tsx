@@ -198,6 +198,40 @@ describe("decrypt page v2", () => {
     expect(markKeyUsed).toHaveBeenCalledWith(previous.id, expect.any(Number))
   })
 
+  it("warns above unchanged symmetric plaintext containing a zero-width space", async () => {
+    const user = userEvent.setup()
+    const plaintext = "visible\u200Binvisible"
+    const expectedBytes = new TextEncoder().encode(plaintext)
+    openSymMessage.mockResolvedValueOnce(expectedBytes.slice())
+
+    await renderApp("/decrypt")
+    await screen.findByRole("heading", { name: "Scan with the camera" })
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCA2:sym-key-00000001" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Decryption complete",
+    })
+    const alert = within(dialog).getByRole("alert")
+    const plaintextParagraph =
+      dialog.querySelector<HTMLParagraphElement>("p.select-text")
+
+    expect(alert).toHaveClass("text-destructive")
+    expect(alert).toHaveTextContent(/\b1\b/u)
+    expect(plaintextParagraph).not.toBeNull()
+    expect(
+      alert.compareDocumentPosition(plaintextParagraph!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(
+      new TextEncoder().encode(plaintextParagraph!.textContent ?? ""),
+    ).toEqual(expectedBytes)
+  })
+
   it("canonicalizes bare and multipart sym-message receipts to the same OCA2 hash and decrypts both", async () => {
     const user = userEvent.setup()
     const key = addSymmetricKey("M", "sym-v2 multipart key")
@@ -471,6 +505,45 @@ describe("decrypt page v2", () => {
         }),
       ),
     ).toBeInTheDocument()
+  })
+
+  it("does not warn for unchanged ordinary post-quantum plaintext", async () => {
+    const user = userEvent.setup()
+    const plaintext = "Ordinary 日本語 plaintext 🔐"
+    const expectedBytes = new TextEncoder().encode(plaintext)
+    await preparePqPayload()
+    decryptPqMessage.mockImplementationOnce(async ({ resolveSigningKey }) => {
+      const senderSigningKeyId = fakeBundles[0]!.signing.keyId
+      await resolveSigningKey(senderSigningKeyId)
+      return {
+        kind: "signed-valid",
+        plaintext: expectedBytes.slice(),
+        messageId: fakePqMessageId.slice(),
+        createdAt: fakePqCreatedAt,
+        senderSigningKeyId,
+      }
+    })
+
+    await renderApp("/decrypt")
+    await screen.findByRole("heading", { name: "Scan with the camera" })
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: "OCM2:ordinary-plaintext" },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    await user.click(decryptButton)
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Decryption complete",
+    })
+    const plaintextParagraph =
+      dialog.querySelector<HTMLParagraphElement>("p.select-text")
+
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument()
+    expect(plaintextParagraph).not.toBeNull()
+    expect(
+      new TextEncoder().encode(plaintextParagraph!.textContent ?? ""),
+    ).toEqual(expectedBytes)
   })
 
   it("does not record a receipt when decryption throws or the signing key is unknown", async () => {
@@ -837,7 +910,7 @@ describe("decrypt page v2", () => {
 
     expect(
       await screen.findByText(
-        "All multi-frame QR frames passed SHA-256 integrity checking and were imported.",
+        "All frames of the multi-frame QR code were received and imported.",
         {},
         { timeout: 2_500 },
       ),

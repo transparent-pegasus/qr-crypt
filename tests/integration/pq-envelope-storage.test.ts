@@ -3,6 +3,7 @@ import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { buildPublicBundle, createIdentity, rotateIdentity } from "@/crypto/pq/identity"
 import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
 import { createPqCryptoClient, type PqCryptoClient } from "@/crypto/pq/worker-client"
+import { pqIdentityFingerprint } from "@/crypto/pq/wire-bytes"
 import {
   encodeMlKemEnvelopeV2,
   encodePublicIdentityBundleV2,
@@ -17,6 +18,7 @@ import {
   closeDb,
   deleteEntireDatabase,
   getDb,
+  SENSITIVE_WRITE_LOCK,
   STORE_PQ_IDENTITIES,
 } from "@/storage/database"
 import {
@@ -33,6 +35,7 @@ import {
   findIdentityByKemKeyId,
   findIdentityBySigningKeyId,
   getIdentity,
+  markIdentityUsed,
   renameIdentity,
   revokeIdentity,
   saveIdentity,
@@ -48,6 +51,69 @@ afterEach(async () => {
   dropVaultKeyCache()
   closeDb()
   await deleteEntireDatabase()
+})
+
+// Proves only that the writer queues behind an exclusive holder in this realm.
+// The cross-tab property the design claims would need a two-context browser run.
+const EXCLUSION_TOLERANCE_MS = 50
+
+async function assertRunsAfterExclusiveLock(
+  operation: () => Promise<unknown>,
+): Promise<void> {
+  const order: string[] = []
+  let running: Promise<unknown> = Promise.resolve()
+  await navigator.locks.request(SENSITIVE_WRITE_LOCK, { mode: "exclusive" }, async () => {
+    running = operation().then(() => order.push("writer-finished"))
+    // An unlocked writer finishes inside this hold: the tolerance is orders of
+    // magnitude more than an in-memory IndexedDB write needs.
+    await new Promise((resolve) => setTimeout(resolve, EXCLUSION_TOLERANCE_MS))
+    order.push("lock-released")
+  })
+  await running
+  expect(order).toEqual(["lock-released", "writer-finished"])
+}
+
+describe("sensitive-write lock", () => {
+  it("is held while an identity is saved", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const identity = await createIdentity({
+      client,
+      vaultKey: await getOrCreateVaultKey(),
+      name: "locked identity",
+      profile: "maximum",
+      now: NOW,
+    })
+
+    await assertRunsAfterExclusiveLock(() => saveIdentity(identity))
+
+    expect(await getIdentity(identity.id)).toMatchObject({ id: identity.id })
+  }, 30_000)
+
+  it("is held while the vault key is created", async () => {
+    dropVaultKeyCache()
+
+    await assertRunsAfterExclusiveLock(() => getOrCreateVaultKey())
+  }, 30_000)
+
+  it("is held while an identity rotation is saved", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const identity = await createIdentity({
+      client,
+      vaultKey,
+      name: "locked rotation",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(identity)
+    const rotation = await rotateIdentity({ client, vaultKey, current: identity, now: NOW + 1 })
+
+    await assertRunsAfterExclusiveLock(() => saveRotation(rotation))
+
+    expect(await getIdentity(rotation.next.id)).toMatchObject({ status: "active" })
+  }, 30_000)
 })
 
 describe("PQ envelope and storage integration", () => {
@@ -385,6 +451,50 @@ describe("deleteSupersededIdentities", () => {
       deleteSupersededIdentities(["A".repeat(22)]),
     ).resolves.toBeUndefined()
   })
+})
+
+describe("identity rotation persistence", () => {
+  it("keeps a concurrent rename and lastUsedAt when rotating an identity", async () => {
+    const client = createPqCryptoClient()
+    clients.push(client)
+    const vaultKey = await getOrCreateVaultKey()
+    const identity = await createIdentity({
+      client,
+      vaultKey,
+      name: "before rename",
+      profile: "maximum",
+      now: NOW,
+    })
+    await saveIdentity(identity)
+    // The caller's snapshot predates the Worker keygen; another tab writes while
+    // that generation is still running.
+    const rotation = await rotateIdentity({
+      client,
+      vaultKey,
+      current: identity,
+      now: NOW + 1,
+    })
+    await renameIdentity(identity.id, "after rename")
+    await markIdentityUsed(identity.id, NOW + 2)
+
+    await saveRotation(rotation)
+
+    const previous = await getIdentity(identity.id)
+    expect(previous?.name).toBe("after rename")
+    expect(previous?.lastUsedAt).toBe(NOW + 2)
+    expect(previous?.status).toBe("rotated")
+    expect(previous?.rotatedAt).toBe(NOW + 1)
+
+    // pqIdentityFingerprint projects the bundle onto a name-free tuple, so
+    // carrying the current name into the new head changes nothing it authenticates.
+    const next = await getIdentity(rotation.next.id)
+    expect(next?.name).toBe("after rename")
+    expect(next?.status).toBe("active")
+    expect(next?.identityFingerprint).toBe(rotation.next.identityFingerprint)
+    expect(await pqIdentityFingerprint(buildPublicBundle(next!))).toBe(
+      rotation.next.identityFingerprint,
+    )
+  }, 30_000)
 })
 
 describe("renameIdentity", () => {

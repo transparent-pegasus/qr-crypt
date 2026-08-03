@@ -33,12 +33,16 @@ import type {
   VerifySignedMessageResult,
 } from "@/crypto/pq/worker-client"
 import { zeroize } from "@/crypto/pq/zeroize"
-import { hkdfInfoV2, mlDsaContextV2 } from "@/crypto/pq/wire-bytes"
+import {
+  hkdfInfoV2,
+  hkdfSaltV2,
+  mlDsaContextV2,
+} from "@/crypto/pq/wire-bytes"
 import { randomBytes } from "@/crypto/random"
 import { decryptSecret } from "@/crypto/vault/decrypt-secret"
 import { encryptSecret } from "@/crypto/vault/encrypt-secret"
 import { bytesEqual, sha256, toOwnedArrayBuffer } from "@/lib/bytes"
-import { HKDF_SALT_BYTES, IV_BYTES } from "@/lib/limits"
+import { IV_BYTES } from "@/lib/limits"
 import type {
   EncryptedSecret,
   SignedMessageBodyV2,
@@ -71,7 +75,6 @@ function reportStage(stage: IdentityKeyStage, error: unknown): void {
 
 async function deriveMessageKey(
   sharedSecret: Uint8Array,
-  salt: Uint8Array,
   info: Uint8Array,
 ): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
@@ -85,7 +88,7 @@ async function deriveMessageKey(
     {
       name: "HKDF",
       hash: "SHA-256",
-      salt: toOwnedArrayBuffer(salt),
+      salt: toOwnedArrayBuffer(hkdfSaltV2()),
       info: toOwnedArrayBuffer(info),
     },
     material,
@@ -317,10 +320,11 @@ async function encryptPqMessage(
 
     const encapsulated = kem.encapsulate(request.recipientKemPublicKey)
     sharedSecret = encapsulated.sharedSecret
-    const hkdfSalt = randomBytes(HKDF_SALT_BYTES)
     const iv = randomBytes(IV_BYTES)
-    hkdfInfo = hkdfInfoV2(request.suite, request.recipientKemKeyId)
-    const aesKey = await deriveMessageKey(sharedSecret, hkdfSalt, hkdfInfo)
+    hkdfInfo = hkdfInfoV2(request.suite, request.recipientKemKeyId, iv)
+    // An IV collision alone does not repeat a PQ message key: every ML-KEM
+    // encapsulation supplies a fresh 32-byte shared secret.
+    const aesKey = await deriveMessageKey(sharedSecret, hkdfInfo)
     const additionalData = encodeMlKemAadV2({
       version: 2,
       type: "pq-message",
@@ -346,7 +350,6 @@ async function encryptPqMessage(
       suite: request.suite,
       recipientKemKeyId: request.recipientKemKeyId,
       kemCiphertext: Uint8Array.from(encapsulated.ciphertext),
-      hkdfSalt,
       iv,
       ciphertext,
     }
@@ -398,8 +401,12 @@ async function openPqEnvelope(request: OpenPqEnvelopeRequest): Promise<OpenedPqE
       throw new AppError("DECRYPTION_FAILED")
     }
     sharedSecret = kem.decapsulate(envelope.kemCiphertext, secretKey)
-    hkdfInfo = hkdfInfoV2(envelope.suite, envelope.recipientKemKeyId)
-    const aesKey = await deriveMessageKey(sharedSecret, envelope.hkdfSalt, hkdfInfo)
+    hkdfInfo = hkdfInfoV2(
+      envelope.suite,
+      envelope.recipientKemKeyId,
+      envelope.iv,
+    )
+    const aesKey = await deriveMessageKey(sharedSecret, hkdfInfo)
     const additionalData = encodeMlKemAadV2({
       version: 2,
       type: "pq-message",
@@ -591,7 +598,7 @@ function publicTransferables(
   } else if (operation === "signWithSeed" && response.value instanceof Uint8Array) {
     views.push(response.value)
   } else if (operation === "encryptPqMessage") {
-    for (const key of ["kemCiphertext", "hkdfSalt", "iv", "ciphertext"] as const) {
+    for (const key of ["kemCiphertext", "iv", "ciphertext"] as const) {
       if (value[key] instanceof Uint8Array) views.push(value[key])
     }
   }

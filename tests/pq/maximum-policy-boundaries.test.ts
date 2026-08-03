@@ -148,7 +148,6 @@ function legacyEnvelope(): MlKemMessageEnvelopeV2 {
     suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM",
     recipientKemKeyId: keyId(2),
     kemCiphertext: new Uint8Array(1088),
-    hkdfSalt: new Uint8Array(32),
     iv: new Uint8Array(12),
     ciphertext: new Uint8Array(16),
   } as unknown as MlKemMessageEnvelopeV2
@@ -164,7 +163,6 @@ function removedSuiteEnvelope({
     suite,
     recipientKemKeyId: keyId(2),
     kemCiphertext: new Uint8Array(kemCiphertextBytes),
-    hkdfSalt: new Uint8Array(32),
     iv: new Uint8Array(12),
     ciphertext: new Uint8Array(16),
   }

@@ -43,8 +43,6 @@ import {
   rotateSymmetricKeyRecord,
 } from "@/crypto/key-generation"
 import {
-  encodeDsaPublicKeyEnvelopeV2,
-  encodeKemPublicKeyEnvelopeV2,
   encodePublicIdentityBundleV2,
   encodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
@@ -300,45 +298,14 @@ export function KeyDetailContent({
     setSensitiveSession({ secretVisible: false })
   }
 
-  const showIdentityQr = async (
-    target: PostQuantumIdentity,
-    kind: "bundle" | "kem" | "signing",
-  ) => {
+  const showIdentityQr = async (target: PostQuantumIdentity) => {
     setQrReady(false)
     setBusy(true)
     setError(null)
     try {
       assertUsableIdentity(target)
-      let artifactType: StorableArtifactKind
-      let artifactBytes: Uint8Array
-      if (kind === "bundle") {
-        artifactType = "pq-public-identity"
-        artifactBytes = encodePublicIdentityBundleV2(buildPublicBundle(target))
-      } else if (kind === "kem") {
-        artifactType = "pq-kem-public-key"
-        artifactBytes = encodeKemPublicKeyEnvelopeV2({
-          version: 2,
-          type: "pq-kem-public-key",
-          identityId: target.id,
-          name: target.name,
-          algorithm: target.kem.algorithm,
-          keyId: target.kem.keyId,
-          publicKey: target.kem.publicKey,
-          createdAt: target.createdAt,
-        })
-      } else {
-        artifactType = "pq-dsa-public-key"
-        artifactBytes = encodeDsaPublicKeyEnvelopeV2({
-          version: 2,
-          type: "pq-dsa-public-key",
-          identityId: target.id,
-          name: target.name,
-          algorithm: target.signing.algorithm,
-          keyId: target.signing.keyId,
-          publicKey: target.signing.publicKey,
-          createdAt: target.createdAt,
-        })
-      }
+      const artifactType: StorableArtifactKind = "pq-public-identity"
+      const artifactBytes = encodePublicIdentityBundleV2(buildPublicBundle(target))
       const minimumFrameBytes = minimumFrameBytesForArtifact(artifactBytes.byteLength)
       if (minimumFrameBytes > FRAME_BYTES_MAX) {
         throw new RangeError("artifact exceeds the maximum QR density")
@@ -346,7 +313,6 @@ export function KeyDetailContent({
       qrGenerationRef.current += 1
       setView({
         kind: "identity-qr",
-        qrKind: kind,
         targetName: target.name,
         generatedAt: Date.now(),
         artifactType,
@@ -537,7 +503,7 @@ export function KeyDetailContent({
 
   const identityQrTitle =
     view.kind === "identity-qr"
-      ? t(`keyDetail.qr.${view.qrKind}Title`, { name: view.targetName })
+      ? t("keyDetail.identityQr.title", { name: view.targetName })
       : null
   const symmetricFullscreenControls = (
     <div

@@ -78,7 +78,6 @@ describe("PQ strict validation", () => {
       suite: ACTIVE_SUITE,
       recipientKemKeyId: KEY_ID,
       kemCiphertext: new Uint8Array(1568),
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(16),
     } as const
@@ -158,6 +157,33 @@ describe("PQ strict validation", () => {
       }),
     ).toThrow("INVALID_QR_PAYLOAD")
   })
+
+  // deviations.md records symmetric artifacts as single-frame only. That was
+  // enforced at generation, so a compromised sender bypassed it simply by not
+  // using the generator; the accepted chunk-length partition was then a covert
+  // channel (T21). Rejection now happens on receive.
+  it.each(["sym-message", "symmetric-key"] as const)(
+    "rejects a multi-frame %s",
+    (artifactType) => {
+      expectInvalidFrame({
+        ...validFrame(artifactType),
+        frameCount: 2,
+        totalByteLength: 2,
+      })
+    },
+  )
+
+  it.each(["pq-message", "pq-public-identity"] as const)(
+    "still accepts a multi-frame %s",
+    (artifactType) => {
+      const frame = {
+        ...validFrame(artifactType),
+        frameCount: 2,
+        totalByteLength: 2,
+      }
+      expect(validateQrFrameV2(frame)).toEqual(frame)
+    },
+  )
 
   it.each(V2_ARTIFACT_TYPES)("accepts the strict %s frame shape", (artifactType) => {
     expect(validateQrFrameV2(validFrame(artifactType))).toEqual(

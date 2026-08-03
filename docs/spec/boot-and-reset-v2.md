@@ -55,6 +55,26 @@ offline-confirmed -- display online re-commit --> probing (at most once)
   DB, any required missing store, a count/get failure, or transaction failure
   yields `indeterminate`. Only `confirmed-clean` can authorize the relay;
   `dirty` and `indeterminate` are identical at the UI boundary.
+- That read is taken under an origin-wide exclusion, not concurrently with the
+  sentinel. The controller holds the `qr-crypt-sensitive-write` Web Lock
+  exclusively across the read, the maintenance-token consumption, and the
+  publication of `eligible` / `ineligible`; every operation that can bring
+  sensitive data into existence — saving or rotating a key record, saving or
+  rotating a PQ identity, creating the Vault key, and symmetric key generation
+  through to its write — holds the same lock shared. A snapshot taken while a
+  writer is running proves nothing, so the exclusion is what makes it a proof.
+  The wipe runs outside the hold: it is long, and relay eligibility is already
+  invalidated before it starts. Where the platform exposes no Web Locks the
+  exclusion was never held, so the relay is denied; the wipe decision is still
+  made from the same read.
+- The exclusive request is bounded at `SENSITIVE_WRITE_EXCLUSION_TIMEOUT_MS`
+  (3 s). Origin-wide cuts both ways: a frozen tab or a hung transaction anywhere
+  in the origin can hold the lock shared indefinitely, and the wipe decision is
+  taken inside the hold, so an unbounded request would let any tab pin a
+  key-holding device that has already reached the network. Waiting forever and
+  deciding nothing is the one outcome worse than a denied relay. On timeout — or
+  on any rejection raised before the hold begins — the decision is taken with
+  the exclusion unproved: the relay is denied and the wipe still runs.
 - Sentinel success first publishes a fresh immutable
   `network-confirmed { relayEligibility: "pending" }`. Only after the decision
   completes may it publish another fresh state with `eligible` or
@@ -63,10 +83,13 @@ offline-confirmed -- display online re-commit --> probing (at most once)
   state object. Every probe, offline request, destructive/terminal transition,
   and peer wipe invalidates relay eligibility.
 - An eligible relay proof is re-read with the same boot scanner before a relay
-  dialog opens and whenever the document becomes visible. No cross-tab
-  mutation-exclusion lease is held. A second tab can therefore create a key
-  after a successful proof and before the next re-check; this residual race is
-  a stale policy signal, not a relay read of or disclosure from the database.
+  dialog opens and whenever the document becomes visible, and each re-read is
+  taken under the same exclusive hold. The lease covers the proof, not the
+  relay session that follows it: a second tab can still create a key after a
+  successful proof and before the next re-check, so that residual race remains
+  — narrowed from "any write racing the proof" to "a write beginning after
+  eligibility was published". It is a stale policy signal, not a relay read of
+  or disclosure from the database.
 - The active preference and write vocabulary has two algorithms:
   `A256GCM` and `MLKEM1024_MLDSA87_A256GCM`. Boot deliberately has one
   read-only exception: its `defaultAlgorithm` allowlist also accepts the
@@ -146,10 +169,11 @@ offline-confirmed -- display online re-commit --> probing (at most once)
    the Vault key record** (crypto-shredding; overwriting the bytes of a
    non-extractable `CryptoKey` is impossible and is not claimed).
 6. Delete all DBs (including `pqIdentities`/`pqPublicBundles`) + all `oc-*`
-   localStorage keys. This includes the UI language preference (`oc-lang`) and
-   the last online tab (`oc-online-tab`); after a wipe or full reset the UI
-   language reverts to the English default and the online gate's tab preference
-   reverts to the install screen.
+   localStorage keys. This includes the UI language (`oc-lang`), theme
+   (`oc-theme`), and last online tab (`oc-online-tab`) preferences; after a wipe
+   or full reset, the language reverts to English, the theme reverts to the
+   `system` default, and the online gate's tab preference reverts to the install
+   screen.
    Only in the `online-detected` case, re-set `oc-offline-ack-pending="1"`
    after the deletion and before publishing `wiped`. In the `user-requested`
    case it is not re-set.

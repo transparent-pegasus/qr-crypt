@@ -29,13 +29,13 @@ test("routes an injected decoder stream through the UI handler and imports a shu
   await page.getByRole("button", { name: new RegExp(identityName) }).click()
   let identityDialog = page.getByRole("dialog", { name: identityName })
   await identityDialog
-    .getByRole("button", { name: "Public-key bundle QR", exact: true })
+    .getByRole("button", { name: "Show public-key QR", exact: true })
     .click()
   let frameDialog = page.getByRole("dialog", {
-    name: `${identityName} public-key bundle`,
+    name: `${identityName} public key`,
   })
   let frameRegion = frameDialog.getByRole("region", {
-    name: `${identityName} public-key bundle frame display`,
+    name: `${identityName} public key frame display`,
   })
   const frames = await collectAnimatedFramePayloads(frameRegion)
   expect(frames.length).toBeGreaterThan(1)
@@ -45,13 +45,13 @@ test("routes an injected decoder stream through the UI handler and imports a shu
     .click()
   identityDialog = page.getByRole("dialog", { name: identityName })
   await identityDialog
-    .getByRole("button", { name: "Public-key bundle QR", exact: true })
+    .getByRole("button", { name: "Show public-key QR", exact: true })
     .click()
   frameDialog = page.getByRole("dialog", {
-    name: `${identityName} public-key bundle`,
+    name: `${identityName} public key`,
   })
   frameRegion = frameDialog.getByRole("region", {
-    name: `${identityName} public-key bundle frame display`,
+    name: `${identityName} public key frame display`,
   })
   const otherFrames = await collectAnimatedFramePayloads(frameRegion)
   expect(otherFrames[0]).not.toBe(frames[0])

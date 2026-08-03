@@ -200,7 +200,6 @@ describe("encrypt page v2", () => {
         suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
         recipientKemKeyId: fakeBundles[0]!.kem.keyId,
         kemCiphertext: new Uint8Array(1568),
-        hkdfSalt: new Uint8Array(32),
         iv: new Uint8Array(12),
         ciphertext: new Uint8Array(3_600),
       })
@@ -382,10 +381,12 @@ describe("encrypt page v2", () => {
     await renderApp("/encrypt")
     await chooseSelectOption(user, "Key", "共通鍵A")
     const plaintext = screen.getByLabelText("Plaintext")
-    const symmetricAtLimit = "界".repeat(MAX_SYM_PLAINTEXT_BYTES / 3)
-    const symmetricOversizePlaintext = `${symmetricAtLimit}a`
+    const symmetricAtLimit = `${"界".repeat(
+      Math.floor(MAX_SYM_PLAINTEXT_BYTES / 3),
+    )}a`
+    const symmetricOversizePlaintext = `${symmetricAtLimit}b`
 
-    expect(MAX_SYM_PLAINTEXT_BYTES).toBe(810)
+    expect(MAX_SYM_PLAINTEXT_BYTES).toBe(853)
     expect(MAX_SYM_PLAINTEXT_BYTES).toBeLessThan(env.maxPlaintextBytes)
     fireEvent.change(plaintext, { target: { value: symmetricAtLimit } })
     expect(
@@ -466,7 +467,6 @@ describe("encrypt page v2", () => {
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: fakeBundles[0]!.kem.keyId,
       kemCiphertext: new Uint8Array(1_568),
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(512),
     })
@@ -512,7 +512,6 @@ describe("encrypt page v2", () => {
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: fakeBundles[0]!.kem.keyId,
       kemCiphertext: new Uint8Array(1_568),
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(32),
     })
@@ -640,7 +639,6 @@ describe("encrypt page v2", () => {
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: fakeBundles[0]!.kem.keyId,
       kemCiphertext: new Uint8Array(1_568),
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(artifactByteLength - 1_568 - 128),
     })
@@ -749,7 +747,6 @@ describe("encrypt page v2", () => {
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: fakeBundles[0]!.kem.keyId,
       kemCiphertext: new Uint8Array(1_568),
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(artifactByteLength - 1_568 - 128),
     })
@@ -814,7 +811,6 @@ describe("encrypt page v2", () => {
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: fakeBundles[0]!.kem.keyId,
       kemCiphertext: new Uint8Array(1_568),
-      hkdfSalt: new Uint8Array(32),
       iv: new Uint8Array(12),
       ciphertext: new Uint8Array(artifactByteLength - 1_568 - 128),
     })
@@ -896,7 +892,6 @@ describe("encrypt page v2", () => {
         screen.queryByRole("dialog", { name: "Encryption complete" }),
       ).not.toBeInTheDocument()
     })
-    expect(screen.queryByText(/^OCM1:/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^OCA2:/)).not.toBeInTheDocument()
   })
 

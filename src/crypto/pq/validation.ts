@@ -35,7 +35,6 @@ import {
   AES_GCM_TAG_BYTES,
   AES_KEY_BYTES,
   FRAME_CHUNK_MAX_BYTES,
-  HKDF_SALT_BYTES,
   IV_BYTES,
   KEY_ID_PATTERN,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
@@ -48,6 +47,11 @@ const bytes = (length?: number) =>
     .instanceof(Uint8Array)
     .refine((value) => length === undefined || value.byteLength === length)
 
+const SINGLE_FRAME_ARTIFACT_TYPES: ReadonlySet<string> = new Set([
+  "sym-message",
+  "symmetric-key",
+])
+
 const keyId = z.string().regex(KEY_ID_PATTERN)
 const timestamp = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 
@@ -58,7 +62,6 @@ const mlKemEnvelopeV2Schema = z
     suite: z.enum(WIRE_SUITES),
     recipientKemKeyId: keyId,
     kemCiphertext: bytes(),
-    hkdfSalt: bytes(HKDF_SALT_BYTES),
     iv: bytes(IV_BYTES),
     ciphertext: bytes().refine((value) => value.byteLength >= 16),
   })
@@ -90,7 +93,6 @@ const symMessageEnvelopeV2Schema = z
     suite: z.literal(SYM_SUITE),
     keyId,
     createdAt: timestamp,
-    hkdfSalt: bytes(HKDF_SALT_BYTES),
     iv: bytes(IV_BYTES),
     ciphertext: bytes().refine(
       (value) =>
@@ -187,6 +189,18 @@ const qrFrameV2Schema = z
         code: "custom",
         path: ["totalByteLength"],
         message: "frame lengths are inconsistent",
+      })
+    }
+    // Symmetric artifacts are single-frame by owner decision (deviations.md).
+    // Generation enforced that through singleFrameBytesFor, but a compromised
+    // sender does not use the generator: without this rule a crafted multi-frame
+    // set is accepted on receive, and the chunk-length partition becomes a covert
+    // channel (T21). Honest artifacts are unaffected — they always fit one frame.
+    if (SINGLE_FRAME_ARTIFACT_TYPES.has(frame.artifactType) && frame.frameCount !== 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["frameCount"],
+        message: "symmetric artifacts must be single-frame",
       })
     }
   })

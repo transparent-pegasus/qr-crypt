@@ -3,7 +3,7 @@ import type { RotatedSymmetricKey } from "@/crypto/key-generation"
 import type { StoredKeyRecord } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { keyNameSchema, validateStoredKeyRecord } from "@/schemas/key-schema"
-import { getDb, STORE_KEYS } from "@/storage/database"
+import { getDb, STORE_KEYS, withSensitiveWriteLock } from "@/storage/database"
 
 function checkedRecord(value: unknown): StoredKeyRecord {
   try {
@@ -22,7 +22,10 @@ function safeRecord(value: unknown): StoredKeyRecord | undefined {
 }
 
 // Throw AppError("DUPLICATE_KEY") if an existing fingerprint (sha256Hex) matches.
-export async function saveKeyRecord(record: StoredKeyRecord): Promise<void> {
+// Only for a caller already inside withSensitiveWriteLock — the key-create path
+// holds it across generation. Web Locks has no reentrancy, and a nested shared
+// request would queue behind any exclusive request that arrived in between.
+export async function writeKeyRecord(record: StoredKeyRecord): Promise<void> {
   const checked = checkedRecord(record)
   try {
     const database = await getDb()
@@ -40,6 +43,10 @@ export async function saveKeyRecord(record: StoredKeyRecord): Promise<void> {
     }
     throw toAppError(error, "STORAGE_FAILED")
   }
+}
+
+export function saveKeyRecord(record: StoredKeyRecord): Promise<void> {
+  return withSensitiveWriteLock(() => writeKeyRecord(record))
 }
 
 // Descending createdAt order.
@@ -71,50 +78,61 @@ export async function getActiveKeyRecord(
   return record?.status === "active" ? record : undefined
 }
 
-export async function saveSymmetricRotation(
-  rotated: RotatedSymmetricKey,
-): Promise<void> {
-  const next = checkedRecord(rotated.next)
-  const previous = checkedRecord(rotated.previous)
-  if (
-    next.status !== "active" ||
-    previous.status !== "rotated" ||
-    next.rotatedFromId !== previous.id ||
-    previous.rotatedAt === undefined ||
-    next.createdAt !== previous.rotatedAt
-  ) {
-    throw new AppError("STORAGE_FAILED")
-  }
-  try {
-    const database = await getDb()
-    const tx = database.transaction(STORE_KEYS, "readwrite")
-    try {
-      const persistedValue = await tx.store.get(previous.id)
-      const persisted =
-        persistedValue === undefined ? undefined : checkedRecord(persistedValue)
-      if (
-        persisted === undefined ||
-        persisted.id !== previous.id ||
-        persisted.status !== "active" ||
-        persisted.fingerprint !== previous.fingerprint
-      ) {
-        tx.abort()
-        throw new AppError("STORAGE_FAILED")
-      }
-      await tx.store.put(previous)
-      await tx.store.add(next)
-      await tx.done
-    } catch (error) {
-      try {
-        await tx.done
-      } catch {
-        // The transaction's request failure already carries the public error.
-      }
-      throw error
+export function saveSymmetricRotation(rotated: RotatedSymmetricKey): Promise<void> {
+  return withSensitiveWriteLock(async () => {
+    const next = checkedRecord(rotated.next)
+    const previous = checkedRecord(rotated.previous)
+    if (
+      next.status !== "active" ||
+      previous.status !== "rotated" ||
+      next.rotatedFromId !== previous.id ||
+      previous.rotatedAt === undefined ||
+      next.createdAt !== previous.rotatedAt
+    ) {
+      throw new AppError("STORAGE_FAILED")
     }
-  } catch (error) {
-    throw toAppError(error, "STORAGE_FAILED")
-  }
+    try {
+      const database = await getDb()
+      const tx = database.transaction(STORE_KEYS, "readwrite")
+      try {
+        const persistedValue = await tx.store.get(previous.id)
+        const persisted =
+          persistedValue === undefined ? undefined : checkedRecord(persistedValue)
+        if (
+          persisted === undefined ||
+          persisted.id !== previous.id ||
+          persisted.status !== "active" ||
+          persisted.fingerprint !== previous.fingerprint
+        ) {
+          tx.abort()
+          throw new AppError("STORAGE_FAILED")
+        }
+        // The persisted row wins. The caller's `previous` is a snapshot taken
+        // before key generation, so writing it back would revert another tab's
+        // rename or use count. The symmetric fingerprint covers only the raw key
+        // bytes, so the new generation can inherit the persisted name too — its
+        // own counters and timestamps stay at the new generation's values.
+        await tx.store.put(
+          checkedRecord({
+            ...persisted,
+            status: "rotated",
+            rotatedAt: previous.rotatedAt,
+          }),
+        )
+        await tx.store.add(checkedRecord({ ...next, name: persisted.name }))
+        await tx.done
+      } catch (error) {
+        try {
+          await tx.done
+        } catch {
+          // The transaction's request failure already carries the public error.
+        }
+        throw error
+      }
+    } catch (error) {
+      throw toAppError(error, "STORAGE_FAILED")
+    }
+  })
 }
 
 export async function findKeyByFingerprint(

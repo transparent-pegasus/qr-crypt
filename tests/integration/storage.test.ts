@@ -19,6 +19,7 @@ import {
   DB_VERSION,
   deleteEntireDatabase,
   getDb,
+  SENSITIVE_WRITE_LOCK,
   STORE_APP_METADATA,
   STORE_KEYS,
   STORE_PQ_IDENTITIES,
@@ -159,6 +160,26 @@ describe("database creation", () => {
   })
 })
 
+// Proves only that the writer queues behind an exclusive holder in this realm.
+// The cross-tab property the design claims would need a two-context browser run.
+const EXCLUSION_TOLERANCE_MS = 50
+
+async function assertRunsAfterExclusiveLock(
+  operation: () => Promise<unknown>,
+): Promise<void> {
+  const order: string[] = []
+  let running: Promise<unknown> = Promise.resolve()
+  await navigator.locks.request(SENSITIVE_WRITE_LOCK, { mode: "exclusive" }, async () => {
+    running = operation().then(() => order.push("writer-finished"))
+    // An unlocked writer finishes inside this hold: the tolerance is orders of
+    // magnitude more than an in-memory IndexedDB write needs.
+    await new Promise((resolve) => setTimeout(resolve, EXCLUSION_TOLERANCE_MS))
+    order.push("lock-released")
+  })
+  await running
+  expect(order).toEqual(["lock-released", "writer-finished"])
+}
+
 describe("key repository", () => {
   it("admits only symmetric stored-key records at the type boundary", () => {
     type HasRetiredKind =
@@ -243,6 +264,12 @@ describe("key repository", () => {
     })
   })
 
+  it("takes the sensitive-write lock before saving a key record", async () => {
+    const record = await createSymmetricKeyRecord("locked save", NOW)
+    await assertRunsAfterExclusiveLock(() => saveKeyRecord(record))
+    expect(await getKeyRecord(record.id)).toMatchObject({ id: record.id })
+  })
+
   it("silently omits a legacy RSA row from the key list without repairing it", async () => {
     const legacyRow = await legacyRsaRecord()
     const database = await getDb()
@@ -292,6 +319,30 @@ describe("symmetric key rotation persistence", () => {
       id: rotation.next.id,
       status: "active",
     })
+  })
+
+  it("keeps a concurrent rename and use count when rotating a symmetric key", async () => {
+    const current = await createSymmetricKeyRecord("before rename", NOW)
+    await saveKeyRecord(current)
+    // The caller's snapshot is taken before key generation; another tab writes
+    // while that generation is still running.
+    const rotation = await rotateSymmetricKeyRecord(current, NOW + 1)
+    await renameKeyRecord(current.id, "after rename")
+    await markKeyUsed(current.id, NOW + 2)
+
+    await saveSymmetricRotation(rotation)
+
+    const previous = await getKeyRecord(current.id)
+    expect(previous?.name).toBe("after rename")
+    expect(previous?.useCount).toBe(1)
+    expect(previous?.lastUsedAt).toBe(NOW + 2)
+    expect(previous?.status).toBe("rotated")
+    expect(previous?.rotatedAt).toBe(NOW + 1)
+
+    const next = await getKeyRecord(rotation.next.id)
+    expect(next?.name).toBe("after rename")
+    expect(next?.status).toBe("active")
+    expect(next?.useCount).toBe(0)
   })
 
   it("commits exactly one of two rotations derived from the same stale row", async () => {
@@ -382,6 +433,16 @@ describe("symmetric key rotation persistence", () => {
       status: "active",
       fingerprint: rotation.next.fingerprint,
     })
+  })
+
+  it("takes the sensitive-write lock before saving a rotation", async () => {
+    const current = await createSymmetricKeyRecord("locked rotation", NOW)
+    await saveKeyRecord(current)
+    const rotation = await rotateSymmetricKeyRecord(current, NOW + 1)
+
+    await assertRunsAfterExclusiveLock(() => saveSymmetricRotation(rotation))
+
+    expect(await getKeyRecord(rotation.next.id)).toMatchObject({ status: "active" })
   })
 })
 

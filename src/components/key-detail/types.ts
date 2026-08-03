@@ -2,7 +2,6 @@ import type { StorableArtifactKind } from "@/schemas/domain"
 
 export interface IdentityQrView {
   kind: "identity-qr"
-  qrKind: "bundle" | "kem" | "signing"
   targetName: string
   generatedAt: number
   artifactType: StorableArtifactKind

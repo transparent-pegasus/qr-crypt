@@ -14,13 +14,11 @@ every boundary.
 | `OCM2:` | `pq-message` | ML-KEM message envelope |
 | `OCA2:` | `sym-message` | Symmetric HKDF-AES message envelope |
 | `OCK2:` | `symmetric-key` | Symmetric AES-256 key envelope |
-| `OCP2:` | `pq-kem-public-key` | ML-KEM public key (single key) |
-| `OCS2:` | `pq-dsa-public-key` | ML-DSA signature-verification public key (single key) |
-| `OCI2:` | `pq-public-identity` | Public key set (KEM+DSA) |
+| `OCI2:` | `pq-public-identity` | Public key (KEM+DSA) |
 | `OCB2:` | `encrypted-seed-backup` | Reserved (neither produced nor accepted) |
 | `OCF2:` | frame | Multi-frame QR |
 
-- `OCM2` / `OCA2` / `OCK2` / `OCP2` / `OCS2` / `OCI2` are single-payload
+- `OCM2` / `OCA2` / `OCK2` / `OCI2` are single-payload
   representations (paste / file import) and logical types. **QR display always
   goes through `OCF2` (frameCount ≥ 1)**.
 - Import supports both (a) `OCF2` assembly → inner artifact, and (b) a bare
@@ -28,10 +26,10 @@ every boundary.
 - `OCB2` is a reserved prefix, rejected unconditionally as
   `UNSUPPORTED_ALGORITHM` at classification time. There is no feature flag: it
   is never generated and never accepted.
-- Managed deviation: `pq-kem-public-key` / `pq-dsa-public-key` were added beyond
-  the three artifactType values of the original draft specification (single
-  keys are also always carried via framing; see
-  [../develop/deviations.md](../develop/deviations.md)).
+- Retired vocabulary: `OCP2` / `OCS2` and the single-key artifact types
+  `pq-kem-public-key` / `pq-dsa-public-key` are removed. A public key travels
+  only as the `OCI2` KEM+DSA pair, so those prefixes are unrecognized at
+  classification time (`INVALID_QR_PREFIX`).
 
 ## 2. Canonical CBOR profile (shared by all v2 structures)
 
@@ -54,9 +52,9 @@ behavior of third-party codecs).
 - Nesting depth limit: 8
 - Decoder input is limited to 1–128,000 bytes. Structural allocation has
   separate limits because a byte limit alone does not bound entry count or
-  retained heap: at most 8 entries in one map (the largest active shapes
-  include `QrFrameV2`, `MlKemMessageEnvelopeV2`, and `SymMessageEnvelopeV2`),
-  13 map entries across the decoded value, 18 UTF-8 bytes per map key
+  retained heap: at most 8 entries in one map (`QrFrameV2` and named
+  single-public-key envelopes; message envelope maps have 7), 13 map entries
+  across the decoded value, 18 UTF-8 bytes per map key
   (`senderSigningKeyId`, the longest decoded key), and 300 UTF-8 bytes per text
   value. Length/count headers are rejected before their loops or strings are
   materialized
@@ -73,15 +71,14 @@ MlKemMessageEnvelopeV2 = {
   suite: WireSuite            // the single active suite of §4
   recipientKemKeyId: string   // base64url, 22 characters (16 raw bytes)
   kemCiphertext: bytes        // ML-KEM-1024: 1568B (length validated per suite)
-  hkdfSalt: bytes(32)         // fresh CSPRNG per encryption
   iv: bytes(12)               // CSPRNG
   ciphertext: bytes(≥16)      // AES-256-GCM (128-bit tag at the end)
 }
 ```
 
 Canonical map key order (encoded-key byte order):
-`iv`, `type`, `suite`, `version`, `hkdfSalt`, `ciphertext`,
-`kemCiphertext`, `recipientKemKeyId`.
+`iv`, `type`, `suite`, `version`, `ciphertext`, `kemCiphertext`,
+`recipientKemKeyId`.
 
 AAD (GCM `additionalData`; not carried on the wire, reconstructed on both
 sides):
@@ -105,19 +102,17 @@ SymMessageEnvelopeV2 = {
   suite: "HKDF-SHA256+A256GCM"   // SymSuite; not a WireSuite value
   keyId: string                  // base64url, 22 characters (16 raw bytes)
   createdAt: uint                // device-reported time (not trusted time)
-  hkdfSalt: bytes(32)            // fresh CSPRNG per encryption
   iv: bytes(12)                  // CSPRNG
   ciphertext: bytes(16 .. MAX_SYM_PLAINTEXT_BYTES + 16)
 }
 ```
 
 Canonical map key order (encoded-key byte order):
-`iv`, `type`, `keyId`, `suite`, `version`, `hkdfSalt`, `createdAt`,
-`ciphertext`.
+`iv`, `type`, `keyId`, `suite`, `version`, `createdAt`, `ciphertext`.
 
 AAD (GCM `additionalData`; not carried on the wire; both sides recompute).
-`hkdfSalt` is excluded from AAD — salt selects the derived key, and a forged
-salt fails GCM authentication via key mismatch:
+The fixed salt is not on the wire, and `iv` is bound into HKDF `info`, so a
+forged IV changes the derived key:
 
 ```typescript
 SymAadV2 = {
@@ -144,9 +139,9 @@ Measured overhead and plaintext ceiling (`src/lib/limits.ts`, pinned by
 | Constant | Value | Meaning |
 |---|---:|---|
 | `FRAME_CHUNK_MAX_BYTES` | 1,000 | One OCF2 chunk / one frame of raw artifact |
-| `SYM_MESSAGE_OVERHEAD_BYTES` | 174 | Canonical CBOR map overhead excluding ciphertext bytes (1B map header + 159B fixed fields + 11B `ciphertext` key + 3B byte-string header at the max boundary) |
+| `SYM_MESSAGE_OVERHEAD_BYTES` | 131 | Canonical CBOR map overhead excluding ciphertext bytes (1B map header + 116B fixed fields + 11B `ciphertext` key + 3B byte-string header at the max boundary) |
 | `AES_GCM_TAG_BYTES` | 16 | GCM authentication tag |
-| `MAX_SYM_PLAINTEXT_BYTES` | 810 | `1,000 − 174 − 16` |
+| `MAX_SYM_PLAINTEXT_BYTES` | 853 | `1,000 − 131 − 16` |
 
 An envelope whose `ciphertext.byteLength === MAX_SYM_PLAINTEXT_BYTES + 16`
 encodes to exactly 1,000 bytes; one more plaintext byte fails validation.
@@ -205,12 +200,22 @@ stored on the wire or in persistent storage (§7).
 - `SymSuite` is independent of `WireSuite` (the latter is PQ envelope
   cross-binding vocabulary only).
 
+Both message paths use the fixed protocol-domain salt below. It is not carried
+on the wire:
+
+```
+salt = UTF8("QR-CRYPT-HKDF-SALT-V2")
+     = 51522d43525950542d484b44462d53414c542d5632 (21 bytes)
+```
+
 ### PQ HKDF (`hkdfInfoV2`)
+
+`hkdfInfoV2(wireSuite, recipientKemKeyId, iv)` constructs:
 
 ```
 info = UTF8("QR-CRYPT-MESSAGE-V2") || 0x00 || UTF8(wireSuite) || 0x00
-       || kemKeyIdRaw(16 bytes) || 0x02
-salt = fresh CSPRNG 32B per encryption / derived key = AES-256-GCM (non-extractable)
+       || kemKeyIdRaw(16 bytes) || iv(12 bytes) || 0x02
+key  = HKDF-SHA-256(sharedSecret, salt, info) → AES-256-GCM (non-extractable)
 ```
 
 `kemKeyIdRaw` is the **raw 16 bytes underlying** the keyId (22 base64url
@@ -224,10 +229,12 @@ yields the `signed-key-unknown` state and the body is not constructed).
 
 ### Symmetric HKDF (`hkdfInfoSymV2`)
 
+`hkdfInfoSymV2(keyId, iv)` constructs:
+
 ```
 info = UTF8("QR-CRYPT-SYM-MESSAGE-V2") || 0x00 || UTF8("HKDF-SHA256+A256GCM") || 0x00
-       || keyIdRaw(16 bytes) || 0x02
-salt = fresh CSPRNG 32B per message / derived key = AES-256-GCM (non-extractable)
+       || keyIdRaw(16 bytes) || iv(12 bytes) || 0x02
+key  = HKDF-SHA-256(ikm, salt, info) → AES-256-GCM (non-extractable)
 ikm  = exported raw AES key bytes (zeroized after derive)
 ```
 
@@ -256,7 +263,7 @@ Every post-quantum message is signed. The wire shape is the signed map only:
   change the wire format. `createdAt` is the device-reported time (not trusted
   time)
 - The post-quantum path accepts at most 120,000 UTF-8 plaintext bytes. The
-  symmetric path is separately capped at `MAX_SYM_PLAINTEXT_BYTES` (810) by
+  symmetric path is separately capped at `MAX_SYM_PLAINTEXT_BYTES` (853) by
   the single-frame hard constraint (§3.1)
 
 ## 6. Multi-frame QR (OCF2)
@@ -340,7 +347,7 @@ QrFrameV2 = {
   from the frames alone is equally computable by anyone who photographs one,
   and a hostile sender can compute it over their own artifact. `pq-message`
   and `sym-message` authenticity come from the inner AEAD tag. Public-key
-  artifacts (OCI2/OCP2/OCS2) have no AEAD, so their authenticity rests on the
+  artifacts (OCI2) have no AEAD, so their authenticity rests on the
   out-of-band fingerprint comparison at import. Accidental corruption that
   still decodes as canonical CBOR of the declared type is not detected during
   assembly
@@ -406,9 +413,6 @@ PublicIdentityBundleV2 = {
 }
 ```
 
-`OCP2` / `OCS2` are single-key maps whose `type` is `pq-kem-public-key` /
-`pq-dsa-public-key` respectively, with the common keys
-`version, type, identityId, name?, algorithm, keyId, publicKey, createdAt`.
 `identityId` and each `keyId` are 22 base64url characters, `name` (when
 present) is 1–100 UTF-16 units, and `createdAt` is a non-negative safe
 integer.
@@ -433,30 +437,35 @@ while including `identityId` and `createdAt`.
 Shared fixture: `KEY_ID = "AAECAwQFBgcICQoLDA0ODw"`
 (raw bytes `000102030405060708090a0b0c0d0e0f`),
 `createdAt = 1700000000000` (uint64 `1b0000018bcfe56800`),
-`hkdfSalt = 0x11×32`, `iv = 0x22×12`, `ciphertext = 0x33×20`.
+`iv = 0x22×12`, `ciphertext = 0x33×20`.
 
-- sym-message envelope (192B):
-  `a86269764c22222222222222222222222264747970656b73796d2d6d657373616765656b657949647641414543417751464267634943516f4c4441304f447765737569746573484b44462d5348413235362b4132353647434d6776657273696f6e0268686b646653616c7458201111111111111111111111111111111111111111111111111111111111111111696372656174656441741b0000018bcfe568006a63697068657274657874543333333333333333333333333333333333333333`
+- sym-message envelope (149B; map header `a7`):
+  `a76269764c22222222222222222222222264747970656b73796d2d6d657373616765656b657949647641414543417751464267634943516f4c4441304f447765737569746573484b44462d5348413235362b4132353647434d6776657273696f6e02696372656174656441741b0000018bcfe568006a63697068657274657874543333333333333333333333333333333333333333`
 - SymAadV2 (101B):
   `a564747970656b73796d2d6d657373616765656b657949647641414543417751464267634943516f4c4441304f447765737569746573484b44462d5348413235362b4132353647434d6776657273696f6e02696372656174656441741b0000018bcfe56800`
-- HKDF info (`hkdfInfoSymV2`, 61B):
-  `51522d43525950542d53594d2d4d4553534147452d563200484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02`
-- Overhead pin: `SYM_MESSAGE_OVERHEAD_BYTES = 174`,
-  `MAX_SYM_PLAINTEXT_BYTES = 810`
+- fixed HKDF salt (21B; not on the wire):
+  `51522d43525950542d484b44462d53414c542d5632`
+- HKDF info (`hkdfInfoSymV2`, 73B; `iv = 0x22×12`):
+  `51522d43525950542d53594d2d4d4553534147452d563200484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f22222222222222222222222202`
+- Overhead pin: `SYM_MESSAGE_OVERHEAD_BYTES = 131`,
+  `MAX_SYM_PLAINTEXT_BYTES = 853`
 
 ### 8.2 Post-quantum (`tests/pq/canonical-cbor.golden.test.ts`,
 `tests/pq/wire-bytes.golden.test.ts`, `tests/pq/composition-golden.test.ts`)
 
 Shared fixture key id as in §8.1. Active suite only.
 
-- HKDF info (signed maximum):
-  `51522d43525950542d4d4553534147452d5632004d4c2d4b454d2d313032342b4d4c2d4453412d38372b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f02`
+- HKDF info (signed maximum, 91B; `iv = 0x55×12`):
+  `51522d43525950542d4d4553534147452d5632004d4c2d4b454d2d313032342b4d4c2d4453412d38372b484b44462d5348413235362b4132353647434d00000102030405060708090a0b0c0d0e0f55555555555555555555555502`
+- canonical PQ envelope fixture (`kemCiphertext = 0x33×1568`,
+  `iv = 0x55×12`, `ciphertext = 0x66×20`): 1,749B, SHA-256
+  `2003fa10cac59d40a7074f47f75bb39ba01d81ac6b23a353ee64e22619385ecb`
 - ML-DSA context: `51522d43525950542d4d4553534147452d5632`
 - maximum signed end-to-end composition (fixed seed/randomness):
   - KEM ciphertext SHA-256:
     `7e7cc499f2d0f3bb0bb7aa61a3705c83bfc5cf2446b6bc81a1aa4badd2ea25ae`
   - Canonical CBOR envelope SHA-256:
-    `a921a13f77a1312a39730dafb51b26eb6c828da3cfa9c1cc79bf42c0c665ef7b`
+    `6b748f18e87f105b9be28123c5b02371e97af9bec4410eab04b66c768d6d2cfe`
   - ML-DSA-87 signature SHA-256:
     `73d9d5c706e2190bdccc2cdb2b1fd6c5139a02ce520552556ee5f043c4a27784`
 - Signing target (createdAt=1700000000000 → **uint64 `1b0000018bcfe56800`**;
@@ -473,7 +482,7 @@ Shared fixture key id as in §8.1. Active suite only.
 | Sender signing key not imported (import flow offered) | `SIGNING_KEY_NOT_FOUND` |
 | Frame from another transferId mixed in / frame inconsistency | `FRAME_MISMATCH` |
 | Generation capacity exceeded (artifact >128,000B, frameCount>128, even-chunk >1,000B, OCF2 payload >1,663 characters, or sym single-frame violation) | `QR_TOO_LARGE` |
-| OCB2 (reserved) / removed vocabulary (v1 prefixes, unsigned suites, 768/65, `balanced`) | `UNSUPPORTED_ALGORITHM` or `INVALID_QR_PREFIX` / `INVALID_QR_PAYLOAD` |
+| OCB2 (reserved) / removed vocabulary (v1 prefixes, `OCP2` / `OCS2`, unsigned suites, 768/65, `balanced`) | `UNSUPPORTED_ALGORITHM` or `INVALID_QR_PREFIX` / `INVALID_QR_PAYLOAD` |
 | Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
 | Partial failure of local reset | `RESET_FAILED` |
 
@@ -482,10 +491,10 @@ Shared fixture key id as in §8.1. Active suite only.
 This section describes the **transport contract** for the clean-origin online
 relay. The accepted set is canonical `OCF2:` frames whose outer header declares
 `artifactType ∈ {"pq-message", "sym-message"}`. One transfer carries one kind,
-never both. Bare `OCA2:` / `OCM2:` / `OCK2:` / `OCP2:` / `OCS2:` / `OCI2:` lines
+never both. Bare `OCA2:` / `OCM2:` / `OCK2:` / `OCI2:` lines
 and every other OCF2 outer type (including `symmetric-key` and public-key
 artifacts) are rejected. Retired v1 prefixes (`OCM1` / `OCK1` / `OCP1` / …)
-are prefix-rejected.
+are prefix-rejected, as are the retired `OCP2` / `OCS2`.
 
 The relay is an untrusted hop: it performs **no** AEAD, signature verification,
 or decryption. After a capture or playback set completes (all frames present,

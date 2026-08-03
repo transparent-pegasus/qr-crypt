@@ -63,6 +63,26 @@ test("the cryptographic flow sends nothing externally, leaves no secrets or mess
     )
     .join("; ")
   expect(metaCsp).toBe(expectedMeta)
+
+  // The six non-CSP headers have no meta equivalent except Referrer-Policy, so
+  // a regression that drops one from _headers is invisible in the page itself.
+  // Pin them on the response the reference server produces.
+  const headers = navigation?.headers() ?? {}
+  expect(headers["referrer-policy"]).toBe("no-referrer")
+  expect(headers["x-content-type-options"]).toBe("nosniff")
+  expect(headers["x-frame-options"]).toBe("DENY")
+  expect(headers["cross-origin-opener-policy"]).toBe("same-origin")
+  expect(headers["cross-origin-resource-policy"]).toBe("same-origin")
+  expect(headers["permissions-policy"]).toContain("camera=(self)")
+
+  // Referrer-Policy is the only one of the six a meta tag can restore, and a
+  // Route A install is served by a static server that most likely ignores
+  // _headers entirely.
+  expect(
+    await page.getAttribute('meta[name="referrer"]', "content"),
+    "the built index.html must carry a referrer meta fallback",
+  ).toBe("no-referrer")
+
   await switchToOfflineApp(page, context)
 
   const keyName = "セキュリティ確認鍵"

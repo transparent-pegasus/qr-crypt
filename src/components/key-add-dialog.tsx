@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowLeft, CheckCircle2, KeyRound, LoaderCircle, ShieldCheck } from "lucide-react"
+import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { useFeatureSupport, useSensitiveSession } from "@/app/providers"
 import {
@@ -37,13 +37,10 @@ import {
   importSymmetricKeyRecordV2,
 } from "@/crypto/key-generation"
 import {
-  decodeDsaPublicKeyEnvelopeV2,
-  decodeKemPublicKeyEnvelopeV2,
   decodePublicIdentityBundleV2,
   decodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import { createIdentity } from "@/crypto/pq/identity"
-import { PQ_PROFILES } from "@/crypto/pq/profiles"
 import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
 import { validateSymmetricKeyEnvelopeV2 } from "@/crypto/pq/validation"
 import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
@@ -65,14 +62,13 @@ import {
 import { cn } from "@/lib/utils"
 import { decodePayload } from "@/qr/payload"
 import type {
-  DsaPublicKeyEnvelopeV2,
-  KemPublicKeyEnvelopeV2,
   PqPublicBundleRecord,
   PublicIdentityBundleV2,
   StoredKeyRecord,
 } from "@/schemas/domain"
 import { keyNameSchema } from "@/schemas/key-schema"
-import { saveKeyRecord } from "@/storage/key-repository"
+import { withSensitiveWriteLock } from "@/storage/database"
+import { saveKeyRecord, writeKeyRecord } from "@/storage/key-repository"
 import { confirmBundleFingerprint, saveBundle } from "@/storage/pq-bundle-repository"
 import { saveIdentity } from "@/storage/pq-identity-repository"
 
@@ -80,12 +76,9 @@ export type KeyAddMode = "create" | "import"
 
 type CreateKeyType = "pq-identity" | "symmetric"
 
-type SingleKeyRead = KemPublicKeyEnvelopeV2 | DsaPublicKeyEnvelopeV2
-
 type AddView =
   | { kind: "create" }
   | { kind: "import" }
-  | { kind: "single-key"; envelope: SingleKeyRead; fingerprint: string }
   | { kind: "symmetric-import"; record: StoredKeyRecord }
   | { kind: "bundle-confirm"; bundle: PqPublicBundleRecord }
 
@@ -105,17 +98,6 @@ export interface KeyAddDialogProps {
 
 function assertUsableBundle(bundle: PublicIdentityBundleV2 | PqPublicBundleRecord): void {
   assertActiveSuite(resolveSuite(bundle.kem.algorithm, bundle.signing.algorithm))
-}
-
-function assertUsableSingleKey(envelope: SingleKeyRead): void {
-  const suite =
-    envelope.type === "pq-kem-public-key"
-      ? resolveSuite(
-          envelope.algorithm,
-          PQ_PROFILES[ACTIVE_PROFILE].signature.algorithm,
-        )
-      : resolveSuite(PQ_PROFILES[ACTIVE_PROFILE].kem.algorithm, envelope.algorithm)
-  assertActiveSuite(suite)
 }
 
 export function KeyAddDialog({
@@ -147,6 +129,12 @@ export function KeyAddDialog({
   const [symmetricImportAcknowledged, setSymmetricImportAcknowledged] = useState(false)
   const [fullscreenOpen, setFullscreenOpen] = useState(false)
   const openingRef = useRef(0)
+  // A React state flag is not a commit boundary: setPersisting only schedules a
+  // render, and the dismiss handlers keep reading the previous render's value
+  // until it paints. The ref is what the handlers check; the state exists only so
+  // the close button and the Escape/outside handlers re-render.
+  const persistingRef = useRef(false)
+  const [persisting, setPersisting] = useState(false)
   const scanSession = useMemo(
     () => new MultipartScanSession(preferences.transferTimeoutMinutes),
     [preferences.transferTimeoutMinutes],
@@ -156,8 +144,10 @@ export function KeyAddDialog({
   const showsDetail = detail !== null
   const abandoned = (opening: number) => openingRef.current !== opening
   // The fingerprint step is a security confirmation: leaving it by dismissing the
-  // modal would save nothing, so this one view refuses every dismiss path.
-  const locked = view.kind === "bundle-confirm"
+  // modal would save nothing, so this one view refuses every dismiss path. A write
+  // in flight refuses them too: dismissing there tells the user the creation was
+  // cancelled and hands them the key anyway.
+  const locked = view.kind === "bundle-confirm" || persisting
 
   // Each opening starts from a clean modal. Adjusting during render rather than in
   // an effect keeps the first paint of a reopened modal from showing the old view.
@@ -173,6 +163,7 @@ export function KeyAddDialog({
       setSymmetricImportName("")
       setSymmetricImportAcknowledged(false)
       setBusy(false)
+      setPersisting(false)
     }
   }
 
@@ -181,8 +172,11 @@ export function KeyAddDialog({
   // Opening or closing abandons whatever was running: this component outlives the
   // modal, so a continuation that survives a close must not write over the next
   // opening's state, and abandoned frames must not sit in the assembler.
+  // The dismiss gate goes with it: a write the parent closed the modal over keeps
+  // running, but it belongs to the abandoned opening and must not lock the next one.
   useEffect(() => {
     openingRef.current += 1
+    persistingRef.current = false
   }, [mode])
   useEffect(() => {
     if (mode === null) scanSession.discard()
@@ -202,6 +196,17 @@ export function KeyAddDialog({
     [setSensitiveSession],
   )
 
+  const persist = async (write: () => Promise<void>) => {
+    persistingRef.current = true
+    setPersisting(true)
+    try {
+      await write()
+    } finally {
+      persistingRef.current = false
+      setPersisting(false)
+    }
+  }
+
   const createSymmetric = async () => {
     const parsed = keyNameSchema.safeParse(keyName)
     if (!parsed.success) {
@@ -217,11 +222,21 @@ export function KeyAddDialog({
     setBusy(true)
     setError(null)
     try {
-      const record = await createSymmetricKeyRecord(parsed.data, Date.now())
-      await saveKeyRecord(record)
-      if (abandoned(opening)) return
+      // The lock spans generation, not just the write: a key that is already
+      // generated and certain to be written must not be invisible to boot's
+      // clean-origin proof, and this continuation survives the Router unmount that
+      // going online performs. writeKeyRecord is the unlocked writer, because Web
+      // Locks has no reentrancy.
+      let created: StoredKeyRecord | undefined
+      await withSensitiveWriteLock(async () => {
+        const record = await createSymmetricKeyRecord(parsed.data, Date.now())
+        if (abandoned(opening)) return
+        await persist(() => writeKeyRecord(record))
+        created = record
+      })
+      if (created === undefined || abandoned(opening)) return
       setKeyName("")
-      await onCreated({ kind: "symmetric", id: record.id })
+      await onCreated({ kind: "symmetric", id: created.id })
       toast.success(t("keys.toast.symmetricCreated"))
     } catch (caught) {
       if (abandoned(opening)) return
@@ -246,14 +261,27 @@ export function KeyAddDialog({
     setBusy(true)
     setError(null)
     try {
+      // No extended span here: getOrCreateVaultKey persists the vault key under the
+      // sensitive-write lock before the Worker keygen begins, and boot counts a
+      // vault key as sensitive data, so the origin is already provably dirty by the
+      // time the slow part starts.
+      //
+      // ponytail: that write survives a modal closed during generation — an orphan
+      // vault key with no identity. Preventing it needs an AbortSignal threaded
+      // through the Worker and vault creation; until then the residual is
+      // fail-closed, since boot reads the orphan as a dirty origin and denies the
+      // online relay.
+      const vaultKey = await getOrCreateVaultKey()
+      if (abandoned(opening)) return
       const identity = await createIdentity({
         client: getPqClient(),
-        vaultKey: await getOrCreateVaultKey(),
+        vaultKey,
         name: parsed.data,
         profile: ACTIVE_PROFILE,
         now: Date.now(),
       })
-      await saveIdentity(identity)
+      if (abandoned(opening)) return
+      await persist(() => saveIdentity(identity))
       if (abandoned(opening)) return
       setKeyName("")
       await onCreated({ kind: "identity", id: identity.id })
@@ -291,15 +319,6 @@ export function KeyAddDialog({
     })
   }
 
-  const handleSingleKey = async (envelope: SingleKeyRead) => {
-    assertUsableSingleKey(envelope)
-    const fingerprint =
-      envelope.type === "pq-kem-public-key"
-        ? await pqKeyFingerprint("kem", envelope.algorithm, envelope.publicKey)
-        : await pqKeyFingerprint("signing", envelope.algorithm, envelope.publicKey)
-    setView({ kind: "single-key", envelope, fingerprint })
-  }
-
   const beginSymmetricImport = (record: StoredKeyRecord) => {
     setSymmetricImportName(record.name)
     setSymmetricImportAcknowledged(false)
@@ -328,10 +347,6 @@ export function KeyAddDialog({
       }
       case "pq-public-identity":
         await prepareBundleImport(decoded.envelope)
-        return
-      case "pq-kem-public-key":
-      case "pq-dsa-public-key":
-        await handleSingleKey(decoded.envelope)
         return
       default:
         throw new AppError("INVALID_QR_PAYLOAD")
@@ -363,14 +378,6 @@ export function KeyAddDialog({
     try {
       if (args.artifactType === "pq-public-identity") {
         await prepareBundleImport(decodePublicIdentityBundleV2(args.artifactBytes))
-        return
-      }
-      if (args.artifactType === "pq-kem-public-key") {
-        await handleSingleKey(decodeKemPublicKeyEnvelopeV2(args.artifactBytes))
-        return
-      }
-      if (args.artifactType === "pq-dsa-public-key") {
-        await handleSingleKey(decodeDsaPublicKeyEnvelopeV2(args.artifactBytes))
         return
       }
       if (args.artifactType === "symmetric-key") {
@@ -408,7 +415,7 @@ export function KeyAddDialog({
     setBusy(true)
     setError(null)
     try {
-      await saveKeyRecord({ ...view.record, name: parsedName.data })
+      await persist(() => saveKeyRecord({ ...view.record, name: parsedName.data }))
       await onImported()
       if (abandoned(opening)) return
       toast.success(t("keys.toast.symmetricImported"))
@@ -421,6 +428,8 @@ export function KeyAddDialog({
     }
   }
 
+  // No persist() here, unlike the import above: this view is already locked by
+  // its kind, and a public bundle is not sensitive data — boot never scans it.
   const savePendingBundle = async (confirmed: boolean) => {
     if (view.kind !== "bundle-confirm" || (confirmed && !fingerprintChecked)) return
     const opening = openingRef.current
@@ -445,16 +454,11 @@ export function KeyAddDialog({
     }
   }
 
-  const backToImport = () => {
-    setView({ kind: "import" })
-    setError(null)
-  }
-
   return (
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        if (nextOpen || locked || fullscreenOpen) return
+        if (nextOpen || locked || persistingRef.current || fullscreenOpen) return
         onOpenChange(false)
       }}
     >
@@ -572,37 +576,6 @@ export function KeyAddDialog({
                   </div>
                 </CardContent>
               </Card>
-            </div>
-          )}
-
-          {view.kind === "single-key" && (
-            <div className="space-y-4">
-              <Alert>
-                <CheckCircle2 aria-hidden="true" className="size-4" />
-                <AlertTitle>{t("keys.singleKey.title")}</AlertTitle>
-                <AlertDescription className="space-y-2">
-                  <p>
-                    {view.envelope.type === "pq-kem-public-key"
-                      ? t("keys.singleKey.kemLabel")
-                      : t("keys.singleKey.signingLabel")}{" "}
-                    / {view.envelope.algorithm}
-                  </p>
-                  <Fingerprint
-                    label={t("keys.singleKey.fingerprintLabel")}
-                    value={view.fingerprint}
-                  />
-                  <p>{t("keys.singleKey.persistHint")}</p>
-                </AlertDescription>
-              </Alert>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 w-fit"
-                onClick={backToImport}
-              >
-                <ArrowLeft aria-hidden="true" />
-                {t("keyDetail.backToDetail")}
-              </Button>
             </div>
           )}
 

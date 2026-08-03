@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { QrScannerPanel } from "@/components/qr-scanner-panel"
 import { AppError, messageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
+import { LanguageProvider } from "@/i18n"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import { deferred } from "../helpers/deferred"
 import {
@@ -86,7 +87,9 @@ describe("QrScannerPanel multipart scan", () => {
       artifactBytes: Uint8Array.of(3),
     })
     expect(
-      screen.getByText("SHA-256 integrity was confirmed for all frames."),
+      screen.getByText(
+        "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+      ),
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
 
@@ -196,7 +199,9 @@ describe("QrScannerPanel multipart scan", () => {
 
     expect(onComplete).not.toHaveBeenCalled()
     expect(
-      screen.queryByText("SHA-256 integrity was confirmed for all frames."),
+      screen.queryByText(
+        "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+      ),
     ).not.toBeInTheDocument()
   })
 
@@ -219,9 +224,37 @@ describe("QrScannerPanel multipart scan", () => {
       await screen.findByText(messageFor("UNSUPPORTED_ALGORITHM", "en")),
     ).toBeInTheDocument()
     expect(
-      screen.getByText("SHA-256 integrity was confirmed for all frames."),
+      screen.getByText(
+        "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+      ),
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
+  })
+
+  it("re-delivers the completed artifact when Start is pressed after a failed delivery", async () => {
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    const onComplete = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new AppError("UNSUPPORTED_ALGORITHM")
+      })
+      .mockResolvedValueOnce(undefined)
+    render(scanner(session, onComplete))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
+    )
+    expect(onComplete).toHaveBeenCalledOnce()
+
+    const start = screen.getByRole("button", { name: "Start camera" })
+    await waitFor(() => expect(start).toBeEnabled())
+    await user.click(start)
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(2))
+    expect(onComplete.mock.calls[1]?.[0]).toEqual(onComplete.mock.calls[0]?.[0])
   })
 
   it("locks restart and discard while completion delivery is pending", async () => {
@@ -251,6 +284,32 @@ describe("QrScannerPanel multipart scan", () => {
     expect(
       screen.getByRole("button", { name: "Discard scan state" }),
     ).toBeEnabled()
+  })
+
+  it("hands the claim back when the panel is gone before delivery settles", async () => {
+    const delivery = deferred<void>()
+    const user = userEvent.setup()
+    const session = new MultipartScanSession(5)
+    const onComplete = vi.fn(() => delivery.promise)
+    const view = render(scanner(session, onComplete))
+    await user.click(screen.getByRole("button", { name: "Start camera" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+    await act(async () =>
+      emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
+    )
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
+
+    // The panel is unmounted while the delivery is still in flight, so the
+    // publish guard in settleDelivery short-circuits. Releasing after that guard
+    // would strand the claim on a session the next mount can never deliver.
+    view.unmount()
+    await act(async () => {
+      delivery.reject(new AppError("STORAGE_FAILED"))
+      await delivery.promise.catch(() => undefined)
+    })
+
+    expect(session.claimCompletion()).toBe(true)
   })
 
   it("detects timeout, stops, and returns to idle", async () => {
@@ -307,4 +366,44 @@ describe("QrScannerPanel multipart scan", () => {
     expect(screen.getByRole("button", { name: "Start camera" })).toBeEnabled()
     expect(scannerStop).toHaveBeenCalled()
   })
+
+  // Pinned verbatim, not through translate(): the assembler checks frame
+  // bookkeeping and nothing else, so any reword that widens the claim — in
+  // either locale — has to fail here.
+  it.each([
+    [
+      "en" as const,
+      "Start camera",
+      "All required frames were received. Frame metadata, frame indexes, total length, and format are consistent.",
+      "These checks detect frames that are missing, duplicated, or mixed in from another transfer. They do not verify the artifact's contents and do not prove the sender's authenticity.",
+    ],
+    [
+      "ja" as const,
+      "カメラを起動",
+      "必要な全フレームを受信しました。フレームのメタデータ・フレーム番号・合計長・形式の整合性を確認しました。",
+      "この確認は転送中の欠損・重複・他転送の混在を検出するものです。成果物の内容は検証せず、送信者の真正性も証明しません。",
+    ],
+  ])(
+    "claims only frame bookkeeping on completion (%s)",
+    async (language, startLabel, completion, caveat) => {
+      const user = userEvent.setup()
+      const session = new MultipartScanSession(5)
+      render(
+        <LanguageProvider initialLanguage={language}>
+          {scanner(session)}
+        </LanguageProvider>,
+      )
+      await user.click(screen.getByRole("button", { name: startLabel }))
+      await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+
+      await act(async () =>
+        emitScannedPayload(multipartPayload("transfer-a", 0, 1)),
+      )
+
+      expect(screen.getByText(completion)).toBeInTheDocument()
+      expect(screen.getByText(caveat)).toBeInTheDocument()
+      // The exact false claim that used to ship here.
+      expect(screen.queryByText(/SHA-256/i)).not.toBeInTheDocument()
+    },
+  )
 })

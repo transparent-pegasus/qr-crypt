@@ -42,7 +42,11 @@ import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
 import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
-import { bytesToHex, bytesToUtf8 } from "@/lib/bytes"
+import {
+  bytesToHex,
+  bytesToUtf8,
+  countUnicodeFormatCharacters,
+} from "@/lib/bytes"
 import { buildV2Payload } from "@/qr/payload-v2"
 import {
   decodePayload,
@@ -154,6 +158,10 @@ export function DecryptPage() {
     (parsedDecrypt.kind === "pq-message"
       ? decryptIdentity !== undefined
       : decryptSymmetricKey !== undefined)
+  const formatCharacterCount =
+    decrypted !== null && decrypted.kind !== "signed-key-unknown"
+      ? countUnicodeFormatCharacters(decrypted.text)
+      : 0
 
   useEffect(() => {
     setSensitiveSession({
@@ -643,6 +651,22 @@ export function DecryptPage() {
                       >
                         {t("encrypt.result.replay.reveal")}
                       </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {formatCharacterCount > 0 && (
+                  <Alert
+                    variant="destructive"
+                    role="alert"
+                    aria-labelledby="decrypt-invisible-characters-title"
+                  >
+                    <AlertTitle id="decrypt-invisible-characters-title">
+                      {t("encrypt.result.invisibleCharacters.title")}
+                    </AlertTitle>
+                    <AlertDescription>
+                      {t("encrypt.result.invisibleCharacters.body", {
+                        count: formatCharacterCount,
+                      })}
                     </AlertDescription>
                   </Alert>
                 )}

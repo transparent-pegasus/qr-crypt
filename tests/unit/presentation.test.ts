@@ -21,9 +21,11 @@ describe("presentation formatting", () => {
   })
 
   it("recognizes only active v2 prefixes", () => {
-    for (const prefix of Object.values(QR_PREFIX_V2)) {
+    const { "encrypted-seed-backup": reserved, ...active } = QR_PREFIX_V2
+    for (const prefix of Object.values(active)) {
       expect(isQrCryptPayload(`${prefix}payload`)).toBe(true)
     }
+    expect(isQrCryptPayload(`${reserved}payload`)).toBe(false)
     expect(isQrCryptPayload("OCX9:payload")).toBe(false)
     expect(isQrCryptPayload("plain text")).toBe(false)
   })

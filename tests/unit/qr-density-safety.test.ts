@@ -23,12 +23,7 @@ import {
 } from "@/qr/payload-v2"
 
 const MILLISECONDS_PER_MINUTE = 60_000
-const ACCEPTED_BARE_V2_KINDS = [
-  "pq-message",
-  "pq-kem-public-key",
-  "pq-dsa-public-key",
-  "pq-public-identity",
-] as const
+const ACCEPTED_BARE_V2_KINDS = ["pq-message", "pq-public-identity"] as const
 
 describe("QR transfer timing safety budgets", () => {
   it("derives the minimum timeout from one slowest supported full cycle", () => {
