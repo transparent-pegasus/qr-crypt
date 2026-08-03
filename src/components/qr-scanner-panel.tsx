@@ -11,6 +11,7 @@ import { formatFramePositions } from "@/features/presentation"
 import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
 import { reloadApplication } from "@/lib/reload"
 import {
+  shouldRestartQrScanOnVisibility,
   startQrScan,
   type CameraFailureState,
   type CameraScanState,
@@ -401,14 +402,10 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
         return
       }
 
-      const shouldShowStopped =
-        startQrScan.shouldRestartOnVisibility?.(
-          cameraStateRef.current,
-          document.visibilityState,
-        ) ??
-        (document.visibilityState === "visible" &&
-          (cameraStateRef.current === "failed" ||
-            cameraStateRef.current === "track-ended"))
+      const shouldShowStopped = shouldRestartQrScanOnVisibility(
+        cameraStateRef.current,
+        document.visibilityState,
+      )
       if (shouldShowStopped) publishCameraMode("stopped")
     }
     document.addEventListener("visibilitychange", onVisibilityChange)
