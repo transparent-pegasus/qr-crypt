@@ -52,8 +52,8 @@ behavior of third-party codecs).
 - Nesting depth limit: 8
 - Decoder input is limited to 1–128,000 bytes. Structural allocation has
   separate limits because a byte limit alone does not bound entry count or
-  retained heap: at most 8 entries in one map (`QrFrameV2` and named
-  single-public-key envelopes; message envelope maps have 7), 13 map entries
+  retained heap: at most 8 entries in one map (`QrFrameV2`; message envelope
+  maps have 7), 13 map entries
   across the decoded value, 18 UTF-8 bytes per map key
   (`senderSigningKeyId`, the longest decoded key), and 300 UTF-8 bytes per text
   value. Length/count headers are rejected before their loops or strings are
@@ -293,12 +293,12 @@ QrFrameV2 = {
   OCF2 payload, below the 1,663-character EC-Q version 40 capacity. A raw
   worst-metadata 1,100B frame would land exactly at that capacity, but the
   protocol chunk and generated-density ceilings remain 1,000B
-- A sender selects exactly one split mode: fixed `frameBytes`, or an explicit
-  balanced `frameCount`. Count mode rejects non-integers, counts above
-  `VITE_QR_MAX_FRAMES` or the artifact byte length, and any result whose
-  largest chunk exceeds 1,000B. Every chunk is non-empty and largest/smallest
-  lengths differ by at most one byte. ("balanced" here means even chunking of
-  the split, not the retired crypto profile name.)
+- A sender splits on a fixed `frameBytes`: every chunk but the last carries
+  exactly that many bytes. `frameBytes` outside 100–1,000B, non-integer, or a
+  resulting count above `VITE_QR_MAX_FRAMES` is `QR_TOO_LARGE`. Receivers do
+  not require this uniformity — any non-empty chunk partition within the
+  per-chunk and per-count ceilings below assembles, so a sender that chunks
+  differently remains interoperable.
 - Receiver and bare-paste allocation are intentionally bounded by
   `MAX_ARTIFACT_BYTES_ABSOLUTE =
   PROTOCOL_MAX_FRAMES × FRAME_CHUNK_MAX_BYTES = 128 × 1,000 = 128,000`
@@ -481,7 +481,7 @@ Shared fixture key id as in §8.1. Active suite only.
 | Signature verification failure (body withheld) | `SIGNATURE_INVALID` |
 | Sender signing key not imported (import flow offered) | `SIGNING_KEY_NOT_FOUND` |
 | Frame from another transferId mixed in / frame inconsistency | `FRAME_MISMATCH` |
-| Generation capacity exceeded (artifact >128,000B, frameCount>128, even-chunk >1,000B, OCF2 payload >1,663 characters, or sym single-frame violation) | `QR_TOO_LARGE` |
+| Generation capacity exceeded (artifact >128,000B, frameCount>128, `frameBytes` outside 100–1,000B, OCF2 payload >1,663 characters, or sym single-frame violation) | `QR_TOO_LARGE` |
 | OCB2 (reserved) / removed vocabulary (v1 prefixes, `OCP2` / `OCS2`, unsigned suites, 768/65, `balanced`) | `UNSUPPORTED_ALGORITHM` or `INVALID_QR_PREFIX` / `INVALID_QR_PAYLOAD` |
 | Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
 | Partial failure of local reset | `RESET_FAILED` |

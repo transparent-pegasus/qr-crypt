@@ -11,7 +11,6 @@ import {
   MAX_SYM_PLAINTEXT_BYTES,
 } from "@/lib/limits"
 import { QR_PREFIX_V2 } from "@/qr/payload-v2"
-import { toUiAlgorithm, toWireAlgorithm } from "@/schemas/domain"
 import { env, parseAppEnv } from "@/schemas/env-schema"
 import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
 
@@ -24,12 +23,6 @@ describe("contract smoke", () => {
     expect(error).not.toHaveProperty("userMessage")
     expect(toAppError(new Error("x"), "STORAGE_FAILED").code).toBe("STORAGE_FAILED")
     expect(toAppError(error, "STORAGE_FAILED")).toBe(error)
-  })
-
-  it("keeps only the active A256GCM mapper", () => {
-    expect(toWireAlgorithm("A256GCM")).toBe("A256GCM")
-    expect(toUiAlgorithm("A256GCM")).toBe("A256GCM")
-    expect(() => toWireAlgorithm("MLKEM1024_A256GCM" as never)).toThrow(TypeError)
   })
 
   it("env parsing applies defaults, cross-field normalization, and retired-value rejection", () => {

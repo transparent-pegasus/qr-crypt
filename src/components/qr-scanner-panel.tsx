@@ -9,6 +9,7 @@ import { AppError } from "@/crypto/errors"
 import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import { formatFramePositions } from "@/features/presentation"
 import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
+import { reloadApplication } from "@/lib/reload"
 import {
   startQrScan,
   type CameraFailureState,
@@ -563,7 +564,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
                     <Button
                       type="button"
                       className="h-11 cursor-pointer focus-visible:ring-2"
-                      onClick={() => window.location.reload()}
+                      onClick={reloadApplication}
                     >
                       <RefreshCw aria-hidden="true" />
                       {t("scanner.button.reload")}

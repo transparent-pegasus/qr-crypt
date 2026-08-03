@@ -31,6 +31,7 @@ import {
   RELAY_PLAYBACK_FRAME_INTERVAL_MS,
   TRANSFER_TIMEOUT_MINUTES_DEFAULT,
 } from "@/lib/limits"
+import { reloadApplication } from "@/lib/reload"
 import { startQrScan, type QrScanHandle } from "@/qr/decode"
 import { copyTextToClipboard } from "@/qr/export-image"
 import { renderQrDataUrl } from "@/qr/encode"
@@ -586,7 +587,7 @@ export function OnlineRelay({
                   <Button
                     type="button"
                     className="h-11 cursor-pointer focus-visible:ring-2"
-                    onClick={() => window.location.reload()}
+                    onClick={reloadApplication}
                   >
                     <RefreshCw aria-hidden="true" />
                     {t("scanner.button.reload")}

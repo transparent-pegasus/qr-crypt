@@ -59,8 +59,8 @@ const MAJOR_TEXT = 3
 const MAJOR_MAP = 5
 
 // Structural allocation limits follow the largest active protocol shapes:
-// the largest single map has 8 entries (QrFrameV2 and named single-public-key
-// envelopes); message envelopes now have 7 entries.
+// the largest single map has 8 entries (QrFrameV2); message envelopes now have
+// 7 entries.
 // PublicIdentityBundleV2 has 13 entries across its root and two nested key
 // maps. The longest decoded key is "senderSigningKeyId" (18 UTF-8 bytes) —
 // "kemCiphertextSha256" (19) exists only in the encode-side AAD, which is

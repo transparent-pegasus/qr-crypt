@@ -517,32 +517,28 @@ export const decodePublicIdentityBundleV2 = vi.fn(
   () => lastPublicBundle ?? buildPublicBundle(fakeIdentities[0]!),
 )
 
+// Mirrors the one surviving generation mode: uniform chunks with a possibly
+// shorter final one. Offering the retired balanced frameCount mode here would
+// let a UI test drive a partition the product can no longer produce.
 export const splitIntoFrames = vi.fn(
   async ({
     artifactType,
     artifactBytes,
     frameBytes,
-    frameCount: requestedFrameCount,
   }: {
     artifactType: V2ArtifactType
     artifactBytes: Uint8Array
-    frameBytes?: number
-    frameCount?: number
+    frameBytes: number
   }): Promise<QrFrameV2[]> => {
     if (artifactBytes.byteLength > MAX_ARTIFACT_BYTES_ABSOLUTE) {
       throw new AppError("QR_TOO_LARGE")
     }
-    const frameCount =
-      requestedFrameCount ??
-      Math.max(1, Math.ceil(artifactBytes.byteLength / (frameBytes ?? 1)))
-    const baseChunkBytes = Math.floor(artifactBytes.byteLength / frameCount)
-    const largerChunks = artifactBytes.byteLength % frameCount
+    const frameCount = Math.max(
+      1,
+      Math.ceil(artifactBytes.byteLength / frameBytes),
+    )
     let offset = 0
     return Array.from({ length: frameCount }, (_, frameIndex) => {
-      const chunkBytes =
-        requestedFrameCount === undefined
-          ? (frameBytes ?? artifactBytes.byteLength)
-          : baseChunkBytes + (frameIndex < largerChunks ? 1 : 0)
       const frame: QrFrameV2 = {
         version: 2,
         type: "qr-frame",
@@ -551,9 +547,9 @@ export const splitIntoFrames = vi.fn(
         frameIndex,
         frameCount,
         totalByteLength: artifactBytes.byteLength,
-        chunk: artifactBytes.slice(offset, offset + chunkBytes),
+        chunk: artifactBytes.slice(offset, offset + frameBytes),
       }
-      offset += chunkBytes
+      offset += frameBytes
       return frame
     })
   },

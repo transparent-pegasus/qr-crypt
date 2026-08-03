@@ -59,11 +59,11 @@ describe("session receipt cache", () => {
     ).toEqual({ kind: "first-seen" })
   })
 
-  it("keys AES receipts by ciphertext so message-id reuse is unreachable", () => {
+  it("keys symmetric receipts by ciphertext so message-id reuse is unreachable", () => {
     const subject: ReceiptSubject = {
-      kind: "aes",
-      recipientKeyId: "aes-recipient",
-      envelopeHash: "aes-envelope-a",
+      kind: "sym",
+      recipientKeyId: "sym-recipient",
+      envelopeHash: "sym-envelope-a",
     }
 
     expect(recordReceipt(subject, FIRST_SEEN_AT)).toEqual({ kind: "first-seen" })
@@ -73,7 +73,7 @@ describe("session receipt cache", () => {
     })
     expect(
       recordReceipt(
-        { ...subject, envelopeHash: "aes-envelope-b" },
+        { ...subject, envelopeHash: "sym-envelope-b" },
         FIRST_SEEN_AT + 2,
       ),
     ).toEqual({ kind: "first-seen" })
@@ -92,9 +92,9 @@ describe("session receipt cache", () => {
 
   it("evicts the oldest receipt after the session cap is exceeded", () => {
     const subjectAt = (index: number): ReceiptSubject => ({
-      kind: "aes",
-      recipientKeyId: "aes-recipient",
-      envelopeHash: `aes-envelope-${index}`,
+      kind: "sym",
+      recipientKeyId: "sym-recipient",
+      envelopeHash: `sym-envelope-${index}`,
     })
 
     for (let index = 0; index < MAX_SESSION_RECEIPTS + 1; index += 1) {
