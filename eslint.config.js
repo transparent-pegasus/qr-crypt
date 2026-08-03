@@ -36,8 +36,11 @@ export default tseslint.config(
     //
     // Matching on the receiver would mean enumerating spellings — window,
     // globalThis, self, document, and their computed forms all reach the same
-    // Location — so this matches the reload call itself and scopes the ban to
-    // application code, where nothing else legitimately owns a `reload` method.
+    // Location — so this matches the `reload` property itself and scopes the
+    // ban to application code, where nothing else legitimately owns one.
+    // Matching the access rather than the call also covers the indirections a
+    // call-only selector misses: rebinding, `.call`, `Reflect.apply`, and
+    // comma-operator escapes all have to read the property first.
     // Playwright's page.reload lives in tests/ and is deliberately out of scope,
     // as is public/, whose plain browser modules cannot import the owner.
     files: ["src/**/*.{ts,tsx}"],
@@ -46,11 +49,11 @@ export default tseslint.config(
       "no-restricted-syntax": [
         "error",
         {
-          selector: "CallExpression[callee.property.name='reload']",
+          selector: "MemberExpression[property.name='reload']",
           message: "Call reloadApplication from @/lib/reload instead.",
         },
         {
-          selector: "CallExpression[callee.property.value='reload']",
+          selector: "MemberExpression[property.value='reload']",
           message: "Call reloadApplication from @/lib/reload instead.",
         },
       ],
