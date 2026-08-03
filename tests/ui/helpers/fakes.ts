@@ -792,6 +792,9 @@ export const findIdentityByKemKeyId = vi.fn(async (keyId: string) =>
   fakeIdentities.find((identity) => identity.kem.keyId === keyId),
 )
 export const listIdentities = vi.fn(async () => [...fakeIdentities])
+export const getIdentity = vi.fn(async (id: string) =>
+  fakeIdentities.find((identity) => identity.id === id),
+)
 export const saveIdentity = vi.fn(async (identity: PostQuantumIdentity) => {
   fakeIdentities.unshift(identity)
 })
@@ -841,6 +844,9 @@ export const clearAllIdentities = vi.fn(async () => {
 export const markIdentityUsed = vi.fn(async () => undefined)
 
 export const listBundles = vi.fn(async () => [...fakeBundles])
+export const getBundle = vi.fn(async (recordId: string) =>
+  fakeBundles.find((record) => record.recordId === recordId),
+)
 export const saveBundle = vi.fn(async (record: PqPublicBundleRecord) => {
   fakeBundles.unshift(record)
 })

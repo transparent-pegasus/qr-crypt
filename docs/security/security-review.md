@@ -252,6 +252,70 @@ Closed under unique indexes and `KEY_ID_CONFLICT` / `DUPLICATE_KEY` refusal; see
 signer's plaintext behind an explicit action, and binding the sender public key
 into the signing target.
 
+## 1.2 Findings NSR-01 / NSR-02 / NSR-04 (2026-08-03)
+
+Two advanced-adversary reviews of the same tree, one in-repository and one
+external, reconciled against the code before anything was implemented. They do
+not close the external `release-approved` blocker, and neither review was
+independent of this repository in the sense §4 requires.
+
+Two claims in the external review were **not** reproducible and were rejected
+rather than acted on: it cited a production revision that does not exist in this
+repository, and it stated that the symmetric encrypt path already re-resolved
+its key from storage at action time, which contradicted both the code and the
+T14 residual as they stood at the time.
+
+### NSR-01 — Stale key lifecycle state at encryption
+
+- **Found:** the post-quantum branch took whole recipient and sender objects
+  from the encryption page's cached list, so `encryptPq`'s revocation, trust,
+  and status checks ran against a snapshot. A bundle revoked, or an identity
+  rotated or deleted, in another tab after selection stayed invisible, and one
+  further message could be encrypted to it.
+- **Shipped:** the request carries ids on both branches and `encryptMessage`
+  resolves them, so those rejections apply to what storage holds at press time.
+  Pinned by the stale-record tests in `tests/ui/encrypt-page.test.tsx`.
+- **Residual, unchanged:** a lifecycle write landing between that lookup and the
+  cipher call. See [threat-model.md](threat-model.md) T14.
+
+### NSR-02 — Version-tag action references in secret-bearing workflows
+
+- **Found:** `github-release.yml` pinned every external action to a commit while
+  the CI and promotion workflows used major-version tags — including the job
+  that hands the Cloudflare API token, account id, and workflow token to
+  `wrangler-action`.
+- **Shipped:** every external `uses:` in every workflow is a full commit,
+  checkouts no longer persist credentials, and
+  `tests/unit/workflow-action-pins.test.ts` fails the suite on a new unpinned
+  action. `mise-action` reuses the commit `github-release.yml` already pins.
+- **Residual:** pinning stops silent tag movement. It does not secure a
+  compromised runner, the GitHub control plane, or a malicious pinned revision.
+
+### NSR-04 — Relay cleanliness going stale during a session
+
+- **Found:** the clean-origin proof held its exclusive lock only while it ran,
+  so a key written in another tab after publication left the origin relaying
+  while it was no longer clean — the residual race T19 recorded.
+- **Shipped:** a relay session holds the same lock for its lifetime
+  (`acquireRelayLease`, released in the relay's single teardown path); a writer
+  already inside the lock denies the session rather than queueing behind it.
+  Proved from a second browser context in `tests/e2e/online-relay.spec.ts`,
+  including a teardown that never touches the UI.
+- **Residual:** write paths that take no lock at all — imported public bundles,
+  deletes, renames, usage stamps — are outside the lease. None is counted by the
+  clean-origin proof.
+
+### Recorded, not implemented
+
+- Independent third-party audit, independent reproduction of the release from
+  source, and an authenticated rebuild toolchain remain the open external
+  blockers (§1, §4). No repository change closes them.
+- The T21 covert-egress floor (277 bits in the smallest legitimate symmetric
+  transfer) is an architectural residual; reducing it further is a wire-format
+  change and was not attempted here.
+- The widened-QR promotion condition was recorded as unmet in
+  `docs/develop/browser-matrix.md` rather than silently satisfied.
+
 ## 2. Prohibited Claims (UI / README / CI)
 
 None of the following may be used in UI, README, or CI displays.

@@ -72,6 +72,15 @@ on sustained full-transfer passes with both user-selected preferences on both
 release-gate platforms. The preference pairs, clamp, and dwell semantics are
 owned by [qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6.
 
+**Outstanding as of 2026-08-03.** The widened QR range is in `main`
+(`src/qr/camera/frame-pump.ts`) while every measurement this condition depends
+on still reads **not yet measured**. The build was promoted as an experimental
+prerelease, which is not `release-approved` and claims no assurance — but this
+condition was not met before promotion, and that belongs in the record rather
+than in nobody's memory. Resolve it one of two ways: complete the measurements,
+or state here that experimental promotion is exempt from this condition. A gate
+that reads as though it held, while it did not, is worse than no gate.
+
 Each preference must include poor-light operation and recovery after focus is
 lost and reacquired. Configured dwell is a minimum visible time, not a measured
 cadence (§6). Record the actual full cycle separately from the configured dwell,

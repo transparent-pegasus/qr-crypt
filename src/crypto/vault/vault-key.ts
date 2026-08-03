@@ -31,10 +31,12 @@ async function generateVaultKey(): Promise<CryptoKey> {
 }
 
 // Nesting is vault (exclusive, outer) → sensitive-write (shared, inner): two
-// different lock names, and no writer ever requests the sensitive-write lock
-// exclusively, so no cycle exists. Do not hoist the shared request outside
-// withCrossTabLock — the wrapper is already on this stack and Web Locks has no
-// reentrancy.
+// different lock names. Two paths take the sensitive-write lock exclusively —
+// boot's proof (withSensitiveWritesExcluded, briefly, with a 3s abort) and the
+// relay lease (acquireRelayLease, for a session) — and neither holds or
+// requests another lock while it does, so no cycle exists. Do not hoist the
+// shared request outside withCrossTabLock — the wrapper is already on this
+// stack and Web Locks has no reentrancy.
 function createOrReadVaultKey(): Promise<CryptoKey> {
   return withSensitiveWriteLock(async () => {
     const database = await getDb()

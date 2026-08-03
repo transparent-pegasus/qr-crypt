@@ -21,16 +21,16 @@ import type {
   SymMessageEnvelopeV2,
 } from "@/schemas/domain"
 import { getActiveKeyRecord, markKeyUsed } from "@/storage/key-repository"
-import { markBundleUsed } from "@/storage/pq-bundle-repository"
-import { markIdentityUsed } from "@/storage/pq-identity-repository"
+import { getBundle, markBundleUsed } from "@/storage/pq-bundle-repository"
+import { getIdentity, markIdentityUsed } from "@/storage/pq-identity-repository"
 
 export type EncryptMessageRequest =
   | { kind: "sym"; keyId: string; plaintext: Uint8Array; now: number }
   | {
       kind: "pq"
       client: PqCryptoClient
-      recipient: PqPublicBundleRecord
-      sender: PostQuantumIdentity
+      recipientRecordId: string
+      senderIdentityId: string
       plaintext: Uint8Array
       now: number
     }
@@ -68,11 +68,14 @@ export type EncryptedMessage =
  * result cannot skip it. Both branches share one boundary for the same reason — the
  * cipher differs, the policy around it must not drift apart.
  *
- * The symmetric key is re-resolved from storage at action time, and it must be the
- * active head: a caller's cached list only gates its button, and a key rotated or
- * deleted in another tab must not still encrypt from a stale in-memory object. A rotated
- * id is not followed to its successor — that would silently encrypt to a key the
- * operator did not choose — so it fails and the operator re-selects. A lifecycle write
+ * Every key is re-resolved from storage at action time, on both branches: a caller's
+ * cached list only gates its button, and a record rotated, revoked, or deleted in
+ * another tab must not still encrypt from a stale in-memory object. The symmetric key
+ * must be the active head, and a rotated id is not followed to its successor — that
+ * would silently encrypt to a key the operator did not choose — so it fails and the
+ * operator re-selects. On the post-quantum branch this boundary only proves the records
+ * still exist; encryptPq owns the revocation, trust, and status rejections, and applies
+ * them to what storage holds now rather than to what the page cached. A lifecycle write
  * landing between this lookup and the cipher call is the residual race recorded in
  * docs/security/threat-model.md T14.
  *
@@ -113,11 +116,18 @@ export async function encryptMessage(
     }
   }
 
+  const [recipient, sender] = await Promise.all([
+    getBundle(request.recipientRecordId),
+    getIdentity(request.senderIdentityId),
+  ])
+  if (recipient === undefined || sender === undefined) {
+    throw new AppError("KEY_NOT_FOUND")
+  }
   const envelope = await encryptPq({
     client: request.client,
-    recipient: request.recipient,
+    recipient,
     plaintext: request.plaintext,
-    sign: { identity: request.sender, vaultKey: await getOrCreateVaultKey() },
+    sign: { identity: sender, vaultKey: await getOrCreateVaultKey() },
     now: request.now,
   })
   const artifactBytes = encodeMlKemEnvelopeV2(envelope)
@@ -125,18 +135,16 @@ export async function encryptMessage(
     throw new AppError("QR_TOO_LARGE")
   }
   const sha256 = await sha256Hex(artifactBytes)
-  await markBundleUsed(request.recipient.recordId, request.now).catch(
-    () => undefined,
-  )
-  await markIdentityUsed(request.sender.id, request.now).catch(() => undefined)
+  await markBundleUsed(recipient.recordId, request.now).catch(() => undefined)
+  await markIdentityUsed(sender.id, request.now).catch(() => undefined)
   return {
     kind: "pq",
     payload: buildV2Payload("pq-message", artifactBytes),
     envelope,
     artifactType: "pq-message",
     artifactBytes,
-    recipient: request.recipient,
-    sender: request.sender,
+    recipient,
+    sender,
     createdAt: request.now,
     totalBytes: artifactBytes.byteLength,
     sha256,

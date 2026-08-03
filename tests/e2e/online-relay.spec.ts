@@ -436,3 +436,65 @@ test("relays a canonical sym-message frame without relay-payload persistence or 
     expectNoRelayPayloadHeaders(request.headers, relayPayloadMarkers)
   }
 })
+
+// The lock name is the one contract a second context can observe without
+// reaching into app internals. What these two prove is that the shared lock the
+// key-creating and identity-creating writes take is unavailable for the
+// session's lifetime and free again afterwards — the point being that an origin
+// cannot become key-bearing while a relay session it authorised is still open.
+async function probeSharedLock(target: Page): Promise<string> {
+  return target.evaluate(async () =>
+    navigator.locks === undefined
+      ? "no-web-locks"
+      : navigator.locks.request(
+          "qr-crypt-sensitive-write",
+          { mode: "shared", ifAvailable: true },
+          (lock) => (lock === null ? "blocked" : "granted"),
+        ),
+  )
+}
+
+async function openRelayPlayback(page: Page): Promise<void> {
+  await loadOnlineGate(page)
+  await page.getByRole("button", { name: "Relay", exact: true }).click()
+  await page.getByRole("button", { name: "Text → QR" }).click()
+  await expect(page.getByRole("dialog", { name: "Turn relay text into QR" })).toBeVisible()
+}
+
+test("holds the sensitive-write lock against a second context while a relay session is open", async ({
+  context,
+  page,
+}) => {
+  await openRelayPlayback(page)
+
+  const second = await context.newPage()
+  await second.goto("/")
+  expect(await probeSharedLock(second)).toBe("blocked")
+
+  const playback = page.getByRole("dialog", { name: "Turn relay text into QR" })
+  await playback.getByRole("button", { name: "Close" }).click()
+  await expect(playback).toBeHidden()
+
+  await expect.poll(async () => probeSharedLock(second)).toBe("granted")
+  await second.close()
+})
+
+test("releases the relay lease when the session ends without an explicit close", async ({
+  context,
+  page,
+}) => {
+  await openRelayPlayback(page)
+
+  const second = await context.newPage()
+  await second.goto("/")
+  expect(await probeSharedLock(second)).toBe("blocked")
+
+  // pagehide, not the close button: the teardown paths that never touch the UI
+  // are the ones a leaked lease would survive.
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }))
+  })
+
+  await expect.poll(async () => probeSharedLock(second)).toBe("granted")
+  await second.close()
+})

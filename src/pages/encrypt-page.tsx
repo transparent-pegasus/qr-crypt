@@ -270,8 +270,8 @@ export function EncryptPage() {
         request = {
           kind: "pq",
           client: getPqClient(),
-          recipient: selectedRecipient,
-          sender: selectedSender,
+          recipientRecordId: selectedRecipient.recordId,
+          senderIdentityId: selectedSender.id,
           plaintext: plaintextBytes,
           now,
         }
