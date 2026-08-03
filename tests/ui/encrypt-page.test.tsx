@@ -229,10 +229,22 @@ describe("encrypt page v2", () => {
     expect(
       within(result).getByRole("button", { name: "View full screen" }),
     ).toBeInTheDocument()
-    await user.click(within(result).getByRole("button", { name: "Next" }))
-    expect(within(result).getByText(/^2 \/ /)).toBeInTheDocument()
+    // Pause before the dwell timer can race the Next click past "2 /", then
+    // wait until the split has more than one frame (Next is a no-op at length 1).
     await user.click(within(result).getByRole("button", { name: "Pause" }))
     expect(within(result).getByRole("button", { name: "Play" })).toBeInTheDocument()
+    await waitFor(() => {
+      const counter = within(result).getByText(/^\d+ \/ \d+$/).textContent ?? ""
+      const total = Number(counter.split("/")[1]?.trim())
+      expect(total).toBeGreaterThan(1)
+    })
+    for (let step = 0; step < 32; step += 1) {
+      if (within(result).queryByText(/^1 \/ /)) break
+      await user.click(within(result).getByRole("button", { name: "Previous" }))
+    }
+    expect(within(result).getByText(/^1 \/ /)).toBeInTheDocument()
+    await user.click(within(result).getByRole("button", { name: "Next" }))
+    expect(within(result).getByText(/^2 \/ /)).toBeInTheDocument()
     await waitFor(() => expect(renderQrDataUrl).toHaveBeenCalled())
     expect(renderQrDataUrl.mock.calls.at(-1)?.[0]).toMatch(/^OCF2:/)
     const fullscreen = within(result).getByRole("button", { name: "View full screen" })
