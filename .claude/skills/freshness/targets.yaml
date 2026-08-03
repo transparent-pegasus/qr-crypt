@@ -226,6 +226,7 @@ units:
     last_checked: 2026-08-03
     files:
       - docs/security/environment-threat-catalog.md
+      - docs/languages/ja/security/environment-threat-catalog.md # Japanese mirror; entries, labels, and sources must not diverge
     why: >
       Physical and operational environment techniques age from the outside:
       published attacks improve, hardware changes what is reachable, and dated
@@ -238,7 +239,9 @@ units:
       and never upgrade one to the other without a source or a measurement.
       Promote any entry that becomes application-addressable into
       docs/security/threat-model.md as a T row and cross-reference it back.
-      Record the review date in the Currency section.
+      Record the review date in the Currency section, and carry every change
+      into the Japanese mirror in the same sweep — English is the source of
+      record (docs/develop/development.md), so a translated-only edit is drift.
     constraint: >
       No new T identifiers are minted here, and no entry may imply a control
       the application does not have. Absolute security or side-channel claims

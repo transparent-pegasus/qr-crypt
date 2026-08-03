@@ -1,5 +1,7 @@
 # Environment Threat Catalog
 
+日本語版: [docs/languages/ja/security/environment-threat-catalog.md](../languages/ja/security/environment-threat-catalog.md)
+
 The authoritative list of **physical and operational environment** techniques
 with a credible relationship to QR Crypt. The
 `.claude/skills/nation-state-security` review procedure reads this file, assesses
