@@ -262,6 +262,7 @@ describe("App boot gate", () => {
         return () => undefined
       },
       endRelaySession() {},
+      enterQuarantine() {},
       getState: () => blockedState,
       nudgeDisplayOffline: () => false,
       probe: async () => undefined,

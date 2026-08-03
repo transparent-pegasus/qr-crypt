@@ -8,16 +8,20 @@ import {
   readBootDecision,
   type BootDecisionSnapshot,
 } from "@/app/boot/boot-controller"
+import { WIPE_BROADCAST_CHANNEL } from "@/app/boot/boot-contract"
 import { useBootState } from "@/app/boot/use-boot-state"
 import {
   createWipeCoordinator,
+  installQuarantineBroadcastListener,
   installWipeBroadcastListener,
+  QUARANTINE_REQUEST_TYPE,
 } from "@/app/boot/wipe-coordinator"
 import {
   clearReceipts,
   recordReceipt,
   type ReceiptSubject,
 } from "@/features/receipt-cache"
+import * as databaseModule from "@/storage/database"
 import {
   SENSITIVE_WRITE_EXCLUSION_TIMEOUT_MS,
   withSensitiveWriteLock,
@@ -1049,6 +1053,35 @@ describe("connectivity-hint gating (NS-02)", () => {
       reason: "network-suspected",
     })
     expect(performWipe).not.toHaveBeenCalled()
+  })
+
+  it("quarantines without wiping and without opening the database", async () => {
+    const performWipe = vi.fn()
+    // Spying on getDb is what actually proves the design's claim. Asserting that
+    // a later getDb() rejects only proves the barrier engaged — it would still
+    // pass if the lock path had opened a readwrite transaction first.
+    const openSpy = vi.spyOn(databaseModule, "getDb")
+    const controller = createBootController({
+      fetchImpl: failingFetch(),
+      readConnectivityHint: () => "online",
+      readDecision: async () => decision(),
+      performWipe,
+    })
+    await controller.probe()
+
+    expect(controller.getState().kind).toBe("blocked")
+    expect(performWipe).not.toHaveBeenCalled()
+    expect(openSpy).not.toHaveBeenCalled()
+  })
+
+  it("enters blocked when a peer broadcasts a quarantine request", async () => {
+    const onQuarantine = vi.fn()
+    const stop = installQuarantineBroadcastListener({ onQuarantine })
+    const channel = new BroadcastChannel(WIPE_BROADCAST_CHANNEL)
+    channel.postMessage({ type: QUARANTINE_REQUEST_TYPE, version: 1 })
+    await vi.waitFor(() => expect(onQuarantine).toHaveBeenCalled())
+    stop()
+    channel.close()
   })
 })
 

@@ -1,6 +1,10 @@
 import type { BestEffortResetReport } from "@/storage/best-effort-reset"
 import { AppError } from "@/crypto/errors"
-import { wipeOnOnline } from "@/app/boot/wipe-coordinator"
+import {
+  broadcastQuarantineRequest,
+  quarantine,
+  wipeOnOnline,
+} from "@/app/boot/wipe-coordinator"
 import {
   REACHABILITY_SENTINEL_BODY,
   REACHABILITY_SENTINEL_PATH,
@@ -92,12 +96,14 @@ export interface WipeExecutionArgs {
 export type WipeExecutor = (args: WipeExecutionArgs) => Promise<BestEffortResetReport>
 
 export interface BootControllerOptions {
+  broadcastQuarantine?: () => void
   consumeMaintenanceToken?: () => Promise<boolean>
   eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">
   fetchImpl?: typeof fetch
   nonce?: () => string
   performWipe?: WipeExecutor
   probeTimeoutMs?: number
+  quarantine?: () => Promise<void>
   readConnectivityHint?: () => ConnectivityHint
   readDecision?: () => Promise<BootDecisionSnapshot>
 }
@@ -119,6 +125,7 @@ export interface BootController {
   acquire(): void
   addTransientResetHandler(handler: () => void): () => void
   endRelaySession(reason: RelaySessionEndReason): void
+  enterQuarantine(): void
   getState(): BootState
   nudgeDisplayOffline(): boolean
   probe(): Promise<void>
@@ -456,6 +463,8 @@ export function createBootController(
   const consumeToken = options.consumeMaintenanceToken ?? consumeMaintenanceToken
   const performWipe = options.performWipe ?? defaultWipeExecutor
   const connectivityHint = options.readConnectivityHint ?? readConnectivityHint
+  const quarantineFn = options.quarantine ?? quarantine
+  const broadcastQuarantine = options.broadcastQuarantine ?? broadcastQuarantineRequest
   const eventTarget =
     options.eventTarget ?? (typeof window === "undefined" ? undefined : window)
 
@@ -551,6 +560,10 @@ export function createBootController(
   const enterBlocked = (reason: BlockedReason): void => {
     if (isTerminal()) return
     retireActiveProbe()
+    invalidateRelay("display-offline")
+    resetTransient()
+    void quarantineFn()
+    broadcastQuarantine()
     emit({ kind: "blocked", reason })
   }
 
@@ -805,6 +818,9 @@ export function createBootController(
       return () => transientResetHandlers.delete(handler)
     },
     endRelaySession,
+    enterQuarantine() {
+      enterBlocked("network-suspected")
+    },
     getState: () => state,
     nudgeDisplayOffline,
     probe,
