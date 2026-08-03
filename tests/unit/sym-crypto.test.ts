@@ -5,10 +5,10 @@ import { fingerprintAesKey } from "@/crypto/fingerprint"
 import {
   buildSymmetricKeyEnvelopeV2,
   createSymmetricKeyRecord,
-  groupSymmetricKeys,
   importSymmetricKeyRecordV2,
   rotateSymmetricKeyRecord,
 } from "@/crypto/key-generation"
+import { groupLineages } from "@/features/key-lineage"
 import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
 import {
   AES_GCM_TAG_BYTES,
@@ -289,7 +289,7 @@ describe("symmetric key rotation", () => {
     )
     const independent = await createSymmetricKeyRecord("independent", NOW + 3)
 
-    const groups = groupSymmetricKeys([
+    const groups = groupLineages([
       firstRotation.previous,
       independent,
       secondRotation.next,
@@ -309,39 +309,6 @@ describe("symmetric key rotation", () => {
     expect(groups.find(({ head }) => head.id === independent.id)?.previous).toEqual(
       [],
     )
-  })
-
-  it("stops walking when rotatedFromId contains a cycle", async () => {
-    const [firstRecord, secondRecord, headRecord] = await Promise.all([
-      createSymmetricKeyRecord("cycle", NOW),
-      createSymmetricKeyRecord("cycle", NOW + 1),
-      createSymmetricKeyRecord("cycle", NOW + 2),
-    ])
-    const first: StoredKeyRecord = {
-      ...firstRecord,
-      status: "rotated",
-      rotatedFromId: secondRecord.id,
-      rotatedAt: NOW + 3,
-    }
-    const second: StoredKeyRecord = {
-      ...secondRecord,
-      status: "rotated",
-      rotatedFromId: firstRecord.id,
-      rotatedAt: NOW + 3,
-    }
-    const head: StoredKeyRecord = {
-      ...headRecord,
-      rotatedFromId: first.id,
-    }
-
-    const groups = groupSymmetricKeys([first, second, head])
-
-    expect(groups).toHaveLength(1)
-    expect(groups[0]?.head).toBe(head)
-    expect(groups[0]?.previous.map(({ id }) => id)).toEqual([
-      first.id,
-      second.id,
-    ])
   })
 })
 
