@@ -4,7 +4,6 @@ import type { RegisterSWOptions } from "virtual:pwa-register/react"
 import { AppError, type ErrorCode } from "@/crypto/errors"
 import type { DecryptPqMessageArgs } from "@/crypto/pq/decrypt-orchestrator"
 import type { ReceiptSubject, ReceiptVerdict } from "@/features/receipt-cache"
-import { storeOnlyZip } from "@/lib/best-effort-zip"
 import { fromBase64Url } from "@/lib/base64url"
 import type { FeatureSupport } from "@/lib/feature-detect"
 import type { QrExportOptions } from "@/qr/export-image"
@@ -334,61 +333,11 @@ export const renderQrDataUrl = vi.fn(
   async (payload: string) => `data:image/png;base64,${btoa(payload)}`,
 )
 export const renderQrSvgString = vi.fn(async () => "<svg viewBox='0 0 1 1'/>")
-export const qrByteCapacity = vi.fn(
-  (level: "L" | "M" | "Q" | "H") => ({ L: 2953, M: 2331, Q: 1663, H: 1273 })[level],
-)
-export const payloadFits = vi.fn(
-  (payload: string, level: "L" | "M" | "Q" | "H") =>
-    payload.length <= qrByteCapacity(level),
-)
 export const qrPngBlob = vi.fn<
   (payload: string, options: QrExportOptions) => Promise<Blob>
 >(async () => new Blob(["png"]))
 export const qrSvgBlob = vi.fn(async () => new Blob(["svg"]))
-export const sanitizeQrFileName = vi.fn((name: string) => name.trim() || "qr")
-export const buildExportFileName = vi.fn(
-  (name: string, id: string, ext: "png" | "svg" | "txt") =>
-    `${name}-${id.slice(0, 8)}.${ext}`,
-)
 export const triggerDownload = vi.fn()
-export const exportQrFramePayloads = vi.fn(
-  async (
-    frames: ReadonlyArray<{ frameIndex: number; payload: string }>,
-    options: { outputName: string; size: number; signal?: AbortSignal },
-  ) => {
-    if (frames.length === 0) return
-    if (options.signal?.aborted) return
-    const safeName = sanitizeQrFileName(options.outputName)
-
-    if (frames.length === 1) {
-      const blob = await qrPngBlob(frames[0]!.payload, {
-        ecLevel: "Q",
-        size: options.size,
-      })
-      if (options.signal?.aborted) return
-      triggerDownload(blob, `${safeName}.png`)
-      return
-    }
-
-    const entries: Array<{ name: string; data: Uint8Array }> = []
-    for (const frame of frames) {
-      if (options.signal?.aborted) return
-      const blob = await qrPngBlob(frame.payload, {
-        ecLevel: "Q",
-        size: options.size,
-      })
-      if (options.signal?.aborted) return
-      const data = new Uint8Array(await blob.arrayBuffer())
-      if (options.signal?.aborted) return
-      entries.push({
-        name: `frame-${String(frame.frameIndex + 1).padStart(2, "0")}.png`,
-        data,
-      })
-    }
-    if (options.signal?.aborted) return
-    triggerDownload(storeOnlyZip(entries), `${safeName}-frames.zip`)
-  },
-)
 export const copyTextToClipboard = vi.fn(async () => undefined)
 
 type FakeCameraFailureState = "failed" | "track-ended"
