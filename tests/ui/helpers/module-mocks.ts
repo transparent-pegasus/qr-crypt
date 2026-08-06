@@ -103,6 +103,8 @@ vi.mock("@/qr/export-image", () => ({
   sanitizeQrFileName: fakes.sanitizeQrFileName,
   buildExportFileName: fakes.buildExportFileName,
   triggerDownload: fakes.triggerDownload,
+}))
+vi.mock("@/lib/clipboard", () => ({
   copyTextToClipboard: fakes.copyTextToClipboard,
 }))
 vi.mock("@/qr/export-frames", () => ({
