@@ -95,7 +95,8 @@ describe("persisted QR range compatibility", () => {
     },
   )
 
-  it("normalizes every historically stored interval integer to the nearest active stop", () => {
+  // 150–3,000 is the append-only boot-readable range, wider than documented history.
+  it("normalizes every boot-readable interval integer to the nearest active stop", () => {
     for (let frameIntervalMs = 150; frameIntervalMs <= 3_000; frameIntervalMs += 1) {
       expect(isBootReadableFrameIntervalMs(frameIntervalMs)).toBe(true)
       const expected =
