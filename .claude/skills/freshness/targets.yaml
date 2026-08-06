@@ -353,7 +353,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-08-03
+    last_checked: 2026-08-06
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
@@ -405,7 +405,7 @@ units:
       allowlist and completed-set assembled-artifact validation match
       relay-frames.ts and its unit/UI tests. Confirm qr-display.tsx still
       requires the size prop so no surface can render off that contract. Confirm the
-      qr-protocol-v2.md messageId note (~169–170) still states the wire format
+      qr-protocol-v2.md messageId note (~259–264) still states the wire format
       is not a replay-prevention mechanism while documenting the receiving
       session-memory receipt keyed by it, and that the clarification matches
       src/features/receipt-cache.ts (no wire change). Diff

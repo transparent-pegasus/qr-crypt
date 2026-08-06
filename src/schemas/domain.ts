@@ -161,7 +161,7 @@ export interface PqPublicBundleRecord {
 
 export interface MessageBodyCommonV2 {
   version: 2
-  messageId: Uint8Array // Fixed 16B from the CSPRNG; not replay prevention (§G).
+  messageId: Uint8Array // Fixed 16B from the CSPRNG; not replay prevention (§5).
   createdAt: number // Device-asserted time, not trusted time.
   recipientKemKeyId: string
   plaintext: Uint8Array
