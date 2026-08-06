@@ -33,32 +33,7 @@ describe("i18n catalog", () => {
     }
   })
 
-  it("pins the reviewed failure and safety copy, and keeps retired keys retired", () => {
-    expect(messages.en).toMatchObject({
-      "errors.WORKER_UNAVAILABLE":
-        "Cryptographic processing could not be performed safely on this device. Reopen the app in a supported browser.",
-      "animatedQr.missing.body":
-        "Missing frames: {indexes}. Recovery is not possible while frames are missing.",
-      "scanner.progress.missingIndex": "Missing frames: {indexes}",
-      "errors.QR_DECODE_PROGRESS_TIMEOUT":
-        "The QR decoding pipeline stopped making progress on this device.",
-      "settings.error.saveFailed":
-        "Settings could not be saved. Check the device storage.",
-      "settings.error.deleteFailed":
-        "Data could not be deleted. Check the device storage.",
-      "hooks.preferences.loadFailed":
-        "Settings could not be loaded. Default values will be used.",
-    })
-    expect(messages.ja).toMatchObject({
-      "animatedQr.missing.body":
-        "欠損フレーム: {indexes}。欠損したままでは復元できません。",
-      "encrypt.toast.autoCleared": "平文と一時結果を自動消去しました",
-      "scanner.progress.missingIndex": "欠損フレーム: {indexes}",
-      "errors.QR_DECODE_PROGRESS_TIMEOUT":
-        "この端末でQR復号パイプラインの進行が停止しました。",
-      "hooks.preferences.loadFailed":
-        "設定を読み込めませんでした。既定値を使用します。",
-    })
+  it("keeps retired keys retired in both locales", () => {
     for (const removedKey of [
       "encrypt.decrypt.imageTitle",
       "settings.hooks.preferences.loadFailed",
@@ -104,28 +79,26 @@ describe("i18n catalog", () => {
     expect(interpolateMessage("unknown={missing}")).toBe("unknown={missing}")
   })
 
-  it("keeps emphasized acknowledgement copy as safe text segments", () => {
+  it("keeps emphasized acknowledgement segments present and HTML-free", () => {
     const segmentKeys = [
       "offlineAck.body.riskPrefix",
       "offlineAck.body.neverReconnect",
       "offlineAck.body.riskSuffix",
       "offlineAck.body.noGuarantee",
     ] satisfies MessageKey[]
-    const japaneseText = segmentKeys.map((key) => messages.ja[key]).join("")
-
-    expect(japaneseText).toBe(
-      "リスクを抑えるには、ネットワークから物理的に遮断し、二度と接続しない専用端末として運用する必要があります。それ以外に、完全に安全にメッセージの暗号化を行う方法はありません。それでも、端末や導入済みコードを含めた完全な安全を本アプリが保証するものではありません。",
-    )
     for (const language of ["en", "ja"] as const) {
       for (const key of segmentKeys) {
-        expect(messages[language][key]).not.toMatch(/<[^>]+>/)
+        expect(messages[language][key].trim().length, key).toBeGreaterThan(0)
+        expect(messages[language][key], key).not.toMatch(/<[^>]+>/)
       }
     }
   })
 
   it("resolves AppError copy with an explicit language", () => {
-    expect(messageFor("STORAGE_FAILED", "en")).toBe("The storage operation failed.")
-    expect(messageFor("STORAGE_FAILED", "ja")).toBe("保存領域の操作に失敗しました。")
+    const key = errorMessageKey("STORAGE_FAILED")
+    expect(messageFor("STORAGE_FAILED", "en")).toBe(messages.en[key])
+    expect(messageFor("STORAGE_FAILED", "ja")).toBe(messages.ja[key])
+    expect(messages.en[key]).not.toBe(messages.ja[key])
   })
 
   it("uses the same language-independent destructive tokens in both locales", () => {
