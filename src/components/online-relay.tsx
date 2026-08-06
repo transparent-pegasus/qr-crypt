@@ -27,13 +27,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { AppError, errorMessageKey } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"
 import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import {
   RELAY_PLAYBACK_FRAME_INTERVAL_MS,
   TRANSFER_TIMEOUT_MINUTES_DEFAULT,
 } from "@/lib/limits"
 import { reloadApplication } from "@/lib/reload"
 import { startQrScan, type QrScanHandle } from "@/qr/decode"
-import { copyTextToClipboard } from "@/qr/export-image"
 import { prepareRelayPlayback } from "@/qr/relay-playback"
 import { acquireRelayLease, type RelayLease } from "@/storage/database"
 import {

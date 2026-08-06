@@ -20,11 +20,11 @@ import { deferred } from "../helpers/deferred"
 import {
   encryptPq,
   encodeSymMessageEnvelopeV2,
-  exportQrFramePayloads,
   fakeBundles,
   fakeIdentities,
   fakeKeys,
   fakePreferences,
+  qrPngBlob,
   renderQrDataUrl,
   sealSymMessage,
   splitIntoFrames,
@@ -1055,7 +1055,9 @@ describe("encrypt page v2", () => {
 
   it("shows an export failure inside the modal", async () => {
     const user = userEvent.setup()
-    exportQrFramePayloads.mockRejectedValueOnce(new AppError("QR_TOO_LARGE"))
+    // The real exporter awaits qrPngBlob per frame and catches nothing, so a
+    // rejected blob is how the export fails now.
+    qrPngBlob.mockRejectedValueOnce(new AppError("QR_TOO_LARGE"))
     await renderApp("/encrypt")
     await chooseSelectOption(
       user,
@@ -1119,8 +1121,10 @@ describe("encrypt page v2", () => {
 
   it("F3 isolates a replacement result from a dismissed export", async () => {
     const user = userEvent.setup()
-    const staleExport = deferred<void>()
-    exportQrFramePayloads.mockReturnValueOnce(staleExport.promise)
+    // Pin the real export loop on its first blob: the whole stale export stays
+    // in flight until this settles.
+    const staleExport = deferred<Blob>()
+    qrPngBlob.mockReturnValueOnce(staleExport.promise)
     await renderApp("/encrypt")
     await chooseSelectOption(
       user,
@@ -1139,7 +1143,7 @@ describe("encrypt page v2", () => {
     })
     await waitFor(() => expect(firstDownload).toBeEnabled())
     await user.click(firstDownload)
-    await waitFor(() => expect(exportQrFramePayloads).toHaveBeenCalledOnce())
+    await waitFor(() => expect(qrPngBlob).toHaveBeenCalledOnce())
     await waitFor(() => expect(firstDownload).toBeDisabled())
     await user.click(within(firstResult).getByRole("button", { name: "Close" }))
     await waitFor(() =>

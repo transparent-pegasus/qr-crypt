@@ -58,9 +58,9 @@ import {
   type LocalizedMessage,
 } from "@/i18n"
 import { utf8ToBytes } from "@/lib/bytes"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import { effectiveGeneratedDisplay } from "@/lib/generated-display"
 import { MAX_SYM_PLAINTEXT_BYTES } from "@/lib/limits"
-import { copyTextToClipboard } from "@/qr/export-image"
 import { exportQrFramePayloads } from "@/qr/export-frames"
 import { encodeFrameToPayload } from "@/qr/payload-v2"
 import { type UiAlgorithm } from "@/schemas/domain"

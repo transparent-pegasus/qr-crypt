@@ -21,8 +21,7 @@ vi.mock("@/qr/decode", async (importOriginal) => ({
   warmQrReader,
 }))
 
-vi.mock("@/qr/export-image", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/qr/export-image")>()),
+vi.mock("@/lib/clipboard", () => ({
   copyTextToClipboard: copyText,
 }))
 

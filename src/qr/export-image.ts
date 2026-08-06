@@ -1,4 +1,4 @@
-// QR PNG/SVG/text export and download.
+// QR image export, file naming, and download.
 // Filenames must not contain secret information, plaintext, or key material.
 import type { QrEcLevel } from "@/schemas/domain"
 import * as QRCode from "qrcode"
@@ -85,13 +85,5 @@ export function triggerDownload(blob: Blob, fileName: string): void {
     URL.revokeObjectURL(url)
   } catch {
     throw new AppError("STORAGE_FAILED")
-  }
-}
-
-export async function copyTextToClipboard(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch (error) {
-    throw toAppError(error, "STORAGE_FAILED")
   }
 }
