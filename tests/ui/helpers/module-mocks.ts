@@ -37,7 +37,6 @@ vi.mock("@/crypto/key-generation", () => ({
   importSymmetricKeyRecordV2: fakes.importSymmetricKeyRecordV2,
   buildSymmetricKeyEnvelopeV2: fakes.buildSymmetricKeyEnvelopeV2,
   rotateSymmetricKeyRecord: fakes.rotateSymmetricKeyRecord,
-  groupSymmetricKeys: fakes.groupSymmetricKeys,
 }))
 vi.mock("@/crypto/pq/worker-client", () => ({
   createPqCryptoClient: fakes.createPqCryptoClient,
@@ -91,23 +90,24 @@ vi.mock("@/qr/payload", async (importOriginal) => ({
   decodePayload: fakes.decodePayload,
   payloadSha256Hex: fakes.payloadSha256Hex,
 }))
+// Capacity, filename, and frame-set export run for real; only rendering and the
+// browser effects (blob creation, download) are faked. The real export loop
+// reaches those fakes through its own import of @/qr/export-image, so a test
+// that needs an export to fail or hang injects at qrPngBlob — never by mocking
+// the exporter, which is what let a second copy of it drift here before.
 vi.mock("@/qr/encode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/encode")>()),
   renderQrDataUrl: fakes.renderQrDataUrl,
   renderQrSvgString: fakes.renderQrSvgString,
-  qrByteCapacity: fakes.qrByteCapacity,
-  payloadFits: fakes.payloadFits,
 }))
-vi.mock("@/qr/export-image", () => ({
+vi.mock("@/qr/export-image", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/qr/export-image")>()),
   qrPngBlob: fakes.qrPngBlob,
   qrSvgBlob: fakes.qrSvgBlob,
-  sanitizeQrFileName: fakes.sanitizeQrFileName,
-  buildExportFileName: fakes.buildExportFileName,
   triggerDownload: fakes.triggerDownload,
-  copyTextToClipboard: fakes.copyTextToClipboard,
 }))
-vi.mock("@/qr/export-frames", () => ({
-  exportQrFramePayloads: fakes.exportQrFramePayloads,
+vi.mock("@/lib/clipboard", () => ({
+  copyTextToClipboard: fakes.copyTextToClipboard,
 }))
 vi.mock("@/qr/decode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/decode")>()),

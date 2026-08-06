@@ -156,12 +156,12 @@ export interface PqPublicBundleRecord {
 }
 
 // ---------------------------------------------------------------------------
-// v2 inner messages as a strict discriminated union; see docs/spec/qr-protocol-v2.md §5.
+// v2 signed inner message; see docs/spec/qr-protocol-v2.md §5.
 // ---------------------------------------------------------------------------
 
 export interface MessageBodyCommonV2 {
   version: 2
-  messageId: Uint8Array // Fixed 16B from the CSPRNG; not replay prevention (§G).
+  messageId: Uint8Array // Fixed 16B from the CSPRNG; not replay prevention (§5).
   createdAt: number // Device-asserted time, not trusted time.
   recipientKemKeyId: string
   plaintext: Uint8Array
@@ -179,8 +179,6 @@ export interface SignedMessageV2 {
     value: Uint8Array
   }
 }
-
-export type InnerMessageV2 = SignedMessageV2
 
 // ---------------------------------------------------------------------------
 // v2 outer envelopes and AAD; see docs/spec/qr-protocol-v2.md §3.

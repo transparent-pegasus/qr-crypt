@@ -59,6 +59,7 @@ import {
   useLocalizedMessage,
   type LocalizedMessage,
 } from "@/i18n"
+import { copyTextToClipboard } from "@/lib/clipboard"
 import {
   FRAME_BYTES_MAX,
   minimumFrameBytesForArtifact,
@@ -66,7 +67,6 @@ import {
 } from "@/lib/limits"
 import {
   buildExportFileName,
-  copyTextToClipboard,
   qrPngBlob,
   triggerDownload,
 } from "@/qr/export-image"

@@ -15,11 +15,12 @@ import {
 } from "@/qr/encode"
 import { buildExportFileName, qrSvgBlob, sanitizeQrFileName } from "@/qr/export-image"
 import { decodePayload, payloadSha256Hex } from "@/qr/payload"
+import { isQrCryptPayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
 import {
   OCK1_SYMMETRIC_KEY,
   OCM1_MESSAGE_33,
   OCP1_PUBLIC_KEY,
-} from "../fixtures/relay-v1"
+} from "../fixtures/relay-legacy"
 
 const KEY_ID = "B".repeat(22)
 const FRAME_PAYLOAD = "OCF2:ZnJhbWUtb25seQ"
@@ -151,5 +152,17 @@ describe("QR export file names", () => {
     expect(buildExportFileName(" 公開鍵 ", KEY_ID, "txt")).toBe(
       `公開鍵-${KEY_ID.slice(0, 8)}.txt`,
     )
+  })
+})
+
+describe("isQrCryptPayload", () => {
+  it("recognizes only active v2 prefixes", () => {
+    const { "encrypted-seed-backup": reserved, ...active } = QR_PREFIX_V2
+    for (const prefix of Object.values(active)) {
+      expect(isQrCryptPayload(`${prefix}payload`)).toBe(true)
+    }
+    expect(isQrCryptPayload(`${reserved}payload`)).toBe(false)
+    expect(isQrCryptPayload("OCX9:payload")).toBe(false)
+    expect(isQrCryptPayload("plain text")).toBe(false)
   })
 })

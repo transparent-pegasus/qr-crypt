@@ -2,7 +2,8 @@
 // language in messages.js. Nothing checks that the two agree at runtime — a
 // missing key silently falls back to English and a stale key is silently
 // ignored — so it is checked here instead.
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import { fileURLToPath, URL } from "node:url"
 import { describe, expect, it } from "vitest"
 import { parseDocument } from "../../scripts/build-about-locales.mjs"
@@ -103,5 +104,54 @@ describe("about page i18n", () => {
     expect(ja["locks.pq.body"]).toBe(
       "受信者の公開鍵を使用してメッセージ用の秘密を確立し、送信者の署名を検証します。送信者に復号用の共有秘密を持たせずに済みます。ML-KEMによる鍵確立とML-DSAによる送信者確認を使用します。本文の暗号化には、共有鍵モードと同じくAES-256-GCMを使用します。署名と公開鍵データのため、メッセージは大きくなります。",
     )
+  })
+})
+
+describe("about page repository links", () => {
+  // A locale that names a repository path must name one that exists: the page
+  // swaps the English href for the translated one, so a stale path is a 404 no
+  // English reader ever sees.
+  const REPOSITORY_ROOT = fileURLToPath(new URL("../../", ABOUT_DIR))
+  const GITHUB_BLOB = "https://github.com/transparent-pegasus/qr-crypt/blob/main/"
+
+  function repositoryPath(value: string): string | null {
+    if (value.startsWith(GITHUB_BLOB)) return value.slice(GITHUB_BLOB.length)
+    return value.startsWith("docs/") ? value : null
+  }
+
+  it("resolves every repository path the locale catalogs carry", () => {
+    const carried = Object.entries(messages.LOCALES).flatMap(([code, locale]) =>
+      Object.entries(locale.strings).flatMap(([key, value]) => {
+        const path = repositoryPath(value)
+        return path === null ? [] : [{ source: `${code}:${key}`, path }]
+      }),
+    )
+
+    expect(carried.length).toBeGreaterThan(0)
+    expect(
+      carried.filter(({ path }) => !existsSync(join(REPOSITORY_ROOT, path))),
+    ).toEqual([])
+  })
+
+  it.each(Object.keys(messages.LOCALES))(
+    "points the %s install link at the path it displays",
+    (code) => {
+      // repositoryPath() cannot tell a malformed blob URL from an ordinary
+      // external one, so a typo in the prefix would be skipped rather than
+      // caught. Tying the href to the visible path leaves nothing to skip.
+      const strings = messages.LOCALES[code]?.strings ?? {}
+      expect(strings["install.a.docHref"]).toBe(
+        `${GITHUB_BLOB}${strings["install.a.docUrl"]}`,
+      )
+    },
+  )
+
+  it("resolves every repository path the English document carries", () => {
+    const carried = Array.from(html.matchAll(/href="([^"]+)"/g), (match) =>
+      repositoryPath(match[1] as string),
+    ).filter((path): path is string => path !== null)
+
+    expect(carried.length).toBeGreaterThan(0)
+    expect(carried.filter((path) => !existsSync(join(REPOSITORY_ROOT, path)))).toEqual([])
   })
 })

@@ -14,10 +14,8 @@ import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"
 import {
-  exportQrFramePayloads,
   qrPngBlob,
   renderQrDataUrl,
-  sanitizeQrFileName,
   triggerDownload,
 } from "./helpers/fakes"
 import { resetUi } from "./helpers/render-app"
@@ -285,7 +283,7 @@ describe("AnimatedQrFrames", () => {
       <AnimatedQrFrames
         frames={[frame(0, 2), frame(1, 2)]}
         frameIntervalMs={1_000}
-        outputName="multiple"
+        outputName="multi/ple"
       />,
     )
 
@@ -309,32 +307,12 @@ describe("AnimatedQrFrames", () => {
     expect(archiveText).toContain("frame-02.png")
   })
 
-  it("passes protocol frame indexes and the output name to the shared export", async () => {
-    render(
-      <AnimatedQrFrames
-        frames={[frame(0, 2), frame(1, 2)]}
-        frameIntervalMs={1_000}
-        outputName="shared-export"
-      />,
-    )
-
-    fireEvent.click(screen.getByRole("button", { name: "Download" }))
-
-    await waitFor(() =>
-      expect(exportQrFramePayloads).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({
-            frameIndex: expect.any(Number),
-            payload: expect.any(String),
-          }),
-        ]),
-        expect.objectContaining({
-          outputName: "shared-export",
-          size: expect.any(Number),
-        }),
-      ),
-    )
-  })
+  // The export call shape is no longer worth its own test: the exporter runs
+  // for real here, so the ZIP test above observes the output name and the
+  // entry names it produces. A gapped frame set cannot be exercised from this
+  // layer at all — Download stays disabled while any frame is missing — so
+  // "protocol frame index, not array position" is pinned where a gap can
+  // actually be built, in tests/unit/qr-frame-export.test.ts.
 
   it("stays parent-controlled until fullscreenOpen is rerendered", async () => {
     const onFullscreenOpenChange = vi.fn()
@@ -389,7 +367,6 @@ describe("AnimatedQrFrames", () => {
     )
 
     expect(screen.queryByRole("button", { name: "Download" })).toBeNull()
-    expect(sanitizeQrFileName).not.toHaveBeenCalled()
     expect(qrPngBlob).not.toHaveBeenCalled()
     expect(triggerDownload).not.toHaveBeenCalled()
   })

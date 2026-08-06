@@ -154,7 +154,7 @@ describe("decrypt page v2", () => {
 
     expect(
       within(dialog).getByRole("alert", {
-        name: translate("en", "encrypt.result.replay.title"),
+        name: translate("en", "decrypt.result.replay.title"),
       }),
     ).toBeInTheDocument()
     expect(
@@ -394,12 +394,12 @@ describe("decrypt page v2", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Decryption complete",
     })
-    const replayTitle = translate("en", "encrypt.result.replay.title")
+    const replayTitle = translate("en", "decrypt.result.replay.title")
     const replayAlert = within(dialog).getByRole("alert", {
       name: replayTitle,
     })
     expect(replayAlert).toHaveTextContent(
-      translate("en", "encrypt.result.replay.body", {
+      translate("en", "decrypt.result.replay.body", {
         time: formatDateTime(firstSeenAt, "en"),
       }),
     )
@@ -409,7 +409,7 @@ describe("decrypt page v2", () => {
 
     await user.click(
       within(dialog).getByRole("button", {
-        name: translate("en", "encrypt.result.replay.reveal"),
+        name: translate("en", "decrypt.result.replay.reveal"),
       }),
     )
     expect(within(dialog).getByText("sym-v2復号済み平文")).toBeInTheDocument()
@@ -523,7 +523,7 @@ describe("decrypt page v2", () => {
     })
     expect(
       within(dialog).getByRole("alert", {
-        name: translate("en", "encrypt.result.replay.title"),
+        name: translate("en", "decrypt.result.replay.title"),
       }),
     ).toBeInTheDocument()
     expect(
@@ -550,12 +550,12 @@ describe("decrypt page v2", () => {
     })
     expect(
       within(dialog).queryByRole("alert", {
-        name: translate("en", "encrypt.result.replay.title"),
+        name: translate("en", "decrypt.result.replay.title"),
       }),
     ).not.toBeInTheDocument()
     expect(
       within(dialog).getByText(
-        translate("en", "encrypt.result.senderCreatedAt", {
+        translate("en", "decrypt.result.senderCreatedAt", {
           time: formatDateTime(fakePqCreatedAt, "en"),
         }),
       ),
@@ -730,15 +730,15 @@ describe("decrypt page v2", () => {
       screen.getByText(
         (_content, element) =>
           element?.textContent ===
-          `${translate("en", "encrypt.result.identityCheck.label")} ${translate(
+          `${translate("en", "decrypt.result.identityCheck.label")} ${translate(
             "en",
-            "encrypt.result.identityCheck.unverified",
+            "decrypt.result.identityCheck.unverified",
           )}`,
       ),
     ).toBeInTheDocument()
     const identityWarningTitle = translate(
       "en",
-      "encrypt.result.identityUnconfirmed.title",
+      "decrypt.result.identityUnconfirmed.title",
     )
     expect(
       screen.getByText(identityWarningTitle, { exact: true }),
@@ -748,7 +748,7 @@ describe("decrypt page v2", () => {
     })
     expect(
       within(warning).getByText(
-        translate("en", "encrypt.result.identityUnconfirmed.body"),
+        translate("en", "decrypt.result.identityUnconfirmed.body"),
         { exact: true },
       ),
     ).toBeInTheDocument()
@@ -821,7 +821,7 @@ describe("decrypt page v2", () => {
 
     expect(findBundleBySigningKeyId).toHaveBeenCalledWith(confirmed.signing.keyId)
     expect(
-      screen.getByText(translate("en", "encrypt.result.identityCheck.confirmed"), {
+      screen.getByText(translate("en", "decrypt.result.identityCheck.confirmed"), {
         exact: false,
       }),
     ).toBeInTheDocument()
@@ -1030,7 +1030,7 @@ describe("decrypt page v2", () => {
     await user.type(screen.getByLabelText("Ciphertext payload"), "not-a-payload")
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      translate("en", "encrypt.decrypt.invalidTitle"),
+      translate("en", "decrypt.invalidTitle"),
     )
     expect(
       screen.queryByRole("dialog", { name: "Decryption complete" }),

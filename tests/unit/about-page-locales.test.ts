@@ -5,7 +5,11 @@
 import { readFileSync } from "node:fs"
 import { fileURLToPath, URL } from "node:url"
 import { beforeAll, describe, expect, it } from "vitest"
-import { parseDocument, renderAboutLocales } from "../../scripts/build-about-locales.mjs"
+import {
+  ATTRIBUTE_HOOKS,
+  parseDocument,
+  renderAboutLocales,
+} from "../../scripts/build-about-locales.mjs"
 
 const ABOUT_DIR = new URL("../../public/about/", import.meta.url)
 const aboutDir = fileURLToPath(ABOUT_DIR)
@@ -29,6 +33,18 @@ describe("about page locales", () => {
     )
   })
 
+  it("applies every attribute hook the document uses", () => {
+    // The loop below can only check hooks the build declares. A hook the
+    // document carries but the build has dropped leaves that attribute in
+    // English — the one thing a reader of the translated page cannot notice.
+    const used = new Set(
+      Array.from(source.matchAll(/\sdata-i18n-([a-z]+)=/g), (match) => match[1]),
+    )
+    expect([...used].filter((hook) => !(`data-i18n-${hook}` in ATTRIBUTE_HOOKS))).toEqual(
+      [],
+    )
+  })
+
   it.each(Object.keys(messages.LOCALES))("translates %s end to end", async (code) => {
     const html = pages.find((page) => page.code === code)?.html ?? ""
     const doc = await parseDocument(html)
@@ -42,11 +58,7 @@ describe("about page locales", () => {
       const key = element.getAttribute("data-i18n") ?? ""
       expect(element.textContent?.trim()).toBe(strings[key])
     }
-    for (const [hook, attribute] of Object.entries({
-      "data-i18n-alt": "alt",
-      "data-i18n-label": "aria-label",
-      "data-i18n-content": "content",
-    })) {
+    for (const [hook, attribute] of Object.entries(ATTRIBUTE_HOOKS)) {
       for (const element of doc.querySelectorAll(`[${hook}]`)) {
         expect(element.getAttribute(attribute)).toBe(
           strings[element.getAttribute(hook) ?? ""],
