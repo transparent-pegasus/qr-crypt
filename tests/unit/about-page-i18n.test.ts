@@ -133,6 +133,19 @@ describe("about page repository links", () => {
     ).toEqual([])
   })
 
+  it.each(Object.keys(messages.LOCALES))(
+    "points the %s install link at the path it displays",
+    (code) => {
+      // repositoryPath() cannot tell a malformed blob URL from an ordinary
+      // external one, so a typo in the prefix would be skipped rather than
+      // caught. Tying the href to the visible path leaves nothing to skip.
+      const strings = messages.LOCALES[code]?.strings ?? {}
+      expect(strings["install.a.docHref"]).toBe(
+        `${GITHUB_BLOB}${strings["install.a.docUrl"]}`,
+      )
+    },
+  )
+
   it("resolves every repository path the English document carries", () => {
     const carried = Array.from(html.matchAll(/href="([^"]+)"/g), (match) =>
       repositoryPath(match[1] as string),
