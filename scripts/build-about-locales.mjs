@@ -15,7 +15,9 @@ import { dirname, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 // data-i18n replaces text content; these hooks replace the named attribute.
-const ATTRIBUTE_HOOKS = {
+// Exported so tests iterate this list rather than a copy of it: a copy that
+// misses a hook stops checking it without failing.
+export const ATTRIBUTE_HOOKS = {
   "data-i18n-alt": "alt",
   "data-i18n-label": "aria-label",
   "data-i18n-content": "content",

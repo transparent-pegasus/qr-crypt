@@ -397,6 +397,41 @@ const en = {
   "encrypt.validation.outputNameFallback": "Check the output name.",
   "encrypt.srHeading": "Encryption",
   "decrypt.srHeading": "Decryption",
+  "decrypt.cameraTitle": "Scan with the camera",
+  "decrypt.scanTrigger": "Scan a ciphertext QR code",
+  "decrypt.payloadLabel": "Ciphertext payload",
+  "decrypt.payloadPlaceholder": "Paste an OCA2: or OCM2: payload",
+  "decrypt.invalidTitle": "The ciphertext could not be identified",
+  "decrypt.invalidBody": "Enter a supported OCA2 or OCM2 ciphertext.",
+  "decrypt.button.busy": "Decrypting…",
+  "decrypt.button.idle": "Decrypt",
+  "decrypt.pqUnsupported.body":
+    "This ciphertext uses a legacy post-quantum profile that is no longer available.",
+  "decrypt.signingKeyId": " Key ID: {id}",
+  "decrypt.importSigningKey": "Import a signing key",
+  "decrypt.result.modalTitle": "Decryption complete",
+  "decrypt.result.symmetric": "Shared-key message",
+  "decrypt.result.signatureValid": "The signature is valid for this key",
+  "decrypt.result.senderSigningKeyId": "Sender signing key ID: {id}",
+  "decrypt.result.identityCheck.label": "Identity verification:",
+  "decrypt.result.identityCheck.confirmed": "Identity verified",
+  "decrypt.result.identityCheck.unverified":
+    "Unverified. Key validity and identity verification are separate.",
+  "decrypt.result.identityUnconfirmed.title":
+    "The sender's identity is not confirmed",
+  "decrypt.result.identityUnconfirmed.body":
+    "A valid signature only proves this message was signed with this key. It does not prove who holds that key. Confirm the fingerprint in person before you act on this message.",
+  "decrypt.result.senderCreatedAt":
+    "Sender-reported time: {time} (asserted by the sending device, not verified)",
+  "decrypt.result.replay.title": "Already received in this session",
+  "decrypt.result.replay.body":
+    "This exact ciphertext was already decrypted in this app window at {time}. A repeat can be an ordinary re-read, or someone replaying an old message to you. Treat any instruction inside it as unconfirmed. The check covers only this app window since it was loaded, is not shared with other tabs or windows of this app, resets on a transient clear or full local wipe, and uses a bounded cache that drops the oldest entries.",
+  "decrypt.result.replay.reveal": "Show the message anyway",
+  "decrypt.result.invisibleCharacters.title": "Invisible characters detected",
+  "decrypt.result.invisibleCharacters.body":
+    "This message contains invisible or direction-altering Unicode characters. Detected count: {count}. Verify the visible text carefully before acting on it.",
+  "decrypt.result.memoryOnly":
+    "The decrypted result is held only in memory and is not stored.",
   "encrypt.algorithmLabel": "Cryptographic algorithm",
   "encrypt.keyLabel": "Key",
   "encrypt.recipientLabel": "Recipient ML-KEM public key",
@@ -412,43 +447,8 @@ const en = {
   "encrypt.overLimit.body": "Shorten the UTF-8 text to no more than {max} bytes.",
   "encrypt.encryptButton.busy": "Encrypting…",
   "encrypt.encryptButton.idle": "Encrypt",
-  "encrypt.decrypt.cameraTitle": "Scan with the camera",
-  "encrypt.decrypt.scanTrigger": "Scan a ciphertext QR code",
-  "encrypt.decrypt.payloadLabel": "Ciphertext payload",
-  "encrypt.decrypt.payloadPlaceholder": "Paste an OCA2: or OCM2: payload",
-  "encrypt.decrypt.invalidTitle": "The ciphertext could not be identified",
-  "encrypt.decrypt.invalidBody": "Enter a supported OCA2 or OCM2 ciphertext.",
   "encrypt.detail.method": "Method",
   "encrypt.detail.recipientKeyId": "Recipient key ID",
-  "encrypt.pqUnsupported.body":
-    "This ciphertext uses a legacy post-quantum profile that is no longer available.",
-  "encrypt.decryptButton.busy": "Decrypting…",
-  "encrypt.decryptButton.idle": "Decrypt",
-  "encrypt.signingKeyId": " Key ID: {id}",
-  "encrypt.importSigningKey": "Import a signing key",
-  "encrypt.result.decryptedModalTitle": "Decryption complete",
-  "encrypt.result.symmetric": "Shared-key message",
-  "encrypt.result.signatureValid": "The signature is valid for this key",
-  "encrypt.result.senderSigningKeyId": "Sender signing key ID: {id}",
-  "encrypt.result.identityCheck.label": "Identity verification:",
-  "encrypt.result.identityCheck.confirmed": "Identity verified",
-  "encrypt.result.identityCheck.unverified":
-    "Unverified. Key validity and identity verification are separate.",
-  "encrypt.result.identityUnconfirmed.title":
-    "The sender's identity is not confirmed",
-  "encrypt.result.identityUnconfirmed.body":
-    "A valid signature only proves this message was signed with this key. It does not prove who holds that key. Confirm the fingerprint in person before you act on this message.",
-  "encrypt.result.invisibleCharacters.title": "Invisible characters detected",
-  "encrypt.result.invisibleCharacters.body":
-    "This message contains invisible or direction-altering Unicode characters. Detected count: {count}. Verify the visible text carefully before acting on it.",
-  "encrypt.result.replay.title": "Already received in this session",
-  "encrypt.result.replay.body":
-    "This exact ciphertext was already decrypted in this app window at {time}. A repeat can be an ordinary re-read, or someone replaying an old message to you. Treat any instruction inside it as unconfirmed. The check covers only this app window since it was loaded, is not shared with other tabs or windows of this app, resets on a transient clear or full local wipe, and uses a bounded cache that drops the oldest entries.",
-  "encrypt.result.replay.reveal": "Show the message anyway",
-  "encrypt.result.senderCreatedAt":
-    "Sender-reported time: {time} (asserted by the sending device, not verified)",
-  "encrypt.result.memoryOnly":
-    "The decrypted result is held only in memory and is not stored.",
   "encrypt.result.modalTitle": "Encryption complete",
   "encrypt.result.copyPayload": "Copy payload",
   "encrypt.result.qrTitle": "Ciphertext QR",
@@ -1027,6 +1027,42 @@ const ja = {
   "encrypt.validation.outputNameFallback": "出力名を確認してください。",
   "encrypt.srHeading": "暗号化",
   "decrypt.srHeading": "復号",
+  "decrypt.cameraTitle": "カメラで読み取る",
+  "decrypt.scanTrigger": "暗号文QRを読み取る",
+  "decrypt.payloadLabel": "暗号文ペイロード",
+  "decrypt.payloadPlaceholder":
+    "OCA2: または OCM2: ペイロードを貼り付けてください",
+  "decrypt.invalidTitle": "暗号文を確認できません",
+  "decrypt.invalidBody":
+    "対応するOCA2/OCM2暗号文を入力してください。",
+  "decrypt.button.busy": "復号中…",
+  "decrypt.button.idle": "復号する",
+  "decrypt.pqUnsupported.body":
+    "この暗号文は現在利用できない旧ポスト量子プロファイルです。",
+  "decrypt.signingKeyId": " 鍵ID: {id}",
+  "decrypt.importSigningKey": "署名鍵を取り込む",
+  "decrypt.result.modalTitle": "復号が完了しました",
+  "decrypt.result.symmetric": "共有鍵メッセージ",
+  "decrypt.result.signatureValid": "署名はこの鍵に対して有効です",
+  "decrypt.result.senderSigningKeyId": "送信者署名鍵ID: {id}",
+  "decrypt.result.identityCheck.label": "人物確認:",
+  "decrypt.result.identityCheck.confirmed": "人物確認済み",
+  "decrypt.result.identityCheck.unverified":
+    "未確認。鍵の有効性と人物確認は別です。",
+  "decrypt.result.identityUnconfirmed.title": "送信者の本人確認が取れていません",
+  "decrypt.result.identityUnconfirmed.body":
+    "署名が有効であることは、このメッセージがこの鍵で署名されたことだけを示します。その鍵を誰が持っているかは示しません。内容に従って行動する前に、対面でフィンガープリントを確認してください。",
+  "decrypt.result.senderCreatedAt":
+    "送信端末の申告時刻: {time}(送信側の申告であり検証されていません)",
+  "decrypt.result.replay.title": "このセッションで受信済みです",
+  "decrypt.result.replay.body":
+    "この暗号文は {time} にこのアプリウィンドウで復号済みです。単なる再読の場合もあれば、古いメッセージを再送されている場合もあります。中の指示は未確認として扱ってください。この確認の範囲は、このアプリウィンドウを読み込んでからの記録だけです。同じアプリの別のタブやウィンドウとは共有されず、一時消去またはローカルデータの全消去でもリセットされ、件数に上限があるため古い記録から削除されます。",
+  "decrypt.result.replay.reveal": "それでも表示する",
+  "decrypt.result.invisibleCharacters.title": "不可視文字が検出されました",
+  "decrypt.result.invisibleCharacters.body":
+    "このメッセージには不可視文字または文字方向を変えるUnicode文字が含まれています。検出数: {count}。内容に従って行動する前に、表示された文章を注意して確認してください。",
+  "decrypt.result.memoryOnly":
+    "復号結果はメモリー内だけに保持し、保存しません。",
   "encrypt.algorithmLabel": "暗号化方式",
   "encrypt.keyLabel": "使用鍵",
   "encrypt.recipientLabel": "受信者のML-KEM公開鍵",
@@ -1043,44 +1079,8 @@ const ja = {
     "UTF-8で{max}バイト以内に短くしてください。",
   "encrypt.encryptButton.busy": "暗号化中…",
   "encrypt.encryptButton.idle": "暗号化する",
-  "encrypt.decrypt.cameraTitle": "カメラで読み取る",
-  "encrypt.decrypt.scanTrigger": "暗号文QRを読み取る",
-  "encrypt.decrypt.payloadLabel": "暗号文ペイロード",
-  "encrypt.decrypt.payloadPlaceholder":
-    "OCA2: または OCM2: ペイロードを貼り付けてください",
-  "encrypt.decrypt.invalidTitle": "暗号文を確認できません",
-  "encrypt.decrypt.invalidBody":
-    "対応するOCA2/OCM2暗号文を入力してください。",
   "encrypt.detail.method": "方式",
   "encrypt.detail.recipientKeyId": "受信者鍵ID",
-  "encrypt.pqUnsupported.body":
-    "この暗号文は現在利用できない旧ポスト量子プロファイルです。",
-  "encrypt.decryptButton.busy": "復号中…",
-  "encrypt.decryptButton.idle": "復号する",
-  "encrypt.signingKeyId": " 鍵ID: {id}",
-  "encrypt.importSigningKey": "署名鍵を取り込む",
-  "encrypt.result.decryptedModalTitle": "復号が完了しました",
-  "encrypt.result.symmetric": "共有鍵メッセージ",
-  "encrypt.result.signatureValid": "署名はこの鍵に対して有効です",
-  "encrypt.result.senderSigningKeyId": "送信者署名鍵ID: {id}",
-  "encrypt.result.identityCheck.label": "人物確認:",
-  "encrypt.result.identityCheck.confirmed": "人物確認済み",
-  "encrypt.result.identityCheck.unverified":
-    "未確認。鍵の有効性と人物確認は別です。",
-  "encrypt.result.identityUnconfirmed.title": "送信者の本人確認が取れていません",
-  "encrypt.result.identityUnconfirmed.body":
-    "署名が有効であることは、このメッセージがこの鍵で署名されたことだけを示します。その鍵を誰が持っているかは示しません。内容に従って行動する前に、対面でフィンガープリントを確認してください。",
-  "encrypt.result.invisibleCharacters.title": "不可視文字が検出されました",
-  "encrypt.result.invisibleCharacters.body":
-    "このメッセージには不可視文字または文字方向を変えるUnicode文字が含まれています。検出数: {count}。内容に従って行動する前に、表示された文章を注意して確認してください。",
-  "encrypt.result.replay.title": "このセッションで受信済みです",
-  "encrypt.result.replay.body":
-    "この暗号文は {time} にこのアプリウィンドウで復号済みです。単なる再読の場合もあれば、古いメッセージを再送されている場合もあります。中の指示は未確認として扱ってください。この確認の範囲は、このアプリウィンドウを読み込んでからの記録だけです。同じアプリの別のタブやウィンドウとは共有されず、一時消去またはローカルデータの全消去でもリセットされ、件数に上限があるため古い記録から削除されます。",
-  "encrypt.result.replay.reveal": "それでも表示する",
-  "encrypt.result.senderCreatedAt":
-    "送信端末の申告時刻: {time}(送信側の申告であり検証されていません)",
-  "encrypt.result.memoryOnly":
-    "復号結果はメモリー内だけに保持し、保存しません。",
   "encrypt.result.modalTitle": "暗号化が完了しました",
   "encrypt.result.copyPayload": "ペイロードをコピー",
   "encrypt.result.qrTitle": "暗号文QR",

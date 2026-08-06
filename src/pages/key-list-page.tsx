@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toAppError } from "@/crypto/errors"
-import { groupSymmetricKeys } from "@/crypto/key-generation"
+import { groupLineages, type LineageGroup } from "@/features/key-lineage"
 import { formatDateTime } from "@/features/presentation"
 import { useKeys } from "@/hooks/use-keys"
 import { usePqRecords } from "@/hooks/use-pq-records"
@@ -64,15 +64,8 @@ import {
   revokeBundle,
 } from "@/storage/pq-bundle-repository"
 
-interface IdentityGroup {
-  head: PostQuantumIdentity
-  previous: PostQuantumIdentity[]
-}
-
-interface SymmetricGroup {
-  head: StoredKeyRecord
-  previous: StoredKeyRecord[]
-}
+type IdentityGroup = LineageGroup<PostQuantumIdentity>
+type SymmetricGroup = LineageGroup<StoredKeyRecord>
 
 type OwnKeyFilter = "all" | "pq-identity" | "symmetric"
 
@@ -87,29 +80,6 @@ type OwnKeyItem =
       createdAt: number
       group: SymmetricGroup
     }
-
-function groupIdentities(identities: PostQuantumIdentity[]): IdentityGroup[] {
-  const byId = new Map(identities.map((identity) => [identity.id, identity]))
-  const superseded = new Set(
-    identities
-      .map((identity) => identity.rotatedFromId)
-      .filter((id): id is string => id !== undefined),
-  )
-  return identities
-    .filter((identity) => !superseded.has(identity.id))
-    .map((head) => {
-      const previous: PostQuantumIdentity[] = []
-      const visited = new Set([head.id])
-      for (let cursor = head.rotatedFromId; cursor !== undefined;) {
-        const generation = byId.get(cursor)
-        if (generation === undefined || visited.has(generation.id)) break
-        visited.add(generation.id)
-        previous.push(generation)
-        cursor = generation.rotatedFromId
-      }
-      return { head, previous }
-    })
-}
 
 export function KeyListPage() {
   const { language, t } = useI18n()
@@ -145,9 +115,9 @@ export function KeyListPage() {
   if (bundleDetailId !== null && !pqLoading && bundleDetail === null) {
     setBundleDetailId(null)
   }
-  const identityGroups = useMemo(() => groupIdentities(identities), [identities])
+  const identityGroups = useMemo(() => groupLineages(identities), [identities])
   const symmetricGroups = useMemo(
-    () => groupSymmetricKeys(keys),
+    () => groupLineages(keys),
     [keys],
   )
   const ownKeyItems = useMemo<OwnKeyItem[]>(

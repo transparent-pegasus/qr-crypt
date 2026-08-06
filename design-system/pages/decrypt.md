@@ -15,8 +15,8 @@ MASTER.md を継承。本ページ固有の規則のみ記す。暗号化は別�
   - `already-received`: ラベル付き破壊的 replay アラートを出し、明示的な「それでも表示する」操作まで平文を出さない
   - `MESSAGE_ID_REUSED`: エラー文言のみ。結果モーダルは**開かない**
   - 署名有効かつ `fingerprint-confirmed`: 署名行に成功色、本人確認行も成功
-  - 署名有効だが未確認: 署名行は中立色。平文の上に破壊的 identity-unconfirmed アラート(タイトルと本文は `encrypt.result.identityUnconfirmed.*`、続けて identityCheck 文言)
-  - PQ 成功時は送信端末の申告時刻行(`encrypt.result.senderCreatedAt`)を出す。鮮度として扱わない
+  - 署名有効だが未確認: 署名行は中立色。平文の上に破壊的 identity-unconfirmed アラート(タイトルと本文は `decrypt.result.identityUnconfirmed.*`、続けて identityCheck 文言)
+  - PQ 成功時は送信端末の申告時刻行(`decrypt.result.senderCreatedAt`)を出す。鮮度として扱わない
   - セキュリティ Alert はタイトルに id を付け `aria-labelledby` で結ぶ。複数アラートを名前で区別できること
 - 署名鍵が未知の場合はモーダルを開かず、`SIGNING_KEY_NOT_FOUND` のアラートと `/keys` への導線だけを出す(部分平文表示禁止)
 

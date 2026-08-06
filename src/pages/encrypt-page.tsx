@@ -11,7 +11,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { AppError, toAppError } from "@/crypto/errors"
-import { groupSymmetricKeys } from "@/crypto/key-generation"
+import { groupLineages } from "@/features/key-lineage"
 import { isUsableBundle, isUsableIdentity } from "@/crypto/pq/identity-policy"
 import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
 import { generateArtifactId, shortId } from "@/crypto/random"
@@ -162,7 +162,7 @@ export function EncryptPage() {
       ? preferences.defaultAlgorithm
       : (algorithms.at(-1) ?? "A256GCM")
   const symmetricKeys = useMemo(
-    () => groupSymmetricKeys(keys).map((group) => group.head),
+    () => groupLineages(keys).map((group) => group.head),
     [keys],
   )
   const selectedKey = symmetricKeys.find((key) => key.id === selectedKeyId)

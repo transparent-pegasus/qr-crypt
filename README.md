@@ -88,9 +88,8 @@ origin. Independent verification of the signed ZIP — Cosign policy values from
 channel, checksum check, and an independent rebuild-and-compare — is required before
 installation. The complete procedure is in
 [docs/develop/install-route-a/](docs/develop/install-route-a/README.md). The archive's
-`INSTALL.txt` is the self-contained copy that reaches the offline device.
-
-[docs/develop/install-route-a/](docs/develop/install-route-a/README.md) §8.
+`INSTALL.txt` is the self-contained copy that reaches the offline device; its
+verification contract is §8 of that procedure.
 
 ### Install route B: direct-origin PWA
 

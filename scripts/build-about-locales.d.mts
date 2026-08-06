@@ -1,6 +1,8 @@
 // Types for the landing page's per-language build, which is plain ESM so that
 // `node scripts/build-about-locales.mjs` stays runnable on its own.
 
+export declare const ATTRIBUTE_HOOKS: Record<string, string>
+
 export declare function parseDocument(html: string): Promise<Document>
 
 export declare function renderLocale(options: {

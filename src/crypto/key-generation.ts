@@ -70,31 +70,6 @@ export async function rotateSymmetricKeyRecord(
   }
 }
 
-export function groupSymmetricKeys(
-  records: StoredKeyRecord[],
-): { head: StoredKeyRecord; previous: StoredKeyRecord[] }[] {
-  const byId = new Map(records.map((record) => [record.id, record]))
-  const superseded = new Set(
-    records
-      .map((record) => record.rotatedFromId)
-      .filter((id): id is string => id !== undefined),
-  )
-  return records
-    .filter((record) => !superseded.has(record.id))
-    .map((head) => {
-      const previous: StoredKeyRecord[] = []
-      const visited = new Set([head.id])
-      for (let cursor = head.rotatedFromId; cursor !== undefined;) {
-        const generation = byId.get(cursor)
-        if (generation === undefined || visited.has(generation.id)) break
-        visited.add(generation.id)
-        previous.push(generation)
-        cursor = generation.rotatedFromId
-      }
-      return { head, previous }
-    })
-}
-
 export async function importSymmetricKeyRecordV2(
   name: string,
   envelope: SymmetricKeyEnvelopeV2,

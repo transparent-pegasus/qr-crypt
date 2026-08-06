@@ -53,6 +53,12 @@ export function classifyV2Payload(text: string): ClassifiedV2Payload | null {
   return null
 }
 
+// OCB2 is reserved and rejected by every decoder; the display side must not call it valid.
+export function isQrCryptPayload(payload: string): boolean {
+  const classified = classifyV2Payload(payload)
+  return classified !== null && classified.kind !== "encrypted-seed-backup"
+}
+
 // Single payload (bare OC?2) → raw artifact bytes. The caller performs typed validation
 // through validation.ts or the corresponding canonical-cbor decoder.
 export function splitV2Payload(text: string): { kind: V2ArtifactType; bytes: Uint8Array } {

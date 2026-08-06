@@ -66,7 +66,7 @@ type AttemptOutcome =
 // Continue scanning when a frame contains no QR result. Retry only transient errors from
 // initial camera acquisition. Separate acquisition, playback, and stopping with a generation
 // ID and attempt-owned streams; stale generations must not touch UI state.
-async function startQrScanImplementation(
+export async function startQrScan(
   video: HTMLVideoElement,
   onText: (text: string) => void,
   onError: (error: AppError, failureState: CameraFailureState) => void,
@@ -190,7 +190,3 @@ async function startQrScanImplementation(
     if (timeoutId !== undefined) clearTimeout(timeoutId)
   }
 }
-
-export const startQrScan = Object.assign(startQrScanImplementation, {
-  shouldRestartOnVisibility: shouldRestartQrScanOnVisibility,
-})
