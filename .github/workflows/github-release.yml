@@ -634,9 +634,11 @@ jobs:
             http://127.0.0.1:4173/nonexistent/spa/route
           cmp "$fallback_body" "$document_root/index.html"
 
-          # Reuse the header-aware reference server instead of Playwright's
-          # build-and-preview command, so tests exercise the archived bytes.
-          env -u CI aube run test:e2e
+          # Playwright boots its own build-and-serve on a cwd-derived port (see
+          # playwright.config.ts); the :4173 server above backs the header checks
+          # against the archived bytes only. Keep CI set — it is what gives this
+          # job the retry budget and the in-band global timeout.
+          aube run test:e2e
 
       - name: Upload unsigned release payload
         id: upload-package
