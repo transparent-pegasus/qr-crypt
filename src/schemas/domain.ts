@@ -264,6 +264,14 @@ export type StorableArtifactKind = Exclude<
   "pq-message" | "sym-message" | "encrypted-seed-backup"
 >
 
+// Symmetric artifacts are single-frame by owner decision (docs/develop/deviations.md).
+// Enforced in guardQrFrameV2 so every OCF2 frame decode path inherits it; see
+// docs/spec/qr-protocol-v2.md §3.1.
+export const SINGLE_FRAME_ARTIFACT_TYPES: ReadonlySet<V2ArtifactType> = new Set([
+  "sym-message",
+  "symmetric-key",
+])
+
 export interface QrFrameV2 {
   version: 2
   type: "qr-frame"

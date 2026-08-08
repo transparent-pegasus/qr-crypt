@@ -42,6 +42,7 @@ import { suiteComponents } from "@/crypto/pq/suites"
 import {
   ML_DSA_ALGORITHMS,
   ML_KEM_ALGORITHMS,
+  SINGLE_FRAME_ARTIFACT_TYPES,
   SYM_SUITE,
   V2_ARTIFACT_TYPES,
   WIRE_SUITES,
@@ -694,6 +695,7 @@ export function guardQrFrameV2(value: unknown): QrFrameV2 {
     "totalByteLength",
     "chunk",
   ])
+  const artifactType = guardEnum(record["artifactType"], V2_ARTIFACT_TYPES)
   const frameCount = guardInt(record["frameCount"], 1, PROTOCOL_MAX_FRAMES)
   const frameIndex = guardInt(record["frameIndex"], 0, frameCount - 1)
   const totalByteLength = guardInt(
@@ -706,11 +708,19 @@ export function guardQrFrameV2(value: unknown): QrFrameV2 {
     throw new AppError("INVALID_QR_PAYLOAD")
   }
   if (chunk.byteLength > totalByteLength) throw new AppError("INVALID_QR_PAYLOAD")
+  // A compromised sender does not use our generator. Enforced here rather than in
+  // the Zod layer because the relay decodes through this guard and never reaches
+  // validateQrFrameV2; without it a crafted multi-frame symmetric set is accepted
+  // and the chunk-length partition becomes a covert channel
+  // (docs/security/threat-model.md T21).
+  if (SINGLE_FRAME_ARTIFACT_TYPES.has(artifactType) && frameCount !== 1) {
+    throw new AppError("INVALID_QR_PAYLOAD")
+  }
   return {
     version: guardLiteral(record["version"], 2),
     type: guardLiteral(record["type"], "qr-frame"),
     transferId: guardBytes(record["transferId"], 16),
-    artifactType: guardEnum(record["artifactType"], V2_ARTIFACT_TYPES),
+    artifactType,
     frameIndex,
     frameCount,
     totalByteLength,
