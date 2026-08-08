@@ -245,9 +245,10 @@ provisioned blocks mean the physical medium can retain what the application
 believes it deleted, which matters at device retirement and after any
 `wipe-on-online` event.
 
-**Evidence.** Evidence: NIST SP 800-88 Rev. 1, *Guidelines for Media
-Sanitization* (clear/purge/destroy distinction for flash media). Already cited
-by [threat-model.md](threat-model.md) §5.
+**Evidence.** Evidence: NIST SP 800-88 Rev. 2, *Guidelines for Media
+Sanitization* (published 2025-09-26; sanitization-program and technique guidance
+that supersedes Rev. 1). Already cited by
+[threat-model.md](threat-model.md) §5.
 
 **Position.** `EXTERNAL_ASSURANCE` (media-appropriate sanitization or physical
 destruction).
