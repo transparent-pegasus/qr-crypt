@@ -40,7 +40,8 @@ medium, and this document as untrusted until verification succeeds. Independentl
 provision and authenticate all of the following through a channel independent of
 the download:
 
-- an authenticated Cosign version and binary
+- an authenticated Cosign binary, v3.1.3 or later (or v2.6.5 or later on the
+  v2 release line)
 - the current Sigstore trusted root (`trusted_root.json`)
 - the certificate identity (workflow identity)
 - the OIDC issuer
@@ -49,6 +50,13 @@ the download:
 - the workflow trigger
 - the intended release tag
 - the full source commit
+
+Do not use an older Cosign release for this procedure. With a vulnerable
+release, a substituted legacy-format bundle can silently bypass the
+`--certificate-identity` and `--certificate-oidc-issuer` policies below. The
+version floor is therefore part of the independently authenticated verifier
+policy; it does not replace independent provisioning and authentication of the
+Cosign binary.
 
 Never copy expected policy values from the media being verified. Same-media
 checksums and trust roots are not independent trust anchors. Keyless signing
