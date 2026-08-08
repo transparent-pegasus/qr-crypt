@@ -14,7 +14,7 @@ function jobSource(name: string): string {
   if (start === -1) throw new Error(`JOB_NOT_FOUND:${name}`)
 
   const end = lines.findIndex(
-    (line, index) => index > start && /^  [a-z0-9_-]+:$/.test(line),
+    (line, index) => index > start && /^ {2}[a-z0-9_-]+:$/.test(line),
   )
   return lines.slice(start, end === -1 ? undefined : end).join("\n")
 }
@@ -22,7 +22,7 @@ function jobSource(name: string): string {
 function steps(job: string): string[] {
   const lines = job.split("\n")
   const starts = lines.flatMap((line, index) =>
-    /^      - /.test(line) ? [index] : [],
+    /^ {6}- /.test(line) ? [index] : [],
   )
   return starts.map((start, index) =>
     lines.slice(start, starts[index + 1]).join("\n"),
@@ -37,15 +37,15 @@ function exactRunStep(jobSteps: string[], command: string): number {
 
 function needs(job: string): string[] {
   const lines = job.split("\n")
-  const start = lines.findIndex((line) => /^    needs:/.test(line))
+  const start = lines.findIndex((line) => /^ {4}needs:/.test(line))
   if (start === -1) return []
 
-  const scalar = /^    needs:\s+([a-z0-9_-]+)$/.exec(lines[start] as string)
+  const scalar = /^ {4}needs:\s+([a-z0-9_-]+)$/.exec(lines[start] as string)
   if (scalar) return [scalar[1] as string]
 
   const dependencies: string[] = []
   for (const line of lines.slice(start + 1)) {
-    const item = /^      - ([a-z0-9_-]+)$/.exec(line)
+    const item = /^ {6}- ([a-z0-9_-]+)$/.exec(line)
     if (!item) break
     dependencies.push(item[1] as string)
   }
@@ -57,7 +57,7 @@ describe("signed release audit gate", () => {
     const buildSteps = steps(jobSource("build"))
     const install = exactRunStep(buildSteps, "aube ci")
     const audit = exactRunStep(buildSteps, "aube audit")
-    const packaging = buildSteps.findIndex((step) => /^        id: package$/m.test(step))
+    const packaging = buildSteps.findIndex((step) => /^ {8}id: package$/m.test(step))
 
     expect(install).toBeGreaterThanOrEqual(0)
     expect(audit).toBeGreaterThan(install)
