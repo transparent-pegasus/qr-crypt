@@ -40,6 +40,16 @@ where consequence and feasibility are recorded separately.
 ## Currency
 
 - Catalog created 2026-08-03; entries reviewed on that date.
+- Re-reviewed with the merged nation-state review on 2026-08-08. It found no
+  new environment technique and no entry warranting promotion to a `T` row.
+- NSR-05 removes the chunk-length partition channel on the symmetric relay
+  path. E8/T21's dominant capability and severity are unchanged: one legitimate
+  symmetric transfer still has 277 bits of sender-controlled capacity, enough
+  to exfiltrate a whole 256-bit key.
+- E5 remains unchanged. Newer sources for chosen-ciphertext side channels
+  against ML-KEM may exist, but their exact titles, authors, venues, and dates
+  were not established. They are material for the next `environment-threats`
+  sweep; E5's existing citation and `Speculation` label remain in place.
 - Registered in `.claude/skills/freshness/targets.yaml` (unit
   `environment-threats`). A sweep re-checks the dated sources, adds techniques
   that gained a credible relationship, and records what changed.

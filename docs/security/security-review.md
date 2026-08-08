@@ -61,6 +61,9 @@ and the suite size tables beside them. The post-quantum path accepts at most
 120,000 UTF-8 bytes. The single-frame symmetric path
 (`sym-message` / `OCA2`) is capped at `MAX_SYM_PLAINTEXT_BYTES` = 853
 (`FRAME_CHUNK_MAX_BYTES` − `SYM_MESSAGE_OVERHEAD_BYTES` − `AES_GCM_TAG_BYTES`).
+The same single-frame constraint is enforced when an OCF2 frame is decoded;
+[qr-protocol-v2.md](../spec/qr-protocol-v2.md) §3.1 owns that invariant and
+its generation/decode error split.
 
 Verified 2026-07-30: the labelled compatibility-switch contract (exact pairs,
 atomic write, per-artifact clamp, dwell-not-cadence) matches
@@ -105,7 +108,11 @@ the stored wipe flag and normalizes to `A256GCM`. Detail:
 Visible dismissal follows [threat-model.md](threat-model.md) (fingerprint
 confirmation is the documented non-dismissible exception).
 
-## 1. Facts About the Adopted Libraries (as of 2026-08-02)
+## 1. Facts About the Adopted Libraries
+
+Library-specific checks below are dated 2026-08-02; the supply-chain incident
+record extends through the 2026-08-08 remediation. Each claim carries its own
+review date rather than inheriting one date for this whole section.
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
@@ -177,14 +184,29 @@ confirmation is the documented non-dismissible exception).
   and the dependency was upgraded to `react-router@8.3.0` exact (the
   `react-router-dom` wrapper, which ends at 7.x, was replaced by
   `react-router` directly).
-- **RESOLVED (dev chain, 2026-07-25)**: `brace-expansion` —
-  `GHSA-mh99-v99m-4gvg` (high): DoS via unbounded expansion; vulnerable
-  `<=5.0.7`. Paths: `workbox-build` → `glob` → `minimatch` →
-  `brace-expansion@5.0.7` and `workbox-build` → … → `minimatch@5` →
-  `brace-expansion@2.1.2` (build tooling only; inputs are repo-controlled glob
-  patterns). No fixed 2.x release exists, so both major lines are forced to
-  `5.0.8` via `aube.overrides`; `aube run build:prod` and the full test suite were
-  re-verified after the override. `aube audit` currently exits 0.
+- **HISTORICAL RESOLUTION (dev chain, 2026-07-25; found stale
+  2026-08-08)**: `brace-expansion` — `GHSA-mh99-v99m-4gvg` (high): DoS via
+  unbounded expansion; vulnerable `<=5.0.7`. Paths: `workbox-build` → `glob` →
+  `minimatch` → `brace-expansion@5.0.7` and `workbox-build` → … →
+  `minimatch@5` → `brace-expansion@2.1.2` (build tooling only; inputs are
+  repo-controlled glob patterns). Both selectors were forced to `5.0.8`. That
+  version was itself vulnerable under `GHSA-rgw5-rvv9-x895`, published
+  2026-07-30, which bypassed the mitigation this pin existed for. The
+  2026-08-02 record asserting that `aube audit` exited 0 was already stale when
+  written.
+- **RESOLVED (build/test/deploy chain, 2026-08-08)**: `brace-expansion` is
+  forced to `5.0.9` for both the `@5` and `@2` selectors; `2.1.4` is also
+  patched, and choosing `5.0.9` for both is a deliberate one-version-in-the-graph
+  decision. Additional overrides force `fast-uri@3.1.5`, `nanoid@3.3.17`, and
+  `undici@7.29.0`. These packages are build, test, or deploy tooling and none is
+  in the browser bundle. The known-advisory set grew from seven findings to
+  eight during remediation; after the overrides, `aube audit` reported no known
+  vulnerabilities on 2026-08-08.
+- CI `validate` now runs `aube audit` unconditionally after `aube ci`. It
+  detects known advisories on the next triggered run — every push, or a pull
+  request targeting `main` or `dev`. There is no schedule, so advisories
+  published after a dependency lands surface only on that next run. This gate
+  does not keep this record current; the freshness review does.
 - Supply-chain pins re-verified clean on 2026-07-29: `eslint-config-prettier@10.1.8` and the rollup OMT `aube.overrides` entry. `react-hook-form@7.82.0` was also pinned here until 2026-07-30, when it was removed from the dependency graph entirely: it was never imported by the application, so the pin guarded nothing.
 
 ## 1.1 Findings F-01 / F-02 / F-03 (2026-07-28)
@@ -252,7 +274,7 @@ Closed under unique indexes and `KEY_ID_CONFLICT` / `DUPLICATE_KEY` refusal; see
 signer's plaintext behind an explicit action, and binding the sender public key
 into the signing target.
 
-## 1.2 Findings NSR-01 / NSR-02 / NSR-04 (2026-08-03)
+## 1.2 Findings NSR-01 / NSR-02 / NSR-04 / NSR-05 (2026-08-03 and 2026-08-08)
 
 Two advanced-adversary reviews of the same tree, one in-repository and one
 external, reconciled against the code before anything was implemented. They do
@@ -304,6 +326,22 @@ T14 residual as they stood at the time.
 - **Residual:** write paths that take no lock at all — imported public bundles,
   deletes, renames, usage stamps — are outside the lease. None is counted by the
   clean-origin proof.
+
+### NSR-05 — Relay accepted multi-frame symmetric transfers
+
+- **Found:** the single-frame rule for `sym-message` / `symmetric-key` lived only
+  in `qrFrameV2Schema`. The offline assembler reached it through
+  `validateQrFrameV2`; the relay decoded through `guardQrFrameV2` and did not. A
+  crafted two-frame `sym-message` was accepted at every split boundary,
+  restoring the chunk-length partition as a covert channel on the exact path T21
+  describes.
+- **Shipped:** the rule moved into `guardQrFrameV2`, so every OCF2 frame decode
+  path inherits it, and the superseded Zod clause was deleted rather than left as
+  a second owner. Pinned by `tests/unit/relay-frames.test.ts`,
+  `tests/ui/online-relay.test.tsx`, and
+  `tests/pq/maximum-policy-boundaries.test.ts`.
+- **Residual, unchanged:** the 277-bit covert floor in the smallest legitimate
+  symmetric transfer. This removes one additional channel; it does not close T21.
 
 ### Recorded, not implemented
 
