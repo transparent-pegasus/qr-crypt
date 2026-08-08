@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from "vitest"
+import { AppError } from "@/crypto/errors"
 import {
   decodeMlKemEnvelopeV2,
   decodePublicIdentityBundleV2,
+  decodeQrFrameV2,
   encodeCanonicalCbor,
+  encodeQrFrameV2,
+  type CanonicalCborValue,
 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { createIdentity, rotateIdentity } from "@/crypto/pq/identity"
@@ -22,6 +26,7 @@ import {
 import {
   validateMlKemEnvelopeV2,
   validatePublicIdentityBundleV2,
+  validateQrFrameV2,
 } from "@/crypto/pq/validation"
 import type { PqCryptoClient, PqWorkerOperation } from "@/crypto/pq/worker-client"
 import { toBase64Url } from "@/lib/base64url"
@@ -34,6 +39,7 @@ import {
   type MlDsaAlgorithm,
   type PostQuantumIdentity,
   type PqPublicBundleRecord,
+  type QrFrameV2,
   type WireSuite,
 } from "@/schemas/domain"
 import { validatePostQuantumIdentity } from "@/schemas/key-schema"
@@ -495,6 +501,44 @@ describe("derived ciphertext ceilings", () => {
     "pins the signed-message ceiling for %s",
     (algorithm, expected) => {
       expect(maxSignedMessageBytes(algorithm as MlDsaAlgorithm)).toBe(expected)
+    },
+  )
+})
+
+describe("single-frame symmetric rule (T21)", () => {
+  function symFrame(
+    artifactType: "sym-message" | "symmetric-key",
+    frameCount: number,
+  ): QrFrameV2 {
+    return {
+      version: 2,
+      type: "qr-frame",
+      transferId: new Uint8Array(16).fill(0x55),
+      artifactType,
+      frameIndex: 0,
+      frameCount,
+      totalByteLength: frameCount === 1 ? 4 : 8,
+      chunk: new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd]),
+    }
+  }
+
+  it.each(["sym-message", "symmetric-key"] as const)(
+    "rejects a multi-frame %s at decode, validation, and encode",
+    (artifactType) => {
+      const bytes = encodeCanonicalCbor(
+        symFrame(artifactType, 2) as unknown as CanonicalCborValue,
+      )
+      expect(() => decodeQrFrameV2(bytes)).toThrow(AppError)
+      expect(() => validateQrFrameV2(symFrame(artifactType, 2))).toThrow(AppError)
+      expect(() => encodeQrFrameV2(symFrame(artifactType, 2))).toThrow(AppError)
+    },
+  )
+
+  it.each(["sym-message", "symmetric-key"] as const)(
+    "still round-trips a single-frame %s",
+    (artifactType) => {
+      const frame = symFrame(artifactType, 1)
+      expect(decodeQrFrameV2(encodeQrFrameV2(frame))).toEqual(frame)
     },
   )
 })
