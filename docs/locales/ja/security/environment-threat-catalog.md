@@ -250,9 +250,9 @@ Turn Evil*, Black Hat USA 2014（再プログラム可能なUSBコントロー�
 アプリケーションが削除したと信じるものを保持し得る。
 これはデバイスの退役時および`wipe-on-online`イベント後に問題となる。
 
-**Evidence（証拠）。** Evidence: NIST SP 800-88 Rev. 1,
-*Guidelines for Media Sanitization*
-（フラッシュメディアに対するクリア/パージ/破壊の区別）。
+**Evidence（証拠）。** Evidence: NIST SP 800-88 Rev. 2,
+*Guidelines for Media Sanitization*（2025-09-26公開。Rev. 1を置き換えた
+サニタイズプログラムおよび技法の指針）。
 [threat-model.md](../../../security/threat-model.md) §5ですでに引用済み。
 
 **Position（位置づけ）。** `EXTERNAL_ASSURANCE`（メディアに適切な

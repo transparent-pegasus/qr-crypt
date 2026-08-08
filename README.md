@@ -112,9 +112,9 @@ not a property the relay can authenticate. Use an online device that has never h
 Crypt keys.
 
 For AES-256-GCM (`sym-message` / `OCA2`), the offline device always emits exactly one
-OCF2 frame (single-QR hard constraint). The post-quantum path remains a multi-frame
-OCF2 transfer. The relay accepts only validated OCF2 frames declaring `pq-message` or
-`sym-message`.
+OCF2 frame (single-QR hard constraint), and every OCF2 receiver refuses a multi-frame
+`sym-message`. The post-quantum path remains a multi-frame OCF2 transfer. The relay
+accepts only validated OCF2 frames declaring `pq-message` or `sym-message`.
 
 1. **Sender's offline device** — encrypt as usual and display the single OCF2 frame for
    AES, or the OCF2 frame sequence for a post-quantum message.
