@@ -130,8 +130,16 @@ Canonical AAD key order: `type`, `keyId`, `suite`, `version`, `createdAt`.
 
 `sym-message` and `symmetric-key` artifacts always render as exactly one OCF2
 frame. Generation picks the smallest `FRAME_BYTES_VALUES` entry ≥ artifact
-length and asserts `frames.length === 1`; a violation is `QR_TOO_LARGE` (a
-generation-side bug).
+length and asserts `frames.length === 1`; a violation on that generation path is
+`QR_TOO_LARGE`.
+
+Receivers enforce the same constraint. `guardQrFrameV2`
+(`src/crypto/pq/canonical-cbor.ts`) rejects any `sym-message` or `symmetric-key`
+frame whose `frameCount` is not 1, so every OCF2 frame decode path — relay
+capture, relay playback, bare-paste frame decode, and the offline assembler —
+refuses a crafted multi-frame symmetric set before it can assemble. That decode
+failure is `INVALID_QR_PAYLOAD`. Bare `OCA2:` / `OCK2:` artifact decoding has no
+`frameCount` and does not traverse this frame guard.
 
 Measured overhead and plaintext ceiling (`src/lib/limits.ts`, pinned by
 `tests/pq/sym-envelope.golden.test.ts`):
@@ -478,10 +486,11 @@ Shared fixture key id as in §8.1. Active suite only.
 | Situation | Code |
 |---|---|
 | Non-canonical / malformed v2 structure | `INVALID_QR_PAYLOAD` |
+| Multi-frame `sym-message` / `symmetric-key` OCF2 frame on decode | `INVALID_QR_PAYLOAD` |
 | Signature verification failure (body withheld) | `SIGNATURE_INVALID` |
 | Sender signing key not imported (import flow offered) | `SIGNING_KEY_NOT_FOUND` |
 | Frame from another transferId mixed in / frame inconsistency | `FRAME_MISMATCH` |
-| Generation capacity exceeded (artifact >128,000B, frameCount>128, `frameBytes` outside 100–1,000B, OCF2 payload >1,663 characters, or sym single-frame violation) | `QR_TOO_LARGE` |
+| Generation capacity exceeded (artifact >128,000B, frameCount>128, `frameBytes` outside 100–1,000B, OCF2 payload >1,663 characters, or the honest splitter cannot satisfy the symmetric single-frame constraint) | `QR_TOO_LARGE` |
 | OCB2 (reserved) / removed vocabulary (v1 prefixes, `OCP2` / `OCS2`, unsigned suites, 768/65, `balanced`) | `UNSUPPORTED_ALGORITHM` or `INVALID_QR_PREFIX` / `INVALID_QR_PAYLOAD` |
 | Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
 | Partial failure of local reset | `RESET_FAILED` |
@@ -495,6 +504,12 @@ never both. Bare `OCA2:` / `OCM2:` / `OCK2:` / `OCI2:` lines
 and every other OCF2 outer type (including `symmetric-key` and public-key
 artifacts) are rejected. Retired v1 prefixes (`OCM1` / `OCK1` / `OCP1` / …)
 are prefix-rejected, as are the retired `OCP2` / `OCS2`.
+
+At OCF2 frame decode, `guardQrFrameV2` refuses `frameCount !== 1` for
+`sym-message` and `symmetric-key`. A crafted multi-frame `sym-message` therefore
+fails on its first decoded frame, before relay assembly or assembled-artifact
+validation. `symmetric-key` is already outside the relay's outer-type allowlist,
+but the same invariant applies whenever one of its OCF2 frames is decoded.
 
 The relay is an untrusted hop: it performs **no** AEAD, signature verification,
 or decryption. After a capture or playback set completes (all frames present,
