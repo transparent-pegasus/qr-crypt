@@ -331,6 +331,14 @@ it; treating it as required would disagree with the archive copy.
    VPN or container bridges, which also make the browser report a connection —
    and reload. Nothing is deleted; stored keys are untouched.
 
+   The same ordering applies after a wipe. A successful `wipe-on-online` reset
+   removes the stored deployment verdict along with the application database, so
+   a wiped device with no reachable install server locks with **"Installation
+   not verified yet"** rather than opening. That is the fail-closed state, not a
+   fault, and it deletes nothing further: serve the origin again from the same
+   `http://127.0.0.1:PORT` so the app can re-verify, then stop the server and
+   disconnect as in this step.
+
 Opening `index.html` with `file://` is unsupported. Plain HTTP on a LAN address
 is unsupported.
 
