@@ -358,8 +358,7 @@ T14 residual as they stood at the time.
   including the verifier image index digest
   `sha256:9e5c2f2edc34351160407ca3416c61855bdf9403c3c5936e0f0be7fc261611b8`.
   The English and Japanese Route A procedures retain independent provisioning
-  and authentication and require v3.1.3 or later, or v2.6.5 or later on the v2
-  release line.
+  and authentication and require v3.1.3 or later.
 - **Residual:** the repository controls its workflow pin, but the Route A
   verifier supplies their own Cosign binary; that version floor is an
   instruction, not an enforced control. The CI `aube audit` gate checks npm

@@ -522,8 +522,8 @@ strict assembled-artifact validation before enabling copy or playback:
 A validation failure surfaces as `relay.error.invalidFrame` and does not enable
 output. That check defeats key-material relabeling (an OCK2 / OCI2 / … body
 stuffed into message-typed frames) and non-canonical stuffing. It does **not**
-defeat a compromised sender who hides data inside otherwise valid ciphertext,
-salt, IV, or other sender-controlled fields of a schema-valid message — that
+defeat a compromised sender who hides data inside otherwise valid
+sender-controlled ciphertext, `transferId`, `iv`, or `createdAt` values — that
 residual is T21.
 
 - Every displayed frame string is
