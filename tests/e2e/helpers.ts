@@ -37,14 +37,14 @@ function escapeRegex(value: string): string {
 export async function expectOnlineGate(page: Page): Promise<void> {
   await Promise.all([
     expectOnline(
-      page.getByText("Install the PWA or relay a message-payload QR"),
+      page.getByRole("heading", { name: "Install the PWA", exact: true }),
     ).toBeVisible(),
     expectOnline(
-      page.getByText("Online installation and message-payload QR relay"),
+      page.getByText("Online installation and message relay"),
     ).toBeVisible(),
     expectOnline(
       page.getByText(
-        /clean origin may also relay canonical OCF2 frames.*pq-message.*sym-message.*without using local keys/,
+        /Install this app while online, then use it offline/,
       ),
     ).toBeVisible(),
     expectOnline(page.getByText(/OCM1/)).toHaveCount(0),
@@ -185,7 +185,7 @@ export async function switchToOfflineApp(
   await setDeviceOffline(context, true)
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
-    page.getByText("Install the PWA or relay a message-payload QR"),
+    page.getByRole("heading", { name: "Install the PWA", exact: true }),
   ).toBeHidden()
   await expectOfflineAcknowledgement(page)
   await acknowledgeOfflineRisk(page)
