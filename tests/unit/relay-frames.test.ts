@@ -7,7 +7,7 @@ import {
 } from "@/crypto/pq/canonical-cbor"
 import { toBase64Url } from "@/lib/base64url"
 import { FRAME_BYTES_MAX, PROTOCOL_MAX_FRAMES } from "@/lib/limits"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
 import {
   acceptRelayCapture,
   EMPTY_RELAY_CAPTURE,
@@ -115,7 +115,10 @@ function invalidMessageFrames(artifactType: "pq-message" | "sym-message"): strin
   const bytes = encodeCanonicalCbor({ version: 2, type: artifactType })
   return payloads(
     artifactFrames(artifactType, bytes, {
-      frameBytes: Math.ceil(bytes.byteLength / 2),
+      // sym-message is single-frame by protocol, so its assembled-validation
+      // failure has to be reached with one frame, not two.
+      frameBytes:
+        artifactType === "sym-message" ? bytes.byteLength : Math.ceil(bytes.byteLength / 2),
       transferId: new Uint8Array(16).fill(artifactType === "pq-message" ? 0x51 : 0x52),
     }),
   )
@@ -146,6 +149,15 @@ function nonCanonicalFramePayload(frame: QrFrameV2): string {
     encodeCanonicalCbor({ [key]: value }).subarray(1),
   )
   return `OCF2:${toBase64Url(concatBytes([Uint8Array.of(0xa8), ...encodedEntries]))}`
+}
+
+// Adversarial fixtures must not be built with the production encoder: it runs
+// guardQrFrameV2, which rejects forbidden shapes. These bytes are canonical
+// wire bytes, so decode — not encode — stays the subject under test.
+function permissiveFramePayload(frame: QrFrameV2): string {
+  return `${QR_PREFIX_V2.frame}${toBase64Url(
+    encodeCanonicalCbor({ ...frame } as unknown as CanonicalCborValue),
+  )}`
 }
 
 type ExpectedRelayParseErrorCode =
@@ -211,6 +223,49 @@ describe("relay contract surface", () => {
 })
 
 describe("relay frame-set parser", () => {
+  function multiFrameSymPayloads(frameCount: number): string[] {
+    const chunkBytes = Math.ceil(SYM_MESSAGE_BYTES.byteLength / frameCount)
+    return Array.from({ length: frameCount }, (_, frameIndex) =>
+      permissiveFramePayload({
+        version: 2,
+        type: "qr-frame",
+        transferId: new Uint8Array(16).fill(0x53),
+        artifactType: "sym-message",
+        frameIndex,
+        frameCount,
+        totalByteLength: SYM_MESSAGE_BYTES.byteLength,
+        chunk: SYM_MESSAGE_BYTES.slice(
+          frameIndex * chunkBytes,
+          Math.min((frameIndex + 1) * chunkBytes, SYM_MESSAGE_BYTES.byteLength),
+        ),
+      }),
+    )
+  }
+
+  it.each([2, PROTOCOL_MAX_FRAMES])(
+    "refuses a %i-frame sym-message on the first frame, before any state is kept",
+    (frameCount) => {
+      const originals = multiFrameSymPayloads(frameCount)
+      expect(parseRelayFrameSet([originals[0]!])).toEqual({
+        ok: false,
+        code: "invalid-frame",
+      })
+      expect(parseRelayText(originals.join("\n"))).toEqual({
+        ok: false,
+        code: "invalid-frame",
+      })
+      expect(acceptRelayCapture(originals[0]!, EMPTY_RELAY_CAPTURE)).toEqual({
+        ok: false,
+        code: "invalid-frame",
+      })
+    },
+  )
+
+  it("still accepts a legal single-frame sym-message and a multi-frame pq-message", () => {
+    expect(parseRelayFrameSet([symPayload()]).ok).toBe(true)
+    expect(parseRelayFrameSet(payloads(PQ_FRAMES)).ok).toBe(true)
+  })
+
   it("accepts canonical pq-message and sym-message frame sets", () => {
     expect(PQ_FRAMES).toHaveLength(2)
     expect(SYM_FRAMES).toHaveLength(1)

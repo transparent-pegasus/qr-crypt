@@ -17,13 +17,13 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-08-06 # last revision of this registry itself
+updated: 2026-08-08 # last revision of this registry itself
 
 units:
   - id: deps
     category: dependencies
     cadence_days: 14
-    last_checked: 2026-08-02
+    last_checked: 2026-08-08
     files:
       - package.json
       - aube-lock.yaml
@@ -60,7 +60,7 @@ units:
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     category: crypto
     cadence_days: 90 # also triggered by any @noble/post-quantum advisory/release
-    last_checked: 2026-08-02
+    last_checked: 2026-08-08
     files:
       - package.json # "@noble/post-quantum" exact pin
       - aube-lock.yaml # frozen graph must move with the pin
@@ -107,7 +107,7 @@ units:
   - id: ci-actions
     category: dependencies
     cadence_days: 60
-    last_checked: 2026-07-28
+    last_checked: 2026-08-08
     files:
       - .github/workflows/cloudflare-pages.yml
       - .github/workflows/dev-to-main-pr.yml
@@ -121,6 +121,7 @@ units:
       - scripts/serve-dist.mjs # header-aware server called directly by the release workflow
       - tests/unit/serve-dist.test.ts # executable containment and server startup contract
       - tests/unit/release-tag-read.test.ts # extracts assert_canonical_tag and read_canonical_tag from github-release.yml; breaks if either helper is renamed or reshaped
+      - tests/unit/release-audit-gate.test.ts # pins the release build audit ordering and build -> sign -> publish needs chain
       - tests/unit/workflow-action-pins.test.ts # fails when any workflow references an external action by tag instead of a commit
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
@@ -158,6 +159,7 @@ units:
       Local only — a freshness sweep must not push:
       aube run test -- tests/unit/serve-dist.test.ts
       aube run test -- tests/unit/release-tag-read.test.ts
+      aube run test -- tests/unit/release-audit-gate.test.ts
       aube run test -- tests/unit/generate-install-txt.test.ts
       mise x \
         github:rhysd/actionlint@v1.7.12 \
@@ -187,7 +189,7 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-08-03
+    last_checked: 2026-08-08
     files:
       - docs/security/threat-model.md
       - src/crypto/pq/canonical-cbor.ts # structural allocation caps and retained-key behavior cited by T20
@@ -224,7 +226,7 @@ units:
   - id: environment-threats
     category: security-knowledge
     cadence_days: 90 # same rhythm as threat-model; a review reads both together
-    last_checked: 2026-08-03
+    last_checked: 2026-08-08
     files:
       - docs/security/environment-threat-catalog.md
       - docs/locales/ja/security/environment-threat-catalog.md # Japanese mirror; entries, labels, and sources must not diverge
@@ -261,7 +263,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-08-03
+    last_checked: 2026-08-08
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
@@ -353,7 +355,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-08-06
+    last_checked: 2026-08-08
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
@@ -418,7 +420,7 @@ units:
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-08-03
+    last_checked: 2026-08-08
     files:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
       - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
@@ -482,7 +484,7 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-08-02
+    last_checked: 2026-08-12
     files:
       - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
@@ -511,7 +513,7 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-08-03
+    last_checked: 2026-08-08
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together

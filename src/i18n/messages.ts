@@ -121,10 +121,10 @@ const en = {
   "gate.install.error":
     "Installation could not be started. Use the browser menu instead.",
   "gate.appIcon.alt": "{appName} app icon",
-  "gate.mode.label": "Online installation and message-payload QR relay",
-  "gate.heading": "Install the PWA or relay a message-payload QR",
+  "gate.mode.label": "Online installation and message relay",
+  "gate.heading": "Install the PWA",
   "gate.description":
-    "Encryption, decryption, key creation, key lists, and settings remain offline-only. When a sensitive-store scan completes without error and finds no key rows, PQ identities, or Vault, a clean origin may also relay canonical OCF2 frames whose untrusted outer header declares pq-message or sym-message, without using local keys.",
+    "Install this app while online, then use it offline. Encryption, decryption, keys, and settings work only offline.",
   "pwa.installState.label": "PWA installation status",
   "pwa.installState.installed": "Installed",
   "pwa.installState.notInstalled": "Not installed",
@@ -140,22 +140,22 @@ const en = {
     'Choose "Install app" or "Add to Home Screen" from the browser menu.',
   "gate.switchOffline.title": "Switch to offline mode",
   "gate.switchOffline.body":
-    "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
+    "To use encryption features, take this device offline — for example with airplane mode — then accept the risk acknowledgement that appears. Going offline does not make a compromised device safe.",
   "gate.about.link": "What this app does",
 
-  "relay.card.title": "Message-payload QR relay",
+  "relay.card.title": "Message relay",
   "relay.card.description":
-    "Move sender-controlled canonical OCF2 frames whose outer header declares pq-message or sym-message between a messenger and an offline device. Completed sets are assembled and checked against the declared message schema before output. The relay does not intentionally place payload-derived values in app-managed storage or payload-bearing network requests.",
+    "Pass encrypted messages between a messenger and an offline device using QR codes and text. This works only while a scan finds no keys, PQ identities, or Vault on this device; nothing is decrypted and no keys are used.",
   "relay.boundary.title": "Untrusted relay boundary",
   "relay.boundary.body":
-    "The relay accepts only canonical OCF2 frames whose untrusted outer header declares pq-message or sym-message. It assembles each completed set and validates the declared message schema before output, but performs no AEAD, signature verification, or decryption. Schema-valid ciphertext, salt, IV, and other sender-controlled fields remain untrusted and can carry covert data. The receiving offline device is the only authentication boundary. Face-to-face key exchange is the supported workflow.",
+    "This relay accepts only encrypted message frames (OCF2 pq-message or sym-message). It checks their format, but never decrypts, verifies, stores, or transmits them. Everything the sender chose — the ciphertext, transferId, IV, and createdAt values — stays untrusted and can carry covert data until the receiving offline device authenticates it. Exchange keys face to face, never through this relay.",
   "relay.capture.open": "QR → text",
   "relay.capture.unavailable":
     "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
   "relay.capture.title": "QR to text",
   "relay.capture.description":
-    "Start the camera explicitly, then scan every OCF2 message frame from the offline device. Malformed, mismatched, or wrong-kind frames are rejected without replacing what was already accepted.",
-  "relay.capture.video.ariaLabel": "Message-payload relay camera preview",
+    "Start the camera, then scan every QR frame shown on the offline device.",
+  "relay.capture.video.ariaLabel": "Message relay camera preview",
   "relay.capture.startCamera": "Start camera",
   "relay.capture.cameraActive": "Camera active",
   "relay.capture.progress": "{collected} / {total} frames collected",
@@ -167,13 +167,13 @@ const en = {
   "relay.playback.open": "Text → QR",
   "relay.playback.title": "Turn relay text into QR",
   "relay.playback.description":
-    "Paste one complete canonical OCF2 pq-message or sym-message frame set. Lines may use LF or CRLF; frame order does not matter.",
+    "Paste the relay text exactly as you received it, then show the QR codes to the offline device.",
   "relay.playback.input.label": "Relay text",
   "relay.playback.show": "Show QR",
   "relay.playback.missing": "Missing frames: {indexes}",
   "relay.playback.screenCaptureWarning":
     "Displayed QR images can still be saved by long-press, printing, screenshots, or screen recording.",
-  "relay.playback.qrTitle": "Relayed OCF2 frames",
+  "relay.playback.qrTitle": "Relayed message frames",
   "relay.playback.noDownloadControls":
     "This relay provides no app file-download controls.",
   "relay.error.title": "Relay input rejected",
@@ -753,10 +753,10 @@ const ja = {
   "gate.install.error":
     "インストールを開始できませんでした。ブラウザーのメニューから操作してください。",
   "gate.appIcon.alt": "{appName}のアプリアイコン",
-  "gate.mode.label": "オンライン導入・メッセージペイロードQRリレーモード",
-  "gate.heading": "PWAの導入またはメッセージペイロードQRの中継",
+  "gate.mode.label": "オンライン導入・メッセージリレー",
+  "gate.heading": "PWAの導入",
   "gate.description":
-    "暗号・復号、鍵作成、鍵一覧、設定は引き続きオフライン専用です。機微ストア走査がエラーなく完了し、鍵行・PQ identity・Vaultが無い場合に限り、クリーンオリジンは外側の信頼できないヘッダーがpq-messageまたはsym-messageと表明する正規OCF2フレームを、鍵を使わず中継できます。",
+    "オンラインでこのアプリを導入し、利用はオフラインで行ってください。暗号・復号、鍵、設定はオフライン専用です。",
   "pwa.installState.label": "PWAインストール状態",
   "pwa.installState.installed": "インストール済み",
   "pwa.installState.notInstalled": "未インストール",
@@ -773,22 +773,22 @@ const ja = {
     "ブラウザーのメニューから「アプリをインストール」または「ホーム画面に追加」を選んでください。",
   "gate.switchOffline.title": "オフラインに切り替えてください",
   "gate.switchOffline.body":
-    "機内モードなどでオフラインに切り替えるとオフライン機能を利用できます。切替時にリスク確認が表示されます。侵害された端末では機内モードやオフライン表示そのものを信頼できないため、オフライン化は端末の安全性を保証しません。",
-  "gate.about.link": "このアプリが何をするか",
+    "暗号機能を使うには、機内モードなどでこの端末をオフラインにし、表示されるリスク確認に同意してください。オフラインにしても、侵害された端末が安全になるわけではありません。",
+  "gate.about.link": "このアプリでできること",
 
-  "relay.card.title": "メッセージペイロードQRリレー",
+  "relay.card.title": "メッセージリレー",
   "relay.card.description":
-    "メッセンジャーとオフライン端末の間で、外側ヘッダーがpq-messageまたはsym-messageを表明する、送信者が制御する正規OCF2フレームを中継します。完成した一式は組み立て、表明されたメッセージスキーマを検証してから出力します。ペイロード由来の値をアプリ管理の保存領域やペイロードを含むネットワーク要求へ意図的に書き込みません。",
+    "QRコードとテキストで、メッセンジャーとオフライン端末の間で暗号化済みメッセージを受け渡します。走査で鍵・PQ identity・Vaultが無いと確認できた端末でのみ使え、復号は行わず、鍵も使いません。",
   "relay.boundary.title": "信頼しない中継境界",
   "relay.boundary.body":
-    "外側の信頼できないヘッダーがpq-messageまたはsym-messageを表明する正規OCF2フレームだけを受け入れます。完成した一式を組み立て、表明されたメッセージスキーマを検証してから出力しますが、AEAD、署名検証、復号は行いません。スキーマに適合する暗号文、salt、IVなど送信者が制御するフィールドは信頼できず、隠れたデータを運べます。真正性を確認できるのは受信側のオフライン端末だけです。鍵交換は対面で行う運用を前提とします。",
+    "このリレーは暗号化済みメッセージフレーム(OCF2のpq-messageまたはsym-message)だけを受け入れます。形式は検査しますが、復号・検証・保存・送信は行いません。送信者が決めた値(暗号文・transferId・IV・createdAt)は隠れたデータを運べ、受信側のオフライン端末が認証するまで信頼できません。鍵の交換は必ず対面で行い、このリレーでは行わないでください。",
   "relay.capture.open": "QR → テキスト",
   "relay.capture.unavailable":
     "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",
   "relay.capture.title": "QRをテキスト化",
   "relay.capture.description":
-    "明示的にカメラを開始し、オフライン端末のOCF2メッセージフレームをすべて読み取ってください。不正・不一致・種別違いのフレームは、受理済みの内容を置き換えず拒否します。",
-  "relay.capture.video.ariaLabel": "メッセージペイロードリレーのカメラプレビュー",
+    "カメラを開始し、オフライン端末に表示されるQRフレームをすべて読み取ってください。",
+  "relay.capture.video.ariaLabel": "メッセージリレーのカメラプレビュー",
   "relay.capture.startCamera": "カメラを開始",
   "relay.capture.cameraActive": "カメラ動作中",
   "relay.capture.progress": "{collected} / {total} フレーム収集済み",
@@ -800,13 +800,13 @@ const ja = {
   "relay.playback.open": "テキスト → QR",
   "relay.playback.title": "中継テキストをQR化",
   "relay.playback.description":
-    "正規OCF2のpq-messageまたはsym-messageフレーム一式をすべて貼り付けてください。改行はLF・CRLFのどちらでもよく、フレームの順序は問いません。",
+    "受け取った中継テキストをそのまま貼り付け、QRコードをオフライン端末に見せてください。",
   "relay.playback.input.label": "中継テキスト",
   "relay.playback.show": "QRを表示",
   "relay.playback.missing": "不足フレーム: {indexes}",
   "relay.playback.screenCaptureWarning":
     "表示したQR画像は長押し保存、印刷、スクリーンショット、画面録画で保存される可能性があります。",
-  "relay.playback.qrTitle": "中継されたOCF2フレーム",
+  "relay.playback.qrTitle": "中継されたメッセージフレーム",
   "relay.playback.noDownloadControls":
     "このリレーはアプリによるファイルダウンロード操作を提供しません。",
   "relay.error.title": "中継入力を拒否しました",

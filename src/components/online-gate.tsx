@@ -179,15 +179,13 @@ export function OnlineInstallScreen({
 
         <div hidden={activeTab !== "top"} className="space-y-6">
           <div className="space-y-3 rounded-xl border bg-card p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-              <Download aria-hidden="true" className="mt-0.5 size-6 shrink-0" />
-              <div className="space-y-1">
-                <h2 className="text-lg font-semibold">{t("gate.heading")}</h2>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {t("gate.description")}
-                </p>
-              </div>
+            <div className="flex items-center gap-3">
+              <Download aria-hidden="true" className="size-6 shrink-0" />
+              <h2 className="text-lg font-semibold">{t("gate.heading")}</h2>
             </div>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {t("gate.description")}
+            </p>
 
             <StatusRow
               label={t("pwa.installState.label")}
@@ -239,14 +237,14 @@ export function OnlineInstallScreen({
             )}
           </div>
 
-          <div className="flex items-start gap-3 rounded-xl border border-primary/40 bg-primary/5 p-5">
-            <WifiOff aria-hidden="true" className="mt-0.5 size-6 shrink-0 text-primary" />
-            <div className="space-y-1">
+          <div className="space-y-3 rounded-xl border border-primary/40 bg-primary/5 p-5">
+            <div className="flex items-center gap-3">
+              <WifiOff aria-hidden="true" className="size-6 shrink-0 text-primary" />
               <h2 className="font-semibold">{t("gate.switchOffline.title")}</h2>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {t("gate.switchOffline.body")}
-              </p>
             </div>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {t("gate.switchOffline.body")}
+            </p>
           </div>
 
           {/* Opens in a browser tab so an installed standalone window is left

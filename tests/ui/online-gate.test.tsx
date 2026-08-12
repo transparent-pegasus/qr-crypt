@@ -67,9 +67,7 @@ describe("OnlineGate", () => {
       await screen.findByText(translate("en", "gate.mode.label")),
     ).toBeVisible()
     expect(
-      screen.getByText(
-        "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
-      ),
+      screen.getByText(translate("en", "gate.switchOffline.body")),
     ).toBeVisible()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()
     expect(

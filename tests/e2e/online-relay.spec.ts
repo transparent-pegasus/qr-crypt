@@ -23,27 +23,22 @@ interface ObservedRequest {
   url: string
 }
 
-async function requestObservation(request: Request): Promise<ObservedRequest> {
+// Synchronous by design. `headersArray()` round-trips through the request's
+// worker, and Chromium terminates an idle service worker well before the test
+// reads what it collected, leaving that promise unsettled until the test times
+// out. The synchronous snapshot carries every header the app itself can set,
+// which is the whole of what the payload-leak assertion inspects.
+function requestObservation(request: Request): ObservedRequest {
   return {
     body: request.postData(),
     fromServiceWorker: request.serviceWorker() !== null,
-    headers: await request.headersArray(),
+    headers: Object.entries(request.headers()).map(([name, value]) => ({
+      name,
+      value,
+    })),
     method: request.method(),
     url: request.url(),
   }
-}
-
-async function awaitRequestObservations(
-  pending: readonly Promise<ObservedRequest>[],
-): Promise<ObservedRequest[]> {
-  const requests: ObservedRequest[] = []
-  let next = 0
-  while (next < pending.length) {
-    const batch = pending.slice(next)
-    next += batch.length
-    requests.push(...(await Promise.all(batch)))
-  }
-  return requests
 }
 
 function expectAllowedRelayRequest(request: ObservedRequest): void {
@@ -268,10 +263,10 @@ test("relays a canonical sym-message frame without relay-payload persistence or 
   }
 
   const relayPayloadMarker = "RELAY_E2E_PAYLOAD_MARKER_7f9c2a"
-  const pendingRequestObservations: Promise<ObservedRequest>[] = []
+  const observedRequests: ObservedRequest[] = []
   const consoleValues: string[] = []
   context.on("request", (request) =>
-    pendingRequestObservations.push(requestObservation(request)),
+    observedRequests.push(requestObservation(request)),
   )
   page.on("console", (message) => consoleValues.push(message.text()))
   page.on("pageerror", (error) => consoleValues.push(error.message))
@@ -421,9 +416,12 @@ test("relays a canonical sym-message frame without relay-payload persistence or 
     expectNoRelayPayloadText([value], relayPayloadMarkers)
   }
   await assertNoRelayPayloadPersistence(page, relayPayloadMarkers)
-  const requests = await awaitRequestObservations(pendingRequestObservations)
-  expect(requests.some(({ fromServiceWorker }) => fromServiceWorker)).toBe(true)
-  for (const request of requests) {
+  expect(observedRequests.some(({ fromServiceWorker }) => fromServiceWorker)).toBe(
+    true,
+  )
+  // An empty snapshot would make the header assertion below pass vacuously.
+  expect(observedRequests.every(({ headers }) => headers.length > 0)).toBe(true)
+  for (const request of observedRequests) {
     expectAllowedRelayRequest(request)
     expectNoRelayPayloadText(
       [

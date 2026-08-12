@@ -37,14 +37,14 @@ function escapeRegex(value: string): string {
 export async function expectOnlineGate(page: Page): Promise<void> {
   await Promise.all([
     expectOnline(
-      page.getByText("Install the PWA or relay a message-payload QR"),
+      page.getByRole("heading", { name: "Install the PWA", exact: true }),
     ).toBeVisible(),
     expectOnline(
-      page.getByText("Online installation and message-payload QR relay"),
+      page.getByText("Online installation and message relay"),
     ).toBeVisible(),
     expectOnline(
       page.getByText(
-        /clean origin may also relay canonical OCF2 frames.*pq-message.*sym-message.*without using local keys/,
+        /Install this app while online, then use it offline/,
       ),
     ).toBeVisible(),
     expectOnline(page.getByText(/OCM1/)).toHaveCount(0),
@@ -53,7 +53,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
     expectOnline(page.getByText("Offline-use readiness")).toBeVisible(),
     expectOnline(
       page.getByText(
-        "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
+        "To use encryption features, take this device offline — for example with airplane mode — then accept the risk acknowledgement that appears. Going offline does not make a compromised device safe.",
       ),
     ).toBeVisible(),
     expectOnline(page.getByText("Online", { exact: true })).toBeVisible(),
@@ -185,7 +185,7 @@ export async function switchToOfflineApp(
   await setDeviceOffline(context, true)
   await page.reload({ waitUntil: "domcontentloaded" })
   await expect(
-    page.getByText("Install the PWA or relay a message-payload QR"),
+    page.getByRole("heading", { name: "Install the PWA", exact: true }),
   ).toBeHidden()
   await expectOfflineAcknowledgement(page)
   await acknowledgeOfflineRisk(page)
