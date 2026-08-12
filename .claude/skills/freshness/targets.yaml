@@ -484,7 +484,7 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-08-08
+    last_checked: 2026-08-12
     files:
       - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
