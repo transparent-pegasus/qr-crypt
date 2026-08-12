@@ -53,7 +53,7 @@ export async function expectOnlineGate(page: Page): Promise<void> {
     expectOnline(page.getByText("Offline-use readiness")).toBeVisible(),
     expectOnline(
       page.getByText(
-        "Switch to offline mode, for example with airplane mode, to use offline features. A risk acknowledgement will appear when the state changes. On a compromised device, neither airplane mode nor an offline indicator can be trusted, so going offline does not guarantee that the device is safe.",
+        "To use encryption features, take this device offline — for example with airplane mode — then accept the risk acknowledgement that appears. Going offline does not make a compromised device safe.",
       ),
     ).toBeVisible(),
     expectOnline(page.getByText("Online", { exact: true })).toBeVisible(),
