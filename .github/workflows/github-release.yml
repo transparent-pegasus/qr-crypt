@@ -25,8 +25,8 @@ defaults:
 env:
   EXPECTED_REPOSITORY: transparent-pegasus/qr-crypt
   EXPECTED_WORKFLOW_IDENTITY: https://github.com/transparent-pegasus/qr-crypt/.github/workflows/github-release.yml@refs/heads/main
-  COSIGN_VERSION: v3.0.6
-  COSIGN_VERIFY_IMAGE: ghcr.io/sigstore/cosign/cosign@sha256:de9c65609e6bde17e6b48de485ee788407c9502fa08b8f4459f595b21f56cd00 # v3.0.6
+  COSIGN_VERSION: v3.1.3
+  COSIGN_VERIFY_IMAGE: ghcr.io/sigstore/cosign/cosign@sha256:9e5c2f2edc34351160407ca3416c61855bdf9403c3c5936e0f0be7fc261611b8 # v3.1.3
 
 jobs:
   build:
@@ -60,6 +60,9 @@ jobs:
 
       - name: Install frozen dependencies
         run: aube ci
+
+      - name: Audit dependencies
+        run: aube audit
 
       - name: Type check
         run: aube run typecheck

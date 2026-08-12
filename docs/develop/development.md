@@ -75,8 +75,9 @@ aube exec playwright install chromium
 aube test:e2e
 ```
 
-On CI, `aube exec playwright install --with-deps chromium` is used. The validate job also
-runs `test:pq-vectors` / `test:pq` / `test:qr-multipart`.
+On CI, `aube exec playwright install --with-deps chromium` is used. The
+authoritative `validate` job step list and gate behavior are maintained in
+[deployment.md](deployment.md#ci-flow).
 
 ## Build
 

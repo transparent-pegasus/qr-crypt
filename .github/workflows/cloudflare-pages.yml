@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: aube ci
 
+      - name: Audit dependencies
+        run: aube audit
+
       - name: Type check
         run: aube run typecheck
 
