@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest"
-import { AppError } from "@/crypto/errors"
 import {
   decodeMlKemEnvelopeV2,
   decodePublicIdentityBundleV2,
@@ -528,9 +527,15 @@ describe("single-frame symmetric rule (T21)", () => {
       const bytes = encodeCanonicalCbor(
         symFrame(artifactType, 2) as unknown as CanonicalCborValue,
       )
-      expect(() => decodeQrFrameV2(bytes)).toThrow(AppError)
-      expect(() => validateQrFrameV2(symFrame(artifactType, 2))).toThrow(AppError)
-      expect(() => encodeQrFrameV2(symFrame(artifactType, 2))).toThrow(AppError)
+      expect(() => decodeQrFrameV2(bytes)).toThrowError(
+        expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+      )
+      expect(() => validateQrFrameV2(symFrame(artifactType, 2))).toThrowError(
+        expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+      )
+      expect(() => encodeQrFrameV2(symFrame(artifactType, 2))).toThrowError(
+        expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+      )
     },
   )
 

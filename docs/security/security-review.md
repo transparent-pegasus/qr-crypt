@@ -116,10 +116,10 @@ review date rather than inheriting one date for this whole section.
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-08-02: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-08-08: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
 - Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-08-02): the current NIST FIPS 203
+- FIPS errata (§3 step 1, checked 2026-08-08): the current NIST FIPS 203
   and FIPS 204 workbooks list prospective corrections that introduce no new
   technical requirements (the FIPS 204 workbook was updated 2026-07-31). None
   affects the active API or size table
@@ -358,8 +358,7 @@ T14 residual as they stood at the time.
   including the verifier image index digest
   `sha256:9e5c2f2edc34351160407ca3416c61855bdf9403c3c5936e0f0be7fc261611b8`.
   The English and Japanese Route A procedures retain independent provisioning
-  and authentication and require v3.1.3 or later, or v2.6.5 or later on the v2
-  release line.
+  and authentication and require v3.1.3 or later.
 - **Residual:** the repository controls its workflow pin, but the Route A
   verifier supplies their own Cosign binary; that version floor is an
   instruction, not an enforced control. The CI `aube audit` gate checks npm

@@ -31,7 +31,8 @@ the relay mechanics (OCF2 allowlist for `pq-message` \| `sym-message`,
 assembled-artifact schema validation before playback, no AEAD on the online hop,
 no frame- or artifact-derived app persistence) — not installation integrity.
 **T21** states the residual that validation does not close: covert data inside
-otherwise valid ciphertext, salt, IV, or other sender-controlled fields.
+otherwise valid sender-controlled ciphertext, `transferId`, `iv`, or `createdAt`
+values.
 
 ## 2. Independently authenticated inputs — mandatory
 
@@ -40,8 +41,7 @@ medium, and this document as untrusted until verification succeeds. Independentl
 provision and authenticate all of the following through a channel independent of
 the download:
 
-- an authenticated Cosign binary, v3.1.3 or later (or v2.6.5 or later on the
-  v2 release line)
+- an authenticated Cosign binary, v3.1.3 or later
 - the current Sigstore trusted root (`trusted_root.json`)
 - the certificate identity (workflow identity)
 - the OIDC issuer
@@ -51,9 +51,10 @@ the download:
 - the intended release tag
 - the full source commit
 
-Do not use an older Cosign release for this procedure. With a vulnerable
-release, a substituted legacy-format bundle can silently bypass the
-`--certificate-identity` and `--certificate-oidc-issuer` policies below. The
+Cosign v3.1.3 is the minimum because `GHSA-fx35-mq7g-6g98` affects Cosign v3
+through v3.1.2. With an affected release, a substituted legacy-format bundle can
+silently bypass the `--certificate-identity` and `--certificate-oidc-issuer`
+policies below. The
 version floor is therefore part of the independently authenticated verifier
 policy; it does not replace independent provisioning and authentication of the
 Cosign binary.
