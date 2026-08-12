@@ -756,7 +756,7 @@ const ja = {
   "gate.mode.label": "オンライン導入・メッセージリレー",
   "gate.heading": "PWAの導入",
   "gate.description":
-    "オンラインのうちにこのアプリを導入し、利用はオフラインで行ってください。暗号・復号、鍵、設定はオフライン専用です。",
+    "オンラインでこのアプリを導入し、利用はオフラインで行ってください。暗号・復号、鍵、設定はオフライン専用です。",
   "pwa.installState.label": "PWAインストール状態",
   "pwa.installState.installed": "インストール済み",
   "pwa.installState.notInstalled": "未インストール",
@@ -774,7 +774,7 @@ const ja = {
   "gate.switchOffline.title": "オフラインに切り替えてください",
   "gate.switchOffline.body":
     "暗号機能を使うには、機内モードなどでこの端末をオフラインにし、表示されるリスク確認に同意してください。オフラインにしても、侵害された端末が安全になるわけではありません。",
-  "gate.about.link": "このアプリが何をするか",
+  "gate.about.link": "このアプリでできること",
 
   "relay.card.title": "メッセージリレー",
   "relay.card.description":
