@@ -148,7 +148,7 @@ const en = {
     "Move sender-controlled canonical OCF2 frames whose outer header declares pq-message or sym-message between a messenger and an offline device. Completed sets are assembled and checked against the declared message schema before output. The relay does not intentionally place payload-derived values in app-managed storage or payload-bearing network requests.",
   "relay.boundary.title": "Untrusted relay boundary",
   "relay.boundary.body":
-    "The relay accepts only canonical OCF2 frames whose untrusted outer header declares pq-message or sym-message. It assembles each completed set and validates the declared message schema before output, but performs no AEAD, signature verification, or decryption. Schema-valid ciphertext, salt, IV, and other sender-controlled fields remain untrusted and can carry covert data. The receiving offline device is the only authentication boundary. Face-to-face key exchange is the supported workflow.",
+    "The relay accepts only canonical OCF2 frames whose untrusted outer header declares pq-message or sym-message. It assembles each completed set and validates the declared message schema before output, but performs no AEAD, signature verification, or decryption. Schema-valid sender-controlled ciphertext, transferId, IV, and createdAt values remain untrusted and can carry covert data. The receiving offline device is the only authentication boundary. Face-to-face key exchange is the supported workflow.",
   "relay.capture.open": "QR → text",
   "relay.capture.unavailable":
     "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
@@ -781,7 +781,7 @@ const ja = {
     "メッセンジャーとオフライン端末の間で、外側ヘッダーがpq-messageまたはsym-messageを表明する、送信者が制御する正規OCF2フレームを中継します。完成した一式は組み立て、表明されたメッセージスキーマを検証してから出力します。ペイロード由来の値をアプリ管理の保存領域やペイロードを含むネットワーク要求へ意図的に書き込みません。",
   "relay.boundary.title": "信頼しない中継境界",
   "relay.boundary.body":
-    "外側の信頼できないヘッダーがpq-messageまたはsym-messageを表明する正規OCF2フレームだけを受け入れます。完成した一式を組み立て、表明されたメッセージスキーマを検証してから出力しますが、AEAD、署名検証、復号は行いません。スキーマに適合する暗号文、salt、IVなど送信者が制御するフィールドは信頼できず、隠れたデータを運べます。真正性を確認できるのは受信側のオフライン端末だけです。鍵交換は対面で行う運用を前提とします。",
+    "外側の信頼できないヘッダーがpq-messageまたはsym-messageを表明する正規OCF2フレームだけを受け入れます。完成した一式を組み立て、表明されたメッセージスキーマを検証してから出力しますが、AEAD、署名検証、復号は行いません。スキーマに適合し送信者が制御する暗号文、transferId、IV、createdAtの各値は信頼できず、隠れたデータを運べます。真正性を確認できるのは受信側のオフライン端末だけです。鍵交換は対面で行う運用を前提とします。",
   "relay.capture.open": "QR → テキスト",
   "relay.capture.unavailable":
     "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",

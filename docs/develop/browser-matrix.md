@@ -4,6 +4,20 @@ This table maps the target browser environments to the primary verification item
 
 **On-device verification is manual work performed outside this repository.** The Playwright runs in CI (chromium / webkit) provide approximate coverage only and do not substitute for on-device PWA installation, camera access, OS-specific key persistence, and the like. The initial value of each cell is `automated (e2e)` (planned to be covered by in-repo e2e tests), `manual-pending` (manual verification on real devices), or `not yet measured` for a quantitative device gate.
 
+## What this matrix establishes
+
+Cells marked `manual-pending` or `not yet measured` are unmeasured, not passing.
+A change that depends on a row's behaviour is not evidenced by that row until
+the measurement exists, at the exact release build hash, on a real device.
+
+This is a **manual release policy, not a CI gate.** The active ruleset requires
+`validate` and `e2e`; neither consumes this matrix, so nothing in automation
+blocks a promotion that depends on an unmeasured row. The widened
+generated-density range reached `main` on such a row, and
+`docs/security/security-review.md` §1.2 records that as an unmet condition
+rather than a satisfied one. Whether experimental prereleases are exempt from
+this policy is an open maintainer decision and is deliberately not settled here.
+
 | Verification item | Android Chrome | iOS Safari | Windows Chrome | macOS Safari | Edge |
 | --- | --- | --- | --- | --- | --- |
 | PWA installation | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |

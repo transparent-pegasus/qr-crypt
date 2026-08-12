@@ -24,8 +24,13 @@ uploads `dist` via Wrangler (Direct Upload).
 `.github/workflows/cloudflare-pages.yml` runs on every branch and on every pull
 request targeting `main` or `dev`:
 
-* The `validate` job (type check, lint, unit, post-quantum, multipart QR,
-  production build) and the `e2e` job always run. Playwright builds with
+* The `validate` job installs the frozen dependency graph (`aube ci`), audits
+  it (`aube audit`), then runs type checking, lint, unit tests, post-quantum
+  known-answer and integration tests, multipart QR tests, and the production
+  build. The audit step has no `continue-on-error`: an open known npm advisory
+  fails the job on the next triggered run. There is no scheduled audit, and
+  this gate does not replace the freshness review that maintains the written
+  advisory record. The `e2e` job also always runs. Playwright builds with
   `aube run build:prod` and serves `dist/` with `aube run serve:dist`, so the
   browser receives the `_headers` response policy rather than running against
   Vite preview without those headers
@@ -35,10 +40,14 @@ request targeting `main` or `dev`:
   rather than rebuilding, so the deployed bytes are the validated ones
 * Every other branch and every pull request runs the checks only
 * A `push` to `main` additionally publishes a signed prerelease via
-  `.github/workflows/github-release.yml`. That workflow packages `dist` into the
-  static install ZIP offered as the default install route A, signs it with Cosign,
-  and renders the `INSTALL.txt` verification and local-server instructions carried
-  inside the ZIP from the versioned template
+  `.github/workflows/github-release.yml`. Its build job independently installs
+  the frozen dependency graph and runs `aube audit` unconditionally before type
+  checking, building, or packaging. The sign job requires that build job, and
+  publication requires both, so a failed release audit cannot reach signing or
+  publication. The workflow packages `dist` into the static install ZIP offered
+  as the default install route A, signs it with Cosign, and renders the
+  `INSTALL.txt` verification and local-server instructions carried inside the ZIP
+  from the versioned template
   `docs/develop/install-route-a/INSTALL.template.txt` through
   `scripts/generate-install-txt.mjs`, so a verifier can regenerate that member
   byte-for-byte. Before upload, it extracts the exact archive, starts

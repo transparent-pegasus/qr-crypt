@@ -45,11 +45,17 @@ import {
   encodeCanonicalCbor,
   encodeMlKemEnvelopeV2,
   encodeSymMessageEnvelopeV2,
+  type CanonicalCborValue,
 } from "@/crypto/pq/canonical-cbor"
 import { LanguageProvider } from "@/i18n"
 import { translate } from "@/i18n/messages"
+import { toBase64Url } from "@/lib/base64url"
 import { FRAME_BYTES_MAX, TRANSFER_TIMEOUT_MINUTES_DEFAULT } from "@/lib/limits"
-import { decodeFramePayload, encodeFrameToPayload } from "@/qr/payload-v2"
+import {
+  decodeFramePayload,
+  encodeFrameToPayload,
+  QR_PREFIX_V2,
+} from "@/qr/payload-v2"
 import type {
   MlKemMessageEnvelopeV2,
   QrFrameV2,
@@ -139,10 +145,20 @@ function symPayload(overrides: Partial<QrFrameV2> = {}): string {
   })
 }
 
+// Adversarial fixtures must not be built with the production encoder: it runs
+// guardQrFrameV2, which rejects forbidden shapes. These bytes are canonical
+// wire bytes, so decode — not encode — stays the subject under test.
+function permissiveFramePayload(frame: QrFrameV2): string {
+  return `${QR_PREFIX_V2.frame}${toBase64Url(
+    encodeCanonicalCbor({ ...frame } as unknown as CanonicalCborValue),
+  )}`
+}
+
 function invalidMessagePayloads(artifactType: "pq-message" | "sym-message"): string[] {
   const bytes = encodeCanonicalCbor({ version: 2, type: artifactType })
   return artifactFrames(artifactType, bytes, {
-    frameBytes: Math.ceil(bytes.byteLength / 2),
+    frameBytes:
+      artifactType === "sym-message" ? bytes.byteLength : Math.ceil(bytes.byteLength / 2),
     transferId: new Uint8Array(16).fill(artifactType === "pq-message" ? 0x51 : 0x52),
   }).map(encodeFrameToPayload)
 }
@@ -465,6 +481,39 @@ describe("online relay UI", () => {
     ).toBeInTheDocument()
     expect(renderQr).not.toHaveBeenCalled()
     expect(screen.queryByRole("img")).toBeNull()
+  })
+
+  it("refuses a multi-frame sym-message at playback and produces no relay output", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    )
+
+    const bytes = encodeSymMessageEnvelopeV2(symMessageEnvelope())
+    const originals = artifactFrames("sym-message", bytes, {
+      frameBytes: Math.ceil(bytes.byteLength / 2),
+      transferId: new Uint8Array(16).fill(0x53),
+    }).map(permissiveFramePayload)
+    expect(originals).toHaveLength(2)
+
+    await enterRelayText(
+      user,
+      await screen.findByLabelText(translate("en", "relay.playback.input.label")),
+      originals.join("\n"),
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.playback.show") }),
+    )
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.invalidFrame")),
+    ).toBeInTheDocument()
+    expect(renderQr).not.toHaveBeenCalled()
+    expect(screen.queryByRole("img")).toBeNull()
+    expect(
+      screen.queryByRole("button", { name: translate("en", "relay.capture.copy") }),
+    ).toBeNull()
   })
 
   it.each(["pq-message", "sym-message"] as const)(

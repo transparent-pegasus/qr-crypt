@@ -25,6 +25,7 @@ import { splitIntoFrames } from "@/qr/multipart/split"
 import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
 import {
   type QrFrameV2,
+  SINGLE_FRAME_ARTIFACT_TYPES,
   V2_ARTIFACT_TYPES,
   type V2ArtifactType,
 } from "@/schemas/domain"
@@ -205,14 +206,18 @@ function worstMetadataFrame(
   artifactType: V2ArtifactType,
   chunkBytes: number,
 ): QrFrameV2 {
+  // Symmetric artifacts are single-frame by protocol, so their worst case is one
+  // frame carrying the whole artifact, not a 128-frame header that no legal
+  // transfer can produce.
+  const singleFrame = SINGLE_FRAME_ARTIFACT_TYPES.has(artifactType)
   return {
     version: 2,
     type: "qr-frame",
     transferId: new Uint8Array(16).fill(0xee),
     artifactType,
-    frameIndex: PROTOCOL_MAX_FRAMES - 1,
-    frameCount: PROTOCOL_MAX_FRAMES,
-    totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE,
+    frameIndex: singleFrame ? 0 : PROTOCOL_MAX_FRAMES - 1,
+    frameCount: singleFrame ? 1 : PROTOCOL_MAX_FRAMES,
+    totalByteLength: singleFrame ? chunkBytes : MAX_ARTIFACT_BYTES_ABSOLUTE,
     chunk: new Uint8Array(chunkBytes).fill(0xa5),
   }
 }
@@ -283,12 +288,13 @@ describe("maximum canonical CBOR artifact sizing", () => {
     }> = []
 
     for (const artifactType of V2_ARTIFACT_TYPES) {
+      const singleFrame = SINGLE_FRAME_ARTIFACT_TYPES.has(artifactType)
       const frame = worstMetadataFrame(artifactType, FRAME_BYTES_MAX)
       expect(frame).toMatchObject({
         artifactType,
-        frameIndex: 127,
-        frameCount: 128,
-        totalByteLength: MAX_ARTIFACT_BYTES_ABSOLUTE,
+        frameIndex: singleFrame ? 0 : 127,
+        frameCount: singleFrame ? 1 : 128,
+        totalByteLength: singleFrame ? FRAME_BYTES_MAX : MAX_ARTIFACT_BYTES_ABSOLUTE,
       })
       expect(frame.chunk).toHaveLength(1_000)
       const payload = encodeFrameToPayload(frame)

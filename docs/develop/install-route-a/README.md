@@ -31,7 +31,8 @@ the relay mechanics (OCF2 allowlist for `pq-message` \| `sym-message`,
 assembled-artifact schema validation before playback, no AEAD on the online hop,
 no frame- or artifact-derived app persistence) — not installation integrity.
 **T21** states the residual that validation does not close: covert data inside
-otherwise valid ciphertext, salt, IV, or other sender-controlled fields.
+otherwise valid sender-controlled ciphertext, `transferId`, `iv`, or `createdAt`
+values.
 
 ## 2. Independently authenticated inputs — mandatory
 
@@ -40,7 +41,7 @@ medium, and this document as untrusted until verification succeeds. Independentl
 provision and authenticate all of the following through a channel independent of
 the download:
 
-- an authenticated Cosign version and binary
+- an authenticated Cosign binary, v3.1.3 or later
 - the current Sigstore trusted root (`trusted_root.json`)
 - the certificate identity (workflow identity)
 - the OIDC issuer
@@ -49,6 +50,14 @@ the download:
 - the workflow trigger
 - the intended release tag
 - the full source commit
+
+Cosign v3.1.3 is the minimum because `GHSA-fx35-mq7g-6g98` affects Cosign v3
+through v3.1.2. With an affected release, a substituted legacy-format bundle can
+silently bypass the `--certificate-identity` and `--certificate-oidc-issuer`
+policies below. The
+version floor is therefore part of the independently authenticated verifier
+policy; it does not replace independent provisioning and authentication of the
+Cosign binary.
 
 Never copy expected policy values from the media being verified. Same-media
 checksums and trust roots are not independent trust anchors. Keyless signing
@@ -330,6 +339,14 @@ it; treating it as required would disagree with the archive copy.
    not a fault: disconnect the network — including virtual interfaces such as
    VPN or container bridges, which also make the browser report a connection —
    and reload. Nothing is deleted; stored keys are untouched.
+
+   The same ordering applies after a wipe. A successful `wipe-on-online` reset
+   removes the stored deployment verdict along with the application database, so
+   a wiped device with no reachable install server locks with **"Installation
+   not verified yet"** rather than opening. That is the fail-closed state, not a
+   fault, and it deletes nothing further: serve the origin again from the same
+   `http://127.0.0.1:PORT` so the app can re-verify, then stop the server and
+   disconnect as in this step.
 
 Opening `index.html` with `file://` is unsupported. Plain HTTP on a LAN address
 is unsupported.
