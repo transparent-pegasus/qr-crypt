@@ -116,10 +116,10 @@ review date rather than inheriting one date for this whole section.
 
 ### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-08-02: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
+- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-08-08: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
 - Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-08-02): the current NIST FIPS 203
+- FIPS errata (§3 step 1, checked 2026-08-08): the current NIST FIPS 203
   and FIPS 204 workbooks list prospective corrections that introduce no new
   technical requirements (the FIPS 204 workbook was updated 2026-07-31). None
   affects the active API or size table
