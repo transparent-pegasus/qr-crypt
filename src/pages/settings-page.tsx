@@ -598,7 +598,7 @@ export function SettingsPage() {
           }
         }}
       >
-        <AlertDialogContent role="dialog">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("settings.wipeOff.title")}</AlertDialogTitle>
             <AlertDialogDescription>

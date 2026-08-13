@@ -630,7 +630,7 @@ describe("settings v2", () => {
     expect(wipe).toBeChecked()
     expect(screen.queryByText("Local data will remain")).not.toBeInTheDocument()
 
-    const dialog = await screen.findByRole("dialog")
+    const dialog = await screen.findByRole("alertdialog")
     const confirmation = within(dialog).getByLabelText("Confirmation text")
     const acknowledge = within(dialog).getByRole("checkbox")
     const confirm = within(dialog).getByRole("button", { name: /disable/i })
@@ -657,7 +657,7 @@ describe("settings v2", () => {
 
     await user.click(wipe)
 
-    const dialog = await screen.findByRole("dialog")
+    const dialog = await screen.findByRole("alertdialog")
     const confirmation = within(dialog).getByLabelText("Confirmation text")
     const acknowledge = within(dialog).getByRole("checkbox")
     const confirm = within(dialog).getByRole("button", { name: /disable/i })
@@ -695,7 +695,7 @@ describe("settings v2", () => {
     await waitFor(() =>
       expect(updatePreferences).toHaveBeenCalledWith({ wipeOnOnline: true }),
     )
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
     await waitFor(() =>
       expect(screen.queryByText("Local data will remain")).not.toBeInTheDocument(),
     )
@@ -704,7 +704,7 @@ describe("settings v2", () => {
     await user.click(wipe)
 
     expect(updatePreferences).not.toHaveBeenCalledWith({ wipeOnOnline: false })
-    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument()
   })
 
   it("clears only a stale preference save error after a successful save", async () => {
@@ -790,12 +790,12 @@ describe("settings v2", () => {
     const user = userEvent.setup()
     await renderApp("/settings")
     const button = await screen.findByRole("button", {
-      name: "Keep keys for the next update only",
+      name: "Keep keys across the next online transition only",
     })
     expect(button).toBeEnabled()
     await user.click(button)
     const dialog = await screen.findByRole("alertdialog", {
-      name: "Keep keys for the next update only",
+      name: "Keep keys across the next online transition only",
     })
     expectSingleAlertCancelWithoutClose(dialog)
     const action = within(dialog).getByRole("button", { name: "Arm maintenance token" })
