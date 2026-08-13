@@ -133,7 +133,7 @@ As a cross-cutting countermeasure for T8/T11, OnlineGate fail-closes encryption,
 | `eslint-config-prettier@10.1.8` | Re-checked clean | Supply-chain pin maintained. `react-hook-form` removed 2026-07-30 (incident table above) |
 | `sharp@0.35.2` via `wrangler@4.114.0` → `miniflare@4.20260722.0` (exact pin) | **RESOLVED** `GHSA-f88m-g3jw-g9cj` (CVE-2026-33327 / CVE-2026-33328 / CVE-2026-35590 / CVE-2026-35591, GHSA published 2026-07-21); affected versions below 0.35.0 | Current lock contains the fixed version |
 | `react-router@8.3.0` (exact; replaced the 7.x-only `react-router-dom` wrapper) | **RESOLVED** `GHSA-qwww-vcr4-c8h2` (published 2026-07-24, high): RSC Mode CSRF bypass; vulnerable `>=7.12.0 <8.3.0` | The vulnerable path (RSC mode with server-executed actions) was never used by this client-only PWA; upgraded to the fixed 8.3.0 regardless |
-| `brace-expansion` forced to `5.0.8` via `aube.overrides` (both major lines) | **HISTORICAL CLAIM, STALE WHEN WRITTEN:** recorded as resolving `GHSA-mh99-v99m-4gvg` | Version `5.0.8` was itself vulnerable under `GHSA-rgw5-rvv9-x895`, published 2026-07-30, which bypassed the mitigation this pin existed for. This table's assertion that `aube audit` exited 0 was already stale on 2026-08-02 |
+| `brace-expansion` forced to `5.0.8` via `aube.overrides` (both major lines) | **HISTORICAL CLAIM, STALE WHEN WRITTEN:** recorded as resolving `GHSA-mh99-v99m-4gvg` | Version `5.0.8` was itself vulnerable under `GHSA-rgw5-rvv9-x895`, published 2026-08-03, which bypassed the mitigation this pin existed for. This table's assertion that `aube audit` exited 0 was already stale on 2026-08-02 |
 | Routine in-range updates | Applied | `react@19.2.8`, radix-family minors, `wrangler@4.114.0` |
 | Toolchain | `node@26.5.0` / `aube@1.32.0` pinned | `mise.toml` |
 | FIPS 203 / 204 errata | Prospective corrections; no new technical requirements | NIST workbooks checked 2026-08-02; FIPS 204 workbook updated 2026-07-31. No active API / size impact |
@@ -150,6 +150,12 @@ history the new CI gate answers; neither is erased by the now-clean result.
 | `fast-uri@3.1.5`, `nanoid@3.3.17`, and `undici@7.29.0` forced via `aube.overrides` | **RESOLVED** known advisories; patched versions installed | Build, test, and deploy tooling only; absent from the browser bundle |
 | Full locked dependency graph | `aube audit` reports no known vulnerabilities on 2026-08-08 | The result is dated; it is not a continuing claim about advisories published later |
 | Cosign verifier pin moved from v3.0.6 to v3.1.3 (re-checked 2026-08-08) | **RESOLVED** high-severity `GHSA-fx35-mq7g-6g98`, published 2026-08-06; affected v3 versions are `<=3.1.2` | Workflow signer and verifier image moved to v3.1.3; Route A requires independently authenticated Cosign v3.1.3 or later. The verifier supplies that binary, so the floor is instructional. `aube audit` cannot detect this non-npm advisory, and the independent rebuild remains mandatory |
+
+### Noble pin-move re-check (2026-08-13)
+
+| Target | Status | Notes |
+| --- | --- | --- |
+| `@noble/post-quantum` exact pin `0.7.0` | Latest inspected; no advisories for the installed package (repository / GHSA / OSV clean) | Moved from `0.6.1` through the `crypto-noble` unit under owner approval; `aube audit` reported no known vulnerabilities. Independent-audit status remains self-audit only |
 
 CI `validate` now runs `aube audit` unconditionally after `aube ci`. It detects
 known advisories on the next triggered run — every push, or a pull request
