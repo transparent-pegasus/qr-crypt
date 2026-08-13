@@ -263,7 +263,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-08-08
+    last_checked: 2026-08-14
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)

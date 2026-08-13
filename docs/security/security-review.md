@@ -390,6 +390,57 @@ T14 residual as they stood at the time.
 - The widened-QR promotion condition was recorded as unmet in
   `docs/develop/browser-matrix.md` rather than silently satisfied.
 
+## 1.3 Merged 2026-08-12 nation-state-security review round (closed 2026-08-14)
+
+Three same-skill runs reviewed revision `db082c7`. Exactly two have file-backed
+reports under gitignored `.tmp/`: `nss-review-20260812-db082c7.md` (Claude,
+NSS-R1–NSS-R8 plus the merge addendum) and `nss-codex-pY-20260812.md` (Codex
+pY, NSR-01–NSR-10). The third run, Codex pW, was in-pane only; its executable
+evidence — typecheck and lint passed, 75 Vitest files / 1,016 tests passed, 31
+Playwright tests passed, the production build passed, and `aube audit` was
+clean — is preserved in the first report's merge addendum. These are
+same-skill self-investigations, not an independent review in the sense §4
+requires.
+
+The owner decisions and merged dispositions were taken as follows:
+
+- **D1 — option A:** retain the permanent wipe-on-online switch with typed
+  confirmation and acknowledgment parity; retain the one-transition
+  maintenance token. The boot and wipe decision logic did not change.
+- **D2 — default:** show the symmetric-key fingerprint at import and require
+  an independent-channel comparison acknowledgment, without a wire,
+  storage-schema, or persisted trust-state change.
+- **D3 — accepted:** take the relay and README precision work. This reverses
+  the earlier r1 misattribution: the existing PNG / ZIP / clipboard disclaimer
+  did not refute the tension between persistent-storage and transfer claims.
+- **D4 — approved and taken:** upgrade the exact `@noble/post-quantum` pin to
+  0.7.0 through the complete `crypto-noble` unit; its audit, PQ, vector, and
+  benchmark gate passed.
+- **D5 — deferred:** add no scheduled audit workflow; revisit this only if the
+  14-day dependency cadence slips.
+
+NSS-R8 remains `REPOSITORY_IMPLEMENTABLE` but deliberately deferred. Re-open
+unverified-signer plaintext gating first if operator reports show the current
+destructive identity alerts being ignored. Consider cross-session replay
+persistence only with the device-keyed opaque-tag design named in F-02.
+Sender-key binding is a wire revision.
+
+The exact-device leakage campaign remains an `EXTERNAL_ASSURANCE` follow-up.
+Evaluating a hardened native backend remains an architectural decision if
+side-channel resistance becomes a requirement. Operator Cosign currency,
+Route A navigation-response checking, the T21 277-bit covert-egress floor, E8,
+and T13 retain their recorded deployment, external-assurance, or architectural
+boundaries. This round changes no external-assurance status: the independent
+third-party audit and environment-independent release reproduction blockers
+stand, and `release-approved` remains unreached.
+
+**Architectural residual (NSR-07).** The sole active post-quantum suite
+concentrates confidentiality in ML-KEM-1024 and authenticity in ML-DSA-87. No
+independently different component preserves the corresponding property if its
+family fails. Hybridization or diversification would be a versioned-protocol
+redesign requiring independent design review, not a dependency swap. This is a
+concentration record, not evidence of a present break.
+
 ## 2. Prohibited Claims (UI / README / CI)
 
 None of the following may be used in UI, README, or CI displays.
