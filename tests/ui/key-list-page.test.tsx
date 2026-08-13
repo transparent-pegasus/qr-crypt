@@ -3,7 +3,7 @@ import { useState } from "react"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
-import { AppProviders, useSensitiveSession } from "@/app/providers"
+import { AppProviders } from "@/app/providers"
 import type { KeySelection } from "@/components/key-detail-dialog"
 import { AppError } from "@/crypto/errors"
 import { formatDateTime } from "@/features/presentation"
@@ -109,11 +109,6 @@ async function seedRotation(now: number): Promise<{
   return { next, previous }
 }
 
-function SensitiveStateProbe() {
-  const { secretVisible } = useSensitiveSession()
-  return <output data-testid="secret-visible">{String(secretVisible)}</output>
-}
-
 function SymmetricDetailHarness({
   record = ock2Record(),
 }: {
@@ -124,19 +119,16 @@ function SymmetricDetailHarness({
     id: record.id,
   })
   return (
-    <>
-      <SensitiveStateProbe />
-      <KeyDetailDialog
-        selection={selection}
-        identity={undefined}
-        previous={undefined}
-        symmetric={selection === null ? undefined : record}
-        onOpenChange={(open) => {
-          if (!open) setSelection(null)
-        }}
-        onChanged={async () => undefined}
-      />
-    </>
+    <KeyDetailDialog
+      selection={selection}
+      identity={undefined}
+      previous={undefined}
+      symmetric={selection === null ? undefined : record}
+      onOpenChange={(open) => {
+        if (!open) setSelection(null)
+      }}
+      onChanged={async () => undefined}
+    />
   )
 }
 
@@ -724,39 +716,6 @@ describe("key list page", () => {
     expect(
       screen.queryByRole("dialog", { name: /full screen/ }),
     ).not.toBeInTheDocument()
-  })
-
-  it("retains secretVisible across fullscreen close and clears it only with the detail dialog", async () => {
-    const user = userEvent.setup()
-    render(
-      <LanguageProvider initialLanguage="en">
-        <AppProviders features={fakeFeatures} pwaHook={undefined}>
-          <SymmetricDetailHarness />
-        </AppProviders>
-      </LanguageProvider>,
-    )
-    expect(screen.getByTestId("secret-visible")).toHaveTextContent("false")
-    let dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
-    await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
-    dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
-    await user.click(
-      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
-    )
-    await waitFor(() =>
-      expect(screen.getByTestId("secret-visible")).toHaveTextContent("true"),
-    )
-    await user.click(
-      await within(dialog).findByRole("button", { name: "View full screen" }),
-    )
-    expect(screen.getByTestId("secret-visible")).toHaveTextContent("true")
-    await user.keyboard("{Escape}")
-    expect(screen.getByRole("dialog", { name: "Shared-key QR" })).toBeInTheDocument()
-    expect(screen.getByTestId("secret-visible")).toHaveTextContent("true")
-
-    await user.click(within(dialog).getByRole("button", { name: "Close" }))
-    await waitFor(() =>
-      expect(screen.getByTestId("secret-visible")).toHaveTextContent("false"),
-    )
   })
 
   it("retargets selection to the new head after rotate and re-derives after revoke", async () => {

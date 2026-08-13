@@ -6,7 +6,7 @@
 // Order (owned solely by WipeCoordinator; frozen):
 //   1. Fail closed for new UI/crypto/storage operations.
 //   2. Cancel/terminate Workers and drop the Vault-key cache.
-//   3. Hide and reset transient state/SensitiveSession.
+//   3. Hide and reset transient page-local state and bump the TransientClear nonce.
 //   4. Use navigator.locks (with a fallback) plus BroadcastChannel("qr-crypt-wipe")
 //      to request that all tabs stop and close.
 //   5. Delete EncryptedSecret values under the Vault first, then delete the Vault-key

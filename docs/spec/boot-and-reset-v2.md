@@ -233,7 +233,7 @@ checker remains required.
    inside the Worker itself; the app keeps no registry of page-side byte
    buffers, because page plaintext lives in JavaScript strings, which cannot
    be zeroized.
-3. Hide and reset transient/SensitiveSession state.
+3. Hide and reset transient page-local state and bump the TransientClear nonce.
 4. Request stop/close in all tabs via `navigator.locks` (with a fallback) +
    `BroadcastChannel("qr-crypt-wipe")`.
 5. **Delete the `EncryptedSecret` records under the Vault first → then delete

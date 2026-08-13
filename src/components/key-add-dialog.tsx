@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
-import { useFeatureSupport, useSensitiveSession } from "@/app/providers"
+import { useFeatureSupport } from "@/app/providers"
 import {
   KeyDetailContent,
   type KeyDetailContentProps,
@@ -109,7 +109,6 @@ export function KeyAddDialog({
 }: KeyAddDialogProps) {
   const { t } = useI18n()
   const { camera } = useFeatureSupport()
-  const { setSensitiveSession } = useSensitiveSession()
   const { preferences } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const [view, setView] = useState<AddView>({ kind: mode ?? "create" })
@@ -181,20 +180,6 @@ export function KeyAddDialog({
   useEffect(() => {
     if (mode === null) scanSession.discard()
   }, [mode, scanSession])
-
-  useEffect(() => {
-    if (showsDetail) return
-    setSensitiveSession({
-      cryptoBusy: open && busy,
-      secretVisible: open && view.kind === "symmetric-import",
-    })
-  }, [busy, open, setSensitiveSession, showsDetail, view.kind])
-  useEffect(
-    () => () => {
-      setSensitiveSession({ cryptoBusy: false, secretVisible: false })
-    },
-    [setSensitiveSession],
-  )
 
   const persist = async (write: () => Promise<void>) => {
     persistingRef.current = true

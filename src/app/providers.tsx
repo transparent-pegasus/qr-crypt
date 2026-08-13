@@ -126,60 +126,6 @@ function DisplayGateLayer({ children }: { children: ReactNode }) {
   )
 }
 
-export interface SensitiveSessionState {
-  hasPlaintext: boolean
-  hasDecrypted: boolean
-  cryptoBusy: boolean
-  secretVisible: boolean
-}
-
-interface SensitiveSessionContextValue extends SensitiveSessionState {
-  setSensitiveSession: (patch: Partial<SensitiveSessionState>) => void
-  resetSensitiveSession: () => void
-}
-
-const EMPTY_SENSITIVE_SESSION: SensitiveSessionState = {
-  hasPlaintext: false,
-  hasDecrypted: false,
-  cryptoBusy: false,
-  secretVisible: false,
-}
-
-const SensitiveSessionContext = createContext<SensitiveSessionContextValue | null>(null)
-
-export function SensitiveSessionProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<SensitiveSessionState>(EMPTY_SENSITIVE_SESSION)
-  const setSensitiveSession = useCallback((patch: Partial<SensitiveSessionState>) => {
-    setState((current) => {
-      const next = { ...current, ...patch }
-      return next.hasPlaintext === current.hasPlaintext &&
-        next.hasDecrypted === current.hasDecrypted &&
-        next.cryptoBusy === current.cryptoBusy &&
-        next.secretVisible === current.secretVisible
-        ? current
-        : next
-    })
-  }, [])
-  const resetSensitiveSession = useCallback(() => setState(EMPTY_SENSITIVE_SESSION), [])
-  const value = useMemo(
-    () => ({ ...state, setSensitiveSession, resetSensitiveSession }),
-    [resetSensitiveSession, setSensitiveSession, state],
-  )
-  return (
-    <SensitiveSessionContext.Provider value={value}>
-      {children}
-    </SensitiveSessionContext.Provider>
-  )
-}
-
-export function useSensitiveSession(): SensitiveSessionContextValue {
-  const value = useContext(SensitiveSessionContext)
-  if (!value) {
-    throw new Error("useSensitiveSession must be used inside SensitiveSessionProvider")
-  }
-  return value
-}
-
 const FeatureSupportContext = createContext<FeatureSupport | null>(null)
 
 export function FeatureSupportProvider({
@@ -217,20 +163,18 @@ export function AppProviders({
     <ThemeProvider>
       <FeatureSupportProvider features={features}>
         <TransientClearProvider>
-          <SensitiveSessionProvider>
-            <DisplayGateLayer>
-              <PwaOfflineReady registerHook={pwaHook}>{children}</PwaOfflineReady>
-              <Toaster
-                position="bottom-center"
-                richColors
-                // Leave 1rem above the bottom navigation (h-16 + safe area) without overlapping it.
-                offset={{ bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)" }}
-                mobileOffset={{
-                  bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)",
-                }}
-              />
-            </DisplayGateLayer>
-          </SensitiveSessionProvider>
+          <DisplayGateLayer>
+            <PwaOfflineReady registerHook={pwaHook}>{children}</PwaOfflineReady>
+            <Toaster
+              position="bottom-center"
+              richColors
+              // Leave 1rem above the bottom navigation (h-16 + safe area) without overlapping it.
+              offset={{ bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)" }}
+              mobileOffset={{
+                bottom: "calc(4rem + env(safe-area-inset-bottom) + 1rem)",
+              }}
+            />
+          </DisplayGateLayer>
         </TransientClearProvider>
       </FeatureSupportProvider>
     </ThemeProvider>

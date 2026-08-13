@@ -14,7 +14,6 @@ import { assertActiveSuite } from "@/crypto/pq/suites"
 import { validateSymMessageEnvelopeV2 } from "@/crypto/pq/validation"
 import {
   useFeatureSupport,
-  useSensitiveSession,
   useTransientClear,
 } from "@/app/providers"
 import { DetailRow } from "@/components/detail-row"
@@ -60,7 +59,6 @@ export function DecryptPage() {
   const getPqClient = usePqCryptoClient()
   const { camera } = useFeatureSupport()
   const { nonce } = useTransientClear()
-  const { setSensitiveSession, resetSensitiveSession } = useSensitiveSession()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(
@@ -135,19 +133,6 @@ export function DecryptPage() {
       ? countUnicodeFormatCharacters(decrypted.text)
       : 0
 
-  useEffect(() => {
-    setSensitiveSession({
-      hasDecrypted: decrypted !== null && decrypted.kind !== "signed-key-unknown",
-      cryptoBusy: busy,
-      secretVisible: false,
-    })
-  }, [busy, decrypted, setSensitiveSession])
-  useEffect(
-    () => () => {
-      resetSensitiveSession()
-    },
-    [resetSensitiveSession],
-  )
   // Navigating away unmounts this page, so drop any half-assembled transfer with it
   // rather than leaving decoded frames reachable from the session object.
   useEffect(() => () => multipartSession.discard(), [multipartSession])

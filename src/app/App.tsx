@@ -17,7 +17,7 @@ import {
 } from "@/lib/feature-detect"
 import { reloadApplication } from "@/lib/reload"
 import { createAppRouter } from "@/app/router"
-import { AppProviders, ThemeProvider, useSensitiveSession } from "@/app/providers"
+import { AppProviders, ThemeProvider } from "@/app/providers"
 import { Button } from "@/components/ui/button"
 import { OnlineGate, OnlineInstallScreen } from "@/components/online-gate"
 import { OfflineAckShell } from "@/components/offline-ack-shell"
@@ -130,12 +130,10 @@ function BootGate({
   const { t } = useI18n()
   const display = useDisplayGate()
   const { clearTransientForOnlineEpisode } = display
-  const { resetSensitiveSession } = useSensitiveSession()
   const resolvedController = controller ?? getDefaultBootController()
   const resetTransient = useCallback(() => {
     clearTransientForOnlineEpisode()
-    resetSensitiveSession()
-  }, [clearTransientForOnlineEpisode, resetSensitiveSession])
+  }, [clearTransientForOnlineEpisode])
   const state = useBootState({
     controller: resolvedController,
     resetTransient,
