@@ -190,7 +190,7 @@ describe("PQ envelope and storage integration", () => {
     const envelope = await encryptPq({
       client,
       recipient: selectedRecipient!,
-      plaintext,
+      plaintext: Uint8Array.from(plaintext),
       sign: { identity: sender, vaultKey },
       now: NOW + 4,
     })
@@ -340,7 +340,7 @@ describe("deleteSupersededIdentities", () => {
     const envelope = await encryptPq({
       client,
       recipient,
-      plaintext,
+      plaintext: Uint8Array.from(plaintext),
       sign: { identity: first, vaultKey },
       now: NOW + 2,
     })

@@ -446,6 +446,18 @@ export async function handlePqWorkerRequest(
     return { id, ok: true, value }
   } catch (error) {
     return { id, ok: false, code: sanitizedCode(error, operation) }
+  } finally {
+    const payload =
+      typeof request.payload === "object" && request.payload !== null
+        ? (request.payload as Record<string, unknown>)
+        : undefined
+    const sensitiveRequest =
+      operation === "encryptPqMessage"
+        ? payload?.["plaintext"]
+        : operation === "verifySignedMessage"
+          ? payload?.["signedMessageBytes"]
+          : undefined
+    if (sensitiveRequest instanceof Uint8Array) zeroize(sensitiveRequest)
   }
 }
 
@@ -465,7 +477,7 @@ function exactOwnedBuffer(view: Uint8Array): ArrayBuffer | undefined {
 function publicTransferables(
   operation: PqWorkerOperation,
   response: PqWorkerRpcResponse,
-): Transferable[] {
+): ArrayBuffer[] {
   if (!response.ok || typeof response.value !== "object" || response.value === null) {
     return []
   }
@@ -489,6 +501,28 @@ function publicTransferables(
   return [...buffers]
 }
 
+export function wipeNonTransferred(
+  response: PqWorkerRpcResponse,
+  transferred: readonly ArrayBuffer[],
+): void {
+  if (!response.ok) return
+  const transferredBuffers = new Set(transferred)
+  const wipeValue = (value: unknown): void => {
+    if (value instanceof Uint8Array) {
+      if (
+        !(value.buffer instanceof ArrayBuffer) ||
+        !transferredBuffers.has(value.buffer)
+      ) {
+        zeroize(value)
+      }
+      return
+    }
+    if (typeof value !== "object" || value === null) return
+    for (const field of Object.values(value)) wipeValue(field)
+  }
+  wipeValue(response.value)
+}
+
 interface WorkerScopeLike {
   document?: unknown
   addEventListener(
@@ -510,7 +544,9 @@ if (
       const operation = isOperation(event.data?.operation)
         ? event.data.operation
         : "verifySignedMessage"
-      workerScope.postMessage(response, publicTransferables(operation, response))
+      const transferred = publicTransferables(operation, response)
+      workerScope.postMessage(response, transferred)
+      wipeNonTransferred(response, transferred)
     })
   })
 }

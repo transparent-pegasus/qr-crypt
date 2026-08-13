@@ -155,7 +155,7 @@ describe("in-process PQ Worker handler", () => {
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: generated.identity.kem.keyId,
       recipientKemPublicKey: generated.identity.kem.publicKey,
-      plaintext,
+      plaintext: Uint8Array.from(plaintext),
       messageId,
       createdAt,
       sign: {

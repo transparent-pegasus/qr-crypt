@@ -157,7 +157,7 @@ async function compositionFixture(): Promise<Fixture> {
     suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: KEM_KEY_ID,
     recipientKemPublicKey: identity.kem.publicKey,
-    plaintext,
+    plaintext: Uint8Array.from(plaintext),
     messageId: MESSAGE_ID,
     createdAt: CREATED_AT,
     sign: {

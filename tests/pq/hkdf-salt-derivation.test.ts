@@ -122,7 +122,7 @@ describe("post-quantum fixed-salt derivation", () => {
       suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
       recipientKemKeyId: identity.kem.keyId,
       recipientKemPublicKey: identity.kem.publicKey,
-      plaintext: PLAINTEXT,
+      plaintext: Uint8Array.from(PLAINTEXT),
       messageId: new Uint8Array(16).fill(0x42),
       createdAt: NOW + 1,
       sign: {
