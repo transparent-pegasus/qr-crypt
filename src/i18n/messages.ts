@@ -148,7 +148,7 @@ const en = {
     "Pass encrypted messages between a messenger and an offline device using QR codes and text. This works only while a scan finds no keys, PQ identities, or Vault on this device; nothing is decrypted and no keys are used.",
   "relay.boundary.title": "Untrusted relay boundary",
   "relay.boundary.body":
-    "This relay accepts only encrypted message frames (OCF2 pq-message or sym-message). It checks their format, but never decrypts, verifies, stores, or transmits them. Everything the sender chose — the ciphertext, transferId, IV, and createdAt values — stays untrusted and can carry covert data until the receiving offline device authenticates it. Exchange keys face to face, never through this relay.",
+    "This relay accepts only encrypted message frames (OCF2 pq-message or sym-message). It checks their format but does not decrypt or verify them. Frames remain in this page's memory for this session only, with no app-managed persistence, and the relay makes no payload-bearing network request. The copy action places text on the system clipboard, which is outside the app's control. Everything the sender chose — the ciphertext, transferId, IV, and createdAt values — stays untrusted and can carry covert data until the receiving offline device authenticates it. Exchange keys face to face, never through this relay.",
   "relay.capture.open": "QR → text",
   "relay.capture.unavailable":
     "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
@@ -791,7 +791,7 @@ const ja = {
     "QRコードとテキストで、メッセンジャーとオフライン端末の間で暗号化済みメッセージを受け渡します。走査で鍵・PQ identity・Vaultが無いと確認できた端末でのみ使え、復号は行わず、鍵も使いません。",
   "relay.boundary.title": "信頼しない中継境界",
   "relay.boundary.body":
-    "このリレーは暗号化済みメッセージフレーム(OCF2のpq-messageまたはsym-message)だけを受け入れます。形式は検査しますが、復号・検証・保存・送信は行いません。送信者が決めた値(暗号文・transferId・IV・createdAt)は隠れたデータを運べ、受信側のオフライン端末が認証するまで信頼できません。鍵の交換は必ず対面で行い、このリレーでは行わないでください。",
+    "このリレーは暗号化済みメッセージフレーム(OCF2のpq-messageまたはsym-message)だけを受け入れます。形式だけを検査し、復号や検証は行いません。フレームはこのページのメモリーにセッション中だけ保持され、アプリが管理する永続化は行いません。ペイロードを含むネットワークリクエストは行いません。コピー操作ではテキストがシステムのクリップボードに置かれ、その後はアプリの制御外になります。送信者が決めた値(暗号文・transferId・IV・createdAt)は隠れたデータを運べ、受信側のオフライン端末が認証するまで信頼できません。鍵の交換は必ず対面で行い、このリレーでは行わないでください。",
   "relay.capture.open": "QR → テキスト",
   "relay.capture.unavailable":
     "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",
