@@ -1220,9 +1220,9 @@ describe("decrypt page v2", () => {
     })
   })
   async function startDeferredSymDecrypt(): Promise<{
-    pending: ReturnType<typeof deferred<Uint8Array>>
+    pending: ReturnType<typeof deferred<Uint8Array<ArrayBuffer>>>
   }> {
-    const pending = deferred<Uint8Array>()
+    const pending = deferred<Uint8Array<ArrayBuffer>>()
     openSymMessage.mockReturnValueOnce(pending.promise)
     const key = addSymmetricKey("A", "sym-v2 active key")
     const { payload } = await prepareSymPayload(key)
