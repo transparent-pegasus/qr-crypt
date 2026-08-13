@@ -286,6 +286,15 @@ describe("online relay UI", () => {
     expect(document.body).not.toHaveTextContent("OCM1")
   })
 
+  it("relay boundary copy states the precise persistence and network claims", () => {
+    renderRelay()
+
+    const body = screen.getByText(/no app-managed persistence/i)
+    expect(body).toHaveTextContent(/no payload-bearing network request/i)
+    expect(body).toHaveTextContent(/clipboard/i)
+    expect(screen.queryByText(/never .*stores.*transmits/i)).not.toBeInTheDocument()
+  })
+
   it("does not pull the reader before the user opens capture, then gates the camera on it", async () => {
     readerModuleState.mockReturnValue("idle")
     const preparation = deferred<void>()
