@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { decodeSignedMessageV2, encodeSignedMessageV2 } from "@/crypto/pq/canonical-cbor"
-import { createPqCryptoClient, type PqCryptoClient } from "@/crypto/pq/worker-client"
+import type { PqCryptoClient } from "@/crypto/pq/worker-client"
 import { dropVaultKeyCache, getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { closeDb, deleteEntireDatabase } from "@/storage/database"
 import { toBase64Url } from "@/lib/base64url"
 import type { PostQuantumIdentity } from "@/schemas/domain"
+import { createInProcessPqClient } from "../setup/pq-in-process-client"
 
 const clients = new Set<PqCryptoClient>()
 
@@ -14,7 +15,7 @@ function keyId(fill: number): string {
 }
 
 function client(): PqCryptoClient {
-  const value = createPqCryptoClient()
+  const value = createInProcessPqClient()
   clients.add(value)
   return value
 }
@@ -83,63 +84,65 @@ describe("in-process PQ Worker handler", () => {
     ).rejects.toMatchObject({ code: "UNSUPPORTED_ALGORITHM" })
   })
 
-  it("generates and regenerates maximum public keys without returning seeds", async () => {
+  it("rejects a tampered stored KEM key before opening", async () => {
     const pq = client()
     const generated = await identity(pq, 11)
-    const restored = await pq.publicKeysFromSeeds({
-      vaultKey: generated.vaultKey,
-      identityId: generated.identity.id,
-      kem: {
-        algorithm: generated.identity.kem.algorithm,
-        keyId: generated.identity.kem.keyId,
-        encryptedSeed: generated.identity.kem.encryptedSeed,
-        storedPublicKey: generated.identity.kem.publicKey,
-      },
-      signing: {
+    const envelope = await pq.encryptPqMessage({
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
+      recipientKemKeyId: generated.identity.kem.keyId,
+      recipientKemPublicKey: generated.identity.kem.publicKey,
+      plaintext: new TextEncoder().encode("KEM key binding"),
+      messageId: new Uint8Array(16).fill(0x12),
+      createdAt: 1_700_000_000_001,
+      sign: {
+        senderSigningKeyId: generated.identity.signing.keyId,
         algorithm: generated.identity.signing.algorithm,
-        keyId: generated.identity.signing.keyId,
+        vaultKey: generated.vaultKey,
+        identityId: generated.identity.id,
         encryptedSeed: generated.identity.signing.encryptedSeed,
         storedPublicKey: generated.identity.signing.publicKey,
       },
     })
-    expect(restored.kemPublicKey).toEqual(generated.identity.kem.publicKey)
-    expect(restored.dsaPublicKey).toEqual(generated.identity.signing.publicKey)
-    expect("seed" in restored).toBe(false)
-    expect("secretKey" in restored).toBe(false)
-    expect(generated.identity.kem.encryptedSeed.ciphertext).toHaveLength(80)
-    expect(generated.identity.signing.encryptedSeed.ciphertext).toHaveLength(48)
+    const replacedPublicKey = Uint8Array.from(generated.identity.kem.publicKey)
+    replacedPublicKey[0] = replacedPublicKey[0]! ^ 1
+    await expect(
+      pq.openPqEnvelope({
+        envelope,
+        recipient: {
+          identityId: generated.identity.id,
+          kemAlgorithm: generated.identity.kem.algorithm,
+          kemKeyId: generated.identity.kem.keyId,
+          encryptedKemSeed: generated.identity.kem.encryptedSeed,
+          storedKemPublicKey: replacedPublicKey,
+          vaultKey: generated.vaultKey,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
   })
 
-  it("signs with an encrypted seed and verifies only public artifacts", async () => {
+  it("rejects a tampered stored signing key before encryption", async () => {
     const pq = client()
     const generated = await identity(pq, 21)
-    const message = new TextEncoder().encode("worker sign request")
-    const signature = await pq.signWithSeed({
-      algorithm: generated.identity.signing.algorithm,
-      vaultKey: generated.vaultKey,
-      identityId: generated.identity.id,
-      keyId: generated.identity.signing.keyId,
-      encryptedSeed: generated.identity.signing.encryptedSeed,
-      storedPublicKey: generated.identity.signing.publicKey,
-      message,
-    })
+    const replacedPublicKey = Uint8Array.from(generated.identity.signing.publicKey)
+    replacedPublicKey[0] = replacedPublicKey[0]! ^ 1
     await expect(
-      pq.verify({
-        algorithm: generated.identity.signing.algorithm,
-        publicKey: generated.identity.signing.publicKey,
-        message,
-        signature,
+      pq.encryptPqMessage({
+        suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
+        recipientKemKeyId: generated.identity.kem.keyId,
+        recipientKemPublicKey: generated.identity.kem.publicKey,
+        plaintext: new TextEncoder().encode("signing key binding"),
+        messageId: new Uint8Array(16).fill(0x22),
+        createdAt: 1_700_000_000_001,
+        sign: {
+          senderSigningKeyId: generated.identity.signing.keyId,
+          algorithm: generated.identity.signing.algorithm,
+          vaultKey: generated.vaultKey,
+          identityId: generated.identity.id,
+          encryptedSeed: generated.identity.signing.encryptedSeed,
+          storedPublicKey: replacedPublicKey,
+        },
       }),
-    ).resolves.toBe(true)
-    message[0] = message[0]! ^ 1
-    await expect(
-      pq.verify({
-        algorithm: generated.identity.signing.algorithm,
-        publicKey: generated.identity.signing.publicKey,
-        message,
-        signature,
-      }),
-    ).resolves.toBe(false)
+    ).rejects.toMatchObject({ code: "ENCRYPTION_FAILED" })
   })
 
   it("runs sign-then-encrypt and releases plaintext only after verification", async () => {
@@ -211,31 +214,6 @@ describe("in-process PQ Worker handler", () => {
       createdAt,
       senderSigningKeyId: generated.identity.signing.keyId,
     })
-  })
-
-  it("rejects stored-public-key replacement before seed use", async () => {
-    const pq = client()
-    const generated = await identity(pq, 61)
-    const replacedPublicKey = Uint8Array.from(generated.identity.kem.publicKey)
-    replacedPublicKey[0] = replacedPublicKey[0]! ^ 1
-    await expect(
-      pq.publicKeysFromSeeds({
-        vaultKey: generated.vaultKey,
-        identityId: generated.identity.id,
-        kem: {
-          algorithm: generated.identity.kem.algorithm,
-          keyId: generated.identity.kem.keyId,
-          encryptedSeed: generated.identity.kem.encryptedSeed,
-          storedPublicKey: replacedPublicKey,
-        },
-        signing: {
-          algorithm: generated.identity.signing.algorithm,
-          keyId: generated.identity.signing.keyId,
-          encryptedSeed: generated.identity.signing.encryptedSeed,
-          storedPublicKey: generated.identity.signing.publicKey,
-        },
-      }),
-    ).rejects.toMatchObject({ code: "DECRYPTION_FAILED" })
   })
 
   it("returns no plaintext for a tampered signed message", async () => {

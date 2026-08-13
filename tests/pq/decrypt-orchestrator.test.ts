@@ -50,9 +50,6 @@ function fakeClient(overrides: Partial<PqCryptoClient>): PqCryptoClient {
   }
   return {
     generateIdentityKeys: unavailable,
-    publicKeysFromSeeds: unavailable,
-    signWithSeed: unavailable,
-    verify: unavailable,
     encryptPqMessage: unavailable,
     openPqEnvelope: unavailable,
     verifySignedMessage: unavailable,

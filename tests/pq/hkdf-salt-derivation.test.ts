@@ -1,10 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { openSymMessage, sealSymMessage } from "@/crypto/aes-gcm"
 import { createSymmetricKeyRecord } from "@/crypto/key-generation"
-import {
-  createPqCryptoClient,
-  type PqCryptoClient,
-} from "@/crypto/pq/worker-client"
+import type { PqCryptoClient } from "@/crypto/pq/worker-client"
 import { dropVaultKeyCache, getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { toBase64Url } from "@/lib/base64url"
 import { utf8ToBytes } from "@/lib/bytes"
@@ -13,6 +10,7 @@ import type {
   PostQuantumIdentity,
 } from "@/schemas/domain"
 import { closeDb, deleteEntireDatabase } from "@/storage/database"
+import { createInProcessPqClient } from "../setup/pq-in-process-client"
 
 const NOW = 1_700_000_000_000
 const PLAINTEXT = utf8ToBytes("fixed-salt derivation round trip")
@@ -76,7 +74,7 @@ describe("post-quantum fixed-salt derivation", () => {
   let vaultKey: CryptoKey
 
   beforeAll(async () => {
-    pq = createPqCryptoClient()
+    pq = createInProcessPqClient()
     vaultKey = await getOrCreateVaultKey()
     const identityId = keyId(31)
     const kemKeyId = keyId(32)
