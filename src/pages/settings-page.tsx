@@ -56,6 +56,7 @@ import { useKeys } from "@/hooks/use-keys"
 import { usePreferences } from "@/hooks/use-preferences"
 import {
   DELETE_ALL_CONFIRMATION,
+  DISABLE_WIPE_CONFIRMATION,
   KEEP_KEYS_CONFIRMATION,
   LanguageSelect,
   useI18n,
@@ -95,6 +96,9 @@ export function SettingsPage() {
   const [securityOpen, setSecurityOpen] = useState(true)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [working, setWorking] = useState(false)
+  const [wipeOffOpen, setWipeOffOpen] = useState(false)
+  const [wipeOffConfirmation, setWipeOffConfirmation] = useState("")
+  const [wipeOffAcknowledged, setWipeOffAcknowledged] = useState(false)
   const [maintenanceOpen, setMaintenanceOpen] = useState(false)
   const [maintenanceConfirmation, setMaintenanceConfirmation] = useState("")
   const [maintenanceAcknowledged, setMaintenanceAcknowledged] = useState(false)
@@ -358,7 +362,15 @@ export function SettingsPage() {
             id="wipe-on-online"
             aria-label={t("settings.wipeOnOnline.label")}
             checked={preferences.wipeOnOnline}
-            onCheckedChange={(checked) => void savePreference({ wipeOnOnline: checked })}
+            onCheckedChange={(checked) => {
+              if (checked) {
+                void savePreference({ wipeOnOnline: true })
+              } else {
+                setWipeOffConfirmation("")
+                setWipeOffAcknowledged(false)
+                setWipeOffOpen(true)
+              }
+            }}
           />
         </div>
         {!preferences.wipeOnOnline && (
@@ -575,6 +587,69 @@ export function SettingsPage() {
           </CollapsibleContent>
         </Collapsible>
       </Card>
+
+      <AlertDialog
+        open={wipeOffOpen}
+        onOpenChange={(open) => {
+          setWipeOffOpen(open)
+          if (!open) {
+            setWipeOffConfirmation("")
+            setWipeOffAcknowledged(false)
+          }
+        }}
+      >
+        <AlertDialogContent role="dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("settings.wipeOff.title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("settings.wipeOff.body")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="wipe-off-confirmation">
+                {t("settings.confirmationLabel")}
+              </Label>
+              <Input
+                id="wipe-off-confirmation"
+                value={wipeOffConfirmation}
+                onChange={(event) => setWipeOffConfirmation(event.target.value)}
+                autoComplete="off"
+                placeholder={DISABLE_WIPE_CONFIRMATION}
+              />
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="wipe-off-ack"
+                checked={wipeOffAcknowledged}
+                onCheckedChange={(checked) =>
+                  setWipeOffAcknowledged(checked === true)
+                }
+              />
+              <Label htmlFor="wipe-off-ack">
+                {t("settings.wipeOff.acknowledge")}
+              </Label>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("settings.wipeOff.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                wipeOffConfirmation !== DISABLE_WIPE_CONFIRMATION ||
+                !wipeOffAcknowledged
+              }
+              onClick={() => {
+                void savePreference({ wipeOnOnline: false })
+                setWipeOffOpen(false)
+                setWipeOffConfirmation("")
+                setWipeOffAcknowledged(false)
+              }}
+            >
+              {t("settings.wipeOff.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={maintenanceOpen}
