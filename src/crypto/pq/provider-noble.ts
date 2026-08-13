@@ -1,5 +1,5 @@
-// @noble/post-quantum 0.6.1 adapter. The dependency must remain exactly pinned.
-// noble API(0.6.1): ml_kem1024.keygen(seed64?) / .encapsulate(pk) /
+// @noble/post-quantum 0.7.0 adapter. The dependency must remain exactly pinned.
+// noble API(0.7.0): ml_kem1024.keygen(seed64?) / .encapsulate(pk) /
 // .decapsulate(ct, sk), ml_dsa87.keygen(seed32?) / .sign(msg, sk, { context })
 // / .verify(sig, msg, pk, { context }). Map context into opts.
 // Input and output lengths must match the constant table in profiles.ts; the adapter verifies them.
