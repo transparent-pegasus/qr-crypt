@@ -15,7 +15,7 @@ import {
   MAX_PLAINTEXT_BYTES,
 } from "@/lib/limits"
 
-interface KemSizeSpec {
+export interface KemSizeSpec {
   algorithm: MlKemAlgorithm
   publicKeyBytes: number
   secretKeyBytes: number
@@ -24,7 +24,7 @@ interface KemSizeSpec {
   seedBytes: typeof KEM_SEED_BYTES
 }
 
-interface DsaSizeSpec {
+export interface DsaSizeSpec {
   algorithm: MlDsaAlgorithm
   publicKeyBytes: number
   secretKeyBytes: number
@@ -32,7 +32,7 @@ interface DsaSizeSpec {
   seedBytes: typeof DSA_SEED_BYTES
 }
 
-interface PqProfileSpec {
+export interface PqProfileSpec {
   id: PqProfileId
   kem: KemSizeSpec
   signature: DsaSizeSpec
