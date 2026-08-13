@@ -377,7 +377,10 @@ const en = {
   "keys.symmetricImport.warnBody":
     "If a third party has the same key, they may be able to decrypt the ciphertext.",
   "keys.symmetricImport.nameLabel": "Key name",
-  "keys.symmetricImport.ackLabel": "I trust the channel used to share this key",
+  "keys.symmetricImport.fingerprintHint":
+    "Compare this fingerprint with the sender through an independent channel",
+  "keys.symmetricImport.ackLabel":
+    "The fingerprint matches what the sender reads out through an independent channel",
   "keys.symmetricImport.saveButton": "Save the shared key",
   "keys.demo.hint":
     "Ask the other party to increase their screen brightness, hold the camera about 15–20 cm away, and keep it still until the image is in focus.",
@@ -1014,7 +1017,10 @@ const ja = {
   "keys.symmetricImport.warnBody":
     "第三者が同じ鍵を持つと、暗号文を復号されるおそれがあります。",
   "keys.symmetricImport.nameLabel": "鍵名",
-  "keys.symmetricImport.ackLabel": "この鍵の共有経路を信頼しています",
+  "keys.symmetricImport.fingerprintHint":
+    "この指紋を別経路で送信者と照合してください",
+  "keys.symmetricImport.ackLabel":
+    "別経路で送信者が読み上げた指紋と一致しています",
   "keys.symmetricImport.saveButton": "共有鍵を保存",
   "keys.demo.hint":
     "相手の画面の輝度を上げてもらい、カメラを15〜20cmほど離してピントが合うまで静止すると読み取りやすくなります。",
