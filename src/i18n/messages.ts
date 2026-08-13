@@ -563,7 +563,14 @@ const en = {
   "settings.wipeOnOnline.offTitle": "Local data will remain",
   "settings.wipeOnOnline.offBody":
     "While permanently off, detecting connectivity will not automatically reset keys and local data.",
-  "settings.maintenance.button": "Keep keys for the next update only",
+  "settings.wipeOff.title": "Disable reset after online connectivity?",
+  "settings.wipeOff.body":
+    'When this setting is off, confirmed online connectivity will not automatically reset keys or local data. Enter "DISABLE WIPE" and acknowledge this consequence to continue.',
+  "settings.wipeOff.acknowledge":
+    "I understand that confirmed online connectivity will no longer automatically reset keys or local data",
+  "settings.wipeOff.confirm": "Disable automatic reset",
+  "settings.wipeOff.cancel": "Cancel",
+  "settings.maintenance.button": "Keep keys across the next online transition only",
   "settings.maintenance.hint":
     "This can be armed only while offline. It is not a recovery path for stored ciphertext and always expires after the next verified transition.",
   "settings.maintenance.onlineDisabled": "This cannot be set while online.",
@@ -612,12 +619,12 @@ const en = {
   "settings.security.caveat.4":
     "Reset attempts logical deletion of local data. Physical erasure is not guaranteed, including for LevelDB and SSD wear leveling.",
   "settings.security.wipeOnOnlineNote":
-    "Wipe-on-online reduces remaining data only if the current code can run after connectivity is established. It does not prevent malicious same-origin code, physical recovery, or compromised code that runs before the update.",
+    "Wipe-on-online reduces remaining data only if the current code can run after connectivity is established. It does not prevent malicious same-origin code, physical recovery, or compromised code that ran before the current code.",
   "settings.maintenance.dialogDesc":
     'Suppresses wipe once, at the next confirmed online transition. Enter "KEEP KEYS" and review the warning to continue.',
   "settings.confirmationLabel": "Confirmation text",
   "settings.maintenance.ackLabel":
-    "I understand this applies once and does not guarantee the safety of the updated code or device",
+    "I understand this applies once and does not guarantee the safety of whatever code or device state follows that transition",
   "settings.maintenance.armButton": "Arm maintenance token",
   "settings.delete.desc.keys":
     'All ciphertext will become undecryptable. Enter "DELETE ALL" to continue.',
@@ -1196,7 +1203,14 @@ const ja = {
   "settings.wipeOnOnline.offTitle": "ローカルデータが残り続けます",
   "settings.wipeOnOnline.offBody":
     "永続OFFでは、接続を検出しても鍵とローカルデータを自動初期化しません。",
-  "settings.maintenance.button": "次の一回だけ鍵を保持して更新",
+  "settings.wipeOff.title": "オンライン確定時の自動初期化を無効にしますか？",
+  "settings.wipeOff.body":
+    "この設定をOFFにすると、オンライン接続が確定しても鍵とローカルデータは自動初期化されません。「DISABLE WIPE」と入力し、この結果を確認してください。",
+  "settings.wipeOff.acknowledge":
+    "オンライン接続が確定しても鍵とローカルデータが自動初期化されなくなることを理解しました",
+  "settings.wipeOff.confirm": "自動初期化を無効にする",
+  "settings.wipeOff.cancel": "キャンセル",
+  "settings.maintenance.button": "次のオンライン確定時だけ鍵を保持",
   "settings.maintenance.hint":
     "オフライン中だけ arm できます。暗号文保存の救済経路ではなく、次の verified transition 後に必ず失効します。",
   "settings.maintenance.onlineDisabled": "オンライン中は設定できません。",
@@ -1249,12 +1263,12 @@ const ja = {
   "settings.security.caveat.4":
     "resetはローカルデータの論理削除を試行します。LevelDB・SSDウェアレベリングを含め、物理消去は保証しません。",
   "settings.security.wipeOnOnlineNote":
-    "wipe-on-onlineは、接続後に現在のコードが実行できた場合の残存データ低減です。同一オリジンの悪意あるコード、物理回収、更新前に実行される侵害コードを防ぎません。",
+    "wipe-on-onlineは、接続後に現在のコードが実行できた場合の残存データ低減です。同一オリジンの悪意あるコード、物理回収、現在のコードより前に実行された侵害コードを防ぎません。",
   "settings.maintenance.dialogDesc":
     "次のオンライン確定時にwipeを一度だけ抑止します。実行するには「KEEP KEYS」と入力し、注意事項を確認してください。",
   "settings.confirmationLabel": "確認文字列",
   "settings.maintenance.ackLabel":
-    "一回限りであり、更新後のコードや端末の安全性を保証しないことを理解しました",
+    "一回限りであり、その移行後に動作するコードや端末状態の安全性を保証しないことを理解しました",
   "settings.maintenance.armButton": "maintenance tokenをarm",
   "settings.delete.desc.keys":
     "すべての暗号文が復号できなくなります。削除を実行するには「DELETE ALL」と入力してください。",
