@@ -10,7 +10,6 @@ import {
 } from "@/crypto/pq/canonical-cbor"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { createNobleDsa87, createNobleKem1024 } from "@/crypto/pq/provider-noble"
-import { createPqCryptoClient } from "@/crypto/pq/worker-client"
 import {
   buildVaultAadV2,
   hkdfInfoV2,
@@ -30,6 +29,7 @@ import type {
   MlKemMessageEnvelopeV2,
   PostQuantumIdentity,
 } from "@/schemas/domain"
+import { createInProcessPqClient } from "../setup/pq-in-process-client"
 
 const IDENTITY_ID = toBase64Url(new Uint8Array(16).fill(0x11))
 const KEM_KEY_ID = toBase64Url(new Uint8Array(16).fill(0x22))
@@ -73,7 +73,7 @@ async function encryptFixedSeed(args: {
 }
 
 interface Fixture {
-  client: ReturnType<typeof createPqCryptoClient>
+  client: ReturnType<typeof createInProcessPqClient>
   identity: PostQuantumIdentity
   vaultKey: CryptoKey
   envelope: MlKemMessageEnvelopeV2
@@ -151,13 +151,13 @@ async function compositionFixture(): Promise<Fixture> {
     return array
   })
 
-  const client = createPqCryptoClient()
+  const client = createInProcessPqClient()
   const plaintext = new TextEncoder().encode("fixed composition plaintext")
   const envelope = await client.encryptPqMessage({
     suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
     recipientKemKeyId: KEM_KEY_ID,
     recipientKemPublicKey: identity.kem.publicKey,
-    plaintext,
+    plaintext: Uint8Array.from(plaintext),
     messageId: MESSAGE_ID,
     createdAt: CREATED_AT,
     sign: {

@@ -50,15 +50,6 @@ function browserGlobals(worker: typeof FakeWorker | undefined): void {
   vi.stubGlobal("Worker", worker)
 }
 
-function verifyRequest() {
-  return {
-    algorithm: "ML-DSA-87" as const,
-    publicKey: new Uint8Array(2592),
-    message: new Uint8Array([1, 2, 3]),
-    signature: new Uint8Array(4627),
-  }
-}
-
 function openRequest(): OpenPqEnvelopeRequest {
   return {
     envelope: {
@@ -130,7 +121,10 @@ describe("browser PQ Worker RPC client", () => {
     const client = createPqCryptoClient()
     const worker = FakeWorker.instances[0]!
     await expect(
-      client.verify({ ...verifyRequest(), signature: new Uint8Array(1) }),
+      client.verifySignedMessage({
+        ...verifySignedMessageRequest(),
+        senderPublicKey: new Uint8Array(1),
+      }),
     ).rejects.toMatchObject({ code: "SIGNATURE_INVALID" })
     expect(worker.messages).toHaveLength(0)
     client.dispose()
@@ -140,21 +134,35 @@ describe("browser PQ Worker RPC client", () => {
     browserGlobals(FakeWorker)
     const client = createPqCryptoClient()
     const worker = FakeWorker.instances[0]!
-    const firstRequest = verifyRequest()
-    const secondRequest = verifyRequest()
-    const first = client.verify(firstRequest)
-    const second = client.verify(secondRequest)
+    const firstRequest = verifySignedMessageRequest()
+    const secondRequest = verifySignedMessageRequest()
+    const first = client.verifySignedMessage(firstRequest)
+    const second = client.verifySignedMessage(secondRequest)
     expect(worker.messages).toHaveLength(2)
     const firstRpc = worker.messages[0] as { id: string }
     const secondRpc = worker.messages[1] as { id: string }
     expect(firstRpc.id).not.toBe(secondRpc.id)
     expect(worker.transferArguments).toEqual([undefined, undefined])
-    expect(firstRequest.signature.byteLength).toBe(4627)
+    expect(firstRequest.signedMessageBytes.byteLength).toBe(1)
 
-    worker.emit("message", { id: secondRpc.id, ok: true, value: false })
-    worker.emit("message", { id: firstRpc.id, ok: true, value: true })
-    await expect(first).resolves.toBe(true)
-    await expect(second).resolves.toBe(false)
+    worker.emit("message", { id: secondRpc.id, ok: true, value: { valid: false } })
+    worker.emit("message", {
+      id: firstRpc.id,
+      ok: true,
+      value: {
+        valid: true,
+        plaintext: new Uint8Array([1]),
+        messageId: MESSAGE_ID,
+        createdAt: CREATED_AT,
+      },
+    })
+    await expect(first).resolves.toEqual({
+      valid: true,
+      plaintext: new Uint8Array([1]),
+      messageId: MESSAGE_ID,
+      createdAt: CREATED_AT,
+    })
+    await expect(second).resolves.toEqual({ valid: false })
     client.dispose()
   })
 
@@ -163,7 +171,7 @@ describe("browser PQ Worker RPC client", () => {
     browserGlobals(FakeWorker)
     const client = createPqCryptoClient({ timeoutMs: 10 })
     const worker = FakeWorker.instances[0]!
-    const pending = client.verify(verifyRequest())
+    const pending = client.verifySignedMessage(verifySignedMessageRequest())
     const rejection = expect(pending).rejects.toMatchObject({
       code: "WORKER_UNAVAILABLE",
     })
@@ -172,7 +180,7 @@ describe("browser PQ Worker RPC client", () => {
     await rejection
     expect(worker.terminated).toBe(true)
     expect(() =>
-      worker.emit("message", { id: rpc.id, ok: true, value: true }),
+      worker.emit("message", { id: rpc.id, ok: true, value: { valid: true } }),
     ).not.toThrow()
   })
 
@@ -180,7 +188,7 @@ describe("browser PQ Worker RPC client", () => {
     browserGlobals(FakeWorker)
     const client = createPqCryptoClient()
     const worker = FakeWorker.instances[0]!
-    const pending = client.verify(verifyRequest())
+    const pending = client.verifySignedMessage(verifySignedMessageRequest())
     const rpc = worker.messages[0] as { id: string }
     worker.emit("message", {
       id: rpc.id,

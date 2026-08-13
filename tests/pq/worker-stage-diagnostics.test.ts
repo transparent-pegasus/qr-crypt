@@ -4,10 +4,11 @@
 // inside the allowlist docs/security/security-review.md sets for every surface, console
 // included: no message, no stack, no cause, no payload, no byte array.
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest"
-import { createPqCryptoClient, type PqCryptoClient } from "@/crypto/pq/worker-client"
+import type { PqCryptoClient } from "@/crypto/pq/worker-client"
 import { dropVaultKeyCache, getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { closeDb, deleteEntireDatabase } from "@/storage/database"
 import { toBase64Url } from "@/lib/base64url"
+import { createInProcessPqClient } from "../setup/pq-in-process-client"
 
 const clients = new Set<PqCryptoClient>()
 
@@ -16,7 +17,7 @@ function keyId(fill: number): string {
 }
 
 function client(): PqCryptoClient {
-  const value = createPqCryptoClient()
+  const value = createInProcessPqClient()
   clients.add(value)
   return value
 }
