@@ -639,6 +639,12 @@ export function SettingsPage() {
                 !wipeOffAcknowledged
               }
               onClick={() => {
+                if (
+                  wipeOffConfirmation !== DISABLE_WIPE_CONFIRMATION ||
+                  !wipeOffAcknowledged
+                ) {
+                  return
+                }
                 void savePreference({ wipeOnOnline: false })
                 setWipeOffOpen(false)
                 setWipeOffConfirmation("")
