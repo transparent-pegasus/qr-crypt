@@ -20,12 +20,14 @@ import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"
 import {
   armMaintenanceToken,
+  buildPublicBundle,
   buildSymmetricKeyEnvelopeV2,
   clearAllIdentities,
   clearAllKeys,
   confirmBundleFingerprint,
   createIdentity,
   createSymmetricKeyRecord,
+  decodePayload,
   emitScannedPayload,
   encodePublicIdentityBundleV2,
   encodeSymmetricKeyEnvelopeV2,
@@ -49,6 +51,15 @@ import { renderApp, resetUi } from "./helpers/render-app"
 
 function en(key: Parameters<typeof translate>[1]): string {
   return translate("en", key)
+}
+
+const unit = (n: number) => "n".repeat(n)
+
+function pasteBundleWithName(name: string): void {
+  decodePayload.mockReturnValueOnce({
+    kind: "pq-public-identity" as const,
+    envelope: buildPublicBundle({ ...fakeIdentities[0]!, name }),
+  })
 }
 
 function ock2SourceRecord(): StoredKeyRecord {
@@ -307,6 +318,42 @@ describe("key management v2", () => {
     expect(fakeBundles).toHaveLength(originalCount + 1)
     expect(fakeBundles[0]?.trust).toBe("unverified")
   })
+
+  it.each([
+    { name: unit(80), expectStored: unit(80) },
+    { name: unit(81), expectStored: undefined },
+    { name: unit(100), expectStored: undefined },
+    { name: "  padded  ", expectStored: "padded" },
+    { name: "   ", expectStored: undefined },
+    { name: "a\u0007b", expectStored: undefined },
+  ])(
+    "bundle import normalizes the wire name (case %#)",
+    async ({ name, expectStored }) => {
+      pasteBundleWithName(name)
+      const user = userEvent.setup()
+      await renderApp("/keys")
+      await user.click(
+        await screen.findByRole("tab", { name: "Other parties' keys" }),
+      )
+      await user.click(screen.getByRole("button", { name: "Scan a key QR" }))
+      await user.type(screen.getByLabelText("Key payload"), "OCI2:fake")
+      await user.click(screen.getByRole("button", { name: "Read the key" }))
+
+      const dialog = await screen.findByRole("dialog", {
+        name: "Compare the fingerprint through another channel",
+      })
+      await user.click(
+        within(dialog).getByRole("button", {
+          name: "Save without verification",
+        }),
+      )
+
+      await waitFor(() => expect(saveBundle).toHaveBeenCalledTimes(1))
+      const saved = saveBundle.mock.calls[0]![0]
+      if (expectStored === undefined) expect(saved.name).toBeUndefined()
+      else expect(saved.name).toBe(expectStored)
+    },
+  )
 
   it("confers fingerprint-confirmed trust only after the explicit checkbox", async () => {
     const user = userEvent.setup()
