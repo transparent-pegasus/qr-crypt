@@ -279,6 +279,15 @@ export function KeyAddDialog({
     }
   }
 
+  // Wire names allow 1-100 unnormalized units; storage requires trimmed 1-80 without
+  // controls. An unacceptable label is dropped rather than failing the import after
+  // the fingerprint ceremony - the key material, not the label, is the identity.
+  const acceptableImportedName = (name: string | undefined): { name?: string } => {
+    if (name === undefined) return {}
+    const parsed = keyNameSchema.safeParse(name)
+    return parsed.success ? { name: parsed.data } : {}
+  }
+
   const prepareBundleImport = async (bundle: PublicIdentityBundleV2) => {
     assertUsableBundle(bundle)
     const importedAt = Date.now()
@@ -293,7 +302,7 @@ export function KeyAddDialog({
       bundle: {
         recordId: generateKeyId(),
         identityId: bundle.identityId,
-        ...(bundle.name === undefined ? {} : { name: bundle.name }),
+        ...acceptableImportedName(bundle.name),
         kem: { ...bundle.kem, fingerprint: kemFingerprint },
         signing: { ...bundle.signing, fingerprint: signingFingerprint },
         identityFingerprint,
