@@ -131,7 +131,7 @@ export interface PqCryptoClient {
   dispose(): void
 }
 
-export interface CreatePqCryptoClientOptions {
+interface CreatePqCryptoClientOptions {
   // Test seam. When omitted, resolve from env.pqWorkerEnabled and the runtime environment.
   timeoutMs?: number
 }

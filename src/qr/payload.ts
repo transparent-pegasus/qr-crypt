@@ -23,7 +23,7 @@ import {
 import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
 import { classifyV2Payload, decodeFramePayload, splitV2Payload } from "@/qr/payload-v2"
 
-export type DecodedPayload =
+type DecodedPayload =
   | { kind: "pq-message"; envelope: MlKemMessageEnvelopeV2 }
   | { kind: "sym-message"; envelope: SymMessageEnvelopeV2 }
   | { kind: "symmetric-key"; envelope: SymmetricKeyEnvelopeV2 }

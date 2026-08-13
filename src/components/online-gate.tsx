@@ -59,7 +59,7 @@ export function OnlineGate({ children }: { children: ReactNode }) {
   return online ? <OnlineInstallScreen relayEligible={false} /> : children
 }
 
-export interface OnlineInstallScreenProps {
+interface OnlineInstallScreenProps {
   relayEligible?: boolean
   onRelayEligibilityRefresh?: OnlineRelayProps["onEligibilityRefresh"]
   registerRelaySessionEndHandler?: OnlineRelayProps["registerRelaySessionEndHandler"]

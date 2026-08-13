@@ -4,7 +4,7 @@ import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain
 import { listBundles } from "@/storage/pq-bundle-repository"
 import { listIdentities } from "@/storage/pq-identity-repository"
 
-export interface UsePqRecordsResult {
+interface UsePqRecordsResult {
   identities: PostQuantumIdentity[]
   bundles: PqPublicBundleRecord[]
   loading: boolean

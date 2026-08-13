@@ -100,7 +100,7 @@ interface TransientClearContextValue {
 
 const TransientClearContext = createContext<TransientClearContextValue | null>(null)
 
-export function TransientClearProvider({ children }: { children: ReactNode }) {
+function TransientClearProvider({ children }: { children: ReactNode }) {
   const [nonce, setNonce] = useState(0)
   const clearTransient = useCallback(() => setNonce((value) => value + 1), [])
   const value = useMemo(() => ({ nonce, clearTransient }), [clearTransient, nonce])

@@ -8,7 +8,7 @@ import {
 
 const SERVER_STATE: BootState = { kind: "unknown" }
 
-export interface UseBootStateOptions {
+interface UseBootStateOptions {
   controller?: BootController
   resetTransient?: () => void
 }

@@ -28,7 +28,7 @@ export const QR_PREFIX_V2 = {
   frame: "OCF2:",
 } as const
 
-export type V2PayloadKind = V2ArtifactType | "frame"
+type V2PayloadKind = V2ArtifactType | "frame"
 
 // Character limit for a complete v2 payload on the paste path: base64url of the
 // 128-frame × 1,000-byte absolute artifact ceiling plus the prefix.
@@ -37,7 +37,7 @@ export const MAX_V2_PAYLOAD_CHARS =
   Math.ceil((MAX_ARTIFACT_BYTES_ABSOLUTE * 4) / 3) +
   QR_PREFIX_V2["pq-message"].length
 
-export interface ClassifiedV2Payload {
+interface ClassifiedV2Payload {
   kind: V2PayloadKind
   prefix: string
 }

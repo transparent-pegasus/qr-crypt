@@ -37,7 +37,7 @@ import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
 const VAULT_ENCRYPTED_SECRET_STORES = ["pqIdentities"] as const
 
 export const RESET_CHURN_DATABASE_NAME = "qr-crypt-reset-churn"
-export const RESET_CHURN_CHUNK_BYTES = 1024 * 1024
+const RESET_CHURN_CHUNK_BYTES = 1024 * 1024
 const RANDOM_FILL_CHUNK_BYTES = 65_536
 
 export interface BestEffortResetArgs {
@@ -53,7 +53,7 @@ export interface BestEffortResetReport {
   failedSteps: readonly string[]
 }
 
-export interface ResetChurnReport {
+interface ResetChurnReport {
   aborted: boolean
   quotaExceeded: boolean
   writtenBytes: number
@@ -193,7 +193,7 @@ async function openExistingApplicationDatabase(): Promise<DynamicDatabase | unde
   return (await openDB(DB_NAME)) as unknown as DynamicDatabase
 }
 
-export async function deleteVaultEncryptedSecretRows(): Promise<void> {
+async function deleteVaultEncryptedSecretRows(): Promise<void> {
   const database = await openExistingApplicationDatabase()
   if (!database) return
   try {
@@ -207,7 +207,7 @@ export async function deleteVaultEncryptedSecretRows(): Promise<void> {
   }
 }
 
-export async function deleteVaultKeyRecord(): Promise<void> {
+async function deleteVaultKeyRecord(): Promise<void> {
   const database = await openExistingApplicationDatabase()
   if (!database) return
   try {

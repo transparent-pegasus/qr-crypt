@@ -19,8 +19,8 @@ import { concatBytes, sha256Hex, utf8ToBytes } from "@/lib/bytes"
 import { IV_BYTES, KEY_ID_PATTERN, KEY_ID_RAW_BYTES } from "@/lib/limits"
 
 // Domain-separation labels are part of the wire protocol.
-export const PQ_MESSAGE_DOMAIN_V2 = "QR-CRYPT-MESSAGE-V2"
-export const SYM_MESSAGE_DOMAIN_V2 = "QR-CRYPT-SYM-MESSAGE-V2"
+const PQ_MESSAGE_DOMAIN_V2 = "QR-CRYPT-MESSAGE-V2"
+const SYM_MESSAGE_DOMAIN_V2 = "QR-CRYPT-SYM-MESSAGE-V2"
 const HKDF_SALT_DOMAIN_V2 = "QR-CRYPT-HKDF-SALT-V2"
 
 // A fresh array prevents callers from mutating the process-wide protocol value.
@@ -137,7 +137,7 @@ export function buildVaultAadV2(fields: VaultAadFieldsV2): Uint8Array {
 // The display format reuses the existing formatFingerprint in features/presentation.
 // ---------------------------------------------------------------------------
 
-export const PQ_FINGERPRINT_DOMAINS = {
+const PQ_FINGERPRINT_DOMAINS = {
   kem: "QR-CRYPT-FP-KEM-V2",
   signing: "QR-CRYPT-FP-DSA-V2",
   identity: "QR-CRYPT-FP-ID-V2",

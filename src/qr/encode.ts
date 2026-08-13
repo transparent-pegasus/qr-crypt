@@ -21,7 +21,7 @@ export function payloadFits(payload: string, ecLevel: QrEcLevel): boolean {
   return payload.length <= QR_BYTE_CAPACITY[ecLevel]
 }
 
-export interface QrRenderOptions {
+interface QrRenderOptions {
   ecLevel: QrEcLevel
   size: number
 }

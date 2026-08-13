@@ -101,7 +101,7 @@ interface PendingDelete {
   name: string
 }
 
-export interface KeyDetailDialogProps {
+interface KeyDetailDialogProps {
   selection: KeySelection | null
   identity: PostQuantumIdentity | undefined
   previous: PostQuantumIdentity[] | undefined
@@ -121,7 +121,7 @@ export interface KeyDetailContentProps
   onFullscreenOpenChange: (open: boolean) => void
 }
 
-export function resolveKeyDetailRecord(
+function resolveKeyDetailRecord(
   selection: KeySelection | null,
   identity: PostQuantumIdentity | undefined,
   symmetric: StoredKeyRecord | undefined,

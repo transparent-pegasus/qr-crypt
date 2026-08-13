@@ -1,7 +1,7 @@
 import * as React from "react"
 import { DialogContent } from "@/components/ui/dialog"
 
-export type NoAutofocusDialogContentProps = React.ComponentPropsWithoutRef<
+type NoAutofocusDialogContentProps = React.ComponentPropsWithoutRef<
   typeof DialogContent
 >
 

@@ -41,7 +41,7 @@ import { setAckPending } from "@/app/offline-ack-marker"
 import { clearReceipts } from "@/features/receipt-cache"
 
 export const BOOT_PROBE_TIMEOUT_MS = 3_000
-export const MAINTENANCE_TOKEN_METADATA_KEY = "maintenance-token"
+const MAINTENANCE_TOKEN_METADATA_KEY = "maintenance-token"
 
 // Minimal early-boot storage ports. These are NOT a re-declaration of idb's types for
 // their own sake: readBootDecision accepts an injected getDatabase() and casts to
@@ -86,12 +86,12 @@ export interface BootDecisionSnapshot extends WipeDecisionInput {
   deploymentVerdict?: DeploymentVerdict
 }
 
-export interface SentinelProbeResult {
+interface SentinelProbeResult {
   confirmed: boolean
   verdict: DeploymentVerdict | undefined
 }
 
-export interface SentinelProbeOptions {
+interface SentinelProbeOptions {
   fetchImpl?: typeof fetch
   nonce?: string
   now?: () => number
@@ -99,16 +99,16 @@ export interface SentinelProbeOptions {
   timeoutMs?: number
 }
 
-export interface WipeExecutionArgs {
+interface WipeExecutionArgs {
   reason: "online-detected"
   resetChurnMb: number
   endSession: () => void
   resetTransient: () => void
 }
 
-export type WipeExecutor = (args: WipeExecutionArgs) => Promise<BestEffortResetReport>
+type WipeExecutor = (args: WipeExecutionArgs) => Promise<BestEffortResetReport>
 
-export interface BootControllerOptions {
+interface BootControllerOptions {
   broadcastQuarantine?: () => void
   consumeMaintenanceToken?: () => Promise<boolean>
   eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">
@@ -320,7 +320,7 @@ function storedPreferencesAreReadable(value: Record<string, unknown>): boolean {
   )
 }
 
-export interface BootDecisionReadOptions {
+interface BootDecisionReadOptions {
   getDatabase?: () => Promise<unknown>
 }
 

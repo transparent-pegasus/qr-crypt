@@ -20,7 +20,7 @@ import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
 import { generateKeyId } from "@/crypto/random"
 import { keyNameSchema } from "@/schemas/key-schema"
 
-export interface CreateIdentityArgs {
+interface CreateIdentityArgs {
   client: PqCryptoClient
   vaultKey: CryptoKey
   name: string
@@ -116,14 +116,14 @@ export async function createIdentity(
 
 // Retain the previous generation with status="rotated" (decryption/verification only)
 // and return the new generation.
-export interface RotateIdentityArgs {
+interface RotateIdentityArgs {
   client: PqCryptoClient
   vaultKey: CryptoKey
   current: PostQuantumIdentity
   now: number
 }
 
-export interface RotatedIdentity {
+interface RotatedIdentity {
   next: PostQuantumIdentity
   previous: PostQuantumIdentity // Previous generation updated to status="rotated".
 }

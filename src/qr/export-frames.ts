@@ -3,14 +3,14 @@
 import { storeOnlyZip } from "@/lib/best-effort-zip"
 import { qrPngBlob, sanitizeQrFileName, triggerDownload } from "@/qr/export-image"
 
-export interface QrFrameExportEntry {
+interface QrFrameExportEntry {
   // Protocol frame index, zero-based. Zip entry names come from it, not from the array
   // position, so a gap in the available set keeps the remaining frames' real numbers.
   frameIndex: number
   payload: string
 }
 
-export interface QrFrameExportOptions {
+interface QrFrameExportOptions {
   outputName: string
   size: number
   signal?: AbortSignal

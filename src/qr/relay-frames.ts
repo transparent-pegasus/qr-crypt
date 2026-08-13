@@ -22,7 +22,7 @@ import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 
 export const RELAY_TEXT_MAX_CHARS = PROTOCOL_MAX_FRAMES * (MAX_FRAME_PAYLOAD_CHARS + 2)
 
-export type RelayArtifactType = Extract<
+type RelayArtifactType = Extract<
   V2ArtifactType,
   "pq-message" | "sym-message"
 >
@@ -53,7 +53,7 @@ type RelayMetadata = FrameTransferMetadata & {
   readonly artifactType: RelayArtifactType
 }
 
-export interface RelayFrameEntry {
+interface RelayFrameEntry {
   readonly frame: QrFrameV2
   readonly original: string
 }
@@ -64,10 +64,10 @@ export interface RelayFrameSet {
   readonly receivedByteLength: number
 }
 
-export type RelayParseResult =
+type RelayParseResult =
   { ok: true; set: RelayFrameSet } | { ok: false; code: RelayParseErrorCode }
 
-export type RelayTextParseResult =
+type RelayTextParseResult =
   | {
       ok: true
       kind: "frames"
@@ -81,7 +81,7 @@ export type RelayTextParseResult =
       missingIndexes?: readonly number[]
     }
 
-export function emptyRelayFrameSet(): RelayFrameSet {
+function emptyRelayFrameSet(): RelayFrameSet {
   return {
     metadata: null,
     entries: new Map(),
@@ -227,7 +227,7 @@ export type RelayCapture =
 
 export const EMPTY_RELAY_CAPTURE: RelayCapture = { kind: null }
 
-export type RelayCaptureResult =
+type RelayCaptureResult =
   | { ok: true; capture: Extract<RelayCapture, { kind: "frames" }> }
   | { ok: false; code: RelayParseErrorCode }
 

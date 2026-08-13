@@ -44,7 +44,7 @@ export interface MlDsaProvider {
   ): boolean
 }
 
-export interface PqProviders {
+interface PqProviders {
   kem1024: MlKemProvider
   dsa87: MlDsaProvider
 }

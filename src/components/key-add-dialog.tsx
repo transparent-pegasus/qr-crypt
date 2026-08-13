@@ -82,12 +82,12 @@ type AddView =
   | { kind: "symmetric-import"; record: StoredKeyRecord }
   | { kind: "bundle-confirm"; bundle: PqPublicBundleRecord }
 
-export type KeyAddDetail = Omit<
+type KeyAddDetail = Omit<
   KeyDetailContentProps,
   "open" | "fullscreenOpen" | "onFullscreenOpenChange"
 >
 
-export interface KeyAddDialogProps {
+interface KeyAddDialogProps {
   mode: KeyAddMode | null
   /** Set once a key has just been created, to swap this modal over to its detail. */
   detail: KeyAddDetail | null

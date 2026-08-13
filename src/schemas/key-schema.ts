@@ -37,7 +37,7 @@ export const qrNameSchema = z
 // Apply the same rules to key names.
 export const keyNameSchema = qrNameSchema
 
-export const keyIdSchema = z.string().regex(KEY_ID_PATTERN)
+const keyIdSchema = z.string().regex(KEY_ID_PATTERN)
 
 const fingerprintSchema = z.string().regex(/^[0-9a-f]{64}$/u)
 const timestampSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER)

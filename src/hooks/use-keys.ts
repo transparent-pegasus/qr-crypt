@@ -3,7 +3,7 @@ import type { MessageKey } from "@/i18n"
 import type { StoredKeyRecord } from "@/schemas/domain"
 import { listKeyRecords } from "@/storage/key-repository"
 
-export interface UseKeysResult {
+interface UseKeysResult {
   keys: StoredKeyRecord[]
   loading: boolean
   error: MessageKey | null
