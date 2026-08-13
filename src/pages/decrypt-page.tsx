@@ -71,6 +71,10 @@ export function DecryptPage() {
   const [replayAcknowledged, setReplayAcknowledged] = useState(false)
   const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
   const pendingDecryptRef = useRef<string | null>(null)
+  // A decrypt already past its await must not republish plaintext that a
+  // background clear has since wiped, so every clear retires the generation
+  // the in-flight run captured.
+  const decryptGenerationRef = useRef(0)
 
   const clearDecrypted = useCallback(() => {
     setDecrypted(null)
@@ -149,6 +153,7 @@ export function DecryptPage() {
   useEffect(() => () => multipartSession.discard(), [multipartSession])
 
   const clearTransient = useCallback(() => {
+    decryptGenerationRef.current += 1
     pendingDecryptRef.current = null
     setDecryptInput("")
     clearDecrypted()
@@ -165,6 +170,7 @@ export function DecryptPage() {
   })
 
   const runDecrypt = async (payload: string) => {
+    const generation = ++decryptGenerationRef.current
     let parsed: ReturnType<typeof decodePayload> | null = null
     try {
       const decoded = decodePayload(payload.trim())
@@ -204,25 +210,26 @@ export function DecryptPage() {
     clearDecrypted()
     try {
       if (parsed.kind === "sym-message" && symmetricKey) {
-        setDecrypted(
-          await decryptMessage({
-            kind: "sym-message",
-            envelope: parsed.envelope,
-          }),
-        )
+        const result = await decryptMessage({
+          kind: "sym-message",
+          envelope: parsed.envelope,
+        })
+        if (generation === decryptGenerationRef.current) setDecrypted(result)
       } else if (parsed.kind === "pq-message") {
-        setDecrypted(
-          await decryptMessage({
-            kind: "pq-message",
-            envelope: parsed.envelope,
-            client: getPqClient(),
-          }),
-        )
+        const result = await decryptMessage({
+          kind: "pq-message",
+          envelope: parsed.envelope,
+          client: getPqClient(),
+        })
+        if (generation === decryptGenerationRef.current) setDecrypted(result)
       }
     } catch (caught) {
-      clearDecrypted()
-      setError(toAppError(caught, "DECRYPTION_FAILED").code)
+      if (generation === decryptGenerationRef.current) {
+        clearDecrypted()
+        setError(toAppError(caught, "DECRYPTION_FAILED").code)
+      }
     } finally {
+      // clearTransient never touches busy, so this stays unconditional.
       setBusy(false)
     }
   }

@@ -42,6 +42,25 @@ import {
 import { renderApp, resetUi } from "./helpers/render-app"
 
 const defaultQrMaxFrames = env.qrMaxFrames
+const defaultAutoClearSeconds = env.autoClearSeconds
+
+function setVisibility(value: DocumentVisibilityState): void {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value,
+  })
+}
+
+// A zero delay makes useAutoClear clear inside the visibilitychange handler, so the
+// background clear lands mid-decrypt without fake timers - which this suite's
+// userEvent.setup() calls cannot survive.
+function clearInBackground(): void {
+  env.autoClearSeconds = 0
+  act(() => {
+    setVisibility("hidden")
+    document.dispatchEvent(new Event("visibilitychange"))
+  })
+}
 const fakePqMessageIdHex = Array.from(fakePqMessageId, (byte) =>
   byte.toString(16).padStart(2, "0"),
 ).join("")
@@ -108,6 +127,8 @@ describe("decrypt page v2", () => {
     clearRealReceipts?.()
     clearRealReceipts = undefined
     env.qrMaxFrames = defaultQrMaxFrames
+    env.autoClearSeconds = defaultAutoClearSeconds
+    setVisibility("visible")
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     resetUi()
@@ -1197,5 +1218,58 @@ describe("decrypt page v2", () => {
       payloadDisabled: true,
       decryptDisabled: true,
     })
+  })
+  async function startDeferredSymDecrypt(): Promise<{
+    pending: ReturnType<typeof deferred<Uint8Array>>
+  }> {
+    const pending = deferred<Uint8Array>()
+    openSymMessage.mockReturnValueOnce(pending.promise)
+    const key = addSymmetricKey("A", "sym-v2 active key")
+    const { payload } = await prepareSymPayload(key)
+
+    await renderApp("/decrypt")
+    await screen.findByRole("heading", { name: "Scan with the camera" })
+    fireEvent.change(screen.getByLabelText("Ciphertext payload"), {
+      target: { value: payload },
+    })
+    const decryptButton = screen.getByRole("button", { name: "Decrypt" })
+    await waitFor(() => expect(decryptButton).toBeEnabled())
+    fireEvent.click(decryptButton)
+    await waitFor(() => expect(openSymMessage).toHaveBeenCalledOnce())
+    return { pending }
+  }
+
+  it("keeps the page cleared when a decrypt resolves after a background clear", async () => {
+    const { pending } = await startDeferredSymDecrypt()
+
+    clearInBackground()
+    expect(screen.getByLabelText("Ciphertext payload")).toHaveValue("")
+
+    await act(async () => {
+      pending.resolve(new TextEncoder().encode("late plaintext"))
+      await pending.promise
+    })
+
+    expect(
+      screen.queryByRole("dialog", { name: "Decryption complete" }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Ciphertext payload")).toHaveValue("")
+  })
+
+  it("suppresses a late decrypt error after a background clear", async () => {
+    const { pending } = await startDeferredSymDecrypt()
+
+    clearInBackground()
+
+    await act(async () => {
+      pending.reject(new AppError("DECRYPTION_FAILED"))
+      await pending.promise.catch(() => undefined)
+    })
+
+    expect(
+      screen.queryByRole("alert", {
+        name: translate("en", "common.operationFailed"),
+      }),
+    ).not.toBeInTheDocument()
   })
 })
