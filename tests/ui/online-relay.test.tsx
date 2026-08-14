@@ -1180,6 +1180,22 @@ describe("online relay UI", () => {
     expect(copyImage).toHaveBeenCalledWith(dataUrl("relay-image"))
   })
 
+  it("shows the screen-capture warning beside a rendered QR image", async () => {
+    renderQr.mockResolvedValue(dataUrl("relay-image"))
+    renderRelay()
+    const user = userEvent.setup()
+    await startImageCapture(user)
+
+    act(() => scanText?.(symPayload()))
+
+    await screen.findByRole("img", {
+      name: translate("en", "relay.image.alt"),
+    })
+    expect(
+      screen.getByText(translate("en", "relay.playback.screenCaptureWarning")),
+    ).toBeInTheDocument()
+  })
+
   it("surfaces a copy failure as relay.error.copyImage", async () => {
     const user = userEvent.setup()
     renderQr.mockResolvedValue(dataUrl("relay-image"))
@@ -1238,20 +1254,26 @@ describe("online relay UI", () => {
     await waitFor(() => expect(start).toBeEnabled())
   })
 
-  it("locks Start camera while the image render is in flight and commits exactly one render", async () => {
+  it("locks a same-turn Start attempt while the image render is in flight", async () => {
     const pending = deferred<string>()
     renderQr.mockReturnValue(pending.promise)
     renderRelay()
     const user = userEvent.setup()
-    await startImageCapture(user)
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.image.open") }),
+    )
 
-    act(() => scanText?.(symPayload()))
-
-    const start = screen.getByRole("button", {
+    const start = await screen.findByRole("button", {
       name: translate("en", "relay.capture.startCamera"),
     })
+    expect(start).toBeEnabled()
+    act(() => {
+      start.click()
+      scanText?.(symPayload())
+      start.click()
+    })
+
     expect(start).toBeDisabled()
-    await user.click(start)
     expect(scanStart).toHaveBeenCalledOnce()
 
     act(() => pending.resolve(dataUrl("relay-image")))
@@ -1439,7 +1461,7 @@ describe("online relay UI", () => {
     ).toBeInTheDocument()
   })
 
-  it("drops a late copy rejection after the session ended", async () => {
+  it("keeps a late copy rejection out of a newer image session", async () => {
     renderQr.mockResolvedValue(dataUrl("relay-image"))
     const copyGate = deferred<void>()
     copyImage.mockReturnValue(copyGate.promise)
@@ -1457,8 +1479,21 @@ describe("online relay UI", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     )
-    act(() => copyGate.reject(new Error("denied")))
-    await act(async () => undefined)
+
+    await startImageCapture(user)
+    const newerDialog = screen.getByRole("dialog", {
+      name: translate("en", "relay.image.title"),
+    })
+    expect(
+      within(newerDialog).getByRole("button", {
+        name: translate("en", "relay.capture.cameraActive"),
+      }),
+    ).toBeDisabled()
+
+    await act(async () => {
+      copyGate.reject(new Error("denied"))
+      await copyGate.promise.catch(() => undefined)
+    })
     expect(
       screen.queryByText(translate("en", "relay.error.copyImage")),
     ).not.toBeInTheDocument()
