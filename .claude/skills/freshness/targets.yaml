@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-08-14 # last revision of this registry itself
+updated: 2026-08-15 # last revision of this registry itself
 
 units:
   - id: deps
@@ -263,7 +263,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-08-14
+    last_checked: 2026-08-15
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
@@ -355,7 +355,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-08-14
+    last_checked: 2026-08-15
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
@@ -484,7 +484,7 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-08-14
+    last_checked: 2026-08-15
     files:
       - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
@@ -513,7 +513,7 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-08-14
+    last_checked: 2026-08-15
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together

@@ -566,7 +566,7 @@ export function OnlineRelay({
           {/* Icon and title share the first row so the body can use the full
               width below them: at the boundary copy's length, keeping it in the
               icon's right-hand column costs several lines on a phone and pushes
-              the two actions under the fold. The pair sits in one flex row so it
+              the actions under the fold. The pair sits in one flex row so it
               centers on a single axis the way a button's icon and label do,
               instead of a top-aligned grid cell plus a nudge; that wrapper is
               also why the icon now carries its own size, no longer being a
@@ -734,6 +734,9 @@ export function OnlineRelay({
 
             {imageDataUrl !== null && (
               <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.playback.screenCaptureWarning")}
+                </p>
                 <img
                   src={imageDataUrl}
                   alt={t("relay.image.alt")}
