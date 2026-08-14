@@ -339,6 +339,7 @@ export const qrPngBlob = vi.fn<
 export const qrSvgBlob = vi.fn(async () => new Blob(["svg"]))
 export const triggerDownload = vi.fn()
 export const copyTextToClipboard = vi.fn(async () => undefined)
+export const copyImageToClipboard = vi.fn(async () => undefined)
 
 type FakeCameraFailureState = "failed" | "track-ended"
 

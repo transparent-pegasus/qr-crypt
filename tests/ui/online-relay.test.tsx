@@ -7,6 +7,9 @@ import { deferred, type Deferred } from "../helpers/deferred"
 const scanStart = vi.hoisted(() => vi.fn())
 const scanStop = vi.hoisted(() => vi.fn())
 const copyText = vi.hoisted(() => vi.fn(async () => undefined))
+const copyImage = vi.hoisted(() =>
+  vi.fn<(pngDataUrl: string) => Promise<void>>(async () => undefined),
+)
 const renderQr = vi.hoisted(() => vi.fn())
 const probeWebAssemblyRuntime = vi.hoisted(() => vi.fn<() => Promise<boolean>>())
 const readerModuleState = vi.hoisted(() =>
@@ -23,6 +26,7 @@ vi.mock("@/qr/decode", async (importOriginal) => ({
 
 vi.mock("@/lib/clipboard", () => ({
   copyTextToClipboard: copyText,
+  copyImageToClipboard: copyImage,
 }))
 
 vi.mock("@/qr/encode", async (importOriginal) => ({
@@ -41,6 +45,7 @@ vi.mock("@/hooks/use-register-sw", () => ({
 
 import { FeatureSupportProvider } from "@/app/providers"
 import { OnlineRelay } from "@/components/online-relay"
+import { AppError } from "@/crypto/errors"
 import {
   encodeCanonicalCbor,
   encodeMlKemEnvelopeV2,
@@ -62,6 +67,7 @@ import type {
   SymMessageEnvelopeV2,
   V2ArtifactType,
 } from "@/schemas/domain"
+import { env } from "@/schemas/env-schema"
 
 const TRANSFER_ID = new Uint8Array(16).fill(0x11)
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
@@ -179,6 +185,18 @@ function wrongOuterPayload(artifactType: V2ArtifactType): string {
 async function startCapture(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
     screen.getByRole("button", { name: translate("en", "relay.capture.open") }),
+  )
+  await user.click(
+    await screen.findByRole("button", {
+      name: translate("en", "relay.capture.startCamera"),
+    }),
+  )
+  await waitFor(() => expect(scanText).not.toBeNull())
+}
+
+async function startImageCapture(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByRole("button", { name: translate("en", "relay.image.open") }),
   )
   await user.click(
     await screen.findByRole("button", {
@@ -370,6 +388,7 @@ describe("online relay UI", () => {
     for (const [triggerName, dialogName] of [
       ["QR → Text", translate("en", "relay.capture.title")],
       ["Text → QR", translate("en", "relay.playback.title")],
+      ["QR → QR", translate("en", "relay.image.title")],
     ] as const) {
       await user.click(screen.getByRole("button", { name: triggerName }))
       const dialog = await screen.findByRole("dialog", { name: dialogName })
@@ -389,6 +408,7 @@ describe("online relay UI", () => {
     renderRelay()
     const user = userEvent.setup()
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    expect(warmQrReader).not.toHaveBeenCalled()
     await enterRelayText(
       user,
       screen.getByLabelText("Relay text"),
@@ -1071,6 +1091,377 @@ describe("online relay UI", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(screen.getByText(translate("en", "relay.error.timeout"))).toBeInTheDocument()
     expect(scanStop).toHaveBeenCalled()
+  })
+
+  it("shows the QR → QR usage hint on the relay card", () => {
+    renderRelay()
+    expect(
+      screen.getByText(translate("en", "relay.image.hint")),
+    ).toBeInTheDocument()
+  })
+
+  it("keeps the three relay actions in the required responsive grid order", () => {
+    renderRelay()
+    const capture = screen.getByRole("button", {
+      name: translate("en", "relay.capture.open"),
+    })
+    const playback = screen.getByRole("button", {
+      name: translate("en", "relay.playback.open"),
+    })
+    const image = screen.getByRole("button", {
+      name: translate("en", "relay.image.open"),
+    })
+    const actionGrid = capture.parentElement
+    if (actionGrid === null) throw new Error("relay action grid is missing")
+
+    expect(actionGrid).toHaveClass("sm:grid-cols-3")
+    expect(within(actionGrid).getAllByRole("button")).toEqual([
+      capture,
+      playback,
+      image,
+    ])
+  })
+
+  it("shows the QR → QR dialog description", async () => {
+    renderRelay()
+    const user = userEvent.setup()
+
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.image.open") }),
+    )
+
+    const dialog = await screen.findByRole("dialog", {
+      name: translate("en", "relay.image.title"),
+    })
+    expect(
+      within(dialog).getByText(translate("en", "relay.image.description")),
+    ).toBeInTheDocument()
+  })
+
+  it("rejects a multi-frame message in QR → QR mode and stops the camera", async () => {
+    const user = userEvent.setup()
+    renderRelay()
+    await startImageCapture(user)
+
+    act(() => scanText?.(payload(0)))
+
+    expect(
+      screen.getByText(translate("en", "relay.error.multiFrame")),
+    ).toBeInTheDocument()
+    expect(scanStop).toHaveBeenCalled()
+    expect(renderQr).not.toHaveBeenCalled()
+  })
+
+  it("renders a copyable QR image from one sym-message frame", async () => {
+    const user = userEvent.setup()
+    renderQr.mockResolvedValue(dataUrl("relay-image"))
+    renderRelay()
+    await startImageCapture(user)
+
+    const original = symPayload()
+    act(() => scanText?.(original))
+
+    const image = await screen.findByRole("img", {
+      name: translate("en", "relay.image.alt"),
+    })
+    expect(image).toHaveAttribute("src", dataUrl("relay-image"))
+    expect(renderQr).toHaveBeenCalledWith(original, {
+      ecLevel: "Q",
+      size: env.qrRenderSize,
+    })
+    expect(scanStop).toHaveBeenCalled()
+    expect(
+      screen.getByText(translate("en", "relay.image.copyWarning")),
+    ).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.image.copy") }),
+    )
+    expect(copyImage).toHaveBeenCalledWith(dataUrl("relay-image"))
+  })
+
+  it("surfaces a copy failure as relay.error.copyImage", async () => {
+    const user = userEvent.setup()
+    renderQr.mockResolvedValue(dataUrl("relay-image"))
+    copyImage.mockRejectedValueOnce(new Error("denied"))
+    renderRelay()
+    await startImageCapture(user)
+
+    act(() => scanText?.(symPayload()))
+    await user.click(
+      await screen.findByRole("button", {
+        name: translate("en", "relay.image.copy"),
+      }),
+    )
+
+    expect(
+      await screen.findByText(translate("en", "relay.error.copyImage")),
+    ).toBeInTheDocument()
+  })
+
+  it("ends the session with QR_TOO_LARGE when the image render fails", async () => {
+    const user = userEvent.setup()
+    renderQr.mockRejectedValue(new AppError("QR_TOO_LARGE"))
+    renderRelay()
+    await startImageCapture(user)
+
+    act(() => scanText?.(symPayload()))
+
+    expect(
+      await screen.findByText(translate("en", "errors.QR_TOO_LARGE")),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("warms the idle reader when QR → QR opens and gates the camera on readiness", async () => {
+    // Mirror the existing "does not pull the reader before the user opens
+    // capture" test body exactly — same deferred warm-up, same assertions —
+    // with the opening click on relay.image.open instead of relay.capture.open.
+    readerModuleState.mockReturnValue("idle")
+    const preparation = deferred<void>()
+    warmQrReader.mockReturnValue(preparation.promise)
+    renderRelay()
+    const user = userEvent.setup()
+
+    expect(warmQrReader).not.toHaveBeenCalled()
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.image.open") }),
+    )
+    expect(warmQrReader).toHaveBeenCalled()
+    const start = await screen.findByRole("button", {
+      name: translate("en", "relay.capture.startCamera"),
+    })
+    expect(start).toBeDisabled()
+
+    readerModuleState.mockReturnValue("ready")
+    act(() => preparation.resolve())
+    await waitFor(() => expect(start).toBeEnabled())
+  })
+
+  it("locks Start camera while the image render is in flight and commits exactly one render", async () => {
+    const pending = deferred<string>()
+    renderQr.mockReturnValue(pending.promise)
+    renderRelay()
+    const user = userEvent.setup()
+    await startImageCapture(user)
+
+    act(() => scanText?.(symPayload()))
+
+    const start = screen.getByRole("button", {
+      name: translate("en", "relay.capture.startCamera"),
+    })
+    expect(start).toBeDisabled()
+    await user.click(start)
+    expect(scanStart).toHaveBeenCalledOnce()
+
+    act(() => pending.resolve(dataUrl("relay-image")))
+    expect(
+      await screen.findByRole("img", { name: translate("en", "relay.image.alt") }),
+    ).toHaveAttribute("src", dataUrl("relay-image"))
+    expect(renderQr).toHaveBeenCalledOnce()
+  })
+
+  it("keeps Start camera disabled after the rendered image commits", async () => {
+    renderQr.mockResolvedValue(dataUrl("relay-image"))
+    renderRelay()
+    const user = userEvent.setup()
+    await startImageCapture(user)
+
+    act(() => scanText?.(symPayload()))
+    await screen.findByRole("img", { name: translate("en", "relay.image.alt") })
+
+    expect(
+      screen.getByRole("button", {
+        name: translate("en", "relay.capture.startCamera"),
+      }),
+    ).toBeDisabled()
+  })
+
+  it("clears the rendered image when the session ends", async () => {
+    renderQr.mockResolvedValue(dataUrl("relay-image"))
+    renderRelay()
+    const user = userEvent.setup()
+    await startImageCapture(user)
+    act(() => scanText?.(symPayload()))
+    await screen.findByRole("img", { name: translate("en", "relay.image.alt") })
+
+    await user.keyboard("{Escape}")
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    )
+
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.capture.open") }),
+    )
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("img", { name: translate("en", "relay.image.alt") }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("releases the image completion lock when the session ends", async () => {
+    renderQr.mockResolvedValue(dataUrl("relay-image"))
+    renderRelay()
+    const user = userEvent.setup()
+    await startImageCapture(user)
+    act(() => scanText?.(symPayload()))
+    await screen.findByRole("img", { name: translate("en", "relay.image.alt") })
+
+    await user.keyboard("{Escape}")
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.image.open") }),
+    )
+    const start = await screen.findByRole("button", {
+      name: translate("en", "relay.capture.startCamera"),
+    })
+    expect(start).toBeEnabled()
+
+    await user.click(start)
+    await waitFor(() => expect(scanStart).toHaveBeenCalledTimes(2))
+  })
+
+  it("drops a late image render after the session ended", async () => {
+    const pending = deferred<string>()
+    renderQr.mockReturnValue(pending.promise)
+    renderRelay()
+    const user = userEvent.setup()
+    await startImageCapture(user)
+    act(() => scanText?.(symPayload()))
+
+    await user.keyboard("{Escape}")
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.capture.open") }),
+    )
+    expect(
+      await screen.findByRole("button", {
+        name: translate("en", "relay.capture.startCamera"),
+      }),
+    ).toBeEnabled()
+
+    await act(async () => {
+      pending.resolve(dataUrl("late-image"))
+      await pending.promise
+    })
+    expect(
+      screen.queryByRole("img", { name: translate("en", "relay.image.alt") }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole("dialog", { name: translate("en", "relay.capture.title") }),
+    ).toBeInTheDocument()
+  })
+
+  it("drops a late image render rejection after the session ended", async () => {
+    const pending = deferred<string>()
+    void pending.promise.catch(() => undefined)
+    renderQr.mockReturnValue(pending.promise)
+    renderRelay()
+    const user = userEvent.setup()
+    await startImageCapture(user)
+    act(() => scanText?.(symPayload()))
+
+    await user.keyboard("{Escape}")
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    )
+    await user.click(
+      screen.getByRole("button", { name: translate("en", "relay.capture.open") }),
+    )
+    expect(
+      await screen.findByRole("button", {
+        name: translate("en", "relay.capture.startCamera"),
+      }),
+    ).toBeEnabled()
+
+    await act(async () => {
+      pending.reject(new Error("late render failure"))
+      await pending.promise.catch(() => undefined)
+    })
+    expect(
+      screen.queryByText(translate("en", "errors.QR_TOO_LARGE")),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole("dialog", { name: translate("en", "relay.capture.title") }),
+    ).toBeInTheDocument()
+  })
+
+  it("disables QR → QR without a camera, like QR → Text", () => {
+    render(
+      <LanguageProvider initialLanguage="en">
+        <FeatureSupportProvider
+          features={{
+            webCrypto: true,
+            indexedDb: true,
+            camera: false,
+            serviceWorker: true,
+          }}
+        >
+          <OnlineRelay eligible />
+        </FeatureSupportProvider>
+      </LanguageProvider>,
+    )
+    expect(
+      screen.getByRole("button", { name: translate("en", "relay.image.open") }),
+    ).toBeDisabled()
+    expect(
+      screen.getByRole("button", { name: translate("en", "relay.playback.open") }),
+    ).toBeEnabled()
+  })
+
+  it("keeps the transfer timeout armed after a multi-frame rejection", async () => {
+    // Mirrors "clears capture state at the fixed transfer timeout" (fake
+    // timers, .click() inside act) — same conventions, image mode.
+    vi.useFakeTimers()
+    renderRelay()
+    act(() => {
+      screen.getByRole("button", { name: "QR → QR" }).click()
+    })
+    await act(async () => undefined)
+    act(() => {
+      screen.getByRole("button", { name: "Start camera" }).click()
+    })
+    await act(async () => undefined)
+    act(() => scanText?.(payload(0)))
+    expect(
+      screen.getByText(translate("en", "relay.error.multiFrame")),
+    ).toBeInTheDocument()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TRANSFER_TIMEOUT_MINUTES_DEFAULT * 60_000)
+    })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(
+      screen.getByText(translate("en", "relay.error.timeout")),
+    ).toBeInTheDocument()
+  })
+
+  it("drops a late copy rejection after the session ended", async () => {
+    renderQr.mockResolvedValue(dataUrl("relay-image"))
+    const copyGate = deferred<void>()
+    copyImage.mockReturnValue(copyGate.promise)
+    renderRelay()
+    const user = userEvent.setup()
+    await startImageCapture(user)
+    act(() => scanText?.(symPayload()))
+    await user.click(
+      await screen.findByRole("button", {
+        name: translate("en", "relay.image.copy"),
+      }),
+    )
+
+    await user.keyboard("{Escape}")
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    )
+    act(() => copyGate.reject(new Error("denied")))
+    await act(async () => undefined)
+    expect(
+      screen.queryByText(translate("en", "relay.error.copyImage")),
+    ).not.toBeInTheDocument()
   })
 
   it("keeps a newer playback when an older render succeeds afterward", async () => {

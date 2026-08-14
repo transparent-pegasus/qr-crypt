@@ -108,6 +108,7 @@ vi.mock("@/qr/export-image", async (importOriginal) => ({
 }))
 vi.mock("@/lib/clipboard", () => ({
   copyTextToClipboard: fakes.copyTextToClipboard,
+  copyImageToClipboard: fakes.copyImageToClipboard,
 }))
 vi.mock("@/qr/decode", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/qr/decode")>()),
