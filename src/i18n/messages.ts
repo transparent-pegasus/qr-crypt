@@ -149,7 +149,7 @@ const en = {
   "relay.boundary.title": "Untrusted relay boundary",
   "relay.boundary.body":
     "This relay accepts only encrypted message frames (OCF2 pq-message or sym-message). It checks their format but does not decrypt or verify them. Frames remain in this page's memory for this session only, with no app-managed persistence, and the relay makes no payload-bearing network request. The copy action places text on the system clipboard, which is outside the app's control. Everything the sender chose — the ciphertext, transferId, IV, and createdAt values — stays untrusted and can carry covert data until the receiving offline device authenticates it. Exchange keys face to face, never through this relay.",
-  "relay.capture.open": "QR → text",
+  "relay.capture.open": "QR → Text",
   "relay.capture.unavailable":
     "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
   "relay.capture.title": "QR to text",
@@ -176,6 +176,16 @@ const en = {
   "relay.playback.qrTitle": "Relayed message frames",
   "relay.playback.noDownloadControls":
     "This relay provides no app file-download controls.",
+  "relay.image.open": "QR → QR",
+  "relay.image.hint":
+    "Use QR → QR only if your messaging app supports pasting images and the message fits in a single QR code.",
+  "relay.image.title": "QR to QR",
+  "relay.image.description":
+    "Start the camera, then scan the QR code shown on the offline device. Only single-frame messages can be relayed as an image.",
+  "relay.image.alt": "Relayed message QR code",
+  "relay.image.copy": "Copy QR image",
+  "relay.image.copyWarning":
+    "Copying exports the QR image to the system clipboard. Clipboard contents may persist or sync outside this app and are not cleared by an app reset.",
   "relay.error.title": "Relay input rejected",
   "relay.error.empty": "Enter or scan at least one OCF2 frame.",
   "relay.error.prefix":
@@ -196,6 +206,8 @@ const en = {
   "relay.error.busy":
     "Another operation is using this device's local storage. Close it, then try again.",
   "relay.error.copy": "The relay text could not be copied.",
+  "relay.error.multiFrame": "This message spans multiple QR frames. Use QR → Text instead.",
+  "relay.error.copyImage": "The QR image could not be copied.",
 
   "offlineAck.status": "The device is now offline",
   "offlineAck.title": "Confirm before continuing",
@@ -819,6 +831,16 @@ const ja = {
   "relay.playback.qrTitle": "中継されたメッセージフレーム",
   "relay.playback.noDownloadControls":
     "このリレーはアプリによるファイルダウンロード操作を提供しません。",
+  "relay.image.open": "QR → QR",
+  "relay.image.hint":
+    "QR → QR は、メッセージアプリが画像の貼り付けに対応し、メッセージが1枚のQRコードに収まる場合だけ使えます。",
+  "relay.image.title": "QRをQR画像化",
+  "relay.image.description":
+    "カメラを開始し、オフライン端末に表示されるQRコードを読み取ってください。画像として中継できるのは1フレームのメッセージだけです。",
+  "relay.image.alt": "中継メッセージのQRコード",
+  "relay.image.copy": "QR画像をコピー",
+  "relay.image.copyWarning":
+    "コピーするとQR画像をシステムのクリップボードへ書き出します。内容はアプリ外に残存・同期する可能性があり、アプリのresetでは消去されません。",
   "relay.error.title": "中継入力を拒否しました",
   "relay.error.empty": "1つ以上のOCF2フレームを入力・スキャンしてください。",
   "relay.error.prefix":
@@ -839,6 +861,9 @@ const ja = {
   "relay.error.busy":
     "この端末のローカル保存領域を別の操作が使用中です。終了してからやり直してください。",
   "relay.error.copy": "中継テキストをコピーできませんでした。",
+  "relay.error.multiFrame":
+    "このメッセージは複数のQRフレームに分かれています。QR → テキストを使ってください。",
+  "relay.error.copyImage": "QR画像をコピーできませんでした。",
 
   "offlineAck.status": "オフラインへ切り替わりました",
   "offlineAck.title": "続行前の確認",
