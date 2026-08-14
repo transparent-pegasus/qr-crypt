@@ -140,6 +140,9 @@ export function DecryptPage() {
   const clearTransient = useCallback(() => {
     decryptGenerationRef.current += 1
     pendingDecryptRef.current = null
+    // The retired decrypt no longer owns the page, so its own finally must not
+    // be what releases the controls.
+    setBusy(false)
     setDecryptInput("")
     clearDecrypted()
     setError(null)
@@ -214,8 +217,9 @@ export function DecryptPage() {
         setError(toAppError(caught, "DECRYPTION_FAILED").code)
       }
     } finally {
-      // clearTransient never touches busy, so this stays unconditional.
-      setBusy(false)
+      // Only the newest run owns busy: an older one releasing the controls
+      // would admit a decrypt whose input no longer matches what is displayed.
+      if (generation === decryptGenerationRef.current) setBusy(false)
     }
   }
 

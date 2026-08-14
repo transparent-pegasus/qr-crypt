@@ -207,9 +207,6 @@ function clientDouble(): {
     openPqEnvelope,
     client: {
       generateIdentityKeys,
-      publicKeysFromSeeds: vi.fn(),
-      signWithSeed: vi.fn(),
-      verify: vi.fn(),
       encryptPqMessage,
       openPqEnvelope,
       verifySignedMessage: vi.fn(),

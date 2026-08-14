@@ -1265,6 +1265,10 @@ describe("decrypt page v2", () => {
       pending.reject(new AppError("DECRYPTION_FAILED"))
       await pending.promise.catch(() => undefined)
     })
+    // Let the rejection walk back through decryptMessage into runDecrypt's
+    // catch before asserting the alert never appeared.
+    await act(async () => undefined)
+    await act(async () => undefined)
 
     expect(
       screen.queryByRole("alert", {
