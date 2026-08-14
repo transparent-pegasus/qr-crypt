@@ -60,7 +60,7 @@ units:
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     category: crypto
     cadence_days: 90 # also triggered by any @noble/post-quantum advisory/release
-    last_checked: 2026-08-08
+    last_checked: 2026-08-13
     files:
       - package.json # "@noble/post-quantum" exact pin
       - aube-lock.yaml # frozen graph must move with the pin
@@ -68,7 +68,7 @@ units:
       - src/crypto/pq/profiles.ts # FIPS 203/204 size tables
       - docs/security/security-review.md # §1 as-of version / audit status
     why: >
-      The PQ provider pin (0.6.1) is the security-critical dependency. New noble
+      The PQ provider exact pin is the security-critical dependency. New noble
       releases, independent-audit status changes, and NIST FIPS 203/204 errata
       all stale the pin and the size-table/API comments that mirror it.
     method: |
@@ -226,7 +226,7 @@ units:
   - id: environment-threats
     category: security-knowledge
     cadence_days: 90 # same rhythm as threat-model; a review reads both together
-    last_checked: 2026-08-08
+    last_checked: 2026-08-14
     files:
       - docs/security/environment-threat-catalog.md
       - docs/locales/ja/security/environment-threat-catalog.md # Japanese mirror; entries, labels, and sources must not diverge
@@ -263,7 +263,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-08-08
+    last_checked: 2026-08-14
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
@@ -283,7 +283,7 @@ units:
       - tests/pq/maximum-artifact-size.golden.test.ts # executable artifact size/frame table
       - tests/e2e/downloads.spec.ts # long-text export measurement attachment
     why: >
-      Point-in-time snapshot: noble 0.6.1 facts as of 2026-07-27, the
+      Point-in-time snapshot: the exact Noble pin and review date, the
       zxing-wasm reader pin/hash/provenance, independent
       audit 未了, release-approved blocker, FIPS errata checklist, artifact
       size/cycle table, and long-text export measurements. All of it is dated

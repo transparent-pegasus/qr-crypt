@@ -8,6 +8,8 @@ vi.mock("@/app/boot/wipe-coordinator", async (importOriginal) => ({
 }))
 vi.mock("@/lib/reload", () => ({ reloadApplication: vi.fn() }))
 import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
+import { formatFingerprint } from "@/features/presentation"
+import { DISABLE_WIPE_CONFIRMATION } from "@/i18n"
 import { translate } from "@/i18n/messages"
 import { reloadApplication } from "@/lib/reload"
 import { buildV2Payload } from "@/qr/payload-v2"
@@ -468,14 +470,23 @@ describe("key management v2", () => {
     )
 
     dialog = await screen.findByRole("dialog", { name: "Import a shared key" })
+    expect(within(dialog).getByText(source.fingerprint)).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(formatFingerprint(source.fingerprint), {
+        exact: false,
+      }),
+    ).toBeInTheDocument()
+    const save = within(dialog).getByRole("button", {
+      name: "Save the shared key",
+    })
+    expect(save).toBeDisabled()
     await user.click(
       within(dialog).getByRole("checkbox", {
-        name: "I trust the channel used to share this key",
+        name: /fingerprint matches/i,
       }),
     )
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save the shared key" }),
-    )
+    expect(save).toBeEnabled()
+    await user.click(save)
 
     await waitFor(() => expect(fakeKeys).toHaveLength(1))
     expect(fakeKeys[0]?.fingerprint).toBe(source.fingerprint)
@@ -502,14 +513,23 @@ describe("key management v2", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Import a shared key",
     })
+    expect(within(dialog).getByText(source.fingerprint)).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(formatFingerprint(source.fingerprint), {
+        exact: false,
+      }),
+    ).toBeInTheDocument()
+    const save = within(dialog).getByRole("button", {
+      name: "Save the shared key",
+    })
+    expect(save).toBeDisabled()
     await user.click(
       within(dialog).getByRole("checkbox", {
-        name: "I trust the channel used to share this key",
+        name: /fingerprint matches/i,
       }),
     )
-    await user.click(
-      within(dialog).getByRole("button", { name: "Save the shared key" }),
-    )
+    expect(save).toBeEnabled()
+    await user.click(save)
 
     await waitFor(() => expect(fakeKeys).toHaveLength(1))
     expect(payload).toMatch(/^OCK2:/)
@@ -613,7 +633,7 @@ describe("settings v2", () => {
     }
   })
 
-  it("persists remaining numeric boundaries and shows wipe/reset warnings", async () => {
+  it("persists remaining numeric boundaries and shows the reset warning", async () => {
     const user = userEvent.setup()
     await renderApp("/settings")
     const transferTimeout = await screen.findByLabelText(/Scan-state lifetime/)
@@ -626,13 +646,6 @@ describe("settings v2", () => {
       expect(updatePreferences).toHaveBeenCalledWith({ transferTimeoutMinutes: 120 }),
     )
     expect(screen.queryByText("Settings saved")).not.toBeInTheDocument()
-
-    const wipe = screen.getByRole("switch", {
-      name: "Reset local data after confirmed online connectivity",
-    })
-    expect(wipe).toBeChecked()
-    await user.click(wipe)
-    expect(await screen.findByText("Local data will remain")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /Advanced: reset churn/ }))
     const resetChurn = screen.getByLabelText(/reset churn/)
@@ -649,6 +662,96 @@ describe("settings v2", () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByText(/Physical erasure is not guaranteed/)).toBeInTheDocument()
+  })
+
+  it("does not write wipeOnOnline=false until the typed confirmation completes", async () => {
+    const user = userEvent.setup()
+    await renderApp("/settings")
+    const wipe = await screen.findByRole("switch", {
+      name: "Reset local data after confirmed online connectivity",
+    })
+
+    await user.click(wipe)
+
+    expect(updatePreferences).not.toHaveBeenCalledWith({ wipeOnOnline: false })
+    expect(wipe).toBeChecked()
+    expect(screen.queryByText("Local data will remain")).not.toBeInTheDocument()
+
+    const dialog = await screen.findByRole("alertdialog")
+    const confirmation = within(dialog).getByLabelText("Confirmation text")
+    const acknowledge = within(dialog).getByRole("checkbox")
+    const confirm = within(dialog).getByRole("button", { name: /disable/i })
+    expect(confirm).toBeDisabled()
+
+    await user.type(confirmation, DISABLE_WIPE_CONFIRMATION)
+    expect(confirm).toBeDisabled()
+    await user.click(acknowledge)
+    expect(confirm).toBeEnabled()
+    await user.click(confirm)
+
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({ wipeOnOnline: false }),
+    )
+    expect(await screen.findByText("Local data will remain")).toBeInTheDocument()
+  })
+
+  it("wrong phrase or unchecked box keeps the confirm button inert and cancel leaves the switch on", async () => {
+    const user = userEvent.setup()
+    await renderApp("/settings")
+    const wipe = await screen.findByRole("switch", {
+      name: "Reset local data after confirmed online connectivity",
+    })
+
+    await user.click(wipe)
+
+    const dialog = await screen.findByRole("alertdialog")
+    const confirmation = within(dialog).getByLabelText("Confirmation text")
+    const acknowledge = within(dialog).getByRole("checkbox")
+    const confirm = within(dialog).getByRole("button", { name: /disable/i })
+
+    await user.type(confirmation, "WRONG")
+    await user.click(acknowledge)
+    expect(confirm).toBeDisabled()
+
+    await user.clear(confirmation)
+    await user.type(confirmation, DISABLE_WIPE_CONFIRMATION)
+    await user.click(acknowledge)
+    expect(confirm).toBeDisabled()
+    expect(updatePreferences).not.toHaveBeenCalledWith({ wipeOnOnline: false })
+
+    await user.click(within(dialog).getByRole("button", { name: /cancel/i }))
+
+    expect(updatePreferences).not.toHaveBeenCalledWith({ wipeOnOnline: false })
+    expect(wipe).toBeChecked()
+    expect(screen.queryByText("Local data will remain")).not.toBeInTheDocument()
+  })
+
+  it("re-enabling writes immediately without a dialog and keeps later disarm guarded", async () => {
+    fakePreferences.wipeOnOnline = false
+    const user = userEvent.setup()
+    await renderApp("/settings")
+    const wipe = await screen.findByRole("switch", {
+      name: "Reset local data after confirmed online connectivity",
+    })
+
+    expect(wipe).not.toBeChecked()
+    expect(screen.getByText("Local data will remain")).toBeInTheDocument()
+
+    await user.click(wipe)
+
+    await waitFor(() =>
+      expect(updatePreferences).toHaveBeenCalledWith({ wipeOnOnline: true }),
+    )
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByText("Local data will remain")).not.toBeInTheDocument(),
+    )
+
+    updatePreferences.mockClear()
+    await user.click(wipe)
+
+    expect(updatePreferences).not.toHaveBeenCalledWith({ wipeOnOnline: false })
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument()
   })
 
   it("clears only a stale preference save error after a successful save", async () => {
@@ -734,12 +837,12 @@ describe("settings v2", () => {
     const user = userEvent.setup()
     await renderApp("/settings")
     const button = await screen.findByRole("button", {
-      name: "Keep keys for the next update only",
+      name: "Keep keys across the next online transition only",
     })
     expect(button).toBeEnabled()
     await user.click(button)
     const dialog = await screen.findByRole("alertdialog", {
-      name: "Keep keys for the next update only",
+      name: "Keep keys across the next online transition only",
     })
     expectSingleAlertCancelWithoutClose(dialog)
     const action = within(dialog).getByRole("button", { name: "Arm maintenance token" })

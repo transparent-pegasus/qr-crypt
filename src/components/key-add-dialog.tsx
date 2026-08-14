@@ -590,6 +590,10 @@ export function KeyAddDialog({
                   onChange={(event) => setSymmetricImportName(event.target.value)}
                 />
               </div>
+              <Fingerprint
+                label={t("keys.symmetricImport.fingerprintHint")}
+                value={view.record.fingerprint}
+              />
               <div className="flex items-start gap-2">
                 <Checkbox
                   id="symmetric-import-ack"

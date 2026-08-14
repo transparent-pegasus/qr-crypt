@@ -33,10 +33,15 @@ app's control and outside the scope of its wipe.
 One thing: it is operated fully offline. That splits into two habits the app enforces.
 
 * **Key exchange happens offline.** Keys and public keys are exchanged face to face as QR
-  codes. There is no server in between, no cloud key escrow, no account sync. Keys live
-  only in the offline device's IndexedDB.
-* **Data moves between the offline and online devices as QR codes.** Nothing crosses that
-  gap but light: a QR code on one screen, a camera on the other.
+  codes. There is no server in between, no cloud key escrow, no account sync. Within
+  app-managed persistent storage, key records live only in the offline device's IndexedDB.
+  The documented exchange path deliberately displays exchange material as QR codes; for a
+  shared AES key, that is an exportable `OCK2` secret-key QR.
+* **Data moves between the offline and online devices as QR codes.** On the QR transfer
+  path, only light crosses that gap: a QR code on one screen, a camera on the other.
+  Exported files carried on removable media and text carried through the system clipboard
+  are separate alternatives, outside this optical claim and the app's control as disclosed
+  above.
 
 The algorithms themselves are the standard ones. The claim is about where they are run.
 
