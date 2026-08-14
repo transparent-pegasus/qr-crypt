@@ -148,7 +148,7 @@ const en = {
     "Pass encrypted messages between a messenger and an offline device using QR codes and text. This works only while a scan finds no keys, PQ identities, or Vault on this device; nothing is decrypted and no keys are used.",
   "relay.boundary.title": "Untrusted relay boundary",
   "relay.boundary.body":
-    "This relay accepts only encrypted message frames (OCF2 pq-message or sym-message). It checks their format, but never decrypts, verifies, stores, or transmits them. Everything the sender chose — the ciphertext, transferId, IV, and createdAt values — stays untrusted and can carry covert data until the receiving offline device authenticates it. Exchange keys face to face, never through this relay.",
+    "This relay accepts only encrypted message frames (OCF2 pq-message or sym-message). It checks their format but does not decrypt or verify them. Frames remain in this page's memory for this session only, with no app-managed persistence, and the relay makes no payload-bearing network request. The copy action places text on the system clipboard, which is outside the app's control. Everything the sender chose — the ciphertext, transferId, IV, and createdAt values — stays untrusted and can carry covert data until the receiving offline device authenticates it. Exchange keys face to face, never through this relay.",
   "relay.capture.open": "QR → text",
   "relay.capture.unavailable":
     "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
@@ -377,7 +377,10 @@ const en = {
   "keys.symmetricImport.warnBody":
     "If a third party has the same key, they may be able to decrypt the ciphertext.",
   "keys.symmetricImport.nameLabel": "Key name",
-  "keys.symmetricImport.ackLabel": "I trust the channel used to share this key",
+  "keys.symmetricImport.fingerprintHint":
+    "Compare this fingerprint with the sender through an independent channel",
+  "keys.symmetricImport.ackLabel":
+    "The fingerprint matches what the sender reads out through an independent channel",
   "keys.symmetricImport.saveButton": "Save the shared key",
   "keys.demo.hint":
     "Ask the other party to increase their screen brightness, hold the camera about 15–20 cm away, and keep it still until the image is in focus.",
@@ -563,7 +566,14 @@ const en = {
   "settings.wipeOnOnline.offTitle": "Local data will remain",
   "settings.wipeOnOnline.offBody":
     "While permanently off, detecting connectivity will not automatically reset keys and local data.",
-  "settings.maintenance.button": "Keep keys for the next update only",
+  "settings.wipeOff.title": "Disable reset after online connectivity?",
+  "settings.wipeOff.body":
+    'When this setting is off, confirmed online connectivity will not automatically reset keys or local data. Enter "DISABLE WIPE" and acknowledge this consequence to continue.',
+  "settings.wipeOff.acknowledge":
+    "I understand that confirmed online connectivity will no longer automatically reset keys or local data",
+  "settings.wipeOff.confirm": "Disable automatic reset",
+  "settings.wipeOff.cancel": "Cancel",
+  "settings.maintenance.button": "Keep keys across the next online transition only",
   "settings.maintenance.hint":
     "This can be armed only while offline. It is not a recovery path for stored ciphertext and always expires after the next verified transition.",
   "settings.maintenance.onlineDisabled": "This cannot be set while online.",
@@ -612,12 +622,12 @@ const en = {
   "settings.security.caveat.4":
     "Reset attempts logical deletion of local data. Physical erasure is not guaranteed, including for LevelDB and SSD wear leveling.",
   "settings.security.wipeOnOnlineNote":
-    "Wipe-on-online reduces remaining data only if the current code can run after connectivity is established. It does not prevent malicious same-origin code, physical recovery, or compromised code that runs before the update.",
+    "Wipe-on-online reduces remaining data only if the current code can run after connectivity is established. It does not prevent malicious same-origin code, physical recovery, or compromised code that ran before the current code.",
   "settings.maintenance.dialogDesc":
     'Suppresses wipe once, at the next confirmed online transition. Enter "KEEP KEYS" and review the warning to continue.',
   "settings.confirmationLabel": "Confirmation text",
   "settings.maintenance.ackLabel":
-    "I understand this applies once and does not guarantee the safety of the updated code or device",
+    "I understand this applies once and does not guarantee the safety of whatever code or device state follows that transition",
   "settings.maintenance.armButton": "Arm maintenance token",
   "settings.delete.desc.keys":
     'All ciphertext will become undecryptable. Enter "DELETE ALL" to continue.',
@@ -781,7 +791,7 @@ const ja = {
     "QRコードとテキストで、メッセンジャーとオフライン端末の間で暗号化済みメッセージを受け渡します。走査で鍵・PQ identity・Vaultが無いと確認できた端末でのみ使え、復号は行わず、鍵も使いません。",
   "relay.boundary.title": "信頼しない中継境界",
   "relay.boundary.body":
-    "このリレーは暗号化済みメッセージフレーム(OCF2のpq-messageまたはsym-message)だけを受け入れます。形式は検査しますが、復号・検証・保存・送信は行いません。送信者が決めた値(暗号文・transferId・IV・createdAt)は隠れたデータを運べ、受信側のオフライン端末が認証するまで信頼できません。鍵の交換は必ず対面で行い、このリレーでは行わないでください。",
+    "このリレーは暗号化済みメッセージフレーム(OCF2のpq-messageまたはsym-message)だけを受け入れます。形式だけを検査し、復号や検証は行いません。フレームはこのページのメモリーにセッション中だけ保持され、アプリが管理する永続化は行いません。ペイロードを含むネットワークリクエストは行いません。コピー操作ではテキストがシステムのクリップボードに置かれ、その後はアプリの制御外になります。送信者が決めた値(暗号文・transferId・IV・createdAt)は隠れたデータを運べ、受信側のオフライン端末が認証するまで信頼できません。鍵の交換は必ず対面で行い、このリレーでは行わないでください。",
   "relay.capture.open": "QR → テキスト",
   "relay.capture.unavailable":
     "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",
@@ -1007,7 +1017,10 @@ const ja = {
   "keys.symmetricImport.warnBody":
     "第三者が同じ鍵を持つと、暗号文を復号されるおそれがあります。",
   "keys.symmetricImport.nameLabel": "鍵名",
-  "keys.symmetricImport.ackLabel": "この鍵の共有経路を信頼しています",
+  "keys.symmetricImport.fingerprintHint":
+    "この指紋を別経路で送信者と照合してください",
+  "keys.symmetricImport.ackLabel":
+    "別経路で送信者が読み上げた指紋と一致しています",
   "keys.symmetricImport.saveButton": "共有鍵を保存",
   "keys.demo.hint":
     "相手の画面の輝度を上げてもらい、カメラを15〜20cmほど離してピントが合うまで静止すると読み取りやすくなります。",
@@ -1196,7 +1209,14 @@ const ja = {
   "settings.wipeOnOnline.offTitle": "ローカルデータが残り続けます",
   "settings.wipeOnOnline.offBody":
     "永続OFFでは、接続を検出しても鍵とローカルデータを自動初期化しません。",
-  "settings.maintenance.button": "次の一回だけ鍵を保持して更新",
+  "settings.wipeOff.title": "オンライン確定時の自動初期化を無効にしますか？",
+  "settings.wipeOff.body":
+    "この設定をOFFにすると、オンライン接続が確定しても鍵とローカルデータは自動初期化されません。「DISABLE WIPE」と入力し、この結果を確認してください。",
+  "settings.wipeOff.acknowledge":
+    "オンライン接続が確定しても鍵とローカルデータが自動初期化されなくなることを理解しました",
+  "settings.wipeOff.confirm": "自動初期化を無効にする",
+  "settings.wipeOff.cancel": "キャンセル",
+  "settings.maintenance.button": "次のオンライン確定時だけ鍵を保持",
   "settings.maintenance.hint":
     "オフライン中だけ arm できます。暗号文保存の救済経路ではなく、次の verified transition 後に必ず失効します。",
   "settings.maintenance.onlineDisabled": "オンライン中は設定できません。",
@@ -1249,12 +1269,12 @@ const ja = {
   "settings.security.caveat.4":
     "resetはローカルデータの論理削除を試行します。LevelDB・SSDウェアレベリングを含め、物理消去は保証しません。",
   "settings.security.wipeOnOnlineNote":
-    "wipe-on-onlineは、接続後に現在のコードが実行できた場合の残存データ低減です。同一オリジンの悪意あるコード、物理回収、更新前に実行される侵害コードを防ぎません。",
+    "wipe-on-onlineは、接続後に現在のコードが実行できた場合の残存データ低減です。同一オリジンの悪意あるコード、物理回収、現在のコードより前に実行された侵害コードを防ぎません。",
   "settings.maintenance.dialogDesc":
     "次のオンライン確定時にwipeを一度だけ抑止します。実行するには「KEEP KEYS」と入力し、注意事項を確認してください。",
   "settings.confirmationLabel": "確認文字列",
   "settings.maintenance.ackLabel":
-    "一回限りであり、更新後のコードや端末の安全性を保証しないことを理解しました",
+    "一回限りであり、その移行後に動作するコードや端末状態の安全性を保証しないことを理解しました",
   "settings.maintenance.armButton": "maintenance tokenをarm",
   "settings.delete.desc.keys":
     "すべての暗号文が復号できなくなります。削除を実行するには「DELETE ALL」と入力してください。",

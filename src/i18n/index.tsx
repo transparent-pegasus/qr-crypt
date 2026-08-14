@@ -31,6 +31,7 @@ import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
 export const LANGUAGE_STORAGE_KEY = "oc-lang"
 export const DELETE_ALL_CONFIRMATION = "DELETE ALL"
 export const KEEP_KEYS_CONFIRMATION = "KEEP KEYS"
+export const DISABLE_WIPE_CONFIRMATION = "DISABLE WIPE"
 
 export function isLanguage(value: unknown): value is Language {
   return LANGUAGES.some((language) => language === value)
