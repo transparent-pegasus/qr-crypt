@@ -291,7 +291,7 @@ test("relays a canonical sym-message frame without relay-payload persistence or 
   })
   await expect(page.getByRole("navigation", { name: "Online navigation" })).toBeVisible()
   await relayNavigationButton.click()
-  const scanButton = page.getByRole("button", { name: "QR → text" })
+  const scanButton = page.getByRole("button", { name: "QR → Text" })
   await scanButton.click()
   const capture = page.getByRole("dialog", {
     name: "QR to text",
