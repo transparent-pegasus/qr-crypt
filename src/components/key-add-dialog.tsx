@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
-import { useFeatureSupport, useSensitiveSession } from "@/app/providers"
+import { useFeatureSupport } from "@/app/providers"
 import {
   KeyDetailContent,
   type KeyDetailContentProps,
@@ -82,12 +82,12 @@ type AddView =
   | { kind: "symmetric-import"; record: StoredKeyRecord }
   | { kind: "bundle-confirm"; bundle: PqPublicBundleRecord }
 
-export type KeyAddDetail = Omit<
+type KeyAddDetail = Omit<
   KeyDetailContentProps,
   "open" | "fullscreenOpen" | "onFullscreenOpenChange"
 >
 
-export interface KeyAddDialogProps {
+interface KeyAddDialogProps {
   mode: KeyAddMode | null
   /** Set once a key has just been created, to swap this modal over to its detail. */
   detail: KeyAddDetail | null
@@ -109,7 +109,6 @@ export function KeyAddDialog({
 }: KeyAddDialogProps) {
   const { t } = useI18n()
   const { camera } = useFeatureSupport()
-  const { setSensitiveSession } = useSensitiveSession()
   const { preferences } = usePreferences()
   const getPqClient = usePqCryptoClient()
   const [view, setView] = useState<AddView>({ kind: mode ?? "create" })
@@ -181,20 +180,6 @@ export function KeyAddDialog({
   useEffect(() => {
     if (mode === null) scanSession.discard()
   }, [mode, scanSession])
-
-  useEffect(() => {
-    if (showsDetail) return
-    setSensitiveSession({
-      cryptoBusy: open && busy,
-      secretVisible: open && view.kind === "symmetric-import",
-    })
-  }, [busy, open, setSensitiveSession, showsDetail, view.kind])
-  useEffect(
-    () => () => {
-      setSensitiveSession({ cryptoBusy: false, secretVisible: false })
-    },
-    [setSensitiveSession],
-  )
 
   const persist = async (write: () => Promise<void>) => {
     persistingRef.current = true
@@ -294,6 +279,15 @@ export function KeyAddDialog({
     }
   }
 
+  // Wire names allow 1-100 unnormalized units; storage requires trimmed 1-80 without
+  // controls. An unacceptable label is dropped rather than failing the import after
+  // the fingerprint ceremony - the key material, not the label, is the identity.
+  const acceptableImportedName = (name: string | undefined): { name?: string } => {
+    if (name === undefined) return {}
+    const parsed = keyNameSchema.safeParse(name)
+    return parsed.success ? { name: parsed.data } : {}
+  }
+
   const prepareBundleImport = async (bundle: PublicIdentityBundleV2) => {
     assertUsableBundle(bundle)
     const importedAt = Date.now()
@@ -308,7 +302,7 @@ export function KeyAddDialog({
       bundle: {
         recordId: generateKeyId(),
         identityId: bundle.identityId,
-        ...(bundle.name === undefined ? {} : { name: bundle.name }),
+        ...acceptableImportedName(bundle.name),
         kem: { ...bundle.kem, fingerprint: kemFingerprint },
         signing: { ...bundle.signing, fingerprint: signingFingerprint },
         identityFingerprint,

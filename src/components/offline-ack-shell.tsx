@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { LanguageField, useI18n } from "@/i18n"
 
-export interface OfflineAckShellProps {
+interface OfflineAckShellProps {
   generation: number
   onContinue: (generation: number) => boolean
   variant?: "standard" | "wiped"

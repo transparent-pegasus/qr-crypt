@@ -6,7 +6,7 @@ import {
   type Preferences,
 } from "@/schemas/domain"
 
-export interface CompatibilityMode {
+interface CompatibilityMode {
   updating: boolean
   error: ErrorCode | null
   change(enabled: boolean): Promise<void>

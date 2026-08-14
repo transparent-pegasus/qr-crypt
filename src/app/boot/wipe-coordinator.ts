@@ -9,8 +9,8 @@ import {
 } from "@/storage/best-effort-reset"
 import { closeDb, engageDatabaseAccessBarrier } from "@/storage/database"
 
-export const WIPE_LOCK_NAME = `${WIPE_BROADCAST_CHANNEL}-exclusive`
-export const WIPE_COORDINATION_TIMEOUT_MS = 3_000
+const WIPE_LOCK_NAME = `${WIPE_BROADCAST_CHANNEL}-exclusive`
+const WIPE_COORDINATION_TIMEOUT_MS = 3_000
 
 const WIPE_REQUEST_TYPE = "qr-crypt-wipe-request"
 
@@ -19,7 +19,7 @@ interface WipeRequestMessage {
   version: 1
 }
 
-export interface WipeCoordinatorArgs extends BestEffortResetArgs {
+interface WipeCoordinatorArgs extends BestEffortResetArgs {
   endSession?: () => void
   resetTransient: () => void
 }
@@ -204,12 +204,12 @@ export function performUserRequestedReset(
   })
 }
 
-export interface WipeBroadcastListenerOptions {
+interface WipeBroadcastListenerOptions {
   endSession?: () => void
   resetTransient: () => void
 }
 
-export interface WipeBroadcastListenerDependencies {
+interface WipeBroadcastListenerDependencies {
   closeDatabase: () => void
   disposeCrypto: () => void
   dropVaultKeyCacheAndReceipts: () => Promise<void>

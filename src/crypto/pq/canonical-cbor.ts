@@ -385,7 +385,7 @@ function guardLiteral<T extends string | number>(value: unknown, literal: T): T 
 // MlKemAadV2 (encode only — AAD is not carried on the wire; both sides reconstruct it).
 // ---------------------------------------------------------------------------
 
-export function guardMlKemAadV2(value: unknown): MlKemAadV2 {
+function guardMlKemAadV2(value: unknown): MlKemAadV2 {
   const record = guardKeys(value, [
     "version",
     "type",
@@ -452,7 +452,7 @@ export function decodeMlKemEnvelopeV2(bytes: Uint8Array): MlKemMessageEnvelopeV2
 // SymMessageEnvelopeV2 and its reconstructed AAD
 // ---------------------------------------------------------------------------
 
-export function guardSymAadV2(value: unknown): SymAadV2 {
+function guardSymAadV2(value: unknown): SymAadV2 {
   const record = guardKeys(value, [
     "version",
     "type",
@@ -579,7 +579,7 @@ function guardBodyCommon(record: Record<string, unknown>): {
   }
 }
 
-export function guardSignedMessageBodyV2(value: unknown): SignedMessageBodyV2 {
+function guardSignedMessageBodyV2(value: unknown): SignedMessageBodyV2 {
   const record = guardKeys(value, [
     "version",
     "messageId",
@@ -594,7 +594,7 @@ export function guardSignedMessageBodyV2(value: unknown): SignedMessageBodyV2 {
   }
 }
 
-export function guardSignedMessageV2(value: unknown): Omit<SignedMessageV2, "kind"> {
+function guardSignedMessageV2(value: unknown): Omit<SignedMessageV2, "kind"> {
   const record = guardKeys(value, ["body", "signature"])
   const signatureRecord = guardKeys(record["signature"], ["algorithm", "value"])
   const algorithm = guardEnum(signatureRecord["algorithm"], ML_DSA_ALGORITHMS)

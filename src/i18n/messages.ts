@@ -1,7 +1,7 @@
 export const LANGUAGES = ["en", "ja"] as const
 export type Language = (typeof LANGUAGES)[number]
 
-export type InterpolationValue = string | number
+type InterpolationValue = string | number
 export type InterpolationValues = Readonly<Record<string, InterpolationValue>>
 
 const en = {
@@ -643,7 +643,7 @@ const en = {
 } as const
 
 export type MessageKey = keyof typeof en
-export type MessageCatalog = Readonly<Record<MessageKey, string>>
+type MessageCatalog = Readonly<Record<MessageKey, string>>
 const MESSAGE_KEY_SET: ReadonlySet<string> = new Set(Object.keys(en))
 
 const ja = {

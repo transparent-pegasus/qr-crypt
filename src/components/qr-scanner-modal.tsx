@@ -20,7 +20,7 @@ import {
 import { useI18n } from "@/i18n"
 import { cn } from "@/lib/utils"
 
-export type QrScannerModalProps = QrScannerPanelProps & {
+type QrScannerModalProps = QrScannerPanelProps & {
   triggerLabel: string
   triggerDisabled?: boolean
   onClosed?: () => void

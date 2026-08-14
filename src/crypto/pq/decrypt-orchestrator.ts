@@ -28,7 +28,7 @@ import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
 import { assertActiveSuite, suiteComponents } from "@/crypto/pq/suites"
 import { zeroize } from "@/crypto/pq/zeroize"
 
-export interface ResolvedSigningKey {
+interface ResolvedSigningKey {
   algorithm: MlDsaAlgorithm
   publicKey: Uint8Array
   // Revocation state of the imported record. Do not use revoked keys even for
@@ -36,7 +36,7 @@ export interface ResolvedSigningKey {
   revoked: boolean
 }
 
-export type ResolveSigningKey = (
+type ResolveSigningKey = (
   senderSigningKeyId: string,
 ) => Promise<ResolvedSigningKey | undefined>
 

@@ -3,7 +3,7 @@ import { toAppError, type ErrorCode } from "@/crypto/errors"
 import { splitIntoFrames } from "@/qr/multipart/split"
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 
-export interface UseFrameSplitArgs {
+interface UseFrameSplitArgs {
   bytes: Uint8Array
   artifactType: V2ArtifactType
   frameBytes: number
@@ -11,7 +11,7 @@ export interface UseFrameSplitArgs {
   generation: number | string
 }
 
-export interface UseFrameSplitResult {
+interface UseFrameSplitResult {
   frames: readonly QrFrameV2[]
   splitting: boolean
   error: ErrorCode | null

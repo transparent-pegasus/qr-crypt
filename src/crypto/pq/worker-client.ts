@@ -33,7 +33,6 @@ import {
   ACTIVE_PROFILE,
   assertActiveProfile,
   assertActiveSuite,
-  resolveSuite,
   suiteComponents,
 } from "@/crypto/pq/suites"
 import { keyIdRawBytes } from "@/crypto/pq/wire-bytes"
@@ -62,47 +61,6 @@ export interface GenerateIdentityKeysRequest {
 export interface GeneratedIdentityKeys {
   kem: { publicKey: Uint8Array; encryptedSeed: EncryptedSecret }
   signing: { publicKey: Uint8Array; encryptedSeed: EncryptedSecret }
-}
-
-// Re-expansion check: decrypt seed → keygen → return public key.
-// The caller must require an exact match with the stored public key before use.
-export interface PublicKeysFromSeedsRequest {
-  vaultKey: CryptoKey
-  identityId: string
-  kem: {
-    algorithm: MlKemAlgorithm
-    keyId: string
-    encryptedSeed: EncryptedSecret
-    storedPublicKey: Uint8Array
-  }
-  signing: {
-    algorithm: MlDsaAlgorithm
-    keyId: string
-    encryptedSeed: EncryptedSecret
-    storedPublicKey: Uint8Array
-  }
-}
-
-export interface PublicKeysFromSeedsResult {
-  kemPublicKey: Uint8Array
-  dsaPublicKey: Uint8Array
-}
-
-export interface SignWithSeedRequest {
-  algorithm: MlDsaAlgorithm
-  vaultKey: CryptoKey
-  identityId: string
-  keyId: string
-  encryptedSeed: EncryptedSecret
-  storedPublicKey: Uint8Array // Compare with regenerated key; fail closed on mismatch.
-  message: Uint8Array // signingTargetBytes(body)
-}
-
-export interface VerifyRequest {
-  algorithm: MlDsaAlgorithm
-  publicKey: Uint8Array
-  message: Uint8Array
-  signature: Uint8Array
 }
 
 // Encryption performs the entire sign-then-encrypt flow inside the Worker in this order:
@@ -166,9 +124,6 @@ export type VerifySignedMessageResult =
 
 export interface PqCryptoClient {
   generateIdentityKeys(req: GenerateIdentityKeysRequest): Promise<GeneratedIdentityKeys>
-  publicKeysFromSeeds(req: PublicKeysFromSeedsRequest): Promise<PublicKeysFromSeedsResult>
-  signWithSeed(req: SignWithSeedRequest): Promise<Uint8Array>
-  verify(req: VerifyRequest): Promise<boolean>
   encryptPqMessage(req: EncryptPqMessageRequest): Promise<MlKemMessageEnvelopeV2>
   openPqEnvelope(req: OpenPqEnvelopeRequest): Promise<OpenedPqEnvelope>
   verifySignedMessage(req: VerifySignedMessageRequest): Promise<VerifySignedMessageResult>
@@ -176,16 +131,13 @@ export interface PqCryptoClient {
   dispose(): void
 }
 
-export interface CreatePqCryptoClientOptions {
+interface CreatePqCryptoClientOptions {
   // Test seam. When omitted, resolve from env.pqWorkerEnabled and the runtime environment.
   timeoutMs?: number
 }
 
 export type PqWorkerOperation =
   | "generateIdentityKeys"
-  | "publicKeysFromSeeds"
-  | "signWithSeed"
-  | "verify"
   | "encryptPqMessage"
   | "openPqEnvelope"
   | "verifySignedMessage"
@@ -201,9 +153,6 @@ export type PqWorkerRpcResponse =
 
 interface WorkerRequestMap {
   generateIdentityKeys: GenerateIdentityKeysRequest
-  publicKeysFromSeeds: PublicKeysFromSeedsRequest
-  signWithSeed: SignWithSeedRequest
-  verify: VerifyRequest
   encryptPqMessage: EncryptPqMessageRequest
   openPqEnvelope: OpenPqEnvelopeRequest
   verifySignedMessage: VerifySignedMessageRequest
@@ -211,9 +160,6 @@ interface WorkerRequestMap {
 
 interface WorkerResultMap {
   generateIdentityKeys: GeneratedIdentityKeys
-  publicKeysFromSeeds: PublicKeysFromSeedsResult
-  signWithSeed: Uint8Array
-  verify: boolean
   encryptPqMessage: MlKemMessageEnvelopeV2
   openPqEnvelope: OpenedPqEnvelope
   verifySignedMessage: VerifySignedMessageResult
@@ -252,13 +198,10 @@ function isEncryptedSecret(value: unknown, seedBytes: number): boolean {
 function requestError(operation: PqWorkerOperation): AppError {
   switch (operation) {
     case "openPqEnvelope":
-    case "publicKeysFromSeeds":
       return new AppError("DECRYPTION_FAILED")
-    case "verify":
     case "verifySignedMessage":
       return new AppError("SIGNATURE_INVALID")
     case "generateIdentityKeys":
-    case "signWithSeed":
     case "encryptPqMessage":
       return new AppError("ENCRYPTION_FAILED")
   }
@@ -290,90 +233,6 @@ export function validatePqWorkerRequest(
           throw requestError(operation)
         }
         assertActiveProfile(profile as never)
-        return
-      }
-      case "publicKeysFromSeeds": {
-        const kem = payload["kem"]
-        const signing = payload["signing"]
-        if (
-          !isVaultKey(payload["vaultKey"]) ||
-          !isKeyId(payload["identityId"]) ||
-          !isRecord(kem) ||
-          !isRecord(signing)
-        ) {
-          throw requestError(operation)
-        }
-        const kemAlgorithm = kem["algorithm"]
-        const dsaAlgorithm = signing["algorithm"]
-        if (
-          typeof kemAlgorithm !== "string" ||
-          typeof dsaAlgorithm !== "string"
-        ) {
-          throw requestError(operation)
-        }
-        assertActiveSuite(resolveSuite(kemAlgorithm as never, dsaAlgorithm as never))
-        const activeKemAlgorithm = kemAlgorithm as MlKemAlgorithm
-        const activeDsaAlgorithm = dsaAlgorithm as MlDsaAlgorithm
-        if (
-          !isKeyId(kem["keyId"]) ||
-          !isEncryptedSecret(kem["encryptedSeed"], KEM_SEED_BYTES) ||
-          !isBytes(
-            kem["storedPublicKey"],
-            KEM_SIZES[activeKemAlgorithm].publicKeyBytes,
-          ) ||
-          !isKeyId(signing["keyId"]) ||
-          !isEncryptedSecret(signing["encryptedSeed"], DSA_SEED_BYTES) ||
-          !isBytes(
-            signing["storedPublicKey"],
-            DSA_SIZES[activeDsaAlgorithm].publicKeyBytes,
-          )
-        ) {
-          throw requestError(operation)
-        }
-        return
-      }
-      case "signWithSeed": {
-        const algorithm = payload["algorithm"]
-        if (typeof algorithm !== "string") {
-          throw requestError(operation)
-        }
-        assertActiveDsaAlgorithm(algorithm as never)
-        const activeAlgorithm = algorithm as MlDsaAlgorithm
-        if (
-          !isVaultKey(payload["vaultKey"]) ||
-          !isKeyId(payload["identityId"]) ||
-          !isKeyId(payload["keyId"]) ||
-          !isEncryptedSecret(payload["encryptedSeed"], DSA_SEED_BYTES) ||
-          !isBytes(
-            payload["storedPublicKey"],
-            DSA_SIZES[activeAlgorithm].publicKeyBytes,
-          ) ||
-          !isBytes(payload["message"])
-        ) {
-          throw requestError(operation)
-        }
-        return
-      }
-      case "verify": {
-        const algorithm = payload["algorithm"]
-        if (typeof algorithm !== "string") {
-          throw requestError(operation)
-        }
-        assertActiveDsaAlgorithm(algorithm as never)
-        const activeAlgorithm = algorithm as MlDsaAlgorithm
-        if (
-          !isBytes(
-            payload["publicKey"],
-            DSA_SIZES[activeAlgorithm].publicKeyBytes,
-          ) ||
-          !isBytes(payload["message"]) ||
-          !isBytes(
-            payload["signature"],
-            DSA_SIZES[activeAlgorithm].signatureBytes,
-          )
-        ) {
-          throw requestError(operation)
-        }
         return
       }
       case "encryptPqMessage": {
@@ -479,7 +338,8 @@ export function validatePqWorkerRequest(
   }
 }
 
-function validateWorkerResult<K extends PqWorkerOperation>(
+// Test-side in-process client seam; production callers stay on the browser Worker.
+export function validateWorkerResult<K extends PqWorkerOperation>(
   operation: K,
   request: WorkerRequestMap[K],
   value: unknown,
@@ -501,27 +361,6 @@ function validateWorkerResult<K extends PqWorkerOperation>(
         }
         break
       }
-      case "publicKeysFromSeeds": {
-        const req = request as PublicKeysFromSeedsRequest
-        if (
-          !isRecord(value) ||
-          !isBytes(value["kemPublicKey"], KEM_SIZES[req.kem.algorithm].publicKeyBytes) ||
-          !isBytes(value["dsaPublicKey"], DSA_SIZES[req.signing.algorithm].publicKeyBytes)
-        ) {
-          throw new TypeError("worker result")
-        }
-        break
-      }
-      case "signWithSeed": {
-        const req = request as SignWithSeedRequest
-        if (!isBytes(value, DSA_SIZES[req.algorithm].signatureBytes)) {
-          throw new TypeError("worker result")
-        }
-        break
-      }
-      case "verify":
-        if (typeof value !== "boolean") throw new TypeError("worker result")
-        break
       case "encryptPqMessage": {
         const req = request as EncryptPqMessageRequest
         const envelope = guardMlKemEnvelopeV2(value)
@@ -580,42 +419,20 @@ function validateWorkerResult<K extends PqWorkerOperation>(
   }
 }
 
-type RpcCall = <K extends PqWorkerOperation>(
+// Test-side in-process client seams; production callers stay on the browser Worker.
+export type RpcCall = <K extends PqWorkerOperation>(
   operation: K,
   payload: WorkerRequestMap[K],
 ) => Promise<WorkerResultMap[K]>
 
-function clientFromRpc(call: RpcCall, dispose: () => void): PqCryptoClient {
+export function clientFromRpc(call: RpcCall, dispose: () => void): PqCryptoClient {
   return {
     generateIdentityKeys: (request) => call("generateIdentityKeys", request),
-    publicKeysFromSeeds: (request) => call("publicKeysFromSeeds", request),
-    signWithSeed: (request) => call("signWithSeed", request),
-    verify: (request) => call("verify", request),
     encryptPqMessage: (request) => call("encryptPqMessage", request),
     openPqEnvelope: (request) => call("openPqEnvelope", request),
     verifySignedMessage: (request) => call("verifySignedMessage", request),
     dispose,
   }
-}
-
-function createInProcessClient(): PqCryptoClient {
-  let disposed = false
-  let nextId = 0
-  const handler = import("@/workers/pq-crypto.worker").then(
-    (module) => module.handlePqWorkerRequest,
-  )
-  const call: RpcCall = async (operation, payload) => {
-    if (disposed) throw new AppError("WORKER_UNAVAILABLE")
-    validatePqWorkerRequest(operation, payload)
-    const id = `node-${nextId++}`
-    const response = await (await handler)({ id, operation, payload })
-    if (disposed) throw new AppError("WORKER_UNAVAILABLE")
-    if (!response.ok) throw new AppError(response.code)
-    return validateWorkerResult(operation, payload, response.value)
-  }
-  return clientFromRpc(call, () => {
-    disposed = true
-  })
 }
 
 interface PendingRpc {
@@ -721,9 +538,5 @@ export function createPqCryptoClient(
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 300_000) {
     throw new AppError("WORKER_UNAVAILABLE")
   }
-  const isNode =
-    typeof window === "undefined" &&
-    typeof process !== "undefined" &&
-    process.versions?.node !== undefined
-  return isNode ? createInProcessClient() : createBrowserWorkerClient(timeoutMs)
+  return createBrowserWorkerClient(timeoutMs)
 }

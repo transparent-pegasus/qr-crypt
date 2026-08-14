@@ -14,7 +14,7 @@ import {
   RGBLuminanceSource,
 } from "@zxing/library"
 
-export const AES_ALGORITHM_LABEL = "Shared-key AES-256-GCM"
+const AES_ALGORITHM_LABEL = "Shared-key AES-256-GCM"
 // Matched on the signature algorithm because the unsigned option, until it is
 // deleted, shares the leading words of this label.
 export const PQ_ALGORITHM_LABEL = /ML-DSA-87/

@@ -7,7 +7,7 @@ import { useI18n, useLocalizedMessage } from "@/i18n"
 import { effectiveGeneratedDisplay } from "@/lib/generated-display"
 import type { Preferences } from "@/schemas/domain"
 
-export interface IdentityQrSessionProps {
+interface IdentityQrSessionProps {
   view: IdentityQrView
   title: string
   enabled: boolean

@@ -12,7 +12,7 @@ import {
 import { useOnlineStatus } from "@/hooks/use-online-status"
 import { clearAckPending, readAckPending, setAckPending } from "@/app/offline-ack-marker"
 
-export interface DisplayGatePhase {
+interface DisplayGatePhase {
   online: boolean
   coldOffline: boolean
   sessionSawCommittedOnline: boolean

@@ -5,7 +5,7 @@ import {
 } from "@/lib/feature-detect"
 import { env } from "@/schemas/env-schema"
 
-export interface UseAutoClearOptions {
+interface UseAutoClearOptions {
   enabled: boolean
   onClear: () => void
   clearNonce?: number

@@ -13,7 +13,7 @@ import { randomBytes } from "@/crypto/random"
 import { assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
 import { MAX_PLAINTEXT_BYTES, MESSAGE_ID_BYTES } from "@/lib/limits"
 
-export interface EncryptPqArgs {
+interface EncryptPqArgs {
   client: PqCryptoClient
   // Recipient: imported bundle that supplies the recipient KEM public key and keyId.
   recipient: PqPublicBundleRecord

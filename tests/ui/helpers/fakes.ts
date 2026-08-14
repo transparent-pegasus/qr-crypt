@@ -367,7 +367,7 @@ export function emitScannedPayload(payload: string): void {
   scanTextCallback?.(payload)
 }
 
-export const disposePqClient = vi.fn()
+const disposePqClient = vi.fn()
 export const createPqCryptoClient = vi.fn(() => ({ dispose: disposePqClient }))
 export const getOrCreateVaultKey = vi.fn(async () => cryptoKey())
 

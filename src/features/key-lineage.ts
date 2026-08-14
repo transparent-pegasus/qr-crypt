@@ -1,7 +1,7 @@
 // Rotation lineages: a record whose id no other record names in rotatedFromId
 // is a head; its previous generations follow the rotatedFromId chain
 // newest-to-oldest, stopping at a missing link or an already-visited id.
-export interface LineageRecord {
+interface LineageRecord {
   id: string
   // Matches StoredKeyRecord (`string | undefined`) under exactOptionalPropertyTypes;
   // PostQuantumIdentity's optional `string` is still assignable.
