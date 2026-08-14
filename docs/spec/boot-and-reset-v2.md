@@ -155,12 +155,16 @@ checker remains required.
   and peer wipe invalidates relay eligibility.
 - An eligible relay proof is re-read with the same boot scanner before a relay
   dialog opens and whenever the document becomes visible, and each re-read is
-  taken under the same exclusive hold. The lease covers the proof, not the
-  relay session that follows it: a second tab can still create a key after a
-  successful proof and before the next re-check, so that residual race remains
-  — narrowed from "any write racing the proof" to "a write beginning after
-  eligibility was published". It is a stale policy signal, not a relay read of
-  or disclosure from the database.
+  taken under the same exclusive hold. After the dialog-opening re-read, the
+  session requests that same origin-wide lock exclusively with `ifAvailable`
+  and holds the acquired lease until the single `endSession` teardown path
+  releases it. A shared lock-taking writer therefore cannot land during a live
+  session, and a writer already inside the lock denies the session instead of
+  making it wait. The remaining stale-signal window between eligibility
+  publication and session acquisition is bounded by the re-reads and costs
+  policy freshness rather than database disclosure. Imported public bundles,
+  deletes, renames, and usage stamps take no such lock; the clean-origin proof
+  counts none of those paths.
 - The active preference and write vocabulary has two algorithms:
   `A256GCM` and `MLKEM1024_MLDSA87_A256GCM`. Boot deliberately has one
   read-only exception: its `defaultAlgorithm` allowlist also accepts the
@@ -214,16 +218,19 @@ checker remains required.
 1. On the install-gate path (no sensitive data present at all) no wipe occurs.
 2. Only network-confirmed (sentinel body match) fires the wipe.
 3. **maintenance token**: set offline with strong confirmation, meaning "keep
-   the keys for the next single update only". It always expires after one
-   verified transition and reverts to ON.
-4. Turning the setting permanently OFF always shows a warning.
+   the keys across the next single verified online transition only". It always
+   expires after that transition and reverts to ON.
+4. Turning the setting permanently OFF requires the same strong typed
+   confirmation as the maintenance token and always shows a persistent warning
+   while OFF.
 
 ## 4. WipeCoordinator Order (Single Instance, Owned by the Boot Layer)
 
 0. Synchronously invoke the relay's one idempotent `endSession` handle. It
    aborts pending camera startup, stops a live scan handle, cancels relay
-   lifetime/display work, detaches the video, and releases app references
-   before the barrier. A peer broadcast performs this as its first action.
+   lifetime/display work, detaches the video, releases the relay lease, and
+   releases app references before the barrier. A peer broadcast performs this
+   as its first action.
 1. Fail-close all new UI/crypto/storage operations (subsequent
    repository/worker calls error immediately).
 2. Cancel/terminate the Workers by disposing every registered PQ crypto
@@ -233,7 +240,7 @@ checker remains required.
    inside the Worker itself; the app keeps no registry of page-side byte
    buffers, because page plaintext lives in JavaScript strings, which cannot
    be zeroized.
-3. Hide and reset transient/SensitiveSession state.
+3. Hide and reset transient page-local state and bump the TransientClear nonce.
 4. Request stop/close in all tabs via `navigator.locks` (with a fallback) +
    `BroadcastChannel("qr-crypt-wipe")`.
 5. **Delete the `EncryptedSecret` records under the Vault first → then delete

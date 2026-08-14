@@ -15,7 +15,7 @@ import { toast } from "sonner"
 import { useDefaultRegisterSW } from "@/hooks/use-register-sw"
 import { useI18n, type MessageKey } from "@/i18n"
 
-export interface RegisterSwResult {
+interface RegisterSwResult {
   offlineReady: [boolean, Dispatch<SetStateAction<boolean>>]
 }
 

@@ -30,7 +30,7 @@ import {
 import { decodeFramePayload } from "@/qr/payload-v2"
 import { V2_ARTIFACT_TYPES } from "@/schemas/domain"
 
-export interface TransferAssemblerOptions {
+interface TransferAssemblerOptions {
   transferTimeoutMinutes: number
   now?: () => number // Test seam; defaults to Date.now.
 }

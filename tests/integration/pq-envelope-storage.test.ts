@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { decryptPqMessage } from "@/crypto/pq/decrypt-orchestrator"
 import { buildPublicBundle, createIdentity, rotateIdentity } from "@/crypto/pq/identity"
 import { encryptPq } from "@/crypto/pq/ml-kem-envelope"
-import { createPqCryptoClient, type PqCryptoClient } from "@/crypto/pq/worker-client"
+import type { PqCryptoClient } from "@/crypto/pq/worker-client"
 import { pqIdentityFingerprint } from "@/crypto/pq/wire-bytes"
 import {
   encodeMlKemEnvelopeV2,
@@ -42,6 +42,7 @@ import {
   saveRotation,
 } from "@/storage/pq-identity-repository"
 import { publicRecord } from "../helpers/pq-fixtures"
+import { createInProcessPqClient } from "../setup/pq-in-process-client"
 
 const NOW = 1_700_200_000_000
 const clients: PqCryptoClient[] = []
@@ -75,7 +76,7 @@ async function assertRunsAfterExclusiveLock(
 
 describe("sensitive-write lock", () => {
   it("is held while an identity is saved", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const identity = await createIdentity({
       client,
@@ -97,7 +98,7 @@ describe("sensitive-write lock", () => {
   }, 30_000)
 
   it("is held while an identity rotation is saved", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const vaultKey = await getOrCreateVaultKey()
     const identity = await createIdentity({
@@ -118,7 +119,7 @@ describe("sensitive-write lock", () => {
 
 describe("PQ envelope and storage integration", () => {
   it("generates, imports, encrypts, decrypts, rotates old KEM keys, and blocks revoked selections", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const vaultKey = await getOrCreateVaultKey()
     const randomCallSizes: number[] = []
@@ -189,7 +190,7 @@ describe("PQ envelope and storage integration", () => {
     const envelope = await encryptPq({
       client,
       recipient: selectedRecipient!,
-      plaintext,
+      plaintext: Uint8Array.from(plaintext),
       sign: { identity: sender, vaultKey },
       now: NOW + 4,
     })
@@ -319,7 +320,7 @@ describe("PQ envelope and storage integration", () => {
 
 describe("deleteSupersededIdentities", () => {
   it("closes the storage-resolved decrypt route but not an identity already held in memory", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const vaultKey = await getOrCreateVaultKey()
     const first = await createIdentity({
@@ -339,7 +340,7 @@ describe("deleteSupersededIdentities", () => {
     const envelope = await encryptPq({
       client,
       recipient,
-      plaintext,
+      plaintext: Uint8Array.from(plaintext),
       sign: { identity: first, vaultKey },
       now: NOW + 2,
     })
@@ -389,7 +390,7 @@ describe("deleteSupersededIdentities", () => {
   }, 30_000)
 
   it("deletes rotated and revoked generations after deduplicating the request", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const vaultKey = await getOrCreateVaultKey()
     const first = await createIdentity({
@@ -420,7 +421,7 @@ describe("deleteSupersededIdentities", () => {
   }, 30_000)
 
   it("refuses the whole request when any id is still active and deletes nothing", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const vaultKey = await getOrCreateVaultKey()
     const first = await createIdentity({
@@ -455,7 +456,7 @@ describe("deleteSupersededIdentities", () => {
 
 describe("identity rotation persistence", () => {
   it("keeps a concurrent rename and lastUsedAt when rotating an identity", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const vaultKey = await getOrCreateVaultKey()
     const identity = await createIdentity({
@@ -499,7 +500,7 @@ describe("identity rotation persistence", () => {
 
 describe("renameIdentity", () => {
   it("renames a stored identity and trims the name", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const vaultKey = await getOrCreateVaultKey()
     const identity = await createIdentity({
@@ -523,7 +524,7 @@ describe("renameIdentity", () => {
   })
 
   it("rejects a blank rename", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const vaultKey = await getOrCreateVaultKey()
     const identity = await createIdentity({
@@ -541,7 +542,7 @@ describe("renameIdentity", () => {
   }, 30_000)
 
   it("refuses to rename a superseded generation and leaves both names intact", async () => {
-    const client = createPqCryptoClient()
+    const client = createInProcessPqClient()
     clients.push(client)
     const vaultKey = await getOrCreateVaultKey()
     const identity = await createIdentity({

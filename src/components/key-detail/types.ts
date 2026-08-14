@@ -9,7 +9,7 @@ export interface IdentityQrView {
   generation: number
 }
 
-export interface SymmetricQrView {
+interface SymmetricQrView {
   kind: "symmetric-qr"
   payload: string
   acknowledged: boolean

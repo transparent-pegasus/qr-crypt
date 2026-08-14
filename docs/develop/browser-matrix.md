@@ -34,8 +34,10 @@ this policy is an open maintainer decision and is deliberately not settled here.
 | Online relay: camera scan → text (getUserMedia start on explicit action only) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: single-frame OCF2 `sym-message` capture (one AES QR) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: text → QR playback (verbatim OCF2 frame re-display for `pq-message` or `sym-message` after assembled-artifact validation) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: camera scan → QR image (`QR → QR`, getUserMedia start on explicit action only; single-frame transfers only, multi-frame refused; re-rendered at `VITE_QR_RENDER_SIZE`) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: reject non-message OCF2 outer types and bare `OC?2` / retired v1 prefixes | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: clipboard copy/paste (incl. CRLF intermediaries) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
+| Online relay: clipboard PNG write (`ClipboardItem({ "image/png": blob })` for `QR → QR`) — a different Web API from the text path, with its own user-gesture requirement (the write is issued with no preceding `await`), and pasteable into a messenger that accepts images | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: session teardown on `pagehide` / BFCache restore (`pageshow` persisted) | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 | Online relay: camera stop on close / background / eligibility loss | manual-pending | manual-pending | manual-pending | manual-pending | manual-pending |
 

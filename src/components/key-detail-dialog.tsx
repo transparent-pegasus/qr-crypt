@@ -8,7 +8,6 @@ import {
   TriangleAlert,
 } from "lucide-react"
 import { toast } from "sonner"
-import { useSensitiveSession } from "@/app/providers"
 import { IdentityDetails } from "@/components/key-detail/identity-details"
 import { IdentityQrSession } from "@/components/key-detail/identity-qr-session"
 import { SymmetricDetails } from "@/components/key-detail/symmetric-details"
@@ -102,7 +101,7 @@ interface PendingDelete {
   name: string
 }
 
-export interface KeyDetailDialogProps {
+interface KeyDetailDialogProps {
   selection: KeySelection | null
   identity: PostQuantumIdentity | undefined
   previous: PostQuantumIdentity[] | undefined
@@ -122,7 +121,7 @@ export interface KeyDetailContentProps
   onFullscreenOpenChange: (open: boolean) => void
 }
 
-export function resolveKeyDetailRecord(
+function resolveKeyDetailRecord(
   selection: KeySelection | null,
   identity: PostQuantumIdentity | undefined,
   symmetric: StoredKeyRecord | undefined,
@@ -181,7 +180,6 @@ export function KeyDetailContent({
     reset: resetCompatibilityMode,
   } = useCompatibilityMode({ updatePreferences, active: open })
   const getPqClient = usePqCryptoClient()
-  const { setSensitiveSession } = useSensitiveSession()
   const [view, setView] = useState<DetailView>({ kind: "detail" })
   // Seeded from the record because this can mount straight onto a selection (the
   // add modal switching to a freshly created key), where no change effect fires.
@@ -241,23 +239,12 @@ export function KeyDetailContent({
       setBusy(false)
     }
   }
-  useEffect(() => {
-    // A closed instance must stay silent: the keys page mounts this alongside the
-    // add modal, and a patch from the idle one would clear the flags the open one
-    // set. Closing is covered by the selection-change reset and the unmount cleanup.
-    if (!open) return
-    setSensitiveSession({
-      cryptoBusy: busy,
-      secretVisible: view.kind === "symmetric-qr",
-    })
-  }, [busy, open, setSensitiveSession, view.kind])
   useEffect(
     () => () => {
       qrGenerationRef.current += 1
       clearSymmetricArtifact()
-      setSensitiveSession({ cryptoBusy: false, secretVisible: false })
     },
-    [clearSymmetricArtifact, setSensitiveSession],
+    [clearSymmetricArtifact],
   )
   useEffect(() => {
     const source = selection === null ? "" : `${selection.kind}:${selection.id}`
@@ -276,7 +263,6 @@ export function KeyDetailContent({
     resetCompatibilityMode()
     setError(null)
     setRenameDraft(record?.name ?? "")
-    setSensitiveSession({ cryptoBusy: false, secretVisible: false })
     // Closing (selection -> null) and switching records both land here, so this
     // is also the reset the dismissed dialog relies on.
   }, [
@@ -285,7 +271,6 @@ export function KeyDetailContent({
     resetCompatibilityMode,
     selection,
     setFullscreenOpen,
-    setSensitiveSession,
   ])
 
   const leaveQrView = () => {
@@ -295,7 +280,6 @@ export function KeyDetailContent({
     setQrReady(false)
     setView({ kind: "detail" })
     setError(null)
-    setSensitiveSession({ secretVisible: false })
   }
 
   const showIdentityQr = async (target: PostQuantumIdentity) => {

@@ -25,19 +25,11 @@ import type {
   GeneratedIdentityKeys,
   OpenedPqEnvelope,
   OpenPqEnvelopeRequest,
-  PublicKeysFromSeedsRequest,
-  PublicKeysFromSeedsResult,
-  SignWithSeedRequest,
-  VerifyRequest,
   VerifySignedMessageRequest,
   VerifySignedMessageResult,
 } from "@/crypto/pq/worker-client"
 import { zeroize } from "@/crypto/pq/zeroize"
-import {
-  hkdfInfoV2,
-  hkdfSaltV2,
-  mlDsaContextV2,
-} from "@/crypto/pq/wire-bytes"
+import { hkdfInfoV2, hkdfSaltV2 } from "@/crypto/pq/wire-bytes"
 import { randomBytes } from "@/crypto/random"
 import { decryptSecret } from "@/crypto/vault/decrypt-secret"
 import { encryptSecret } from "@/crypto/vault/encrypt-secret"
@@ -177,99 +169,6 @@ async function generateIdentityKeys(
   } finally {
     zeroize(kemSeed, dsaSeed, kemSecretKey, dsaSecretKey)
   }
-}
-
-async function publicKeysFromSeeds(
-  request: PublicKeysFromSeedsRequest,
-): Promise<PublicKeysFromSeedsResult> {
-  const kem = providers.kem1024
-  const dsa = providers.dsa87
-  let kemSeed: Uint8Array | undefined
-  let dsaSeed: Uint8Array | undefined
-  let kemSecretKey: Uint8Array | undefined
-  let dsaSecretKey: Uint8Array | undefined
-  try {
-    const [kemPublicKeySha256, dsaPublicKeySha256] = await Promise.all([
-      sha256(request.kem.storedPublicKey),
-      sha256(request.signing.storedPublicKey),
-    ])
-    ;[kemSeed, dsaSeed] = await Promise.all([
-      decryptSecret({
-        vaultKey: request.vaultKey,
-        secret: request.kem.encryptedSeed,
-        aad: {
-          identityId: request.identityId,
-          role: "ml-kem-seed",
-          algorithm: request.kem.algorithm,
-          keyId: request.kem.keyId,
-          publicKeySha256: kemPublicKeySha256,
-        },
-      }),
-      decryptSecret({
-        vaultKey: request.vaultKey,
-        secret: request.signing.encryptedSeed,
-        aad: {
-          identityId: request.identityId,
-          role: "ml-dsa-seed",
-          algorithm: request.signing.algorithm,
-          keyId: request.signing.keyId,
-          publicKeySha256: dsaPublicKeySha256,
-        },
-      }),
-    ])
-    const kemKeys = kem.keygen(kemSeed)
-    const dsaKeys = dsa.keygen(dsaSeed)
-    kemSecretKey = kemKeys.secretKey
-    dsaSecretKey = dsaKeys.secretKey
-    if (
-      !bytesEqual(kemKeys.publicKey, request.kem.storedPublicKey) ||
-      !bytesEqual(dsaKeys.publicKey, request.signing.storedPublicKey)
-    ) {
-      throw new AppError("DECRYPTION_FAILED")
-    }
-    return {
-      kemPublicKey: Uint8Array.from(kemKeys.publicKey),
-      dsaPublicKey: Uint8Array.from(dsaKeys.publicKey),
-    }
-  } finally {
-    zeroize(kemSeed, dsaSeed, kemSecretKey, dsaSecretKey)
-  }
-}
-
-async function signWithSeed(request: SignWithSeedRequest): Promise<Uint8Array> {
-  const provider = providers.dsa87
-  let seed: Uint8Array | undefined
-  let secretKey: Uint8Array | undefined
-  try {
-    seed = await decryptSecret({
-      vaultKey: request.vaultKey,
-      secret: request.encryptedSeed,
-      aad: {
-        identityId: request.identityId,
-        role: "ml-dsa-seed",
-        algorithm: request.algorithm,
-        keyId: request.keyId,
-        publicKeySha256: await sha256(request.storedPublicKey),
-      },
-    })
-    const generated = provider.keygen(seed)
-    secretKey = generated.secretKey
-    if (!bytesEqual(generated.publicKey, request.storedPublicKey)) {
-      throw new AppError("ENCRYPTION_FAILED")
-    }
-    return provider.sign(request.message, secretKey, mlDsaContextV2())
-  } finally {
-    zeroize(seed, secretKey)
-  }
-}
-
-function verify(request: VerifyRequest): boolean {
-  return providers.dsa87.verify(
-    request.signature,
-    request.message,
-    request.publicKey,
-    mlDsaContextV2(),
-  )
 }
 
 async function encryptPqMessage(
@@ -490,13 +389,10 @@ function verifySignedMessage(
 function fallbackCode(operation: PqWorkerOperation): ErrorCode {
   switch (operation) {
     case "generateIdentityKeys":
-    case "signWithSeed":
     case "encryptPqMessage":
       return "ENCRYPTION_FAILED"
-    case "publicKeysFromSeeds":
     case "openPqEnvelope":
       return "DECRYPTION_FAILED"
-    case "verify":
     case "verifySignedMessage":
       return "SIGNATURE_INVALID"
   }
@@ -515,9 +411,6 @@ function sanitizedCode(error: unknown, operation: PqWorkerOperation): ErrorCode 
 function isOperation(value: unknown): value is PqWorkerOperation {
   return (
     value === "generateIdentityKeys" ||
-    value === "publicKeysFromSeeds" ||
-    value === "signWithSeed" ||
-    value === "verify" ||
     value === "encryptPqMessage" ||
     value === "openPqEnvelope" ||
     value === "verifySignedMessage"
@@ -540,15 +433,6 @@ export async function handlePqWorkerRequest(
       case "generateIdentityKeys":
         value = await generateIdentityKeys(request.payload as GenerateIdentityKeysRequest)
         break
-      case "publicKeysFromSeeds":
-        value = await publicKeysFromSeeds(request.payload as PublicKeysFromSeedsRequest)
-        break
-      case "signWithSeed":
-        value = await signWithSeed(request.payload as SignWithSeedRequest)
-        break
-      case "verify":
-        value = verify(request.payload as VerifyRequest)
-        break
       case "encryptPqMessage":
         value = await encryptPqMessage(request.payload as EncryptPqMessageRequest)
         break
@@ -562,6 +446,18 @@ export async function handlePqWorkerRequest(
     return { id, ok: true, value }
   } catch (error) {
     return { id, ok: false, code: sanitizedCode(error, operation) }
+  } finally {
+    const payload =
+      typeof request.payload === "object" && request.payload !== null
+        ? (request.payload as Record<string, unknown>)
+        : undefined
+    const sensitiveRequest =
+      operation === "encryptPqMessage"
+        ? payload?.["plaintext"]
+        : operation === "verifySignedMessage"
+          ? payload?.["signedMessageBytes"]
+          : undefined
+    if (sensitiveRequest instanceof Uint8Array) zeroize(sensitiveRequest)
   }
 }
 
@@ -581,7 +477,7 @@ function exactOwnedBuffer(view: Uint8Array): ArrayBuffer | undefined {
 function publicTransferables(
   operation: PqWorkerOperation,
   response: PqWorkerRpcResponse,
-): Transferable[] {
+): ArrayBuffer[] {
   if (!response.ok || typeof response.value !== "object" || response.value === null) {
     return []
   }
@@ -592,11 +488,6 @@ function publicTransferables(
     const signing = value["signing"] as Record<string, unknown> | undefined
     if (kem?.["publicKey"] instanceof Uint8Array) views.push(kem["publicKey"])
     if (signing?.["publicKey"] instanceof Uint8Array) views.push(signing["publicKey"])
-  } else if (operation === "publicKeysFromSeeds") {
-    if (value["kemPublicKey"] instanceof Uint8Array) views.push(value["kemPublicKey"])
-    if (value["dsaPublicKey"] instanceof Uint8Array) views.push(value["dsaPublicKey"])
-  } else if (operation === "signWithSeed" && response.value instanceof Uint8Array) {
-    views.push(response.value)
   } else if (operation === "encryptPqMessage") {
     for (const key of ["kemCiphertext", "iv", "ciphertext"] as const) {
       if (value[key] instanceof Uint8Array) views.push(value[key])
@@ -608,6 +499,28 @@ function publicTransferables(
     if (buffer !== undefined) buffers.add(buffer)
   }
   return [...buffers]
+}
+
+export function wipeNonTransferred(
+  response: PqWorkerRpcResponse,
+  transferred: readonly ArrayBuffer[],
+): void {
+  if (!response.ok) return
+  const transferredBuffers = new Set(transferred)
+  const wipeValue = (value: unknown): void => {
+    if (value instanceof Uint8Array) {
+      if (
+        !(value.buffer instanceof ArrayBuffer) ||
+        !transferredBuffers.has(value.buffer)
+      ) {
+        zeroize(value)
+      }
+      return
+    }
+    if (typeof value !== "object" || value === null) return
+    for (const field of Object.values(value)) wipeValue(field)
+  }
+  wipeValue(response.value)
 }
 
 interface WorkerScopeLike {
@@ -630,8 +543,10 @@ if (
     void handlePqWorkerRequest(event.data).then((response) => {
       const operation = isOperation(event.data?.operation)
         ? event.data.operation
-        : "verify"
-      workerScope.postMessage(response, publicTransferables(operation, response))
+        : "verifySignedMessage"
+      const transferred = publicTransferables(operation, response)
+      workerScope.postMessage(response, transferred)
+      wipeNonTransferred(response, transferred)
     })
   })
 }

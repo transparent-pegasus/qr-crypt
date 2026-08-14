@@ -339,6 +339,7 @@ export const qrPngBlob = vi.fn<
 export const qrSvgBlob = vi.fn(async () => new Blob(["svg"]))
 export const triggerDownload = vi.fn()
 export const copyTextToClipboard = vi.fn(async () => undefined)
+export const copyImageToClipboard = vi.fn(async () => undefined)
 
 type FakeCameraFailureState = "failed" | "track-ended"
 
@@ -367,7 +368,7 @@ export function emitScannedPayload(payload: string): void {
   scanTextCallback?.(payload)
 }
 
-export const disposePqClient = vi.fn()
+const disposePqClient = vi.fn()
 export const createPqCryptoClient = vi.fn(() => ({ dispose: disposePqClient }))
 export const getOrCreateVaultKey = vi.fn(async () => cryptoKey())
 

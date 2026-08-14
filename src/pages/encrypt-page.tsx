@@ -15,7 +15,7 @@ import { groupLineages } from "@/features/key-lineage"
 import { isUsableBundle, isUsableIdentity } from "@/crypto/pq/identity-policy"
 import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
 import { generateArtifactId, shortId } from "@/crypto/random"
-import { useSensitiveSession, useTransientClear } from "@/app/providers"
+import { useTransientClear } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
 import { DetailRow } from "@/components/detail-row"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
@@ -105,7 +105,6 @@ export function EncryptPage() {
   } = useCompatibilityMode({ updatePreferences, active: true })
   const getPqClient = usePqCryptoClient()
   const { nonce } = useTransientClear()
-  const { setSensitiveSession, resetSensitiveSession } = useSensitiveSession()
   const [algorithmOverride, setAlgorithmOverride] = useState<UiAlgorithm | null>(null)
   const [selectedKeyId, setSelectedKeyId] = useState("")
   const [recipientRecordId, setRecipientRecordId] = useState("")
@@ -213,21 +212,13 @@ export function EncryptPage() {
       ? selectedKey !== undefined
       : selectedRecipient !== undefined && selectedSender !== undefined)
 
-  useEffect(() => {
-    setSensitiveSession({
-      hasPlaintext: plaintext.length > 0,
-      cryptoBusy: busy,
-      secretVisible: false,
-    })
-  }, [busy, plaintext, setSensitiveSession])
   useEffect(
     () => () => {
       resultAbortRef.current?.abort()
       resultAbortRef.current = null
       resetCompatibilityMode()
-      resetSensitiveSession()
     },
-    [resetCompatibilityMode, resetSensitiveSession],
+    [resetCompatibilityMode],
   )
 
   const clearTransient = useCallback(() => {

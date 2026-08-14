@@ -8,13 +8,13 @@ import { signingTargetBytes } from "@/crypto/pq/canonical-cbor"
 import { mlDsaContextV2 } from "@/crypto/pq/wire-bytes"
 import { zeroize } from "@/crypto/pq/zeroize"
 
-export interface SignBodyArgs {
+interface SignBodyArgs {
   provider: MlDsaProvider
   body: SignedMessageBodyV2
   secretKey: Uint8Array // Caller re-expands it from the seed and zeroizes it after the call.
 }
 
-export interface SignedBodyResult {
+interface SignedBodyResult {
   algorithm: MlDsaAlgorithm
   value: Uint8Array
 }
@@ -31,7 +31,7 @@ export function signBody(args: SignBodyArgs): SignedBodyResult {
   }
 }
 
-export interface VerifySignedBodyArgs {
+interface VerifySignedBodyArgs {
   provider: MlDsaProvider
   body: SignedMessageBodyV2
   signature: SignedBodyResult

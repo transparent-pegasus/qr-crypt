@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
 import { createIdentity } from "@/crypto/pq/identity"
-import { createPqCryptoClient, type PqCryptoClient } from "@/crypto/pq/worker-client"
+import type { PqCryptoClient } from "@/crypto/pq/worker-client"
 import { generateKeyId } from "@/crypto/random"
 import { dropVaultKeyCache, getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import type { PqPublicBundleRecord } from "@/schemas/domain"
@@ -14,12 +14,13 @@ import {
   saveBundle,
 } from "@/storage/pq-bundle-repository"
 import { publicRecord } from "../helpers/pq-fixtures"
+import { createInProcessPqClient } from "../setup/pq-in-process-client"
 
 const NOW = 1_700_300_000_000
 const clients: PqCryptoClient[] = []
 
 async function makeRecord(name: string, now: number): Promise<PqPublicBundleRecord> {
-  const client = createPqCryptoClient()
+  const client = createInProcessPqClient()
   clients.push(client)
   const vaultKey = await getOrCreateVaultKey()
   const identity = await createIdentity({

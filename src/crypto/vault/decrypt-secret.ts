@@ -10,7 +10,7 @@ import { isVaultKey } from "@/crypto/vault/is-vault-key"
 import { toOwnedArrayBuffer } from "@/lib/bytes"
 import { DSA_SEED_BYTES, IV_BYTES, KEM_SEED_BYTES } from "@/lib/limits"
 
-export interface DecryptSecretArgs {
+interface DecryptSecretArgs {
   vaultKey: CryptoKey
   secret: EncryptedSecret
   aad: VaultAadFieldsV2

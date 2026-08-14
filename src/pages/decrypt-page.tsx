@@ -14,7 +14,6 @@ import { assertActiveSuite } from "@/crypto/pq/suites"
 import { validateSymMessageEnvelopeV2 } from "@/crypto/pq/validation"
 import {
   useFeatureSupport,
-  useSensitiveSession,
   useTransientClear,
 } from "@/app/providers"
 import { DetailRow } from "@/components/detail-row"
@@ -60,7 +59,6 @@ export function DecryptPage() {
   const getPqClient = usePqCryptoClient()
   const { camera } = useFeatureSupport()
   const { nonce } = useTransientClear()
-  const { setSensitiveSession, resetSensitiveSession } = useSensitiveSession()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(
@@ -71,6 +69,10 @@ export function DecryptPage() {
   const [replayAcknowledged, setReplayAcknowledged] = useState(false)
   const [clearStatus, setClearStatus] = useState<"encrypt.toast.autoCleared" | null>(null)
   const pendingDecryptRef = useRef<string | null>(null)
+  // A decrypt already past its await must not republish plaintext that a
+  // background clear has since wiped, so every clear retires the generation
+  // the in-flight run captured.
+  const decryptGenerationRef = useRef(0)
 
   const clearDecrypted = useCallback(() => {
     setDecrypted(null)
@@ -131,25 +133,16 @@ export function DecryptPage() {
       ? countUnicodeFormatCharacters(decrypted.text)
       : 0
 
-  useEffect(() => {
-    setSensitiveSession({
-      hasDecrypted: decrypted !== null && decrypted.kind !== "signed-key-unknown",
-      cryptoBusy: busy,
-      secretVisible: false,
-    })
-  }, [busy, decrypted, setSensitiveSession])
-  useEffect(
-    () => () => {
-      resetSensitiveSession()
-    },
-    [resetSensitiveSession],
-  )
   // Navigating away unmounts this page, so drop any half-assembled transfer with it
   // rather than leaving decoded frames reachable from the session object.
   useEffect(() => () => multipartSession.discard(), [multipartSession])
 
   const clearTransient = useCallback(() => {
+    decryptGenerationRef.current += 1
     pendingDecryptRef.current = null
+    // The retired decrypt no longer owns the page, so its own finally must not
+    // be what releases the controls.
+    setBusy(false)
     setDecryptInput("")
     clearDecrypted()
     setError(null)
@@ -165,6 +158,7 @@ export function DecryptPage() {
   })
 
   const runDecrypt = async (payload: string) => {
+    const generation = ++decryptGenerationRef.current
     let parsed: ReturnType<typeof decodePayload> | null = null
     try {
       const decoded = decodePayload(payload.trim())
@@ -204,26 +198,28 @@ export function DecryptPage() {
     clearDecrypted()
     try {
       if (parsed.kind === "sym-message" && symmetricKey) {
-        setDecrypted(
-          await decryptMessage({
-            kind: "sym-message",
-            envelope: parsed.envelope,
-          }),
-        )
+        const result = await decryptMessage({
+          kind: "sym-message",
+          envelope: parsed.envelope,
+        })
+        if (generation === decryptGenerationRef.current) setDecrypted(result)
       } else if (parsed.kind === "pq-message") {
-        setDecrypted(
-          await decryptMessage({
-            kind: "pq-message",
-            envelope: parsed.envelope,
-            client: getPqClient(),
-          }),
-        )
+        const result = await decryptMessage({
+          kind: "pq-message",
+          envelope: parsed.envelope,
+          client: getPqClient(),
+        })
+        if (generation === decryptGenerationRef.current) setDecrypted(result)
       }
     } catch (caught) {
-      clearDecrypted()
-      setError(toAppError(caught, "DECRYPTION_FAILED").code)
+      if (generation === decryptGenerationRef.current) {
+        clearDecrypted()
+        setError(toAppError(caught, "DECRYPTION_FAILED").code)
+      }
     } finally {
-      setBusy(false)
+      // Only the newest run owns busy: an older one releasing the controls
+      // would admit a decrypt whose input no longer matches what is displayed.
+      if (generation === decryptGenerationRef.current) setBusy(false)
     }
   }
 

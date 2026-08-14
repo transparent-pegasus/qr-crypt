@@ -110,22 +110,35 @@ confirmation is the documented non-dismissible exception).
 
 ## 1. Facts About the Adopted Libraries
 
-Library-specific checks below are dated 2026-08-02; the supply-chain incident
-record extends through the 2026-08-08 remediation. Each claim carries its own
-review date rather than inheriting one date for this whole section.
+Library-specific checks carry their own review date. The Noble pin and NIST
+errata were reviewed 2026-08-13; the zxing facts remain dated 2026-08-02; the
+supply-chain incident record extends through the 2026-08-08 remediation.
 
-### @noble/post-quantum 0.6.1 (exact pin; version ranges forbidden)
+### @noble/post-quantum 0.7.0 (exact pin; version ranges forbidden)
 
-- Released: 2026-04-12. npm provenance ✓ (all nearby versions attested). **Re-verified 2026-08-08: 0.6.1 is the latest; no advisories in the repo / GHSA / OSV**
-- Dependencies: noble family only (@noble/ciphers / @noble/curves / @noble/hashes ~2.2.0)
+- Released: 2026-08-09. npm publish and SLSA provenance attestations present.
+  **Re-verified 2026-08-13: 0.7.0 is the latest; no advisories in the repo /
+  GHSA / OSV**
+- Dependencies: noble family only (@noble/ciphers / @noble/curves /
+  @noble/hashes ~2.3.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-08-08): the current NIST FIPS 203
-  and FIPS 204 workbooks list prospective corrections that introduce no new
-  technical requirements (the FIPS 204 workbook was updated 2026-07-31). None
-  affects the active API or size table
-- **Not independently audited.** The audit status as of 0.6.1 is self-audit only (scope: everything)
+- FIPS errata (§3 step 1, checked 2026-08-13): the current NIST FIPS 203
+  workbook (planning note 2025-11-17) and FIPS 204 workbook (updated
+  2026-07-31) state that their prospective corrections introduce no new
+  technical requirements. The FIPS 204 corrections include a documented
+  minimum internal-signing loop limit of 821 rather than 814; none changes
+  the active API or size table
+- The 0.6.1→0.7.0 source diff confirms the two reported hardening changes:
+  ML-DSA obtains and validates signing entropy before secret-key decoding and
+  wipes library-owned entropy, so the RNG-failure path occurs before decoded
+  secret-polynomial copies are created; ML-KEM reduces the `a1*b1` product before the
+  `zeta` multiplication in `BaseCaseMultiply`, keeping the formerly ~2^35
+  intermediate within 32-bit arithmetic. The active adapter API is unchanged;
+  the new prepared-key and prehash surfaces are not used
+- **Not independently audited.** The audit status as of 0.7.0 remains
+  self-audit only (scope: everything)
 - **Side channels: as a JS implementation, constant-time execution is not guaranteed.** In particular, for the ML-KEM decaps implicit-rejection path, constant-time behavior under JS/JIT is explicitly documented and not guaranteed
-- APIs used by the active policy (verified against the actual 0.6.1 source):
+- APIs used by the active policy (verified against the actual 0.7.0 source):
   `ml_kem1024.keygen(seed64?)` / `.encapsulate(pk)` / `.decapsulate(ct, sk)`,
   `ml_dsa87.keygen(seed32?)` / `.sign(msg, sk, {context})` /
   `.verify(sig, msg, pk, {context})`. The library may also ship 768/65
@@ -376,6 +389,57 @@ T14 residual as they stood at the time.
   change and was not attempted here.
 - The widened-QR promotion condition was recorded as unmet in
   `docs/develop/browser-matrix.md` rather than silently satisfied.
+
+## 1.3 Merged 2026-08-12 nation-state-security review round (closed 2026-08-14)
+
+Three same-skill runs reviewed revision `db082c7`. Exactly two have file-backed
+reports under gitignored `.tmp/`: `nss-review-20260812-db082c7.md` (Claude,
+NSS-R1–NSS-R8 plus the merge addendum) and `nss-codex-pY-20260812.md` (Codex
+pY, NSR-01–NSR-10). The third run, Codex pW, was in-pane only; its executable
+evidence — typecheck and lint passed, 75 Vitest files / 1,016 tests passed, 31
+Playwright tests passed, the production build passed, and `aube audit` was
+clean — is preserved in the first report's merge addendum. These are
+same-skill self-investigations, not an independent review in the sense §4
+requires.
+
+The owner decisions and merged dispositions were taken as follows:
+
+- **D1 — option A:** retain the permanent wipe-on-online switch with typed
+  confirmation and acknowledgment parity; retain the one-transition
+  maintenance token. The boot and wipe decision logic did not change.
+- **D2 — default:** show the symmetric-key fingerprint at import and require
+  an independent-channel comparison acknowledgment, without a wire,
+  storage-schema, or persisted trust-state change.
+- **D3 — accepted:** take the relay and README precision work. This reverses
+  the earlier r1 misattribution: the existing PNG / ZIP / clipboard disclaimer
+  did not refute the tension between persistent-storage and transfer claims.
+- **D4 — approved and taken:** upgrade the exact `@noble/post-quantum` pin to
+  0.7.0 through the complete `crypto-noble` unit; its audit, PQ, vector, and
+  benchmark gate passed.
+- **D5 — deferred:** add no scheduled audit workflow; revisit this only if the
+  14-day dependency cadence slips.
+
+NSS-R8 remains `REPOSITORY_IMPLEMENTABLE` but deliberately deferred. Re-open
+unverified-signer plaintext gating first if operator reports show the current
+destructive identity alerts being ignored. Consider cross-session replay
+persistence only with the device-keyed opaque-tag design named in F-02.
+Sender-key binding is a wire revision.
+
+The exact-device leakage campaign remains an `EXTERNAL_ASSURANCE` follow-up.
+Evaluating a hardened native backend remains an architectural decision if
+side-channel resistance becomes a requirement. Operator Cosign currency,
+Route A navigation-response checking, the T21 277-bit covert-egress floor, E8,
+and T13 retain their recorded deployment, external-assurance, or architectural
+boundaries. This round changes no external-assurance status: the independent
+third-party audit and environment-independent release reproduction blockers
+stand, and `release-approved` remains unreached.
+
+**Architectural residual (NSR-07).** The sole active post-quantum suite
+concentrates confidentiality in ML-KEM-1024 and authenticity in ML-DSA-87. No
+independently different component preserves the corresponding property if its
+family fails. Hybridization or diversification would be a versioned-protocol
+redesign requiring independent design review, not a dependency swap. This is a
+concentration record, not evidence of a present break.
 
 ## 2. Prohibited Claims (UI / README / CI)
 

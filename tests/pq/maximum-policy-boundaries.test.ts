@@ -207,9 +207,6 @@ function clientDouble(): {
     openPqEnvelope,
     client: {
       generateIdentityKeys,
-      publicKeysFromSeeds: vi.fn(),
-      signWithSeed: vi.fn(),
-      verify: vi.fn(),
       encryptPqMessage,
       openPqEnvelope,
       verifySignedMessage: vi.fn(),
@@ -275,46 +272,6 @@ describe("maximum active-policy boundaries", () => {
           identityId: identity.id,
           kemKeyId: identity.kem.keyId,
           signingKeyId: identity.signing.keyId,
-        },
-      },
-      {
-        operation: "publicKeysFromSeeds",
-        payload: {
-          vaultKey: key,
-          identityId: identity.id,
-          kem: {
-            algorithm: identity.kem.algorithm,
-            keyId: identity.kem.keyId,
-            encryptedSeed: identity.kem.encryptedSeed,
-            storedPublicKey: identity.kem.publicKey,
-          },
-          signing: {
-            algorithm: identity.signing.algorithm,
-            keyId: identity.signing.keyId,
-            encryptedSeed: identity.signing.encryptedSeed,
-            storedPublicKey: identity.signing.publicKey,
-          },
-        },
-      },
-      {
-        operation: "signWithSeed",
-        payload: {
-          algorithm: identity.signing.algorithm,
-          vaultKey: key,
-          identityId: identity.id,
-          keyId: identity.signing.keyId,
-          encryptedSeed: identity.signing.encryptedSeed,
-          storedPublicKey: identity.signing.publicKey,
-          message: new Uint8Array(),
-        },
-      },
-      {
-        operation: "verify",
-        payload: {
-          algorithm: identity.signing.algorithm,
-          publicKey: identity.signing.publicKey,
-          message: new Uint8Array(),
-          signature: new Uint8Array(3309),
         },
       },
       {

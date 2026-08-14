@@ -33,10 +33,15 @@ app's control and outside the scope of its wipe.
 One thing: it is operated fully offline. That splits into two habits the app enforces.
 
 * **Key exchange happens offline.** Keys and public keys are exchanged face to face as QR
-  codes. There is no server in between, no cloud key escrow, no account sync. Keys live
-  only in the offline device's IndexedDB.
-* **Data moves between the offline and online devices as QR codes.** Nothing crosses that
-  gap but light: a QR code on one screen, a camera on the other.
+  codes. There is no server in between, no cloud key escrow, no account sync. Within
+  app-managed persistent storage, key records live only in the offline device's IndexedDB.
+  The documented exchange path deliberately displays exchange material as QR codes; for a
+  shared AES key, that is an exportable `OCK2` secret-key QR.
+* **Data moves between the offline and online devices as QR codes.** On the QR transfer
+  path, only light crosses that gap: a QR code on one screen, a camera on the other.
+  Exported files carried on removable media and text carried through the system clipboard
+  are separate alternatives, outside this optical claim and the app's control as disclosed
+  above.
 
 The algorithms themselves are the standard ones. The claim is about where they are run.
 
@@ -118,13 +123,22 @@ accepts only validated OCF2 frames declaring `pq-message` or `sym-message`.
 
 1. **Sender's offline device** — encrypt as usual and display the single OCF2 frame for
    AES, or the OCF2 frame sequence for a post-quantum message.
-2. **Sender's online device** — open the **Relay** page, use **Scan → text**, collect
+2. **Sender's online device** — open the **Relay** page, use **QR → Text**, collect
    every OCF2 frame for the transfer, and copy the resulting text. That clipboard copy
    can persist or sync outside the app, and outside any wipe.
 3. **Recipient's online device** — open the **Relay** page, paste the text into
    **Text → QR**, and play the OCF2 frames back for the recipient's camera.
 4. **Recipient's offline device** — scan the frames. Only this device authenticates the
    assembled artifact (AEAD, and ML-DSA for post-quantum messages).
+
+When the whole message fits in one OCF2 frame — always the case for AES — steps 2 and 3
+have a shorter alternative on the sender's online device: **QR → QR** captures that single
+frame and re-renders it as a QR image to copy and paste into a messenger that accepts
+images, so the recipient scans it straight from the chat screen. It is only a convenience
+on the same hop: the frame is validated exactly as **QR → Text** validates it, and nothing
+is decrypted or authenticated on the way. A multi-frame transfer — the post-quantum path —
+is refused there and stays on **QR → Text**. The image copy carries the same residual as
+the text copy: the PNG can persist or sync outside the app, and outside any wipe.
 
 Public keys and identities are still exchanged face to face. The relay accepts only
 canonical OCF2 `pq-message` or `sym-message` frames, validates the assembled artifact

@@ -7,7 +7,7 @@ import {
   updatePreferences as savePreferences,
 } from "@/storage/preferences-repository"
 
-export interface UsePreferencesResult {
+interface UsePreferencesResult {
   preferences: Preferences
   loading: boolean
   error: MessageKey | null

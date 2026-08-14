@@ -7,7 +7,7 @@ import { EncryptPage } from "@/pages/encrypt-page"
 import { KeyListPage } from "@/pages/key-list-page"
 import { SettingsPage } from "@/pages/settings-page"
 
-export function AppLayout() {
+function AppLayout() {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b bg-background/95 pt-safe backdrop-blur">

@@ -25,7 +25,7 @@ import {
   markIdentityUsed,
 } from "@/storage/pq-identity-repository"
 
-export type DecryptMessageRequest =
+type DecryptMessageRequest =
   | {
       kind: "sym-message"
       envelope: SymMessageEnvelopeV2

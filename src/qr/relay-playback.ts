@@ -4,7 +4,7 @@ import { parseRelayText, type RelayParseErrorCode } from "@/qr/relay-frames"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 
-export type PreparedRelayPlayback =
+type PreparedRelayPlayback =
   | { ok: true; frames: readonly QrFrameV2[] }
   | {
       ok: false

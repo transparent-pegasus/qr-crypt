@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog"
 import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
 
-export interface QrDisplayProps {
+interface QrDisplayProps {
   payload: string
   ecLevel: QrEcLevel
   size: number

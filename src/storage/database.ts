@@ -24,7 +24,7 @@ export interface KeyValueRow {
   value: unknown
 }
 
-export interface OfflineCipherDb extends DBSchema {
+interface OfflineCipherDb extends DBSchema {
   keys: {
     key: string
     value: StoredKeyRecord
@@ -56,16 +56,16 @@ let databasePromise: Promise<IDBPDatabase<OfflineCipherDb>> | undefined
 let databaseInstance: IDBPDatabase<OfflineCipherDb> | undefined
 let databaseAccessBarrier = false
 
-export const DATABASE_DELETE_TIMEOUT_MS = 3_000
-export const DATABASE_OPEN_BLOCKED_TIMEOUT_MS = 3_000
+const DATABASE_DELETE_TIMEOUT_MS = 3_000
+const DATABASE_OPEN_BLOCKED_TIMEOUT_MS = 3_000
 export const SENSITIVE_WRITE_EXCLUSION_TIMEOUT_MS = 3_000
 
-export interface DeleteEntireDatabaseOptions {
+interface DeleteEntireDatabaseOptions {
   timeoutMs?: number
   onBlocked?: () => void
 }
 
-export interface GetDatabaseOptions {
+interface GetDatabaseOptions {
   timeoutMs?: number
   onBlocked?: () => void
   onBlocking?: () => void
@@ -76,7 +76,7 @@ export function engageDatabaseAccessBarrier(): void {
   databaseAccessBarrier = true
 }
 
-export function assertDatabaseAccessAllowed(): void {
+function assertDatabaseAccessAllowed(): void {
   if (databaseAccessBarrier) throw new AppError("RESET_FAILED")
 }
 

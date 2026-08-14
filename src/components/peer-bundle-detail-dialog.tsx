@@ -11,7 +11,7 @@ import {
 import { useI18n } from "@/i18n"
 import type { PqPublicBundleRecord } from "@/schemas/domain"
 
-export interface PeerBundleDetailDialogProps {
+interface PeerBundleDetailDialogProps {
   bundle: PqPublicBundleRecord | null
   // Computed by the page: a component must not import a page module.
   supported: boolean

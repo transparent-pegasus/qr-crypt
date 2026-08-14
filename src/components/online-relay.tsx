@@ -4,6 +4,7 @@ import {
   Camera,
   CameraOff,
   ClipboardCopy,
+  Images,
   MessageSquareText,
   QrCode,
   RefreshCw,
@@ -27,13 +28,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { AppError, errorMessageKey } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"
 import { useQrReaderReadiness } from "@/hooks/use-qr-reader-readiness"
-import { copyTextToClipboard } from "@/lib/clipboard"
+import { copyImageToClipboard, copyTextToClipboard } from "@/lib/clipboard"
 import {
   RELAY_PLAYBACK_FRAME_INTERVAL_MS,
   TRANSFER_TIMEOUT_MINUTES_DEFAULT,
 } from "@/lib/limits"
 import { reloadApplication } from "@/lib/reload"
 import { startQrScan, type QrScanHandle } from "@/qr/decode"
+import { renderQrDataUrl } from "@/qr/encode"
 import { prepareRelayPlayback } from "@/qr/relay-playback"
 import { acquireRelayLease, type RelayLease } from "@/storage/database"
 import {
@@ -45,6 +47,7 @@ import {
   type RelayParseErrorCode,
 } from "@/qr/relay-frames"
 import type { QrFrameV2 } from "@/schemas/domain"
+import { env } from "@/schemas/env-schema"
 import { useI18n, type MessageKey } from "@/i18n"
 
 const RELAY_LIFETIME_MS = TRANSFER_TIMEOUT_MINUTES_DEFAULT * 60_000
@@ -61,7 +64,7 @@ const PARSE_ERROR_KEYS: Record<RelayParseErrorCode, MessageKey> = {
   prefix: "relay.error.prefix",
 }
 
-type DialogMode = "capture" | "playback" | null
+type DialogMode = "capture" | "image" | "playback" | null
 type LocalEndReason =
   | RelaySessionEndReason
   | "camera-error"
@@ -91,9 +94,13 @@ export function OnlineRelay({
   const [dialogMode, setDialogMode] = useState<DialogMode>(null)
   // Only once the user asks for the camera: the online gate must not pull the
   // reader at runtime before that, which offline-pwa.spec.ts pins as a contract.
-  const readerReadiness = useQrReaderReadiness(dialogMode === "capture")
+  const readerReadiness = useQrReaderReadiness(
+    dialogMode === "capture" || dialogMode === "image",
+  )
   const [capture, setCapture] = useState<RelayCapture>(EMPTY_RELAY_CAPTURE)
   const [joinedText, setJoinedText] = useState("")
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null)
+  const [imagePending, setImagePending] = useState(false)
   const [captureError, setCaptureError] = useState<MessageKey | null>(null)
   const [cameraActive, setCameraActive] = useState(false)
   const [playbackText, setPlaybackText] = useState("")
@@ -111,6 +118,7 @@ export function OnlineRelay({
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const captureRef = useRef<RelayCapture>(EMPTY_RELAY_CAPTURE)
   const joinedTextRef = useRef("")
+  const imageLockRef = useRef(false)
   const playbackTextRef = useRef("")
   const playbackFramesRef = useRef<readonly QrFrameV2[]>([])
   const startupAbortRef = useRef<AbortController | null>(null)
@@ -159,12 +167,15 @@ export function OnlineRelay({
       playbackAnimationAbortRef.current = null
       captureRef.current = EMPTY_RELAY_CAPTURE
       joinedTextRef.current = ""
+      imageLockRef.current = false
       playbackTextRef.current = ""
       playbackFramesRef.current = []
       if (!mountedRef.current) return
       setDialogMode(null)
       setCapture(EMPTY_RELAY_CAPTURE)
       setJoinedText("")
+      setImageDataUrl(null)
+      setImagePending(false)
       setCaptureError(null)
       setPlaybackText("")
       setPlaybackFrames([])
@@ -279,7 +290,7 @@ export function OnlineRelay({
   }
 
   const handleCapturedText = useCallback(
-    (original: string, generation: number) => {
+    (original: string, generation: number, mode: DialogMode) => {
       if (generation !== sessionGenerationRef.current || !mountedRef.current) {
         return
       }
@@ -291,10 +302,25 @@ export function OnlineRelay({
       }
 
       const next = accepted.capture
+      // Lifetime starts at the first ACCEPTED frame, before any image-mode
+      // policy rejection — the design's "same lifetime timer" means the lease
+      // and dialog never sit outside the transfer timeout once a payload has
+      // touched this device. (beginLifetime is idempotent.)
+      if (previous.kind === null) beginLifetime()
+      if (
+        mode === "image" &&
+        next.set.metadata !== null &&
+        next.set.metadata.frameCount > 1
+      ) {
+        captureRef.current = EMPTY_RELAY_CAPTURE
+        setCapture(EMPTY_RELAY_CAPTURE)
+        setCaptureError("relay.error.multiFrame")
+        stopCameraOnly()
+        return
+      }
       captureRef.current = next
       setCapture(next)
       setCaptureError(null)
-      if (previous.kind === null) beginLifetime()
 
       const missing = missingRelayIndexes(next.set)
       if (
@@ -302,6 +328,43 @@ export function OnlineRelay({
         missing.length === 0 &&
         next.set.receivedByteLength === next.set.metadata.totalByteLength
       ) {
+        if (mode === "image") {
+          const first = orderedRelayEntries(next.set)[0]
+          if (first === undefined) return
+          // Same synchronous turn as the camera stop: the ref (not the async
+          // state below) is what startCamera checks, so a click landing while
+          // renderQrDataUrl is in flight cannot bump the session generation
+          // and drop the pending image.
+          imageLockRef.current = true
+          setImagePending(true)
+          stopCameraOnly()
+          void renderQrDataUrl(first.original, {
+            ecLevel: "Q",
+            size: env.qrRenderSize,
+          }).then(
+            (url) => {
+              if (
+                generation !== sessionGenerationRef.current ||
+                !mountedRef.current
+              ) {
+                return
+              }
+              setImageDataUrl(url)
+              setImagePending(false)
+            },
+            () => {
+              if (
+                generation !== sessionGenerationRef.current ||
+                !mountedRef.current
+              ) {
+                return
+              }
+              endSession("render-error")
+              setTerminalNotice(errorMessageKey("QR_TOO_LARGE"))
+            },
+          )
+          return
+        }
         const joined = orderedRelayEntries(next.set)
           .map(({ original: value }) => value)
           .join("\n")
@@ -310,7 +373,7 @@ export function OnlineRelay({
         stopCameraOnly()
       }
     },
-    [beginLifetime, stopCameraOnly],
+    [beginLifetime, endSession, stopCameraOnly],
   )
 
   const startCamera = () => {
@@ -320,7 +383,8 @@ export function OnlineRelay({
       cameraActive ||
       startupAbortRef.current !== null ||
       liveHandleRef.current !== null ||
-      joinedTextRef.current.length > 0
+      joinedTextRef.current.length > 0 ||
+      imageLockRef.current
     ) {
       return
     }
@@ -348,7 +412,7 @@ export function OnlineRelay({
     try {
       startPromise = startQrScan(
         video,
-        (text) => handleCapturedText(text, generation),
+        (text) => handleCapturedText(text, generation, dialogMode),
         onError,
         { once: false, signal: abortController.signal },
       )
@@ -392,6 +456,19 @@ export function OnlineRelay({
       await copyTextToClipboard(joinedTextRef.current)
     } catch {
       setCaptureError("relay.error.copy")
+    }
+  }
+
+  const copyImage = async () => {
+    const url = imageDataUrl
+    if (url === null) return
+    const generation = sessionGenerationRef.current
+    setCaptureError(null)
+    try {
+      await copyImageToClipboard(url)
+    } catch {
+      if (generation !== sessionGenerationRef.current || !mountedRef.current) return
+      setCaptureError("relay.error.copyImage")
     }
   }
 
@@ -454,7 +531,7 @@ export function OnlineRelay({
           <p className="text-sm leading-relaxed text-muted-foreground">
             {t("relay.card.description")}
           </p>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-3">
             <Button
               type="button"
               variant="outline"
@@ -474,11 +551,22 @@ export function OnlineRelay({
               <QrCode aria-hidden="true" />
               {t("relay.playback.open")}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 cursor-pointer focus-visible:ring-2"
+              disabled={!cameraAvailable}
+              onClick={() => void openDialog("image")}
+            >
+              <Images aria-hidden="true" />
+              {t("relay.image.open")}
+            </Button>
           </div>
+          <p className="text-sm text-muted-foreground">{t("relay.image.hint")}</p>
           {/* Icon and title share the first row so the body can use the full
               width below them: at the boundary copy's length, keeping it in the
               icon's right-hand column costs several lines on a phone and pushes
-              the two actions under the fold. The pair sits in one flex row so it
+              the actions under the fold. The pair sits in one flex row so it
               centers on a single axis the way a button's icon and label do,
               instead of a top-aligned grid cell plus a nudge; that wrapper is
               also why the icon now carries its own size, no longer being a
@@ -520,7 +608,7 @@ export function OnlineRelay({
       )}
 
       <Dialog
-        open={dialogMode === "capture"}
+        open={dialogMode === "capture" || dialogMode === "image"}
         onOpenChange={(open) => {
           if (!open) endSession("close")
         }}
@@ -528,8 +616,20 @@ export function OnlineRelay({
         <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
             <DialogHeader>
-              <DialogTitle>{t("relay.capture.title")}</DialogTitle>
-              <DialogDescription>{t("relay.capture.description")}</DialogDescription>
+              <DialogTitle>
+                {t(
+                  dialogMode === "image"
+                    ? "relay.image.title"
+                    : "relay.capture.title",
+                )}
+              </DialogTitle>
+              <DialogDescription>
+                {t(
+                  dialogMode === "image"
+                    ? "relay.image.description"
+                    : "relay.capture.description",
+                )}
+              </DialogDescription>
             </DialogHeader>
 
             <video
@@ -546,7 +646,9 @@ export function OnlineRelay({
               disabled={
                 readerReadiness !== "ready" ||
                 cameraActive ||
-                joinedText.length > 0
+                joinedText.length > 0 ||
+                imagePending ||
+                imageDataUrl !== null
               }
               onClick={startCamera}
             >
@@ -626,6 +728,30 @@ export function OnlineRelay({
                 >
                   <ClipboardCopy aria-hidden="true" />
                   {t("relay.capture.copy")}
+                </Button>
+              </div>
+            )}
+
+            {imageDataUrl !== null && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.playback.screenCaptureWarning")}
+                </p>
+                <img
+                  src={imageDataUrl}
+                  alt={t("relay.image.alt")}
+                  className="mx-auto w-full max-w-xs rounded-lg border bg-white p-2"
+                />
+                <p className="text-sm text-muted-foreground">
+                  {t("relay.image.copyWarning")}
+                </p>
+                <Button
+                  type="button"
+                  className="h-11 w-full cursor-pointer focus-visible:ring-2"
+                  onClick={() => void copyImage()}
+                >
+                  <ClipboardCopy aria-hidden="true" />
+                  {t("relay.image.copy")}
                 </Button>
               </div>
             )}

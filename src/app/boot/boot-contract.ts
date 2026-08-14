@@ -61,7 +61,8 @@ export type BootState =
 
 // Do not wipe on the install-gate path, where no sensitive data exists.
 // Maintenance token: set it with strong confirmation while offline; it must expire after
-// one verified transition and restore wipeOnOnline=ON ("retain keys for the next update only").
+// one verified transition and restore wipeOnOnline=ON
+// ("retain keys across the next single verified online transition only").
 export interface WipeDecisionInput {
   wipeOnOnline: boolean
   sensitiveDataExists: boolean

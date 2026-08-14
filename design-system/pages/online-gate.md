@@ -13,8 +13,10 @@
   - 「オフライン（機内モード）に切り替えると暗号化・復号・鍵管理・設定が利用できます」という主案内（オフライン表示は安全性の証明として表現しない）
 - リレーページ:
   - boot の破壊判断完了後に限る「暗号文QRリレー」カード。正規 OCM1 メッセージ 1 件または、信頼できない外側ヘッダが `pq-message` と表明する正規 OCF2 フレーム一式を受け入れる
-  - 「スキャン → テキスト」: ボタンでダイアログを開き、さらに明示操作した時だけカメラを取得する。OCM1 は 1 回のスキャンで取り込みを完了し、OCF2 は一式を収集する
+  - 「QR → テキスト」（英語ラベルは `QR → Text`）: ボタンでダイアログを開き、さらに明示操作した時だけカメラを取得する。OCM1 は 1 回のスキャンで取り込みを完了し、OCF2 は一式を収集する
   - 「テキスト → QR」: OCM1 文字列 1 件または改行区切りの OCF2 フレーム一式を貼り付ける。OCF2 は既存の animated QR で再生し、OCM1 は単一 QR として表示する
+  - 「QR → QR」: 「QR → テキスト」と同じカメラ取得経路を使い、受け入れた最初のフレームが `frameCount > 1` を宣言した場合は取り込みを破棄してカメラを止め、「QR → テキスト」を使うよう案内する。1 フレームで完結する場合だけ、その正規文字列を `renderQrDataUrl` で QR 画像として描き直し、「QR画像をコピー」を提供する。ダウンロード操作は追加しない（`relay.playback.noDownloadControls` は真のまま）
+  - 3 つのボタンは `sm:grid-cols-3` の 1 行に矢印ラベルだけを並べ、その直下に「QR → QR」の利用条件（メッセージアプリが画像貼り付けに対応し、かつ 1 枚の QR に収まること）を示すヒント文を両言語で置く
   - ダイアログ自身に上端・下端の safe-area padding を持たせる
   - 44 px 操作、`focus-visible:ring-2`、lucide のアイコン＋テキストを使う
 - relay eligible の時だけ、共通下部シェルにアイコンのみの「トップ」「リレー」2 項目を表示する。選択したリレータブの eligibility が一時的に pending になった間もナビを消さないため、表示条件 `navVisible` は `relayEligible || tab === "relay"` とする。固定ナビ表示中は本文に `pb-content-safe` を付ける。
@@ -39,5 +41,5 @@
 
 - 受け入れるのは「信頼できない外側ヘッダーが `pq-message` と表明する正規 OCF2 フレーム」または「エンベロープ全体の decode と canonical re-encode が入力と byte-for-byte で一致する正規 OCM1 メッセージ 1 件」。OCM1 の確認は構造的正規性だけを示す。リレーは OCF2 を再組立せず、全体 hash、AEAD、署名、送信者、真正性、安全性を検証せず、何も復号しない。トップレベルの鍵アーティファクトのプレフィックスと不許可の OCF2 外部タイプを拒否しても、受け入れた不透明なバイト列に鍵素材が含まれないことは保証できない。受信側オフライン端末を authority とし、鍵交換は対面を推奨運用として示す。
 - OCF2 フレーム文字列は検証後も verbatim で保持し、順序だけ index 昇順にして LF で結合する。再組立・再分割・density control は行わない。OCM1 は正規性確認後に単一 QR として再表示し、animation control は表示しない。
-- Copy は clipboard への意図的 export であり、アプリ外に残存・同期し得る警告を表示する。QR は長押し保存、印刷、screenshot、画面録画を防げない。
+- Copy は clipboard への意図的 export であり、アプリ外に残存・同期し得る警告を表示する。これはテキストの copy だけでなく「QR → QR」の PNG `ClipboardItem` 書き出しにも同じく当てはまり、そちらにも専用の警告文を表示する。QR は長押し保存、印刷、screenshot、画面録画を防げない。
 - enforceable な UI 制約は「アプリ提供のファイル download control がないこと」。frame-derived 値と OCM1-derived 値を app-managed IndexedDB/localStorage/CacheStorage/URL/history/log や relay-payload-bearing network request に意図的に書き込まない。shell 固有の固定 storage/network 動作は別に存在する。

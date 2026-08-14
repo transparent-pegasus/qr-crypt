@@ -15,7 +15,7 @@ import { encodeFrameToPayload } from "@/qr/payload-v2"
 import { payloadFits } from "@/qr/encode"
 import { env } from "@/schemas/env-schema"
 
-export interface SplitIntoFramesArgs {
+interface SplitIntoFramesArgs {
   artifactType: V2ArtifactType
   artifactBytes: Uint8Array
   // FRAME_BYTES_MIN..FRAME_BYTES_MAX (from Preferences or an automatic

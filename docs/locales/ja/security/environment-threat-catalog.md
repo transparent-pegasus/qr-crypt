@@ -41,14 +41,19 @@ QR Cryptと信頼性のある関係を持つ**物理的およびオペレーシ�
 - カタログ作成 2026-08-03；同日付でエントリをレビュー。
 - 2026-08-08の統合された国家レベル脅威レビューとともに再レビューした。
   新しい環境技法は見つからず、`T`行への昇格が妥当なエントリもなかった。
+- 2026-08-14にE1〜E12のフルfreshnessスイープを実施し、名称付きのすべての
+  外部出典とリポジトリ内記録、日付、証拠ラベル、関係性、位置づけ、
+  `Touches`参照を再検査した。置き換えられた引用出典はなく、追加の技法や
+  `T`行への昇格も妥当ではなかった。
 - NSR-05は、対称リレーパスのチャンク長分割チャネルを除去した。一方、
   E8/T21の主要な能力と深刻度は変わらない。正当な1回の対称転送には、
   256ビット鍵全体を漏洩させるのに十分な277ビットの送信者制御可能な容量が
   引き続き存在する。
-- E5は変更していない。ML-KEMに対する選択暗号文サイドチャネルについて、
-  より新しい出典が存在する可能性はあるが、正確な題名、著者、掲載先、日付は
-  確立されていない。次回の`environment-threats`スイープで扱う資料とし、
-  E5の既存引用と`Speculation`ラベルを維持する。
+- E5にGuo、Nabokov、JohanssonによるUSENIX Security 2026の復号失敗オラクルの
+  結果を追加した。この研究は実験室・ネイティブ環境のML-KEM-768級標的に対する
+  攻撃を実証したもので、このJavaScript/ブラウザスタックに対するものではない。
+  ブラウザサンドボックスの制約は明示的にスコープ外である。したがって本スタックの
+  ラベルは`Speculation`のままとし、暗黙の昇格は行わない。
 - `.claude/skills/freshness/targets.yaml`に登録（ユニット
   `environment-threats`）。スイープは日付付き出典を再検証し、
   信頼できる関係性を獲得した技法を追加し、変更内容を記録する。
@@ -146,8 +151,14 @@ ML-KEMの暗黙棄却パスが明示的に名指しされている。タイミ�
 
 **Evidence（証拠）。** CCA安全な格子KEM実装に対する一般的なクラスについて
 `Evidence`：Ravi, Roy, Chattopadhyay, Bhasin, *Generic Side-channel attacks
-on CCA-secure lattice-based PKE and KEMs*, IACR TCHES 2020(3)。
-実装上の注意事項自体についてはリポジトリ内の記録として`Evidence`
+on CCA-secure lattice-based PKE and KEMs*, IACR TCHES 2020(3)。より鋭い
+復号失敗オラクルクラスについては`Evidence`：Qian Guo, Denis Nabokov,
+Thomas Johansson, *Unlocking the True Potential of Decryption Failure Oracles:
+A Hybrid Adaptive-LDPC Attack on ML-KEM Using Imperfect Oracles*, USENIX
+Security 2026。この研究は実験室・ネイティブ環境のML-KEM-768級攻撃を実証し、
+ブラウザサンドボックスの制約を明示的にスコープ外とする。このJavaScript/
+ブラウザスタックでは実証していない。実装上の注意事項自体については
+リポジトリ内の記録として`Evidence`
 （`@noble/post-quantum`ドキュメント、
 [security-review.md](../../../security/security-review.md) §1に記録）。
 本システムについては`Speculation`：このJSスタックでこのハードウェア上での
@@ -270,8 +281,9 @@ Turn Evil*, Black Hat USA 2014（再プログラム可能なUSBコントロー�
 触れることなくこれらを無効化する。
 
 **Evidence（証拠）。** 本リポジトリ内のEvidence：脅威モデルは、
-アプリケーションがユーザーが意図した相手と比較したことを確認できない
-ことをすでに述べている（T6）。また、不可視文字スキャンは明示的に
+アプリケーションが公開バンドルと対称鍵のどちらのインポートにおいても、
+ユーザーが意図した相手と比較したことを確認できないとすでに述べている（T6、T23）。
+また、不可視文字スキャンは明示的に
 検出補助であり、その価値はアラートが読まれる程度に稀であることに依存する（T21）。
 
 **Position（位置づけ）。** 手順については`EXTERNAL_ASSURANCE`；
@@ -279,7 +291,7 @@ Turn Evil*, Black Hat USA 2014（再プログラム可能なUSBコントロー�
 `REPOSITORY_IMPLEMENTABLE` —— 例えば、まさにこの理由で存在する
 意図的に非解除型のフィンガープリント確認。
 
-**Touches（関連項目）。** threat-model T6, T15, T21, T22；
+**Touches（関連項目）。** threat-model T6, T15, T21, T22, T23；
 install-route-a/README.md §5–§6。
 
 ## E12 — Route A ローカルサーバーの配信設定

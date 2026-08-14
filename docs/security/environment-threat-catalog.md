@@ -42,14 +42,19 @@ where consequence and feasibility are recorded separately.
 - Catalog created 2026-08-03; entries reviewed on that date.
 - Re-reviewed with the merged nation-state review on 2026-08-08. It found no
   new environment technique and no entry warranting promotion to a `T` row.
+- Full E1–E12 freshness sweep completed 2026-08-14. It rechecked every named
+  external publication and in-repo record, date, evidence label, relationship,
+  position, and `Touches` reference. No cited source was superseded, and no
+  additional technique or `T`-row promotion was warranted.
 - NSR-05 removes the chunk-length partition channel on the symmetric relay
   path. E8/T21's dominant capability and severity are unchanged: one legitimate
   symmetric transfer still has 277 bits of sender-controlled capacity, enough
   to exfiltrate a whole 256-bit key.
-- E5 remains unchanged. Newer sources for chosen-ciphertext side channels
-  against ML-KEM may exist, but their exact titles, authors, venues, and dates
-  were not established. They are material for the next `environment-threats`
-  sweep; E5's existing citation and `Speculation` label remain in place.
+- E5 now includes Guo, Nabokov, and Johansson's USENIX Security 2026
+  decryption-failure-oracle result. It demonstrates attacks against
+  ML-KEM-768-class targets in lab/native settings, not this JavaScript/browser
+  stack; browser-sandbox restrictions are explicitly outside its scope. The
+  for-this-stack label therefore remains `Speculation`, with no silent upgrade.
 - Registered in `.claude/skills/freshness/targets.yaml` (unit
   `environment-threats`). A sweep re-checks the dated sources, adds techniques
   that gained a credible relationship, and records what changed.
@@ -148,7 +153,13 @@ into key recovery.
 **Evidence.** `Evidence` for the general class against CCA-secure lattice KEM
 implementations: Ravi, Roy, Chattopadhyay, Bhasin, *Generic Side-channel attacks
 on CCA-secure lattice-based PKE and KEMs*, IACR TCHES 2020(3). `Evidence` for
-the implementation caveat itself as an in-repo record
+the sharper decryption-failure-oracle class: Qian Guo, Denis Nabokov, Thomas
+Johansson, *Unlocking the True Potential of Decryption Failure Oracles: A
+Hybrid Adaptive-LDPC Attack on ML-KEM Using Imperfect Oracles*, USENIX Security
+2026. The work demonstrates ML-KEM-768-class attacks in lab/native settings and
+explicitly leaves browser-sandbox restrictions outside scope; it does not
+demonstrate this JavaScript/browser stack. `Evidence` for the implementation
+caveat itself as an in-repo record
 (`@noble/post-quantum` documentation, recorded in
 [security-review.md](security-review.md) §1). `Speculation` for this system: no
 key-recovery attack has been demonstrated against this JS stack on this
@@ -265,14 +276,16 @@ displayed warning. Fatigue, time pressure, coercion, and an attacker-supplied
 
 **Evidence.** Evidence within this repository: the threat model already states
 that the application cannot establish that the user compared against the
-intended person (T6), and the invisible-character scan is explicitly a detection
-aid whose value depends on alerts staying rare enough to be read (T21).
+intended person for either public-bundle or symmetric-key import (T6, T23), and
+the invisible-character scan is explicitly a detection aid whose value depends
+on alerts staying rare enough to be read (T21).
 
 **Position.** `EXTERNAL_ASSURANCE` for the procedure; `REPOSITORY_IMPLEMENTABLE`
 only where an interface change would reduce the load — e.g. the deliberate
 non-dismissible fingerprint confirmation, which exists for this reason.
 
-**Touches.** threat-model T6, T15, T21, T22; install-route-a/README.md §5–§6.
+**Touches.** threat-model T6, T15, T21, T22, T23;
+install-route-a/README.md §5–§6.
 
 ## E12 — Serving configuration of the Route A local server
 

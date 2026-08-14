@@ -27,13 +27,13 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
 
-export interface AnimatedQrCompatibilityControl {
+interface AnimatedQrCompatibilityControl {
   enabled: boolean
   disabled?: boolean
   onEnabledChange: (enabled: boolean) => void | Promise<void>
 }
 
-export interface AnimatedQrFramesProps {
+interface AnimatedQrFramesProps {
   frames: readonly QrFrameV2[]
   frameIntervalMs: number
   densityRaised?: boolean
