@@ -147,7 +147,7 @@ history the new CI gate answers; neither is erased by the now-clean result.
 | Target | Status | Notes |
 | --- | --- | --- |
 | `brace-expansion` forced to `5.0.9` for both the `@5` and `@2` selectors | **RESOLVED** `GHSA-mh99-v99m-4gvg` and `GHSA-rgw5-rvv9-x895` | `2.1.4` is also patched; using `5.0.9` for both selectors is a deliberate one-version-in-the-graph decision. Build tooling only; absent from the browser bundle |
-| `fast-uri@3.1.5`, `nanoid@3.3.17`, and `undici@7.29.0` forced via `aube.overrides` | **RESOLVED** known advisories; patched versions installed | Build, test, and deploy tooling only; absent from the browser bundle |
+| `fast-uri@3.1.5`, `nanoid@3.3.18`, and `undici@7.29.0` forced via `aube.overrides` | **RESOLVED** known advisories; patched versions installed | Build, test, and deploy tooling only; absent from the browser bundle. The `nanoid` pin moved from `3.3.17` on 2026-08-14; see the re-check below |
 | Full locked dependency graph | `aube audit` reports no known vulnerabilities on 2026-08-08 | The result is dated; it is not a continuing claim about advisories published later |
 | Cosign verifier pin moved from v3.0.6 to v3.1.3 (re-checked 2026-08-08) | **RESOLVED** high-severity `GHSA-fx35-mq7g-6g98`, published 2026-08-06; affected v3 versions are `<=3.1.2` | Workflow signer and verifier image moved to v3.1.3; Route A requires independently authenticated Cosign v3.1.3 or later. The verifier supplies that binary, so the floor is instructional. `aube audit` cannot detect this non-npm advisory, and the independent rebuild remains mandatory |
 
@@ -156,6 +156,12 @@ history the new CI gate answers; neither is erased by the now-clean result.
 | Target | Status | Notes |
 | --- | --- | --- |
 | `@noble/post-quantum` exact pin `0.7.0` | Latest inspected; no advisories for the installed package (repository / GHSA / OSV clean) | Moved from `0.6.1` through the `crypto-noble` unit under owner approval; `aube audit` reported no known vulnerabilities. Independent-audit status remains self-audit only |
+
+### `nanoid` advisory re-check (2026-08-14)
+
+| Target | Status | Notes |
+| --- | --- | --- |
+| `nanoid` override moved `3.3.17` → `3.3.18` | **RESOLVED** high-severity `GHSA-2v37-7h3g-55p8` (custom generators can loop indefinitely when size is zero); every version below `3.3.18` is affected | The advisory published after the 2026-08-08 sweep recorded above, so the `3.3.17` row was accurate when written and stale by 2026-08-14. Reached only through `postcss` in the build toolchain; absent from the browser bundle. Found by CI `validate`, which runs `aube audit` on every push — the case the "no scheduled run" note below describes. `aube audit` now reports no known vulnerabilities. This was a targeted remediation, not a full `deps` sweep |
 
 CI `validate` now runs `aube audit` unconditionally after `aube ci`. It detects
 known advisories on the next triggered run — every push, or a pull request
