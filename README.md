@@ -123,13 +123,22 @@ accepts only validated OCF2 frames declaring `pq-message` or `sym-message`.
 
 1. **Sender's offline device** — encrypt as usual and display the single OCF2 frame for
    AES, or the OCF2 frame sequence for a post-quantum message.
-2. **Sender's online device** — open the **Relay** page, use **Scan → text**, collect
+2. **Sender's online device** — open the **Relay** page, use **QR → Text**, collect
    every OCF2 frame for the transfer, and copy the resulting text. That clipboard copy
    can persist or sync outside the app, and outside any wipe.
 3. **Recipient's online device** — open the **Relay** page, paste the text into
    **Text → QR**, and play the OCF2 frames back for the recipient's camera.
 4. **Recipient's offline device** — scan the frames. Only this device authenticates the
    assembled artifact (AEAD, and ML-DSA for post-quantum messages).
+
+When the whole message fits in one OCF2 frame — always the case for AES — steps 2 and 3
+have a shorter alternative on the sender's online device: **QR → QR** captures that single
+frame and re-renders it as a QR image to copy and paste into a messenger that accepts
+images, so the recipient scans it straight from the chat screen. It is only a convenience
+on the same hop: the frame is validated exactly as **QR → Text** validates it, and nothing
+is decrypted or authenticated on the way. A multi-frame transfer — the post-quantum path —
+is refused there and stays on **QR → Text**. The image copy carries the same residual as
+the text copy: the PNG can persist or sync outside the app, and outside any wipe.
 
 Public keys and identities are still exchanged face to face. The relay accepts only
 canonical OCF2 `pq-message` or `sym-message` frames, validates the assembled artifact
