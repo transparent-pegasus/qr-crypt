@@ -368,7 +368,7 @@ describe("online relay UI", () => {
     const user = userEvent.setup()
 
     for (const [triggerName, dialogName] of [
-      ["QR → text", translate("en", "relay.capture.title")],
+      ["QR → Text", translate("en", "relay.capture.title")],
       ["Text → QR", translate("en", "relay.playback.title")],
     ] as const) {
       await user.click(screen.getByRole("button", { name: triggerName }))
@@ -622,7 +622,7 @@ describe("online relay UI", () => {
       </LanguageProvider>,
     )
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → text" }))
+    await user.click(screen.getByRole("button", { name: "QR → Text" }))
     expect(await screen.findByRole("dialog")).toBeInTheDocument()
     expect(
       screen.getByLabelText(translate("en", "relay.capture.video.ariaLabel")),
@@ -635,7 +635,7 @@ describe("online relay UI", () => {
   it("keeps scanning after a mismatch and emits exact sorted text", async () => {
     renderRelay()
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → text" }))
+    await user.click(screen.getByRole("button", { name: "QR → Text" }))
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     const first = payload(0)
     const second = payload(1)
@@ -791,7 +791,7 @@ describe("online relay UI", () => {
     async (_label, hostile, expectedError) => {
       renderRelay()
       const user = userEvent.setup()
-      await user.click(screen.getByRole("button", { name: "QR → text" }))
+      await user.click(screen.getByRole("button", { name: "QR → Text" }))
       await user.click(screen.getByRole("button", { name: "Start camera" }))
       act(() => scanText?.(payload(0)))
       act(() => scanText?.(hostile))
@@ -807,7 +807,7 @@ describe("online relay UI", () => {
     async (event) => {
       const rendered = renderRelay()
       const user = userEvent.setup()
-      await user.click(screen.getByRole("button", { name: "QR → text" }))
+      await user.click(screen.getByRole("button", { name: "QR → Text" }))
       await user.click(screen.getByRole("button", { name: "Start camera" }))
       await waitFor(() => expect(scanStart).toHaveBeenCalledOnce())
       await waitFor(() => expect(scanStop).not.toHaveBeenCalled())
@@ -849,7 +849,7 @@ describe("online relay UI", () => {
     )
     renderRelay()
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → text" }))
+    await user.click(screen.getByRole("button", { name: "QR → Text" }))
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     await user.click(screen.getByRole("button", { name: "Close" }))
     expect(scanSignal?.aborted).toBe(true)
@@ -860,7 +860,7 @@ describe("online relay UI", () => {
     const { AppError } = await import("@/crypto/errors")
     renderRelay()
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → text" }))
+    await user.click(screen.getByRole("button", { name: "QR → Text" }))
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     act(() => scanFailure?.(new AppError("CAMERA_NOT_AVAILABLE")))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
@@ -872,7 +872,7 @@ describe("online relay UI", () => {
   it("starts empty after a persisted BFCache pageshow and never reacquires automatically", async () => {
     renderRelay()
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → text" }))
+    await user.click(screen.getByRole("button", { name: "QR → Text" }))
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     const callsBeforePageShow = scanStart.mock.calls.length
     act(() =>
@@ -900,7 +900,7 @@ describe("online relay UI", () => {
       },
     })
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → text" }))
+    await user.click(screen.getByRole("button", { name: "QR → Text" }))
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     act(() => {
       boundary?.("peer-wipe")
@@ -940,7 +940,7 @@ describe("online relay UI", () => {
       },
     })
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → text" }))
+    await user.click(screen.getByRole("button", { name: "QR → Text" }))
     await user.click(screen.getByRole("button", { name: "Start camera" }))
 
     act(() => {
@@ -996,7 +996,7 @@ describe("online relay UI", () => {
         },
       })
       const user = userEvent.setup()
-      await user.click(screen.getByRole("button", { name: "QR → text" }))
+      await user.click(screen.getByRole("button", { name: "QR → Text" }))
       await user.click(screen.getByRole("button", { name: "Start camera" }))
       expect(settleStartup).toBeDefined()
 
@@ -1030,7 +1030,7 @@ describe("online relay UI", () => {
     )
     renderRelay({ onEligibilityRefresh })
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → text" }))
+    await user.click(screen.getByRole("button", { name: "QR → Text" }))
     expect(onEligibilityRefresh).toHaveBeenCalledOnce()
 
     act(() => window.dispatchEvent(new Event("pagehide")))
@@ -1043,7 +1043,7 @@ describe("online relay UI", () => {
   it("stops both camera paths synchronously on eligibility loss", async () => {
     const rendered = renderRelay()
     const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → text" }))
+    await user.click(screen.getByRole("button", { name: "QR → Text" }))
     await user.click(screen.getByRole("button", { name: "Start camera" }))
 
     rendered.rerender(relayElement({ eligible: false }))
@@ -1057,7 +1057,7 @@ describe("online relay UI", () => {
     vi.useFakeTimers()
     renderRelay()
     act(() => {
-      screen.getByRole("button", { name: "QR → text" }).click()
+      screen.getByRole("button", { name: "QR → Text" }).click()
     })
     await act(async () => undefined)
     act(() => {
