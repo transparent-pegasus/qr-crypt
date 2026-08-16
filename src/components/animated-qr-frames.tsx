@@ -147,6 +147,11 @@ export function AnimatedQrFrames({
   const currentIndex = availableIndexes[position]
   const current = currentIndex === undefined ? undefined : slots.get(currentIndex)
   const currentPayload = current?.payload
+  const currentFrameCommitted =
+    currentPayload !== undefined &&
+    committedFrame?.generation === frameGeneration &&
+    committedFrame.position === position &&
+    committedFrame.payload === currentPayload
 
   const handleRendered = (payload: string) => {
     if (payload !== currentPayload) return
@@ -179,10 +184,7 @@ export function AnimatedQrFrames({
       paused ||
       availableIndexes.length < 2 ||
       animationSignal?.aborted ||
-      currentPayload === undefined ||
-      committedFrame?.generation !== frameGeneration ||
-      committedFrame.position !== position ||
-      committedFrame.payload !== currentPayload
+      !currentFrameCommitted
     ) {
       return
     }
@@ -209,7 +211,7 @@ export function AnimatedQrFrames({
   }, [
     animationSignal,
     availableIndexes.length,
-    committedFrame,
+    currentFrameCommitted,
     currentPayload,
     frameGeneration,
     frameIntervalMs,
@@ -267,7 +269,7 @@ export function AnimatedQrFrames({
   }
 
   const lightSurface =
-    "border-slate-300 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+    "border border-slate-300 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
 
   const compatibilitySwitch = (fullscreenVariant: boolean) => {
     if (compatibilityControl === undefined) return <span aria-hidden="true" />
@@ -370,7 +372,7 @@ export function AnimatedQrFrames({
         size="icon"
         className="size-11 shrink-0 cursor-pointer focus-visible:ring-2"
         aria-label={t("qrDisplay.fullscreen.button")}
-        disabled={committedFrame === null}
+        disabled={!currentFrameCommitted}
         onClick={() => changeFullscreen(true)}
       >
         <Expand aria-hidden="true" />

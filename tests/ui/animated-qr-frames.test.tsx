@@ -180,12 +180,54 @@ describe("AnimatedQrFrames", () => {
     })
     for (const name of ["Previous", "Pause", "Next", "Close"]) {
       expect(within(fullscreen).getByRole("button", { name })).toHaveClass(
+        "border",
         "border-slate-300",
       )
     }
     expect(
       fullscreen.querySelector('[data-compatibility-control="fullscreen"]'),
-    ).toHaveClass("border-slate-300")
+    ).toHaveClass("border", "border-slate-300")
+  })
+
+  it("keeps the fullscreen trigger disabled until the current generation commits", async () => {
+    const initialFrames = [frame(0, 2), frame(1, 2)]
+    const { rerender } = render(
+      <AnimatedQrFrames
+        frames={initialFrames}
+        frameIntervalMs={60_000}
+        outputName="generation"
+      />,
+    )
+    const trigger = screen.getByRole("button", { name: "View full screen" })
+    await waitFor(() => expect(trigger).toBeEnabled())
+
+    const replacementRender = deferred<string>()
+    renderQrDataUrl.mockImplementationOnce(() => replacementRender.promise)
+    const replacementFrames = [
+      frame(0, 2, { transfer: 1 }),
+      frame(1, 2, { transfer: 1 }),
+    ]
+    rerender(
+      <AnimatedQrFrames
+        frames={replacementFrames}
+        frameIntervalMs={60_000}
+        outputName="generation"
+      />,
+    )
+
+    await waitFor(() =>
+      expect(renderQrDataUrl).toHaveBeenLastCalledWith(
+        encodeFrameToPayload(replacementFrames[0]!),
+        expect.any(Object),
+      ),
+    )
+    expect(trigger).toBeDisabled()
+
+    await act(async () => {
+      replacementRender.resolve("data:image/png;base64,cmVwbGFjZW1lbnQ=")
+      await replacementRender.promise
+    })
+    await waitFor(() => expect(trigger).toBeEnabled())
   })
 
   it("presents every slow-rendered frame in order without blanking or skipping", async () => {
