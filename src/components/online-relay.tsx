@@ -535,7 +535,7 @@ export function OnlineRelay({
             <Button
               type="button"
               variant="outline"
-              className="h-11 cursor-pointer focus-visible:ring-2"
+              className="h-11 cursor-pointer text-xs focus-visible:ring-2"
               disabled={!cameraAvailable}
               onClick={() => void openDialog("capture")}
             >
@@ -545,7 +545,7 @@ export function OnlineRelay({
             <Button
               type="button"
               variant="outline"
-              className="h-11 cursor-pointer focus-visible:ring-2"
+              className="h-11 cursor-pointer text-xs focus-visible:ring-2"
               onClick={() => void openDialog("playback")}
             >
               <QrCode aria-hidden="true" />
@@ -554,7 +554,7 @@ export function OnlineRelay({
             <Button
               type="button"
               variant="outline"
-              className="h-11 cursor-pointer focus-visible:ring-2"
+              className="h-11 cursor-pointer text-xs focus-visible:ring-2"
               disabled={!cameraAvailable}
               onClick={() => void openDialog("image")}
             >
