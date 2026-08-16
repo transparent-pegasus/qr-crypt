@@ -254,7 +254,7 @@ export function QrDisplay({
         )}
       </div>
       {fullscreenEnabled && showFullscreenTrigger && (
-        <div className="flex justify-end">
+        <div className="flex justify-start">
           <Button
             type="button"
             variant="outline"
