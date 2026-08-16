@@ -4,7 +4,6 @@ import { renderQrDataUrl } from "@/qr/encode"
 import type { QrEcLevel } from "@/schemas/domain"
 import { isQrCryptPayload } from "@/qr/payload-v2"
 import { toAppError } from "@/crypto/errors"
-import { cn } from "@/lib/utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,20 +24,10 @@ interface QrDisplayProps {
   onRendered?: (payload: string) => void
   fullscreenEnabled?: boolean
   showFullscreenTrigger?: boolean
-  fullscreenControls?: QrDisplayFullscreenControls
+  fullscreenControls?: (closeSlot: ReactNode) => ReactNode
   fullscreenOpen?: boolean
   onFullscreenOpenChange?: (open: boolean) => void
 }
-
-export type QrDisplayFullscreenControls =
-  | {
-      kind: "transport"
-      render: (closeSlot: ReactNode) => ReactNode
-    }
-  | {
-      kind: "arbitrary"
-      content: ReactNode
-    }
 
 interface QrRenderRequest {
   id: number
@@ -235,7 +224,6 @@ export function QrDisplay({
       </Button>
     </DialogClose>
   )
-  const hasArbitraryFullscreenControls = fullscreenControls?.kind === "arbitrary"
 
   return (
     <div className="space-y-3">
@@ -258,39 +246,29 @@ export function QrDisplay({
           </div>
         )}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="font-mono tabular-nums">
-          {t("qrDisplay.dataSize", {
-            bytes: new TextEncoder().encode(payload).byteLength,
-            ecLevel,
-          })}
-        </span>
-        {fullscreenEnabled && showFullscreenTrigger && (
+      {fullscreenEnabled && showFullscreenTrigger && (
+        <div className="flex justify-start">
           <Button
             type="button"
             variant="outline"
-            className="h-11 cursor-pointer focus-visible:ring-2"
+            size="icon"
+            className="size-11 shrink-0 cursor-pointer focus-visible:ring-2"
+            aria-label={t("qrDisplay.fullscreen.button")}
             disabled={!dataUrl}
             onClick={() => changeFullscreen(true)}
           >
             <Expand aria-hidden="true" />
-            {t("qrDisplay.fullscreen.button")}
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {fullscreenEnabled && (
         <Dialog open={fullscreen} onOpenChange={changeFullscreen}>
+          {/* w-full: this surface is deliberately full-bleed, overriding the
+          inset default DialogContent gives ordinary modals. */}
           <DialogContent
             hideCloseButton
-            className={cn(
-              // w-full: this surface is deliberately full-bleed, overriding the
-              // inset default DialogContent gives ordinary modals.
-              "grid h-dvh w-full min-w-0 max-w-none grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden border-0 bg-white text-slate-950 [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))] sm:rounded-none",
-              hasArbitraryFullscreenControls
-                ? "grid-rows-[minmax(0,1fr)_auto_auto]"
-                : "grid-rows-[minmax(0,1fr)_auto]",
-            )}
+            className="grid h-dvh w-full min-w-0 max-w-none grid-cols-[minmax(0,1fr)] gap-3 overflow-hidden border-0 bg-white text-slate-950 [padding-block-end:max(1rem,env(safe-area-inset-bottom))] [padding-block-start:max(1rem,env(safe-area-inset-top))] [padding-inline-end:max(1rem,env(safe-area-inset-right))] [padding-inline-start:max(1rem,env(safe-area-inset-left))] sm:rounded-none grid-rows-[minmax(0,1fr)_auto]"
           >
             <DialogHeader className="sr-only">
               <DialogTitle>{t("qrDisplay.fullscreen.title", { title })}</DialogTitle>
@@ -307,28 +285,17 @@ export function QrDisplay({
                 />
               )}
             </div>
-            {fullscreenControls?.kind === "transport" ? (
+            {fullscreenControls ? (
               <div className="row-start-2 min-w-0">
-                {fullscreenControls.render(fullscreenClose)}
+                {fullscreenControls(fullscreenClose)}
               </div>
             ) : (
-              <>
-                {hasArbitraryFullscreenControls && (
-                  <div className="row-start-2 min-w-0">
-                    {fullscreenControls.content}
-                  </div>
-                )}
-                <div
-                  data-fullscreen-close-row
-                  className={cn(
-                    // w-fit, not a full-width row: the close is its own rounded box.
-                    "w-fit min-w-0 justify-self-end",
-                    hasArbitraryFullscreenControls ? "row-start-3" : "row-start-2",
-                  )}
-                >
-                  {fullscreenClose}
-                </div>
-              </>
+              <div
+                data-fullscreen-close-row
+                className="row-start-2 w-fit min-w-0 justify-self-end"
+              >
+                {fullscreenClose}
+              </div>
             )}
           </DialogContent>
         </Dialog>

@@ -94,6 +94,142 @@ describe("AnimatedQrFrames", () => {
     ).toHaveAttribute("role", "status")
   })
 
+  it("shows only a left-aligned fullscreen trigger for a single frame", async () => {
+    render(
+      <AnimatedQrFrames
+        frames={[frame(0, 1)]}
+        frameIntervalMs={1_000}
+        outputName="single"
+      />,
+    )
+
+    await screen.findByRole("img")
+    expect(
+      document.querySelector('[data-transport-controls="inline"]'),
+    ).toBeNull()
+    expect(screen.queryByText(/^\d+ \/ \d+$/)).toBeNull()
+    expect(screen.queryByRole("button", { name: "Previous" })).toBeNull()
+    expect(screen.queryByText(/screen brightness/i)).toBeNull()
+
+    const trigger = screen.getByRole("button", { name: "View full screen" })
+    await waitFor(() => expect(trigger).toBeEnabled())
+    expect(trigger).toHaveTextContent("")
+    expect(trigger.parentElement).toHaveClass("justify-start")
+    fireEvent.click(trigger)
+
+    const fullscreen = screen.getByRole("dialog", {
+      name: "View Multi-frame QR 1 / 1 full screen",
+    })
+    const buttons = within(fullscreen).getAllByRole("button")
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0]).toHaveAccessibleName("Close")
+    expect(buttons[0]).toHaveClass("border-slate-300")
+    expect(fullscreen.querySelector("[data-fullscreen-close-row]")).toContainElement(
+      buttons[0]!,
+    )
+  })
+
+  it("orders one icon-only control row after the counter for multiple frames", async () => {
+    render(
+      <AnimatedQrFrames
+        frames={[frame(0, 2), frame(1, 2)]}
+        frameIntervalMs={1_000}
+        compatibilityControl={{
+          enabled: false,
+          onEnabledChange: vi.fn(),
+        }}
+        outputName="multi"
+      />,
+    )
+
+    const image = await screen.findByRole("img")
+    const counter = screen.getByText("1 / 2")
+    const row = document.querySelector<HTMLElement>(
+      '[data-transport-controls="inline"]',
+    )
+    expect(row).not.toBeNull()
+    expect(
+      image.compareDocumentPosition(counter) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      counter.compareDocumentPosition(row!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+
+    const buttons = within(row!).getAllByRole("button")
+    expect(buttons).toHaveLength(4)
+    for (const [button, name] of buttons.slice(0, 3).map((button, index) => [
+      button,
+      ["Previous", "Pause", "Next"][index]!,
+    ] as const)) {
+      expect(button).toHaveAccessibleName(name)
+      expect(button.querySelector(".sr-only")).toHaveTextContent(name)
+    }
+    const compatibility = within(row!).getByRole("switch", {
+      name: "Compatibility mode",
+    })
+    const trigger = buttons[3]!
+    expect(trigger).toHaveAccessibleName("View full screen")
+    expect(trigger).toHaveTextContent("")
+    expect(row!.children[3]).toContainElement(compatibility)
+    expect(row!.children[4]).toBe(trigger)
+
+    await waitFor(() => expect(trigger).toBeEnabled())
+    fireEvent.click(trigger)
+    const fullscreen = screen.getByRole("dialog", {
+      name: "View Multi-frame QR 1 / 2 full screen",
+    })
+    for (const name of ["Previous", "Pause", "Next", "Close"]) {
+      expect(within(fullscreen).getByRole("button", { name })).toHaveClass(
+        "border",
+        "border-slate-300",
+      )
+    }
+    expect(
+      fullscreen.querySelector('[data-compatibility-control="fullscreen"]'),
+    ).toHaveClass("border", "border-slate-300")
+  })
+
+  it("keeps the fullscreen trigger disabled until the current generation commits", async () => {
+    const initialFrames = [frame(0, 2), frame(1, 2)]
+    const { rerender } = render(
+      <AnimatedQrFrames
+        frames={initialFrames}
+        frameIntervalMs={60_000}
+        outputName="generation"
+      />,
+    )
+    const trigger = screen.getByRole("button", { name: "View full screen" })
+    await waitFor(() => expect(trigger).toBeEnabled())
+
+    const replacementRender = deferred<string>()
+    renderQrDataUrl.mockImplementationOnce(() => replacementRender.promise)
+    const replacementFrames = [
+      frame(0, 2, { transfer: 1 }),
+      frame(1, 2, { transfer: 1 }),
+    ]
+    rerender(
+      <AnimatedQrFrames
+        frames={replacementFrames}
+        frameIntervalMs={60_000}
+        outputName="generation"
+      />,
+    )
+
+    await waitFor(() =>
+      expect(renderQrDataUrl).toHaveBeenLastCalledWith(
+        encodeFrameToPayload(replacementFrames[0]!),
+        expect.any(Object),
+      ),
+    )
+    expect(trigger).toBeDisabled()
+
+    await act(async () => {
+      replacementRender.resolve("data:image/png;base64,cmVwbGFjZW1lbnQ=")
+      await replacementRender.promise
+    })
+    await waitFor(() => expect(trigger).toBeEnabled())
+  })
+
   it("presents every slow-rendered frame in order without blanking or skipping", async () => {
     vi.useFakeTimers()
     const slowRenders = [
