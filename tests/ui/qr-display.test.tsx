@@ -3,34 +3,21 @@ import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import {
-  QrDisplay,
-  type QrDisplayFullscreenControls,
-} from "@/components/qr-display"
+import { QrDisplay } from "@/components/qr-display"
 import { env } from "@/schemas/env-schema"
 import { resetUi } from "./helpers/render-app"
 
-type FullscreenShape = "transport" | "arbitrary" | "none"
+type FullscreenControls = (closeSlot: ReactNode) => ReactNode
+type FullscreenShape = "custom" | "none"
 
-function controlsForShape(
-  shape: FullscreenShape,
-): QrDisplayFullscreenControls | undefined {
-  if (shape === "transport") {
-    return {
-      kind: "transport",
-      render: (closeSlot: ReactNode) => (
-        <div data-testid="transport-close-slot">
-          <button type="button">Transport action</button>
-          {closeSlot}
-        </div>
-      ),
-    }
-  }
-  if (shape === "arbitrary") {
-    return {
-      kind: "arbitrary",
-      content: <button type="button">Arbitrary action</button>,
-    }
+function controlsForShape(shape: FullscreenShape): FullscreenControls | undefined {
+  if (shape === "custom") {
+    return (closeSlot) => (
+      <div data-testid="custom-close-slot">
+        <button type="button">Custom action</button>
+        {closeSlot}
+      </div>
+    )
   }
   return undefined
 }
@@ -56,8 +43,8 @@ describe("QrDisplay fullscreen close contract", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
-  it.each(["transport", "arbitrary", "none"] as const)(
-    "owns exactly one trailing close in the %s shape and retains Escape dismissal",
+  it.each(["custom", "none"] as const)(
+    "places exactly one trailing close in the %s shape and retains Escape dismissal",
     async (shape) => {
       const user = userEvent.setup()
       render(<FullscreenShapeHarness shape={shape} />)
@@ -73,10 +60,11 @@ describe("QrDisplay fullscreen close contract", () => {
         dialog.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"),
       )
       expect(tabbableButtons.at(-1)).toBe(close)
+      expect(close).toHaveClass("border-slate-300")
 
-      if (shape === "transport") {
+      if (shape === "custom") {
         expect(
-          within(screen.getByTestId("transport-close-slot")).getAllByRole(
+          within(screen.getByTestId("custom-close-slot")).getAllByRole(
             "button",
             { name: "Close" },
           ),
@@ -86,6 +74,7 @@ describe("QrDisplay fullscreen close contract", () => {
         expect(dialog.querySelector("[data-fullscreen-close-row]")).toContainElement(
           close,
         )
+        expect(tabbableButtons).toEqual([close])
       }
 
       if (tabbableButtons.length > 1) {
@@ -98,4 +87,21 @@ describe("QrDisplay fullscreen close contract", () => {
       await waitFor(() => expect(dialog).not.toBeInTheDocument())
     },
   )
+
+  it("renders a left-aligned icon-only trigger without data-size metadata", async () => {
+    render(
+      <QrDisplay
+        payload="OCF2:single-frame"
+        ecLevel="Q"
+        size={env.qrRenderSize}
+        title="Single-frame QR"
+      />,
+    )
+
+    const trigger = screen.getByRole("button", { name: "View full screen" })
+    await waitFor(() => expect(trigger).toBeEnabled())
+    expect(trigger).toHaveTextContent("")
+    expect(trigger.parentElement).toHaveClass("justify-start")
+    expect(screen.queryByText(/Data size/i)).not.toBeInTheDocument()
+  })
 })

@@ -370,7 +370,11 @@ describe("key list page", () => {
     let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
     await user.click(within(dialog).getByRole("button", { name: "Show public-key QR" }))
     dialog = await screen.findByRole("dialog", { name: /public key/ })
-    expect(within(dialog).getByText(/OCF2 frames/)).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        "This QR code contains the public keys used for encryption and signature verification.",
+      ),
+    ).toBeInTheDocument()
     expect(
       within(dialog).getByRole("button", { name: "Back to details" }),
     ).toBeInTheDocument()
@@ -406,16 +410,25 @@ describe("key list page", () => {
     dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
     dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
-    expect(within(dialog).queryByRole("img")).toBeNull()
     expect(
-      within(dialog).queryByRole("button", { name: "View full screen" }),
-    ).toBeNull()
-    expect(within(dialog).queryByRole("button", { name: "Download" })).toBeNull()
-    expect(within(dialog).queryByRole("button", { name: "Copy" })).toBeNull()
-    await user.click(
-      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
-    )
-    const symmetricFullscreen = await within(dialog).findByRole("button", {
+      within(dialog).getByText(
+        "This QR code contains a secret key that can be used for encryption and decryption.",
+      ),
+    ).toBeInTheDocument()
+    expect(
+      await within(dialog).findByRole("img", { name: /Shared-key QR/ }),
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByRole("alert")).toBeNull()
+    expect(within(dialog).queryByRole("checkbox")).toBeNull()
+    expect(within(dialog).queryByText("Sensitive information")).toBeNull()
+    const copy = within(dialog).getByRole("button", { name: "Copy" })
+    const download = within(dialog).getByRole("button", { name: "Download" })
+    expect(copy).toBeEnabled()
+    expect(download).toBeEnabled()
+    expect(copy.parentElement).toBe(download.parentElement)
+    expect(copy.nextElementSibling).toBe(download)
+
+    const symmetricFullscreen = within(dialog).getByRole("button", {
       name: "View full screen",
     })
     await waitFor(() => expect(symmetricFullscreen).toBeEnabled())
@@ -423,19 +436,15 @@ describe("key list page", () => {
     fullscreen = await screen.findByRole("dialog", {
       name: /View Shared-key QR full screen/,
     })
-    expect(within(fullscreen).getByText("Sensitive information")).toBeInTheDocument()
-    expect(fullscreen.querySelector("svg.lucide-triangle-alert")).toHaveAttribute(
-      "aria-hidden",
-      "true",
-    )
+    const fullscreenButtons = within(fullscreen).getAllByRole("button")
+    expect(fullscreenButtons).toHaveLength(1)
+    expect(fullscreenButtons[0]).toHaveAccessibleName("Close")
+    expect(fullscreenButtons[0]).toHaveClass("border-slate-300")
+    expect(within(fullscreen).queryByRole("alert")).toBeNull()
     expect(within(fullscreen).queryByRole("button", { name: "Download" })).toBeNull()
     await user.keyboard("{Escape}")
     expect(screen.getByRole("dialog", { name: "Shared-key QR" })).toBeInTheDocument()
-    expect(within(dialog).getByText("Sensitive information")).toBeInTheDocument()
-    const download = within(dialog).getByRole("button", { name: "Download" })
-    const copy = within(dialog).getByRole("button", { name: "Copy" })
-    expect(download).toBeEnabled()
-    expect(copy).toBeEnabled()
+    expect(within(dialog).queryByText("Sensitive information")).toBeNull()
     expect(within(dialog).queryByRole("button", { name: /SVG/i })).toBeNull()
     expect(within(dialog).queryByText(/Saved/)).toBeNull()
   })
@@ -449,9 +458,6 @@ describe("key list page", () => {
     const dialog = await screen.findByRole("dialog", { name: "共通鍵A" })
     await user.click(
       within(dialog).getByRole("button", { name: "Show secret-key QR" }),
-    )
-    await user.click(
-      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
     )
 
     await waitFor(() => expect(encodeSymmetricKeyEnvelopeV2).toHaveBeenCalledOnce())
@@ -537,9 +543,6 @@ describe("key list page", () => {
       within(dialog).getByRole("button", { name: "Show secret-key QR" }),
     )
     dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
-    await user.click(
-      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
-    )
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledOnce())
     const artifactBytes = splitIntoFrames.mock.calls[0]![0].artifactBytes
     expect(artifactBytes.some((byte) => byte !== 0)).toBe(true)
@@ -670,7 +673,7 @@ describe("key list page", () => {
     )
   })
 
-  it("keeps the fullscreen trigger disabled while identity frame splitting is pending", async () => {
+  it("omits identity QR controls while frame splitting is pending", async () => {
     const user = userEvent.setup()
     splitIntoFrames.mockImplementationOnce(() => new Promise<never>(() => undefined))
     await renderKeyList()
@@ -681,12 +684,12 @@ describe("key list page", () => {
     dialog = await screen.findByRole("dialog", { name: /public key/ })
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledOnce())
 
-    const triggers = within(dialog).getAllByRole("button", {
-      name: "View full screen",
-    })
-    expect(triggers).toHaveLength(1)
-    expect(triggers[0]).toBeDisabled()
-    await user.click(triggers[0]!)
+    expect(
+      within(dialog).queryByRole("button", { name: "View full screen" }),
+    ).toBeNull()
+    expect(
+      dialog.querySelector('[data-transport-controls="inline"]'),
+    ).toBeNull()
     expect(dialog).not.toHaveAttribute("inert")
     expect(dialog).not.toHaveAttribute("aria-hidden", "true")
     expect(
@@ -694,7 +697,7 @@ describe("key list page", () => {
     ).not.toBeInTheDocument()
   })
 
-  it("keeps the fullscreen trigger disabled when identity frame splitting fails", async () => {
+  it("omits identity QR controls when frame splitting fails", async () => {
     const user = userEvent.setup()
     splitIntoFrames.mockRejectedValueOnce(new Error("split failed"))
     await renderKeyList()
@@ -705,12 +708,12 @@ describe("key list page", () => {
     dialog = await screen.findByRole("dialog", { name: /public key/ })
     await within(dialog).findByRole("alert")
 
-    const triggers = within(dialog).getAllByRole("button", {
-      name: "View full screen",
-    })
-    expect(triggers).toHaveLength(1)
-    expect(triggers[0]).toBeDisabled()
-    await user.click(triggers[0]!)
+    expect(
+      within(dialog).queryByRole("button", { name: "View full screen" }),
+    ).toBeNull()
+    expect(
+      dialog.querySelector('[data-transport-controls="inline"]'),
+    ).toBeNull()
     expect(dialog).not.toHaveAttribute("inert")
     expect(dialog).not.toHaveAttribute("aria-hidden", "true")
     expect(

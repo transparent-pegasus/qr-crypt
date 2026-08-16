@@ -35,6 +35,54 @@ interface FullscreenLabels {
   trigger: string
 }
 
+async function expectAnimatedInlineLayout(
+  detail: Locator,
+  labels: FullscreenLabels,
+): Promise<void> {
+  const inlineRows = detail.locator('[data-transport-controls="inline"]')
+  await expect(inlineRows).toHaveCount(1)
+  const inline = inlineRows.first()
+  const orderedControls = inline.locator("button")
+  const expectedNames = [
+    labels.previous,
+    labels.pause,
+    labels.next,
+    labels.compatibility,
+    labels.trigger,
+  ]
+  await expect(orderedControls).toHaveCount(5)
+  for (const [index, name] of expectedNames.entries()) {
+    await expect(orderedControls.nth(index)).toHaveAccessibleName(name)
+  }
+  for (const [index, name] of expectedNames.slice(0, 3).entries()) {
+    await expect(orderedControls.nth(index).locator(".sr-only")).toHaveText(name)
+  }
+  expect(await orderedControls.nth(4).textContent()).toBe("")
+
+  const structure = await inline.evaluate((row) => {
+    const counter = row.previousElementSibling
+    const image = row.closest("section")?.querySelector("img")
+    return {
+      counterMatches: /^\d+ \/ \d+$/.test(counter?.textContent?.trim() ?? ""),
+      counterBeforeRow:
+        counter !== null &&
+        Boolean(counter.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING),
+      imageBeforeCounter:
+        image !== null &&
+        image !== undefined &&
+        counter !== null &&
+        Boolean(
+          image.compareDocumentPosition(counter) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+    }
+  })
+  expect(structure).toEqual({
+    counterMatches: true,
+    counterBeforeRow: true,
+    imageBeforeCounter: true,
+  })
+}
+
 async function expectAnimatedFullscreenLayout(
   page: Page,
   detail: Locator,
@@ -69,6 +117,12 @@ async function expectAnimatedFullscreenLayout(
   for (const [index, name] of expectedNames.entries()) {
     await expect(orderedControls.nth(index)).toHaveAccessibleName(name)
   }
+  for (const index of [0, 1, 2, 4]) {
+    await expect(orderedControls.nth(index)).toHaveClass(/border-slate-300/)
+  }
+  await expect(
+    transport.locator('[data-compatibility-control="fullscreen"]'),
+  ).toHaveClass(/border-slate-300/)
   await expect(
     transport.getByRole("button", { name: labels.close, exact: true }),
   ).toHaveCount(1)
@@ -328,6 +382,61 @@ test("keeps shared closes bottom-right, last in tab order, and outside every scr
   await expect(scannerDialog).toBeHidden()
 })
 
+test("keeps a shared-key QR ungated with a left trigger and close-only fullscreen", async ({
+  context,
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 })
+  const keyName = "単一QRレイアウト鍵"
+  await openOfflineApp(page, context, "/keys")
+  await createSymmetricKey(page, keyName)
+  await goToOfflinePage(page, "/keys")
+  await page.getByRole("button", { name: new RegExp(keyName) }).click()
+  await page
+    .getByRole("dialog", { name: keyName })
+    .getByRole("button", { name: "Show secret-key QR", exact: true })
+    .click()
+
+  const dialog = page.getByRole("dialog", { name: "Shared-key QR" })
+  await expect(dialog.getByRole("img", { name: /Shared-key QR/ })).toBeVisible()
+  await expect(dialog.getByRole("alert")).toHaveCount(0)
+  await expect(dialog.getByRole("checkbox")).toHaveCount(0)
+  await expect(dialog.getByText(/Data size/i)).toHaveCount(0)
+  const actions = dialog.getByRole("button", { name: /^(Copy|Download)$/ })
+  await expect(actions).toHaveCount(2)
+  await expect(actions.nth(0)).toHaveAccessibleName("Copy")
+  await expect(actions.nth(1)).toHaveAccessibleName("Download")
+  expect(
+    await actions.evaluateAll(
+      ([copy, download]) => copy?.parentElement === download?.parentElement,
+    ),
+  ).toBe(true)
+
+  const trigger = dialog.getByRole("button", {
+    name: "View full screen",
+    exact: true,
+  })
+  await expect(trigger.locator("..")).toHaveClass(/justify-start/)
+  await trigger.click()
+  const fullscreen = page.getByRole("dialog", {
+    name: "View Shared-key QR full screen",
+  })
+  const fullscreenButtons = fullscreen.getByRole("button")
+  await expect(fullscreenButtons).toHaveCount(1)
+  await expect(fullscreenButtons.first()).toHaveAccessibleName("Close")
+  await expect(fullscreenButtons.first()).toHaveClass(/border-slate-300/)
+  await expect(fullscreen.locator("[data-fullscreen-close-row]")).toHaveCount(1)
+  const [surfaceBox, closeBox] = await Promise.all([
+    fullscreen.boundingBox(),
+    fullscreenButtons.first().boundingBox(),
+  ])
+  expect(surfaceBox).not.toBeNull()
+  expect(closeBox).not.toBeNull()
+  expect(closeBox!.x).toBeGreaterThan(surfaceBox!.x + surfaceBox!.width / 2)
+  await fullscreenButtons.first().click()
+  await expect(fullscreen).toBeHidden()
+})
+
 test("keeps the encryption result scrollable and discardable in the narrow viewport", async ({
   context,
   page,
@@ -394,19 +503,22 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
   const detail = page.getByRole("dialog", { name: identityName })
   await detail.getByRole("button", { name: "Show public-key QR", exact: true }).click()
 
+  const englishLabels: FullscreenLabels = {
+    close: "Close",
+    compatibility: "Compatibility mode",
+    dialogName: /View .*public key.* full screen/,
+    next: "Next",
+    pause: "Pause",
+    previous: "Previous",
+    trigger: "View full screen",
+  }
+  await expectAnimatedInlineLayout(detail, englishLabels)
+
   for (const viewport of [
     { width: 360, height: 640, portrait: true },
     { width: 740, height: 360, portrait: false },
   ]) {
-    await expectAnimatedFullscreenLayout(page, detail, viewport, {
-      close: "Close",
-      compatibility: "Compatibility mode",
-      dialogName: /View .*public key.* full screen/,
-      next: "Next",
-      pause: "Pause",
-      previous: "Previous",
-      trigger: "View full screen",
-    })
+    await expectAnimatedFullscreenLayout(page, detail, viewport, englishLabels)
   }
 
   await page.evaluate(() => localStorage.setItem("oc-lang", "ja"))
@@ -416,18 +528,20 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
   await japaneseDetail
     .getByRole("button", { name: "公開鍵QRを表示", exact: true })
     .click()
+  const japaneseLabels: FullscreenLabels = {
+    close: "閉じる",
+    compatibility: "互換モード",
+    dialogName: /を全画面表示$/,
+    next: "次へ",
+    pause: "一時停止",
+    previous: "前へ",
+    trigger: "全画面表示",
+  }
+  await expectAnimatedInlineLayout(japaneseDetail, japaneseLabels)
   for (const viewport of [
     { width: 360, height: 640, portrait: true },
     { width: 740, height: 360, portrait: false },
   ]) {
-    await expectAnimatedFullscreenLayout(page, japaneseDetail, viewport, {
-      close: "閉じる",
-      compatibility: "互換モード",
-      dialogName: /を全画面表示$/,
-      next: "次へ",
-      pause: "一時停止",
-      previous: "前へ",
-      trigger: "全画面表示",
-    })
+    await expectAnimatedFullscreenLayout(page, japaneseDetail, viewport, japaneseLabels)
   }
 })

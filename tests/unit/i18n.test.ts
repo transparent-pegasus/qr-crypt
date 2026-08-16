@@ -47,6 +47,11 @@ describe("i18n catalog", () => {
       "keys.toast.legacyRemoved",
       "scanner.error.singleWhileMultipart",
       "qrDisplay.fullscreen.brightnessHint",
+      "qrDisplay.dataSize",
+      "animatedQr.brightnessHint",
+      "keyDetail.symmetricQr.secretTitle",
+      "keyDetail.symmetricQr.secretBody",
+      "common.riskUnderstood",
     ]) {
       expect(messages.en).not.toHaveProperty(removedKey)
       expect(messages.ja).not.toHaveProperty(removedKey)

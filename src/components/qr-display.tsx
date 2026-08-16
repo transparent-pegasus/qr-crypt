@@ -29,13 +29,6 @@ interface QrDisplayProps {
   onFullscreenOpenChange?: (open: boolean) => void
 }
 
-/**
- * @deprecated The object-shaped controls contract is removed. This erased
- * escape hatch exists only until Task 3 deletes its stale test fixture.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type QrDisplayFullscreenControls = any
-
 interface QrRenderRequest {
   id: number
   identity: string
