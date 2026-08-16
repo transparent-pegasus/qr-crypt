@@ -2,7 +2,6 @@ import {
   useEffect,
   useId,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -10,9 +9,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Expand,
   Pause,
   Play,
-  Sun,
   TriangleAlert,
 } from "lucide-react"
 import type { QrFrameV2 } from "@/schemas/domain"
@@ -26,6 +25,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
+import { cn } from "@/lib/utils"
 
 interface AnimatedQrCompatibilityControl {
   enabled: boolean
@@ -41,7 +41,6 @@ interface AnimatedQrFramesProps {
   outputName: string
   size?: number
   title?: string
-  onFirstRendered?: () => void
   fullscreenEnabled?: boolean
   fullscreenOpen?: boolean
   showFullscreenTrigger?: boolean
@@ -76,7 +75,6 @@ export function AnimatedQrFrames({
   outputName,
   size = env.qrRenderSize,
   title: titleProp,
-  onFirstRendered,
   fullscreenEnabled = true,
   fullscreenOpen,
   showFullscreenTrigger = true,
@@ -146,17 +144,12 @@ export function AnimatedQrFrames({
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const localizedError = useLocalizedMessage(error)
-  const firstRenderedRef = useRef(false)
   const currentIndex = availableIndexes[position]
   const current = currentIndex === undefined ? undefined : slots.get(currentIndex)
   const currentPayload = current?.payload
 
   const handleRendered = (payload: string) => {
     if (payload !== currentPayload) return
-    if (!firstRenderedRef.current) {
-      firstRenderedRef.current = true
-      onFirstRendered?.()
-    }
     setCommittedFrame((existing) =>
       existing?.generation === frameGeneration &&
       existing.position === position &&
@@ -273,28 +266,21 @@ export function AnimatedQrFrames({
     )
   }
 
-  const compatibilitySwitch = (fullscreenControls: boolean) => {
-    if (compatibilityControl === undefined) {
-      return fullscreenControls ? <span aria-hidden="true" /> : null
-    }
-    const labelId = `${compatibilityLabelId}-${fullscreenControls ? "fullscreen" : "inline"}`
+  const lightSurface =
+    "border-slate-300 bg-white text-slate-950 hover:bg-slate-100 hover:text-slate-950"
+
+  const compatibilitySwitch = (fullscreenVariant: boolean) => {
+    if (compatibilityControl === undefined) return <span aria-hidden="true" />
+    const labelId = `${compatibilityLabelId}-${fullscreenVariant ? "fullscreen" : "inline"}`
     return (
       <div
-        data-compatibility-control={fullscreenControls ? "fullscreen" : "inline"}
-        className={
-          fullscreenControls
-            ? "flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md border border-slate-300 bg-white px-1 text-slate-950"
-            : "flex min-h-11 items-center gap-2 rounded-md border px-3 py-2 text-sm"
-        }
+        data-compatibility-control={fullscreenVariant ? "fullscreen" : "inline"}
+        className={cn(
+          "flex min-h-11 min-w-0 flex-col items-center justify-center gap-1 rounded-md border px-1",
+          fullscreenVariant && "border-slate-300 bg-white text-slate-950",
+        )}
       >
-        <span
-          id={labelId}
-          className={
-            fullscreenControls
-              ? "min-w-0 text-center text-xs leading-tight"
-              : "font-medium"
-          }
-        >
+        <span id={labelId} className="min-w-0 text-center text-xs leading-tight">
           {t("animatedQr.compatibility.label")}
         </span>
         <Switch
@@ -302,7 +288,7 @@ export function AnimatedQrFrames({
           disabled={compatibilityControl.disabled}
           aria-labelledby={labelId}
           className={
-            fullscreenControls
+            fullscreenVariant
               ? "focus-visible:ring-slate-950 focus-visible:ring-offset-white"
               : undefined
           }
@@ -314,65 +300,49 @@ export function AnimatedQrFrames({
     )
   }
 
-  const transportControls = (
-    fullscreenControls: boolean,
-    closeSlot?: ReactNode,
-  ) => (
+  const transportControls = (fullscreenVariant: boolean, trailingSlot: ReactNode) => (
     <div
-      data-transport-controls={fullscreenControls ? "fullscreen" : "inline"}
-      className={
-        fullscreenControls
-          ? "grid w-full grid-cols-[2.75rem_2.75rem_2.75rem_minmax(0,1fr)_2.75rem] items-center gap-2"
-          : "flex flex-wrap items-center justify-center gap-2"
-      }
+      data-transport-controls={fullscreenVariant ? "fullscreen" : "inline"}
+      className="grid w-full grid-cols-[2.75rem_2.75rem_2.75rem_minmax(0,1fr)_2.75rem] items-center gap-2"
     >
       <Button
         type="button"
         variant="outline"
-        className={`h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 ${
-          fullscreenControls
-            ? "w-11 border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
-            : ""
-        }`}
+        className={cn(
+          "h-11 w-11 min-w-11 cursor-pointer px-2 focus-visible:ring-2",
+          fullscreenVariant && lightSurface,
+        )}
         onClick={movePrevious}
       >
         <ChevronLeft aria-hidden="true" />
-        <span className={fullscreenControls ? "sr-only" : undefined}>
-          {t("animatedQr.prev")}
-        </span>
+        <span className="sr-only">{t("animatedQr.prev")}</span>
       </Button>
       <Button
         type="button"
         variant="secondary"
-        className={`h-11 cursor-pointer px-3 focus-visible:ring-2 ${
-          fullscreenControls
-            ? "min-w-11 w-11 border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
-            : "min-w-28"
-        }`}
+        className={cn(
+          "h-11 w-11 min-w-11 cursor-pointer px-2 focus-visible:ring-2",
+          fullscreenVariant && lightSurface,
+        )}
         onClick={togglePaused}
       >
         {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
-        <span className={fullscreenControls ? "sr-only" : undefined}>
-          {t(paused ? "animatedQr.play" : "animatedQr.pause")}
-        </span>
+        <span className="sr-only">{t(paused ? "animatedQr.play" : "animatedQr.pause")}</span>
       </Button>
       <Button
         type="button"
         variant="outline"
-        className={`h-11 min-w-11 cursor-pointer px-3 focus-visible:ring-2 ${
-          fullscreenControls
-            ? "w-11 border-slate-400 bg-white px-2 text-slate-950 hover:bg-slate-100 hover:text-slate-950"
-            : ""
-        }`}
+        className={cn(
+          "h-11 w-11 min-w-11 cursor-pointer px-2 focus-visible:ring-2",
+          fullscreenVariant && lightSurface,
+        )}
         onClick={moveNext}
       >
-        <span className={fullscreenControls ? "sr-only" : undefined}>
-          {t("animatedQr.next")}
-        </span>
         <ChevronRight aria-hidden="true" />
+        <span className="sr-only">{t("animatedQr.next")}</span>
       </Button>
-      {compatibilitySwitch(fullscreenControls)}
-      {fullscreenControls && closeSlot}
+      {compatibilitySwitch(fullscreenVariant)}
+      {trailingSlot}
     </div>
   )
 
@@ -390,6 +360,24 @@ export function AnimatedQrFrames({
       {transportControls(true, closeSlot)}
     </div>
   )
+
+  const multiFrame = availableIndexes.length > 1
+  const inlineFullscreenTrigger =
+    fullscreenEnabled && showFullscreenTrigger ? (
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="size-11 shrink-0 cursor-pointer focus-visible:ring-2"
+        aria-label={t("qrDisplay.fullscreen.button")}
+        disabled={committedFrame === null}
+        onClick={() => changeFullscreen(true)}
+      >
+        <Expand aria-hidden="true" />
+      </Button>
+    ) : (
+      <span aria-hidden="true" />
+    )
 
   return (
     <section
@@ -426,27 +414,22 @@ export function AnimatedQrFrames({
         })}
         onRendered={handleRendered}
         fullscreenEnabled={fullscreenEnabled}
-        showFullscreenTrigger={showFullscreenTrigger}
-        fullscreenControls={{
-          kind: "transport",
-          render: renderFullscreenControls,
-        }}
+        showFullscreenTrigger={!multiFrame && showFullscreenTrigger}
+        {...(multiFrame ? { fullscreenControls: renderFullscreenControls } : {})}
         fullscreenOpen={fullscreen}
         onFullscreenOpenChange={changeFullscreen}
       />
 
       {!fullscreen && (
         <>
-          {transportControls(false)}
-
-          <p aria-live="polite" className="text-center font-mono text-base tabular-nums">
-            {currentIndex! + 1} / {frameCount}
-          </p>
-
-          <p className="flex items-start gap-2 text-sm text-muted-foreground">
-            <Sun aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            {t("animatedQr.brightnessHint")}
-          </p>
+          {multiFrame && (
+            <>
+              <p aria-live="polite" className="text-center font-mono text-base tabular-nums">
+                {currentIndex! + 1} / {frameCount}
+              </p>
+              {transportControls(false, inlineFullscreenTrigger)}
+            </>
+          )}
 
           {exportsEnabled && (
             <Button

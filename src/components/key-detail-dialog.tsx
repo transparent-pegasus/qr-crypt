@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import {
-  ArrowLeft,
-  Clipboard,
-  Download,
-  Expand,
-  TriangleAlert,
-} from "lucide-react"
+import { ArrowLeft, Clipboard, Download } from "lucide-react"
 import { toast } from "sonner"
 import { IdentityDetails } from "@/components/key-detail/identity-details"
 import { IdentityQrSession } from "@/components/key-detail/identity-qr-session"
@@ -26,7 +20,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogDescription,
@@ -192,7 +185,6 @@ export function KeyDetailContent({
   >(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
-  const [qrReady, setQrReady] = useState(false)
   const [qrHost, setQrHost] = useState<HTMLDivElement | null>(null)
   const qrGenerationRef = useRef(0)
   const symmetricArtifactRef = useRef<Uint8Array | null>(null)
@@ -255,7 +247,6 @@ export function KeyDetailContent({
     qrGenerationRef.current += 1
     clearSymmetricArtifact()
     setFullscreenOpen(false)
-    setQrReady(false)
     setView({ kind: "detail" })
     setPendingDelete(null)
     setPendingDestroy(null)
@@ -277,13 +268,11 @@ export function KeyDetailContent({
     qrGenerationRef.current += 1
     clearSymmetricArtifact()
     setFullscreenOpen(false)
-    setQrReady(false)
     setView({ kind: "detail" })
     setError(null)
   }
 
   const showIdentityQr = async (target: PostQuantumIdentity) => {
-    setQrReady(false)
     setBusy(true)
     setError(null)
     try {
@@ -314,7 +303,6 @@ export function KeyDetailContent({
     const generation = qrGenerationRef.current + 1
     qrGenerationRef.current = generation
     let artifactBytes: Uint8Array | undefined
-    setQrReady(false)
     setBusy(true)
     setError(null)
     try {
@@ -342,11 +330,7 @@ export function KeyDetailContent({
       if (qrGenerationRef.current !== generation) return
       clearSymmetricArtifact()
       symmetricArtifactRef.current = artifactBytes
-      setView({
-        kind: "symmetric-qr",
-        payload: framePayload,
-        acknowledged: false,
-      })
+      setView({ kind: "symmetric-qr", payload: framePayload })
       artifactBytes = undefined
     } catch (caught) {
       setError(toAppError(caught, "QR_TOO_LARGE").code)
@@ -450,9 +434,7 @@ export function KeyDetailContent({
   }
 
   const exportSymmetricQr = async () => {
-    if (!symmetric || view.kind !== "symmetric-qr" || !view.acknowledged) {
-      return
-    }
+    if (!symmetric || view.kind !== "symmetric-qr") return
     setBusy(true)
     setError(null)
     try {
@@ -470,13 +452,7 @@ export function KeyDetailContent({
 
   const copySymmetricQr = async () => {
     const artifactBytes = symmetricArtifactRef.current
-    if (
-      view.kind !== "symmetric-qr" ||
-      !view.acknowledged ||
-      artifactBytes === null
-    ) {
-      return
-    }
+    if (view.kind !== "symmetric-qr" || artifactBytes === null) return
     try {
       await copyTextToClipboard(buildV2Payload("symmetric-key", artifactBytes))
       toast.success(t("keyDetail.toast.copied"))
@@ -489,17 +465,6 @@ export function KeyDetailContent({
     view.kind === "identity-qr"
       ? t("keyDetail.identityQr.title", { name: view.targetName })
       : null
-  const symmetricFullscreenControls = (
-    <div
-      data-fullscreen-controls
-      className="mx-auto flex w-full max-w-2xl flex-col items-stretch gap-3"
-    >
-      <div className="flex items-start gap-2 rounded-md border border-destructive/60 p-3 text-sm text-destructive">
-        <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-        <span className="font-medium">{t("keyDetail.symmetricQr.secretTitle")}</span>
-      </div>
-    </div>
-  )
 
   return (
     <>
@@ -534,31 +499,16 @@ export function KeyDetailContent({
             )}
 
             {view.kind !== "detail" && (
-              <div className="flex items-center justify-between gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 w-fit"
-                  disabled={busy}
-                  onClick={leaveQrView}
-                >
-                  <ArrowLeft aria-hidden="true" />
-                  {t("keyDetail.backToDetail")}
-                </Button>
-                {(view.kind === "identity-qr" || view.acknowledged) && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="size-11 shrink-0"
-                    aria-label={t("qrDisplay.fullscreen.button")}
-                    disabled={!qrReady}
-                    onClick={() => setFullscreenOpen(true)}
-                  >
-                    <Expand aria-hidden="true" />
-                  </Button>
-                )}
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-fit"
+                disabled={busy}
+                onClick={leaveQrView}
+              >
+                <ArrowLeft aria-hidden="true" />
+                {t("keyDetail.backToDetail")}
+              </Button>
             )}
 
             {view.kind === "detail" && record && (
@@ -628,51 +578,28 @@ export function KeyDetailContent({
             {view.kind === "symmetric-qr" && symmetric && (
               <div className="space-y-4">
                 <div ref={setQrHostRef} />
-                <Alert variant="destructive">
-                  <AlertTitle>{t("keyDetail.symmetricQr.secretTitle")}</AlertTitle>
-                  <AlertDescription>
-                    {t("keyDetail.symmetricQr.secretBody")}
-                  </AlertDescription>
-                </Alert>
-                <div className="flex items-start gap-2">
-                  <Checkbox
-                    id="secret-ack"
-                    checked={view.acknowledged}
-                    onCheckedChange={(checked) => {
-                      const acknowledged = checked === true
-                      if (!acknowledged) {
-                        setFullscreenOpen(false)
-                        setQrReady(false)
-                      }
-                      setView({ ...view, acknowledged })
-                    }}
-                  />
-                  <Label htmlFor="secret-ack">{t("common.riskUnderstood")}</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11"
+                    disabled={busy}
+                    onClick={() => void copySymmetricQr()}
+                  >
+                    <Clipboard aria-hidden="true" />
+                    {t("common.copy")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11"
+                    disabled={busy}
+                    onClick={() => void exportSymmetricQr()}
+                  >
+                    <Download aria-hidden="true" />
+                    {t("common.download")}
+                  </Button>
                 </div>
-                {view.acknowledged && (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11"
-                      disabled={busy}
-                      onClick={() => void exportSymmetricQr()}
-                    >
-                      <Download aria-hidden="true" />
-                      {t("common.download")}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11"
-                      disabled={busy}
-                      onClick={() => void copySymmetricQr()}
-                    >
-                      <Clipboard aria-hidden="true" />
-                      {t("common.copy")}
-                    </Button>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -687,7 +614,6 @@ export function KeyDetailContent({
             title={identityQrTitle ?? ""}
             enabled={open}
             fullscreenOpen={fullscreenOpen}
-            showFullscreenTrigger={false}
             preferences={preferences}
             compatibilityDisabled={
               preferencesLoading ||
@@ -695,7 +621,6 @@ export function KeyDetailContent({
               compatibilityUpdating
             }
             onCompatibilityModeChange={changeCompatibilityMode}
-            onFirstRendered={() => setQrReady(true)}
             onFullscreenOpenChange={setFullscreenOpen}
           />,
           qrHost,
@@ -703,20 +628,13 @@ export function KeyDetailContent({
 
       {qrHost &&
         view.kind === "symmetric-qr" &&
-        view.acknowledged &&
         createPortal(
           <QrDisplay
             payload={view.payload}
             ecLevel="Q"
             size={env.qrRenderSize}
             title={t("keyDetail.symmetricQr.title")}
-            fullscreenControls={{
-              kind: "arbitrary",
-              content: symmetricFullscreenControls,
-            }}
             fullscreenOpen={fullscreenOpen}
-            showFullscreenTrigger={false}
-            onRendered={() => setQrReady(true)}
             onFullscreenOpenChange={setFullscreenOpen}
           />,
           qrHost,

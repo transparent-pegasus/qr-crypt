@@ -12,7 +12,6 @@ export interface IdentityQrView {
 interface SymmetricQrView {
   kind: "symmetric-qr"
   payload: string
-  acknowledged: boolean
 }
 
 export type DetailView =
