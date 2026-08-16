@@ -12,11 +12,9 @@ interface IdentityQrSessionProps {
   title: string
   enabled: boolean
   fullscreenOpen: boolean
-  showFullscreenTrigger: boolean
   preferences: Pick<Preferences, "frameBytes" | "frameIntervalMs">
   compatibilityDisabled: boolean
   onCompatibilityModeChange: (enabled: boolean) => void | Promise<void>
-  onFirstRendered: () => void
   onFullscreenOpenChange: (open: boolean) => void
 }
 
@@ -25,11 +23,9 @@ export function IdentityQrSession({
   title,
   enabled,
   fullscreenOpen,
-  showFullscreenTrigger,
   preferences,
   compatibilityDisabled,
   onCompatibilityModeChange,
-  onFirstRendered,
   onFullscreenOpenChange,
 }: IdentityQrSessionProps) {
   const { t } = useI18n()
@@ -76,8 +72,6 @@ export function IdentityQrSession({
           title={title}
           splitting={split.splitting}
           fullscreenOpen={fullscreenOpen}
-          showFullscreenTrigger={showFullscreenTrigger}
-          onFirstRendered={onFirstRendered}
           onFullscreenOpenChange={onFullscreenOpenChange}
         />
       )}

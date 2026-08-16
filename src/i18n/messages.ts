@@ -19,7 +19,6 @@ const en = {
   "common.none": "None",
   "common.copyFailed":
     "The content could not be copied. Check the browser permission.",
-  "common.riskUnderstood": "I understand the risk",
   "common.copy": "Copy",
   "common.download": "Download",
   "common.delete": "Delete",
@@ -237,7 +236,6 @@ const en = {
   "qrDisplay.error.title": "The QR code could not be generated",
   "qrDisplay.image.alt": "{title} image",
   "qrDisplay.generating": "Generating the QR code…",
-  "qrDisplay.dataSize": "Data size: {bytes} bytes / EC={ecLevel}",
   "qrDisplay.fullscreen.button": "View full screen",
   "qrDisplay.fullscreen.title": "View {title} full screen",
   "qrDisplay.fullscreen.desc": "Displays the QR code full screen on a white background.",
@@ -258,8 +256,6 @@ const en = {
   "animatedQr.compatibility.label": "Compatibility mode",
   "animatedQr.densityRaised":
     "Frame density could not be lowered further because this transfer must stay within the frame limit.",
-  "animatedQr.brightnessHint":
-    "Increase the screen brightness and keep the device still for more reliable scanning.",
   "animatedQr.export.error.title": "The frames could not be exported",
 
   "keyDetail.rename.label": "Key name",
@@ -277,13 +273,10 @@ const en = {
   "keyDetail.symmetricQr.title": "Shared-key QR",
   "keyDetail.identityQr.title": "{name} public key",
   "keyDetail.identityQr.desc":
-    "All content is displayed as OCF2 frames with Q error correction.",
+    "This QR code contains the public keys used for encryption and signature verification.",
   "keyDetail.symmetricQr.desc":
     "This QR code contains a secret key that can be used for encryption and decryption.",
   "keyDetail.backToDetail": "Back to details",
-  "keyDetail.symmetricQr.secretTitle": "Sensitive information",
-  "keyDetail.symmetricQr.secretBody":
-    "If shown to a third party, past and future ciphertext may be decrypted.",
   "keyDetail.delete.titleNamed": 'Delete "{name}"?',
   "keyDetail.delete.titleGeneric": "Delete the key?",
   "keyDetail.delete.body.identity":
@@ -673,7 +666,6 @@ const ja = {
   "common.none": "なし",
   "common.copyFailed":
     "コピーできませんでした。ブラウザーの権限を確認してください。",
-  "common.riskUnderstood": "リスクを理解しました",
   "common.copy": "コピー",
   "common.download": "ダウンロード",
   "common.delete": "削除",
@@ -893,7 +885,6 @@ const ja = {
   "qrDisplay.error.title": "QRコードを生成できません",
   "qrDisplay.image.alt": "{title}の画像",
   "qrDisplay.generating": "QRコードを生成しています…",
-  "qrDisplay.dataSize": "データサイズ: {bytes} bytes / EC={ecLevel}",
   "qrDisplay.fullscreen.button": "全画面表示",
   "qrDisplay.fullscreen.title": "{title}を全画面表示",
   "qrDisplay.fullscreen.desc": "白い背景にQRコードを全画面で表示します。",
@@ -914,8 +905,6 @@ const ja = {
   "animatedQr.compatibility.label": "互換モード",
   "animatedQr.densityRaised":
     "フレーム数の上限内に収めるため、フレーム密度をこれ以上下げられませんでした。",
-  "animatedQr.brightnessHint":
-    "画面の輝度を上げ、端末を動かさずに読み取ると安定します。",
   "animatedQr.export.error.title": "フレームを出力できません",
 
   "keyDetail.rename.label": "鍵の名前",
@@ -933,13 +922,10 @@ const ja = {
   "keyDetail.symmetricQr.title": "共有鍵QR",
   "keyDetail.identityQr.title": "{name} 公開鍵",
   "keyDetail.identityQr.desc":
-    "すべてOCF2フレーム・誤り訂正Qで表示します。",
+    "このQRには暗号化と署名検証に使う公開鍵が含まれます。",
   "keyDetail.symmetricQr.desc":
     "このQRには暗号化と復号に使える秘密鍵が含まれます。",
   "keyDetail.backToDetail": "詳細に戻る",
-  "keyDetail.symmetricQr.secretTitle": "機密情報",
-  "keyDetail.symmetricQr.secretBody":
-    "第三者に見せると、過去と将来の暗号文を復号されるおそれがあります。",
   "keyDetail.delete.titleNamed": "「{name}」を削除しますか?",
   "keyDetail.delete.titleGeneric": "鍵を削除しますか?",
   "keyDetail.delete.body.identity":

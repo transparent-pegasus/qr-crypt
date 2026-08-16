@@ -222,9 +222,15 @@ describe("key management v2", () => {
     let dialog = await screen.findByRole("dialog", { name: "全画面共通鍵" })
     await user.click(within(dialog).getByRole("button", { name: "Show secret-key QR" }))
     dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
-    await user.click(
-      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
-    )
+    expect(within(dialog).queryByRole("alert")).toBeNull()
+    expect(within(dialog).queryByRole("checkbox")).toBeNull()
+    expect(within(dialog).queryByText("Sensitive information")).toBeNull()
+    const copy = within(dialog).getByRole("button", { name: "Copy" })
+    const download = within(dialog).getByRole("button", { name: "Download" })
+    expect(copy).toBeEnabled()
+    expect(download).toBeEnabled()
+    expect(copy.parentElement).toBe(download.parentElement)
+    expect(copy.nextElementSibling).toBe(download)
     const symmetricFullscreenTriggers = within(dialog).getAllByRole("button", {
       name: "View full screen",
     })
@@ -234,12 +240,18 @@ describe("key management v2", () => {
     expect(symmetricFullscreenTriggers[0]).toBeDisabled()
     firstQrRender.resolve("data:image/png;base64,ZmFrZQ==")
     await waitFor(() => expect(symmetricFullscreenTriggers[0]).toBeEnabled())
+    expect(
+      within(dialog).getByRole("img", { name: /Shared-key QR/ }),
+    ).toBeInTheDocument()
     await user.click(symmetricFullscreenTriggers[0]!)
     let fullscreen = await screen.findByRole("dialog", {
       name: /View Shared-key QR full screen/,
     })
-    expect(within(fullscreen).getByText("Sensitive information")).toBeInTheDocument()
-    await user.click(within(fullscreen).getByRole("button", { name: "Close" }))
+    const fullscreenButtons = within(fullscreen).getAllByRole("button")
+    expect(fullscreenButtons).toHaveLength(1)
+    expect(fullscreenButtons[0]).toHaveAccessibleName("Close")
+    expect(fullscreenButtons[0]).toHaveClass("border-slate-300")
+    await user.click(fullscreenButtons[0]!)
     await user.click(within(dialog).getByRole("button", { name: "Back to details" }))
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
@@ -261,6 +273,11 @@ describe("key management v2", () => {
     dialog = await screen.findByRole("dialog", { name: "全画面PQ ID" })
 
     await user.click(within(dialog).getByRole("button", { name: "Show public-key QR" }))
+    expect(
+      within(dialog).getByText(
+        "This QR code contains the public keys used for encryption and signature verification.",
+      ),
+    ).toBeInTheDocument()
     const identityFullscreenTriggers = within(dialog).getAllByRole("button", {
       name: "View full screen",
     })
@@ -443,9 +460,6 @@ describe("key management v2", () => {
       within(dialog).getByRole("button", { name: "Show secret-key QR" }),
     )
     dialog = await screen.findByRole("dialog", { name: "Shared-key QR" })
-    await user.click(
-      within(dialog).getByRole("checkbox", { name: "I understand the risk" }),
-    )
     await waitFor(() => expect(splitIntoFrames).toHaveBeenCalledOnce())
     const sharedArtifactBytes =
       splitIntoFrames.mock.calls[0]![0].artifactBytes.slice()

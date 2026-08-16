@@ -108,9 +108,20 @@ test("the key-list modal downloads one secret PNG or one multi-frame ZIP with no
     .getByRole("button", { name: "Show secret-key QR", exact: true })
     .click()
   dialog = page.getByRole("dialog", { name: "Shared-key QR" })
-  await dialog
-    .getByRole("checkbox", { name: "I understand the risk" })
-    .check()
+  await expect(dialog.getByRole("img", { name: /Shared-key QR/ })).toBeVisible()
+  await expect(dialog.getByRole("alert")).toHaveCount(0)
+  await expect(dialog.getByRole("checkbox")).toHaveCount(0)
+  const secretActions = dialog.getByRole("button", {
+    name: /^(Copy|Download)$/,
+  })
+  await expect(secretActions).toHaveCount(2)
+  await expect(secretActions.nth(0)).toHaveAccessibleName("Copy")
+  await expect(secretActions.nth(1)).toHaveAccessibleName("Download")
+  expect(
+    await secretActions.evaluateAll(
+      ([copy, download]) => copy?.parentElement === download?.parentElement,
+    ),
+  ).toBe(true)
   await expect(dialog.getByRole("button", { name: /SVG/i })).toHaveCount(0)
 
   const secretPngPromise = page.waitForEvent("download")
