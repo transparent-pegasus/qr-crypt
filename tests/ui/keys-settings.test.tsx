@@ -748,8 +748,10 @@ describe("settings v2", () => {
       name: "Reset local data after confirmed online connectivity",
     })
 
+    // The hook paints the fail-safe default (on) before the stored preference
+    // loads, so wait for that load instead of asserting the first frame.
+    expect(await screen.findByText("Local data will remain")).toBeInTheDocument()
     expect(wipe).not.toBeChecked()
-    expect(screen.getByText("Local data will remain")).toBeInTheDocument()
 
     await user.click(wipe)
 
