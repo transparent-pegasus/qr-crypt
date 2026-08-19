@@ -1,27 +1,24 @@
-node_modules/
+coverage/
 dist/
 dev-dist/
-.env.local
-.env.*.local
+node_modules/
 playwright-report/
 test-results/
-coverage/
+.env.local
+.env.*.local
 .tmp/
 
-# CodeGraph local index (generated)
+# Todo list
+docs/todo.md
+
+# CodeGraph index
 .codegraph/
 
-# Local git worktrees
+# herdrpowers config
+.herdrpowers/
+
+# Git worktrees
 .worktrees/
 
-# Private agent tooling (local only; repository skills below stay tracked)
-.claude/skills/*
-!.claude/skills/freshness/
-!.claude/skills/artful-simplicity/
-!.claude/skills/nation-state-security/
-
-# Local task workflow (untracked)
+# Local-only agent instructions
 /CLAUDE.local.md
-
-# herdrpowers repo config and pane workspace (local only)
-.herdrpowers/
