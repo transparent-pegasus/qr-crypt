@@ -355,7 +355,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-08-16
+    last_checked: 2026-08-21
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md

@@ -25,6 +25,78 @@ async function expectInsideViewport(
   )
 }
 
+interface DialogScrollMetrics {
+  childCount: number
+  clientHeight: number
+  clientWidth: number
+  hasScannerAttribute: boolean
+  regionWidth: number
+  scrollHeight: number
+  scrollTop: number
+  scrollWidth: number
+  surfaceInnerWidth: number
+  surfacePaddingBottom: number
+  surfacePaddingLeft: number
+  surfacePaddingRight: number
+  surfacePaddingTop: number
+  wrapperPaddingLeft: number | null
+  wrapperPaddingRight: number | null
+}
+
+async function dialogScrollMetrics(dialog: Locator): Promise<DialogScrollMetrics> {
+  return dialog.evaluate((root) => {
+    const surface = root as HTMLElement
+    // Direct children only: a nested payload scroller (encrypt-page.tsx:562)
+    // would otherwise win the sort once its own overflow grew past the modal's.
+    const scrollRegion = Array.from(surface.children)
+      .filter((element): element is HTMLElement => element instanceof HTMLElement)
+      .filter((element) => {
+        const style = getComputedStyle(element)
+        return (
+          /^(auto|scroll)$/u.test(style.overflowY) &&
+          element.scrollHeight > element.clientHeight + 1
+        )
+      })
+      .sort(
+        (left, right) =>
+          right.scrollHeight -
+          right.clientHeight -
+          (left.scrollHeight - left.clientHeight),
+      )[0]
+    if (scrollRegion === undefined) {
+      throw new Error("no scrolling region inside the modal")
+    }
+    const surfaceStyle = getComputedStyle(surface)
+    const wrapper = scrollRegion.firstElementChild
+    const wrapperStyle = wrapper === null ? null : getComputedStyle(wrapper)
+    return {
+      childCount: scrollRegion.children.length,
+      clientHeight: scrollRegion.clientHeight,
+      clientWidth: scrollRegion.clientWidth,
+      hasScannerAttribute: scrollRegion.hasAttribute(
+        "data-qr-scanner-scroll-region",
+      ),
+      regionWidth: scrollRegion.getBoundingClientRect().width,
+      scrollHeight: scrollRegion.scrollHeight,
+      scrollTop: scrollRegion.scrollTop,
+      scrollWidth: scrollRegion.scrollWidth,
+      surfaceInnerWidth: surface.clientWidth,
+      surfacePaddingBottom: Number.parseFloat(surfaceStyle.paddingBottom),
+      surfacePaddingLeft: Number.parseFloat(surfaceStyle.paddingLeft),
+      surfacePaddingRight: Number.parseFloat(surfaceStyle.paddingRight),
+      surfacePaddingTop: Number.parseFloat(surfaceStyle.paddingTop),
+      wrapperPaddingLeft:
+        wrapperStyle === null
+          ? null
+          : Number.parseFloat(wrapperStyle.paddingLeft),
+      wrapperPaddingRight:
+        wrapperStyle === null
+          ? null
+          : Number.parseFloat(wrapperStyle.paddingRight),
+    }
+  })
+}
+
 interface FullscreenLabels {
   close: string
   compatibility: string
@@ -457,23 +529,17 @@ test("keeps the encryption result scrollable and discardable in the narrow viewp
     .locator("p")
     .first()
   const detail = dialog.getByTestId("encrypt-result-detail")
-  const scrollBody = detail.locator("..")
   const close = dialog.getByRole("button", { name: "Close", exact: true })
 
   await expect(payloadText).toHaveText(payload)
-  const overflow = await scrollBody.evaluate((element) => ({
-    clientHeight: element.clientHeight,
-    clientWidth: element.clientWidth,
-    scrollHeight: element.scrollHeight,
-    scrollWidth: element.scrollWidth,
-  }))
+  const overflow = await dialogScrollMetrics(dialog)
   expect(overflow.scrollHeight).toBeGreaterThan(overflow.clientHeight)
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth)
   await expectStableTrailingDialogClose(dialog, "Close")
 
   await detail.scrollIntoViewIfNeeded()
   await expect(detail).toBeInViewport()
-  expect(await scrollBody.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  expect((await dialogScrollMetrics(dialog)).scrollTop).toBeGreaterThan(0)
   await expectInsideViewport(close, viewport.width, viewport.height, "result close")
   const [dialogBox, closeBox] = await Promise.all([
     dialog.boundingBox(),
@@ -544,4 +610,72 @@ test("fits animated fullscreen QR controls without scrolling in portrait and sho
   ]) {
     await expectAnimatedFullscreenLayout(page, japaneseDetail, viewport, japaneseLabels)
   }
+})
+
+test("keeps modal scroll bodies flush with the surface edge", async ({
+  context,
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 320 })
+  await openOfflineApp(page, context, "/keys")
+  await createSymmetricKey(page, "スクロール検証鍵")
+  await goToOfflinePage(page, "/keys")
+  await page.getByRole("button", { name: /スクロール検証鍵/ }).click()
+
+  const detailDialog = page.getByRole("dialog", { name: "スクロール検証鍵" })
+  await expect(detailDialog).toBeVisible()
+  await detailDialog.evaluate(async (element) => {
+    await Promise.all(
+      element
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => undefined)),
+    )
+  })
+
+  const detail = await dialogScrollMetrics(detailDialog)
+  // Scrollbar at the surface edge: no horizontal padding outside the scroller.
+  expect(detail.surfacePaddingLeft, "detail surface padding-left").toBe(0)
+  expect(detail.surfacePaddingRight, "detail surface padding-right").toBe(0)
+  expect(
+    Math.abs(detail.regionWidth - detail.surfaceInnerWidth),
+    "detail scroll body spans the surface width",
+  ).toBeLessThanOrEqual(1)
+  // Vertical padding stays on the surface.
+  expect(detail.surfacePaddingTop, "detail surface padding-top").toBe(24)
+  expect(detail.surfacePaddingBottom, "detail surface padding-bottom").toBe(24)
+  // Content keeps its 24px inset, now inside the scrollport, in a sole wrapper.
+  expect(detail.childCount, "detail scroll body child count").toBe(1)
+  expect(detail.wrapperPaddingLeft, "detail content padding-left").toBe(24)
+  expect(detail.wrapperPaddingRight, "detail content padding-right").toBe(24)
+
+  await page.keyboard.press("Escape")
+  await expect(detailDialog).toBeHidden()
+
+  await goToOfflinePage(page, "/keys")
+  await page.getByRole("tab", { name: "Other parties' keys", exact: true }).click()
+  await page.getByRole("button", { name: "Scan a key QR", exact: true }).click()
+  await page.getByRole("button", { name: "Scan a key QR code", exact: true }).click()
+  const scannerDialog = page.getByRole("dialog", { name: "Scan a key QR code" })
+  await expect(scannerDialog).toBeVisible()
+  await scannerDialog.evaluate(async (element) => {
+    await Promise.all(
+      element
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => undefined)),
+    )
+  })
+
+  const scanner = await dialogScrollMetrics(scannerDialog)
+  expect(scanner.hasScannerAttribute, "scanner scroll region attribute").toBe(true)
+  expect(scanner.surfacePaddingLeft, "scanner surface padding-left").toBe(0)
+  expect(scanner.surfacePaddingRight, "scanner surface padding-right").toBe(0)
+  expect(
+    Math.abs(scanner.regionWidth - scanner.surfaceInnerWidth),
+    "scanner scroll body spans the surface width",
+  ).toBeLessThanOrEqual(1)
+  expect(scanner.surfacePaddingTop, "scanner surface padding-top").toBe(16)
+  expect(scanner.surfacePaddingBottom, "scanner surface padding-bottom").toBe(16)
+  expect(scanner.childCount, "scanner scroll body child count").toBe(1)
+  expect(scanner.wrapperPaddingLeft, "scanner content padding-left").toBe(16)
+  expect(scanner.wrapperPaddingRight, "scanner content padding-right").toBe(16)
 })

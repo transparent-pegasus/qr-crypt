@@ -469,12 +469,13 @@ export function KeyDetailContent({
   return (
     <>
       <NoAutofocusDialogContent
-        className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden"
+        className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden p-0 py-6"
         aria-busy={busy}
         aria-hidden={fullscreenOpen || undefined}
         inert={fullscreenOpen || undefined}
       >
-          <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
+        <div className="min-h-0 overflow-y-auto">
+          <div className="grid gap-4 px-6 pb-14">
             <DialogHeader>
               <DialogTitle>
                 {view.kind === "identity-qr"
@@ -603,6 +604,7 @@ export function KeyDetailContent({
               </div>
             )}
           </div>
+        </div>
       </NoAutofocusDialogContent>
 
       {qrHost &&
