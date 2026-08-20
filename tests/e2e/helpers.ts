@@ -900,7 +900,11 @@ export async function expectStableTrailingDialogClose(
     // An absolutely positioned close sits over the scroll body's padded tail, so
     // overlapping the body BOX is expected and harmless. What must never happen is
     // overlapping actual content, so measure against the body's last element child.
-    const lastContent = scrollRegion.lastElementChild
+    const contentHost =
+      scrollRegion.children.length === 1 && scrollRegion.firstElementChild !== null
+        ? scrollRegion.firstElementChild
+        : scrollRegion
+    const lastContent = contentHost.lastElementChild
     const contentAtTop = lastContent === null ? scrollAtTop : rectOf(lastContent)
     const closeOverlapsBody =
       closeAtTop.left < contentAtTop.right &&
