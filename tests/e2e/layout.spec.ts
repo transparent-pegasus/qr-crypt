@@ -46,7 +46,10 @@ interface DialogScrollMetrics {
 async function dialogScrollMetrics(dialog: Locator): Promise<DialogScrollMetrics> {
   return dialog.evaluate((root) => {
     const surface = root as HTMLElement
-    const scrollRegion = Array.from(surface.querySelectorAll<HTMLElement>("*"))
+    // Direct children only: a nested payload scroller (encrypt-page.tsx:562)
+    // would otherwise win the sort once its own overflow grew past the modal's.
+    const scrollRegion = Array.from(surface.children)
+      .filter((element): element is HTMLElement => element instanceof HTMLElement)
       .filter((element) => {
         const style = getComputedStyle(element)
         return (
