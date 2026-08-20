@@ -613,8 +613,9 @@ export function OnlineRelay({
           if (!open) endSession("close")
         }}
       >
-        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-          <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
+        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden p-0 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          <div className="min-h-0 overflow-y-auto">
+            <div className="grid gap-4 px-6 pb-14">
             <DialogHeader>
               <DialogTitle>
                 {t(
@@ -755,6 +756,7 @@ export function OnlineRelay({
                 </Button>
               </div>
             )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -765,8 +767,9 @@ export function OnlineRelay({
           if (!open) endSession("close")
         }}
       >
-        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
-          <div className="grid min-h-0 gap-4 overflow-y-auto pb-14">
+        <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden p-0 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          <div className="min-h-0 overflow-y-auto">
+            <div className="grid gap-4 px-6 pb-14">
             <DialogHeader>
               <DialogTitle>{t("relay.playback.title")}</DialogTitle>
               <DialogDescription>{t("relay.playback.description")}</DialogDescription>
@@ -830,6 +833,7 @@ export function OnlineRelay({
                 </p>
               </div>
             )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>

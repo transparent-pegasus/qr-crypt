@@ -491,8 +491,9 @@ export function EncryptPage() {
           setResultError(null)
         }}
       >
-        <NoAutofocusDialogContent className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden">
-          <div className="grid min-h-0 gap-5 overflow-y-auto pb-14">
+        <NoAutofocusDialogContent className="grid max-h-[95dvh] max-w-lg grid-rows-[minmax(0,1fr)] overflow-hidden p-0 py-6">
+          <div className="min-h-0 overflow-y-auto">
+            <div className="grid gap-5 px-6 pb-14">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 aria-hidden="true" className="size-4 text-success" />
@@ -666,6 +667,7 @@ export function EncryptPage() {
                 </Card>
               </>
             )}
+            </div>
           </div>
         </NoAutofocusDialogContent>
       </Dialog>
