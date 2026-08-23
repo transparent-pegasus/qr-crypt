@@ -79,6 +79,8 @@ LOCAL := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))/.worktrees/local
 
 .PHONY: fresh-local
 fresh-local:
+	@test -e '$(LOCAL)/.git' \
+		|| { echo 'refusing: $(LOCAL) is not a registered worktree - git and aube would walk up to the main checkout'; exit 1; }
 	@test -z "$$(git -C '$(LOCAL)' status --porcelain --untracked-files=no)" \
 		|| { echo 'refusing: $(LOCAL) has uncommitted changes - commit or discard them first'; exit 1; }
 	git fetch origin $(BRANCH)
