@@ -9,7 +9,7 @@
 // Every key in `strings` must match a data-i18n* attribute in index.html;
 // tests/unit/about-page-i18n.test.ts fails the build when the two disagree.
 //
-// Japanese follows the repo's house style in src/i18n/messages.ts: no manual
+// Japanese follows the repo's house style in src/i18n/catalog-ja.ts: no manual
 // space between Japanese characters and adjacent Latin letters or digits, and
 // the same page names the app itself shows.
 

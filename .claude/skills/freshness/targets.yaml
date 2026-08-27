@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-08-15 # last revision of this registry itself
+updated: 2026-08-28 # last revision of this registry itself
 
 units:
   - id: deps
@@ -219,7 +219,7 @@ units:
     verify: >
       Diff claims against README security section and the settings page
       "About security" copy (settings.security.* keys in
-      src/i18n/messages.ts, both locales); spot-check advisory IDs still
+      src/i18n/catalog-en.ts and src/i18n/catalog-ja.ts); spot-check advisory IDs still
       resolve.
     sync: [ui-security-copy, readme]
 
@@ -415,7 +415,7 @@ units:
       and wipe coordinator behavior, including the read-only RSA-HYBRID boot
       exception and clearReceipts in the buffer-drop inventory. Update dated
       statements to current state.
-    verify: aube run test:pq && aube run test -- tests/ui/boot-controller.test.tsx
+    verify: aube run test:pq && aube run test -- tests/ui/boot
 
   - id: size-goldens
     category: crypto
@@ -486,7 +486,8 @@ units:
     cadence_days: 90
     last_checked: 2026-08-15
     files:
-      - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
+      - src/i18n/catalog-en.ts # canonical disclosure copy, en (settings.security.*, gate.*, offlineAck.*, keys.* banners)
+      - src/i18n/catalog-ja.ts # the same disclosure copy, ja; both locales move together
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
       - src/components/key-add-dialog.tsx # experimental / not-independently-audited banners
       - src/components/online-gate.tsx # offline-switch compromise-assumption copy
@@ -502,13 +503,13 @@ units:
       encapsulation, wipe as best-effort with NIST SP 800-88 Rev. 2), so it
       moves with them.
     method: |
-      Diff the disclosure copy (both locales in src/i18n/messages.ts) against
+      Diff the disclosure copy (src/i18n/catalog-en.ts and catalog-ja.ts) against
       docs/security/security-review.md and docs/security/threat-model.md; update banners when
       audit/release status moves. Re-read the landing page's AES-256 /
       ML-KEM / wipe honesty wording against the same docs, and keep
       public/about/index.html and messages.js in step — the English text lives
       only in the HTML, the other locales only in messages.js.
-    verify: aube run test -- tests/ui/keys-settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
+    verify: aube run test -- tests/ui/keys.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
 
   - id: readme
     category: docs
@@ -615,7 +616,7 @@ invariants:
       vocabulary-single-active, and removed-vocabulary-rejected.
     verify: >
       aube run test -- tests/unit/qr-density-safety.test.ts
-      tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx
+      tests/integration/storage.test.ts tests/ui/boot
   - id: boot-retired-rsa-read-safety
     files:
       - src/app/boot/boot-controller.ts
@@ -705,7 +706,7 @@ invariants:
       && rg -q 'NetworkOnly' vite.config.ts
       && ! rg -q 'reachability-sentinel' <(rg -o 'globPatterns:[^]]*]' vite.config.ts)
       && rg -A2 'reachability-sentinel' public/_headers | rg -q 'no-store'
-      && aube run test -- tests/ui/boot-controller.test.tsx
+      && aube run test -- tests/ui/boot
   - id: build-sha-placeholder
     files:
       - .env.example
