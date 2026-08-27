@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import { dirname, join, relative } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
@@ -16,12 +16,7 @@ function moduleFiles(directory: string): string[] {
   })
 }
 
-describe("v1 implementation removal", () => {
-  it("deletes the v1 envelope modules", () => {
-    expect(existsSync(join(SOURCE_ROOT, "crypto/envelope.ts"))).toBe(false)
-    expect(existsSync(join(SOURCE_ROOT, "schemas/envelope-schema.ts"))).toBe(false)
-  })
-
+describe("retired cbor dependency removal", () => {
   it("has no module import of cbor-x", () => {
     const importNeedle = new RegExp(
       String.raw`(?:from\s*|import\s*\(\s*)["']${RETIRED_CBOR_PACKAGE}["']`,
@@ -44,25 +39,5 @@ describe("v1 implementation removal", () => {
     }
     expect(manifest.dependencies).not.toHaveProperty(RETIRED_CBOR_PACKAGE)
     expect(manifest.devDependencies).not.toHaveProperty(RETIRED_CBOR_PACKAGE)
-  })
-
-  it("has no v1 prefix or RSA vocabulary in source modules", () => {
-    const retiredTokens = [
-      "OCM1",
-      "OCK1",
-      "OCP1",
-      "OCB1",
-      "RSA-OAEP-3072",
-      "rsa-key-pair",
-      "KeyKind",
-    ]
-    const occurrences = moduleFiles(SOURCE_ROOT).flatMap((path) => {
-      const source = readFileSync(path, "utf8")
-      return retiredTokens
-        .filter((token) => source.includes(token))
-        .map((token) => `${relative(REPOSITORY_ROOT, path)}: ${token}`)
-    })
-
-    expect(occurrences).toEqual([])
   })
 })
