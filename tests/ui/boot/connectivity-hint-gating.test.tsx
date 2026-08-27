@@ -158,4 +158,3 @@ describe("connectivity-hint gating (NS-02)", () => {
     channel.close()
   })
 })
-

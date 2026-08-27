@@ -138,4 +138,3 @@ describe("destructive reachability probe", () => {
     expect(controller.getState()).toEqual({ kind: "offline-confirmed" })
   })
 })
-
