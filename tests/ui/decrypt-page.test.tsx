@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
 import { formatDateTime } from "@/features/presentation"
 import { translate } from "@/i18n/messages"
-import { buildV2Payload } from "@/qr/payload-v2"
+import { buildV2Payload } from "@/qr/wire-codec"
 import type {
   MlKemMessageEnvelopeV2,
   PqPublicBundleRecord,

@@ -17,9 +17,13 @@ vi.mock("@/lib/reload", () => ({ reloadApplication: vi.fn() }))
 
 import { resetDefaultBootControllerForTesting } from "@/app/boot/boot-controller"
 import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
-import { DISABLE_WIPE_CONFIRMATION } from "@/i18n"
 import { translate } from "@/i18n/messages"
 import { reloadApplication } from "@/lib/reload"
+import {
+  DELETE_ALL_CONFIRMATION,
+  DISABLE_WIPE_CONFIRMATION,
+  KEEP_KEYS_CONFIRMATION,
+} from "@/pages/settings-confirmations"
 import { env } from "@/schemas/env-schema"
 import {
   fakePreferences,
@@ -47,7 +51,10 @@ async function runResetAllLocalData(user: UserEvent): Promise<void> {
       name: en("settings.resetAllData"),
     }),
   )
-  await user.type(screen.getByLabelText(en("settings.confirmationLabel")), "DELETE ALL")
+  await user.type(
+    screen.getByLabelText(en("settings.confirmationLabel")),
+    DELETE_ALL_CONFIRMATION,
+  )
   await user.click(
     screen.getByRole("button", {
       name: en("settings.delete.execute"),
@@ -225,7 +232,10 @@ describe("settings page", () => {
     await user.click(screen.getByRole("button", { name: "Delete all keys" }))
     const dialog = await screen.findByRole("alertdialog", { name: "Delete all keys" })
     expectSingleAlertCancelWithoutClose(dialog)
-    await user.type(within(dialog).getByLabelText("Confirmation text"), "DELETE ALL")
+    await user.type(
+      within(dialog).getByLabelText("Confirmation text"),
+      DELETE_ALL_CONFIRMATION,
+    )
     await user.click(within(dialog).getByRole("button", { name: "Run logical deletion" }))
     const deleteError = "Data could not be deleted. Check the device storage."
     expect(await screen.findByText(deleteError)).toBeInTheDocument()
@@ -298,7 +308,10 @@ describe("settings page", () => {
     expectSingleAlertCancelWithoutClose(dialog)
     const action = within(dialog).getByRole("button", { name: "Arm maintenance token" })
     expect(action).toBeDisabled()
-    await user.type(within(dialog).getByLabelText("Confirmation text"), "KEEP KEYS")
+    await user.type(
+      within(dialog).getByLabelText("Confirmation text"),
+      KEEP_KEYS_CONFIRMATION,
+    )
     await user.click(within(dialog).getByRole("checkbox", { name: /applies once/ }))
     expect(action).toBeEnabled()
     await user.click(action)
@@ -317,7 +330,10 @@ describe("settings page", () => {
     })
     const action = within(dialog).getByRole("button", { name: "Run logical deletion" })
     expect(action).toBeDisabled()
-    await user.type(within(dialog).getByLabelText("Confirmation text"), "DELETE ALL")
+    await user.type(
+      within(dialog).getByLabelText("Confirmation text"),
+      DELETE_ALL_CONFIRMATION,
+    )
     await user.click(action)
 
     await waitFor(() => {

@@ -11,7 +11,7 @@ import {
   FRAME_BYTES_MIN,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
 } from "@/lib/limits"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { encodeFrameToPayload } from "@/qr/wire-codec"
 import { payloadFits } from "@/qr/encode"
 import { env } from "@/schemas/env-schema"
 

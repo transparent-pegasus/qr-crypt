@@ -22,7 +22,7 @@ import {
 import { payloadFits, renderQrSvgString } from "@/qr/encode"
 import { TransferAssembler } from "@/qr/multipart/assemble"
 import { splitIntoFrames } from "@/qr/multipart/split"
-import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
+import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/wire-codec"
 import {
   type QrFrameV2,
   SINGLE_FRAME_ARTIFACT_TYPES,

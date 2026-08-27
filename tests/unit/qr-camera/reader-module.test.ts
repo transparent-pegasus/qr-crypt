@@ -4,8 +4,8 @@ import {
   FakeTrack,
   flushMicrotasks,
   getUserMedia,
-  loadColdDecoder,
-  loadDecoder,
+  loadColdCameraScan,
+  loadCameraScan,
   mediaStream,
   videoElement,
   zxingFakes,
@@ -22,45 +22,45 @@ describe("reader module readiness and latched warm failures", () => {
   it("reaches ready only after an empty reader probe returns", async () => {
     const probe = deferred<Array<{ text: string }>>()
     zxing.readBarcodes.mockReturnValueOnce(probe.promise)
-    const decoder = await loadColdDecoder()
-    const warm = decoder.warmQrReader()
+    const cameraScan = await loadColdCameraScan()
+    const warm = cameraScan.warmQrReader()
     const ready = vi.fn()
     void warm.then(ready)
 
     await flushMicrotasks()
 
     expect(zxing.readBarcodes).toHaveBeenCalledOnce()
-    expect(decoder.readerModuleState()).toBe("preparing")
+    expect(cameraScan.readerModuleState()).toBe("preparing")
     expect(ready).not.toHaveBeenCalled()
 
     probe.resolve([])
     await expect(warm).resolves.toBeUndefined()
 
-    expect(decoder.readerModuleState()).toBe("ready")
+    expect(cameraScan.readerModuleState()).toBe("ready")
     expect(ready).toHaveBeenCalledOnce()
   })
 
   it("accepts a reader probe hit as successful readiness", async () => {
     zxing.readBarcodes.mockResolvedValueOnce(barcode("probe-control-hit"))
-    const decoder = await loadColdDecoder()
+    const cameraScan = await loadColdCameraScan()
 
-    await expect(decoder.warmQrReader()).resolves.toBeUndefined()
+    await expect(cameraScan.warmQrReader()).resolves.toBeUndefined()
 
     expect(zxing.readBarcodes).toHaveBeenCalledOnce()
-    expect(decoder.readerModuleState()).toBe("ready")
+    expect(cameraScan.readerModuleState()).toBe("ready")
   })
 
   it("latches a rejected reader probe for every later warm call", async () => {
     const failure = new Error("reader probe failed")
     zxing.readBarcodes.mockRejectedValueOnce(failure)
-    const decoder = await loadColdDecoder()
+    const cameraScan = await loadColdCameraScan()
 
-    const firstWarm = decoder.warmQrReader()
+    const firstWarm = cameraScan.warmQrReader()
     await expect(firstWarm).rejects.toBe(failure)
-    expect(decoder.readerModuleState()).toBe("failed")
+    expect(cameraScan.readerModuleState()).toBe("failed")
     expect(zxing.purgeZXingModule).toHaveBeenCalledOnce()
 
-    const secondWarm = decoder.warmQrReader()
+    const secondWarm = cameraScan.warmQrReader()
     expect(secondWarm).toBe(firstWarm)
     await expect(secondWarm).rejects.toBe(failure)
 
@@ -71,31 +71,31 @@ describe("reader module readiness and latched warm failures", () => {
   it("does not probe when reader module preparation rejects", async () => {
     const failure = new WebAssembly.CompileError("reader preparation failed")
     zxing.prepareZXingModule.mockRejectedValueOnce(failure)
-    const decoder = await loadColdDecoder()
+    const cameraScan = await loadColdCameraScan()
 
-    await expect(decoder.warmQrReader()).rejects.toBe(failure)
+    await expect(cameraScan.warmQrReader()).rejects.toBe(failure)
 
-    expect(decoder.readerModuleState()).toBe("failed")
+    expect(cameraScan.readerModuleState()).toBe("failed")
     expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
     expect(zxing.readBarcodes).not.toHaveBeenCalled()
 
     // A fresh module instance is the positive control: only preparation success probes.
     vi.resetModules()
-    const freshDecoder = await loadColdDecoder()
-    await expect(freshDecoder.warmQrReader()).resolves.toBeUndefined()
+    const freshCameraScan = await loadColdCameraScan()
+    await expect(freshCameraScan.warmQrReader()).resolves.toBeUndefined()
 
     expect(zxing.prepareZXingModule).toHaveBeenCalledTimes(2)
     expect(zxing.readBarcodes).toHaveBeenCalledOnce()
-    expect(freshDecoder.readerModuleState()).toBe("ready")
+    expect(freshCameraScan.readerModuleState()).toBe("ready")
   })
 
   it("shares one reader probe across concurrent warm calls", async () => {
     const probe = deferred<Array<{ text: string }>>()
     zxing.readBarcodes.mockReturnValueOnce(probe.promise)
-    const decoder = await loadColdDecoder()
+    const cameraScan = await loadColdCameraScan()
 
-    const firstWarm = decoder.warmQrReader()
-    const secondWarm = decoder.warmQrReader()
+    const firstWarm = cameraScan.warmQrReader()
+    const secondWarm = cameraScan.warmQrReader()
 
     expect(secondWarm).toBe(firstWarm)
     await flushMicrotasks()
@@ -104,14 +104,14 @@ describe("reader module readiness and latched warm failures", () => {
 
     probe.resolve([])
     await Promise.all([firstWarm, secondWarm])
-    expect(decoder.readerModuleState()).toBe("ready")
+    expect(cameraScan.readerModuleState()).toBe("ready")
   })
 
   it("fails closed before camera acquisition while the reader is cold", async () => {
-    const decoder = await loadColdDecoder()
+    const cameraScan = await loadColdCameraScan()
 
     await expect(
-      decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), { once: false }),
+      cameraScan.startQrScan(videoElement(), vi.fn(), vi.fn(), { once: false }),
     ).rejects.toMatchObject({
       name: "AppError",
       code: "QR_READER_BLOCKED",
@@ -125,13 +125,13 @@ describe("reader module readiness and latched warm failures", () => {
   it("fails closed before camera acquisition while reader preparation is pending", async () => {
     const preparation = deferred<unknown>()
     zxing.prepareZXingModule.mockReturnValueOnce(preparation.promise)
-    const decoder = await loadColdDecoder()
-    const warm = decoder.warmQrReader()
+    const cameraScan = await loadColdCameraScan()
+    const warm = cameraScan.warmQrReader()
 
     expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
-    expect(decoder.readerModuleState()).toBe("preparing")
+    expect(cameraScan.readerModuleState()).toBe("preparing")
     await expect(
-      decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), { once: false }),
+      cameraScan.startQrScan(videoElement(), vi.fn(), vi.fn(), { once: false }),
     ).rejects.toMatchObject({
       name: "AppError",
       code: "QR_READER_BLOCKED",
@@ -147,14 +147,14 @@ describe("reader module readiness and latched warm failures", () => {
   it("fails closed after a latched warm failure without reaching the CDN-capable reader path", async () => {
     const failure = new WebAssembly.CompileError("reader warm failed")
     zxing.prepareZXingModule.mockRejectedValueOnce(failure)
-    const decoder = await loadColdDecoder()
+    const cameraScan = await loadColdCameraScan()
 
-    await expect(decoder.warmQrReader()).rejects.toBe(failure)
-    expect(decoder.readerModuleState()).toBe("failed")
+    await expect(cameraScan.warmQrReader()).rejects.toBe(failure)
+    expect(cameraScan.readerModuleState()).toBe("failed")
     expect(zxing.purgeZXingModule).toHaveBeenCalledOnce()
 
     await expect(
-      decoder.startQrScan(videoElement(), vi.fn(), vi.fn(), { once: false }),
+      cameraScan.startQrScan(videoElement(), vi.fn(), vi.fn(), { once: false }),
     ).rejects.toMatchObject({
       name: "AppError",
       code: "QR_READER_BLOCKED",
@@ -171,9 +171,9 @@ describe("reader module readiness and latched warm failures", () => {
     getUserMedia
       .mockResolvedValueOnce(mediaStream(firstTrack))
       .mockResolvedValueOnce(mediaStream(secondTrack))
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
 
-    const firstHandle = await decoder.startQrScan(
+    const firstHandle = await cameraScan.startQrScan(
       videoElement(),
       vi.fn(),
       vi.fn(),
@@ -202,7 +202,7 @@ describe("reader module readiness and latched warm failures", () => {
       getUserMedia.mock.invocationCallOrder[0]!,
     )
 
-    const secondHandle = await decoder.startQrScan(
+    const secondHandle = await cameraScan.startQrScan(
       videoElement(),
       vi.fn(),
       vi.fn(),
@@ -224,26 +224,26 @@ describe("reader module readiness and latched warm failures", () => {
         throw failure
       })
       .mockResolvedValueOnce({})
-    const decoder = await loadColdDecoder()
+    const cameraScan = await loadColdCameraScan()
 
-    const firstWarm = decoder.warmQrReader()
-    const secondWarm = decoder.warmQrReader()
+    const firstWarm = cameraScan.warmQrReader()
+    const secondWarm = cameraScan.warmQrReader()
 
     expect(secondWarm).toBe(firstWarm)
     await expect(firstWarm).rejects.toBe(failure)
     await expect(secondWarm).rejects.toBe(failure)
     expect(zxing.prepareZXingModule).toHaveBeenCalledOnce()
     expect(zxing.purgeZXingModule).toHaveBeenCalledOnce()
-    expect(decoder.readerModuleState()).toBe("failed")
+    expect(cameraScan.readerModuleState()).toBe("failed")
     expect(getUserMedia).not.toHaveBeenCalled()
   })
 
   it("latches the missing WebAssembly API branch for every warm call", async () => {
     vi.stubGlobal("WebAssembly", undefined)
-    const decoder = await loadColdDecoder()
+    const cameraScan = await loadColdCameraScan()
 
-    const firstWarm = decoder.warmQrReader()
-    const secondWarm = decoder.warmQrReader()
+    const firstWarm = cameraScan.warmQrReader()
+    const secondWarm = cameraScan.warmQrReader()
 
     expect(secondWarm).toBe(firstWarm)
     await expect(firstWarm).rejects.toThrow(
@@ -253,7 +253,7 @@ describe("reader module readiness and latched warm failures", () => {
       "WebAssembly is unavailable for the QR reader",
     )
     expect(zxing.prepareZXingModule).not.toHaveBeenCalled()
-    expect(decoder.readerModuleState()).toBe("failed")
+    expect(cameraScan.readerModuleState()).toBe("failed")
     expect(getUserMedia).not.toHaveBeenCalled()
   })
 })

@@ -34,7 +34,7 @@ import {
   TRANSFER_TIMEOUT_MINUTES_DEFAULT,
 } from "@/lib/limits"
 import { reloadApplication } from "@/lib/reload"
-import { startQrScan, type QrScanHandle } from "@/qr/decode"
+import { startQrScan, type QrScanHandle } from "@/qr/camera-scan"
 import { renderQrDataUrl } from "@/qr/encode"
 import { prepareRelayPlayback } from "@/qr/relay-playback"
 import { acquireRelayLease, type RelayLease } from "@/storage/database"

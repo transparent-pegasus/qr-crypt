@@ -47,10 +47,7 @@ import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { generateKeyId } from "@/crypto/random"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
-import {
-  ALGORITHM_LABELS,
-  formatSuggestedDate,
-} from "@/features/presentation"
+import { formatSuggestedDate } from "@/features/presentation"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePreferences } from "@/hooks/use-preferences"
 import {
@@ -60,7 +57,7 @@ import {
   type LocalizedMessage,
 } from "@/i18n"
 import { cn } from "@/lib/utils"
-import { decodePayload } from "@/qr/payload"
+import { decodePayload } from "@/qr/decode-artifact"
 import type {
   PqPublicBundleRecord,
   PublicIdentityBundleV2,
@@ -682,7 +679,7 @@ function CreateField({
   busy: boolean
   onCreate: () => void
 }) {
-  const { language, t } = useI18n()
+  const { t } = useI18n()
   const pq = kind === "pq-identity"
   const nameLabel = t(pq ? "keys.create.nameLabel.pq" : "keys.create.nameLabel.symmetric")
   const buttonLabel = t(pq ? "keys.create.button.pq" : "keys.create.button.symmetric")
@@ -703,7 +700,7 @@ function CreateField({
                 {t("keys.create.kind.pqIdentity")}
               </SelectItem>
               <SelectItem value="symmetric">
-                {ALGORITHM_LABELS[language].A256GCM}
+                {t("algorithm.A256GCM")}
               </SelectItem>
             </SelectContent>
           </Select>

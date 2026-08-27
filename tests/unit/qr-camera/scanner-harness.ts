@@ -183,16 +183,16 @@ export async function advance(ms: number): Promise<void> {
   await flushMicrotasks()
 }
 
-export async function loadColdDecoder(): Promise<typeof import("@/qr/decode")> {
-  return import("@/qr/decode")
+export async function loadColdCameraScan(): Promise<typeof import("@/qr/camera-scan")> {
+  return import("@/qr/camera-scan")
 }
 
-export async function loadDecoder(): Promise<typeof import("@/qr/decode")> {
-  const decoder = await loadColdDecoder()
-  await decoder.warmQrReader()
+export async function loadCameraScan(): Promise<typeof import("@/qr/camera-scan")> {
+  const cameraScan = await loadColdCameraScan()
+  await cameraScan.warmQrReader()
   // The synthetic warm-up probe is not part of the frame pump's decode cadence.
   zxing.readBarcodes.mockClear()
-  return decoder
+  return cameraScan
 }
 
 beforeEach(() => {

@@ -16,9 +16,9 @@ import {
   type CameraFailureState,
   type CameraScanState,
   type QrScanHandle,
-} from "@/qr/decode"
+} from "@/qr/camera-scan"
 import type { TransferState } from "@/qr/multipart/transfer-state"
-import { QR_PREFIX_V2 } from "@/qr/payload-v2"
+import { QR_PREFIX_V2 } from "@/qr/wire-codec"
 import {
   deliveryError,
   localized,

@@ -194,7 +194,7 @@ units:
       - docs/security/threat-model.md
       - src/crypto/pq/canonical-cbor.ts # structural allocation caps and retained-key behavior cited by T20
       - src/lib/limits.ts # frames × chunk receiver-allocation bound cited by T20
-      - src/qr/payload-v2.ts # bare-paste character and decoded-byte bounds cited by T20
+      - src/qr/wire-codec.ts # bare-paste character and decoded-byte bounds cited by T20
       - src/qr/multipart/assemble.ts # receiver assembly enforcement cited by T20
       - src/qr/camera/frame-pump.ts # scanner downscale, in-flight bound, and scheduled interval cited by T5
     why: >
@@ -209,8 +209,9 @@ units:
       src/app/boot/, including the read-only RSA-HYBRID preference exception
       that protects wipeOnOnline=false while repository normalization removes
       it. Reconcile T5's scanner bounds with qr/camera/frame-pump.ts
-      — decode.ts is now a thin facade and holds none of them — and T20's
-      frame/paste allocation and CBOR caps with limits.ts, payload-v2.ts,
+      — camera-scan.ts orchestrates attempts and timeouts and holds none of
+      them — and T20's
+      frame/paste allocation and CBOR caps with limits.ts, wire-codec.ts,
       assemble.ts, and canonical-cbor.ts. Re-check the §5 session-memory
       receipt / replay bullet and the §7 imported-bundle key-ID shadowing row
       (T22) against src/features/receipt-cache.ts and
@@ -364,7 +365,7 @@ units:
       - src/lib/limits.ts # artifact ceiling, algorithm-specific sizes, and timeout floor
       - src/lib/frame-bytes.ts # generated-density grid and per-artifact effective clamps
       - src/lib/frame-interval.ts # preference dwells, relay playback cadence, and legacy normalization
-      - src/qr/payload-v2.ts # bare-paste and decoded-artifact ceilings
+      - src/qr/wire-codec.ts # bare-paste and decoded-artifact ceilings
       - src/schemas/domain.ts # exact default and compatible generated-display pairs
       - src/storage/preferences-repository.ts # atomic pair writes and boot-readable pair canonicalization
       - src/pages/encrypt-page.tsx # message-display preference and per-artifact effective clamp
@@ -397,7 +398,7 @@ units:
       protocol revisions — never "refreshed" to make tests pass). Reconcile
       the documented allocation, exact display preferences, per-artifact
       effective clamps, cycle, relay-cadence, and export contracts with
-      limits.ts, frame-bytes.ts, frame-interval.ts, payload-v2.ts, domain.ts,
+      limits.ts, frame-bytes.ts, frame-interval.ts, wire-codec.ts, domain.ts,
       preferences-repository.ts, encrypt-page.tsx, decrypt-page.tsx,
       generated-display.ts, key-detail-dialog.tsx,
       key-detail/identity-qr-session.tsx,
@@ -488,6 +489,7 @@ units:
     files:
       - src/i18n/catalog-en.ts # canonical disclosure copy, en (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/i18n/catalog-ja.ts # the same disclosure copy, ja; both locales move together
+      - src/pages/settings-confirmations.ts # exact destructive ceremony phrases mirrored in both catalogs
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
       - src/components/key-add-dialog.tsx # experimental / not-independently-audited banners
       - src/components/online-gate.tsx # offline-switch compromise-assumption copy
@@ -509,7 +511,7 @@ units:
       ML-KEM / wipe honesty wording against the same docs, and keep
       public/about/index.html and messages.js in step — the English text lives
       only in the HTML, the other locales only in messages.js.
-    verify: aube run test -- tests/ui/keys.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
+    verify: aube run test -- tests/unit/i18n.test.ts tests/ui/keys.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
 
   - id: readme
     category: docs

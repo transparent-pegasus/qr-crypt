@@ -63,7 +63,7 @@ import {
   triggerDownload,
 } from "@/qr/export-image"
 import { splitIntoFrames } from "@/qr/multipart/split"
-import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
+import { buildV2Payload, encodeFrameToPayload } from "@/qr/wire-codec"
 import {
   type PostQuantumIdentity,
   type StoredKeyRecord,

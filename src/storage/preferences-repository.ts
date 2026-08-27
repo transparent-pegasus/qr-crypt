@@ -2,12 +2,12 @@
 // The environment supplies the default for defaultAlgorithm.
 // Do not persist delays as preferences; use the
 // WebAssembly-runtime-selected env.autoClearSeconds or
-// env.autoClearFallbackSeconds value. As in v1, theme belongs to
+// env.autoClearFallbackSeconds value. Theme belongs to
 // localStorage("oc-theme") and is outside this store.
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
   DEFAULT_GENERATED_DISPLAY_PAIR,
-  PQ_PREFERENCE_DEFAULTS,
+  PREFERENCE_DEFAULTS,
   type Preferences,
   type UiAlgorithm,
 } from "@/schemas/domain"
@@ -47,7 +47,7 @@ const PREFERENCE_KEYS = [
 
 export function defaultPreferences(): Preferences {
   return {
-    ...PQ_PREFERENCE_DEFAULTS,
+    ...PREFERENCE_DEFAULTS,
     defaultAlgorithm: env.defaultAlgorithm,
     autoClearPlaintextAfterEncrypt: true,
     backgroundClearEnabled: true,

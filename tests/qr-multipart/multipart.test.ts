@@ -16,7 +16,7 @@ import {
 import { payloadFits } from "@/qr/encode"
 import { TransferAssembler } from "@/qr/multipart/assemble"
 import { splitIntoFrames } from "@/qr/multipart/split"
-import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
+import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/wire-codec"
 
 function pseudoArtifact(payloadBytes: number, type = "pq-message"): Uint8Array {
   return encodeCanonicalCbor({

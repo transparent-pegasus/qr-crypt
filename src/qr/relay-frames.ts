@@ -17,7 +17,7 @@ import {
   frameMatchesMetadata,
   type FrameTransferMetadata,
 } from "@/qr/multipart/transfer-state"
-import { decodeFramePayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
+import { decodeFramePayload, QR_PREFIX_V2 } from "@/qr/wire-codec"
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 
 export const RELAY_TEXT_MAX_CHARS = PROTOCOL_MAX_FRAMES * (MAX_FRAME_PAYLOAD_CHARS + 2)
