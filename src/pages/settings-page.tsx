@@ -55,9 +55,6 @@ import { Switch } from "@/components/ui/switch"
 import { useKeys } from "@/hooks/use-keys"
 import { usePreferences } from "@/hooks/use-preferences"
 import {
-  DELETE_ALL_CONFIRMATION,
-  DISABLE_WIPE_CONFIRMATION,
-  KEEP_KEYS_CONFIRMATION,
   LanguageSelect,
   useI18n,
   type MessageKey,
@@ -72,6 +69,11 @@ import {
 } from "@/lib/limits"
 import { isStandalone } from "@/lib/feature-detect"
 import { reloadApplication } from "@/lib/reload"
+import {
+  DELETE_ALL_CONFIRMATION,
+  DISABLE_WIPE_CONFIRMATION,
+  KEEP_KEYS_CONFIRMATION,
+} from "@/pages/settings-confirmations"
 import { clearAllKeys } from "@/storage/key-repository"
 import { clearAllIdentities } from "@/storage/pq-identity-repository"
 

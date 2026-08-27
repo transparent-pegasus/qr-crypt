@@ -1,25 +1,4 @@
 import { translate, type Language } from "@/i18n/messages"
-import type { UiAlgorithm } from "@/schemas/domain"
-
-export const ALGORITHM_LABELS: Record<
-  Language,
-  Record<UiAlgorithm, string>
-> = {
-  en: {
-    A256GCM: translate("en", "algorithm.A256GCM"),
-    MLKEM1024_MLDSA87_A256GCM: translate(
-      "en",
-      "algorithm.MLKEM1024_MLDSA87_A256GCM",
-    ),
-  },
-  ja: {
-    A256GCM: translate("ja", "algorithm.A256GCM"),
-    MLKEM1024_MLDSA87_A256GCM: translate(
-      "ja",
-      "algorithm.MLKEM1024_MLDSA87_A256GCM",
-    ),
-  },
-}
 
 export function formatDateTime(
   timestamp: number | undefined,

@@ -10,6 +10,10 @@ import {
   type MessageKey,
 } from "@/i18n/messages"
 import { interpolateMessage } from "@/i18n/interpolate"
+import {
+  DELETE_ALL_CONFIRMATION,
+  KEEP_KEYS_CONFIRMATION,
+} from "@/pages/settings-confirmations"
 
 describe("i18n catalog", () => {
   it("keeps the English and Japanese key sets identical", () => {
@@ -109,13 +113,13 @@ describe("i18n catalog", () => {
   it("uses the same language-independent destructive tokens in both locales", () => {
     for (const language of ["en", "ja"] as const) {
       expect(translate(language, "settings.maintenance.dialogDesc")).toContain(
-        "KEEP KEYS",
+        KEEP_KEYS_CONFIRMATION,
       )
       expect(translate(language, "settings.delete.desc.keys")).toContain(
-        "DELETE ALL",
+        DELETE_ALL_CONFIRMATION,
       )
       expect(translate(language, "settings.delete.desc.reset")).toContain(
-        "DELETE ALL",
+        DELETE_ALL_CONFIRMATION,
       )
     }
   })

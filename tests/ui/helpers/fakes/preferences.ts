@@ -1,10 +1,10 @@
 import { vi } from "vitest"
 import type { Preferences } from "@/schemas/domain"
-import { PQ_PREFERENCE_DEFAULTS } from "@/schemas/domain"
+import { PREFERENCE_DEFAULTS } from "@/schemas/domain"
 import { registerFakeReset } from "./reset"
 
 export const fakePreferences: Preferences = {
-  ...PQ_PREFERENCE_DEFAULTS,
+  ...PREFERENCE_DEFAULTS,
   defaultAlgorithm: "A256GCM",
   frameBytes: 1_000,
   frameIntervalMs: 200,
@@ -26,7 +26,7 @@ export const updatePreferences = vi.fn(async (patch: Partial<Preferences>) => {
 
 registerFakeReset(() => {
   Object.assign(fakePreferences, {
-    ...PQ_PREFERENCE_DEFAULTS,
+    ...PREFERENCE_DEFAULTS,
     defaultAlgorithm: "A256GCM",
     frameBytes: 1_000,
     frameIntervalMs: 200,
