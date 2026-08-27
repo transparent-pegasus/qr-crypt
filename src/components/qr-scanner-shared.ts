@@ -2,7 +2,7 @@ import { AppError, errorMessageKey, type ErrorCode } from "@/crypto/errors"
 import type { MultipartScanSession } from "@/features/multipart-scan-session"
 import type { V2ArtifactType } from "@/schemas/domain"
 import type { MessageKey } from "@/i18n"
-import type { InterpolationValues } from "@/i18n/messages"
+import type { InterpolationValues } from "@/i18n/interpolate"
 
 interface MultipartScanCompletion {
   artifactType: V2ArtifactType
