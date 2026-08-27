@@ -40,7 +40,6 @@ import {
   type EncryptMessageRequest,
 } from "@/features/encrypt-message"
 import {
-  ALGORITHM_LABELS,
   formatDateTime,
   formatSuggestedDate,
 } from "@/features/presentation"
@@ -360,7 +359,7 @@ export function EncryptPage() {
           <SelectContent>
             {algorithms.map((option) => (
               <SelectItem key={option} value={option}>
-                {ALGORITHM_LABELS[language][option]}
+                {t(`algorithm.${option}`)}
               </SelectItem>
             ))}
           </SelectContent>
