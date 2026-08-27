@@ -2,7 +2,7 @@
 // The environment supplies the default for defaultAlgorithm.
 // Do not persist delays as preferences; use the
 // WebAssembly-runtime-selected env.autoClearSeconds or
-// env.autoClearFallbackSeconds value. As in v1, theme belongs to
+// env.autoClearFallbackSeconds value. Theme belongs to
 // localStorage("oc-theme") and is outside this store.
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
