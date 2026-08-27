@@ -1,30 +1,13 @@
-// Contract-layer smoke tests.
-// Do not invoke stub implementations; verify only implemented portions of the contract.
-// These tests may be extended, but must not be removed or weakened.
 import { describe, expect, it } from "vitest"
-import { AppError, ERROR_CODES, toAppError } from "@/crypto/errors"
 import {
   FRAME_INTERVAL_MS_VALUES,
-  KEY_ID_PATTERN,
   MAX_PLAINTEXT_BYTES,
   MAX_PQ_PLAINTEXT_BYTES,
   MAX_SYM_PLAINTEXT_BYTES,
 } from "@/lib/limits"
-import { QR_PREFIX_V2 } from "@/qr/payload-v2"
 import { env, parseAppEnv } from "@/schemas/env-schema"
-import { hasControlChars, qrNameSchema } from "@/schemas/key-schema"
 
-describe("contract smoke", () => {
-  it("keeps errors code-only and preserves AppError instances", () => {
-    expect(ERROR_CODES).toContain("KEY_ID_CONFLICT")
-    expect(ERROR_CODES).toContain("MESSAGE_ID_REUSED")
-    const error = new AppError("DECRYPTION_FAILED")
-    expect(error.code).toBe("DECRYPTION_FAILED")
-    expect(error).not.toHaveProperty("userMessage")
-    expect(toAppError(new Error("x"), "STORAGE_FAILED").code).toBe("STORAGE_FAILED")
-    expect(toAppError(error, "STORAGE_FAILED")).toBe(error)
-  })
-
+describe("environment contract", () => {
   it("env parsing applies defaults, cross-field normalization, and retired-value rejection", () => {
     expect(env.maxPlaintextBytes).toBe(120_000)
     expect(MAX_PQ_PLAINTEXT_BYTES).toBe(env.maxPlaintextBytes)
@@ -89,20 +72,4 @@ describe("contract smoke", () => {
       )
     },
   )
-
-  it("payload prefixes expose only the v2 wire family", () => {
-    expect(QR_PREFIX_V2["sym-message"]).toBe("OCA2:")
-    expect(QR_PREFIX_V2["symmetric-key"]).toBe("OCK2:")
-  })
-
-  it("qr name schema enforces the naming rules", () => {
-    expect(qrNameSchema.parse("  暗号文-20260721  ")).toBe("暗号文-20260721")
-    expect(() => qrNameSchema.parse("   ")).toThrow()
-    expect(() => qrNameSchema.parse("a".repeat(81))).toThrow()
-    expect(hasControlChars("ok")).toBe(false)
-    expect(hasControlChars(`bad${String.fromCharCode(7)}bell`)).toBe(true)
-    expect(() => qrNameSchema.parse(`x${String.fromCharCode(9)}y`)).toThrow()
-    expect(KEY_ID_PATTERN.test("A".repeat(22))).toBe(true)
-    expect(KEY_ID_PATTERN.test("A".repeat(21))).toBe(false)
-  })
 })

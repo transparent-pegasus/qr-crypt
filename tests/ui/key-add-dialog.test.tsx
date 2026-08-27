@@ -1,14 +1,21 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/feature-detection"
+import "./helpers/module-mocks/pwa"
+import "./helpers/module-mocks/preferences"
+import "./helpers/module-mocks/crypto-runtime"
+import "./helpers/module-mocks/symmetric-crypto"
+import "./helpers/module-mocks/pq-crypto"
+import "./helpers/module-mocks/qr-codec"
+import "./helpers/module-mocks/qr-scanner"
+import "./helpers/module-mocks/key-records"
+import "./helpers/module-mocks/pq-records"
 import { act, screen, waitFor } from "@testing-library/react"
 import userEvent, { type UserEvent } from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { deferred } from "../helpers/deferred"
-import {
-  createIdentity,
-  createSymmetricKeyRecord,
-  saveIdentity,
-  saveKeyRecord,
-} from "./helpers/fakes"
+import { createSymmetricKeyRecord } from "./helpers/fakes/symmetric-crypto"
+import { createIdentity } from "./helpers/fakes/pq-crypto"
+import { saveKeyRecord } from "./helpers/fakes/key-records"
+import { saveIdentity } from "./helpers/fakes/pq-records"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 // resetFakes leaves defaultAlgorithm at A256GCM, so the create view opens on the

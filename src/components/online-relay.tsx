@@ -408,21 +408,12 @@ export function OnlineRelay({
       if (mountedRef.current) setTerminalNotice(errorMessageKey(error.code))
     }
 
-    let startPromise: Promise<QrScanHandle>
-    try {
-      startPromise = startQrScan(
-        video,
-        (text) => handleCapturedText(text, generation, dialogMode),
-        onError,
-        { once: false, signal: abortController.signal },
-      )
-    } catch {
-      endSession("camera-error")
-      setTerminalNotice(errorMessageKey("CAMERA_NOT_AVAILABLE"))
-      return
-    }
-
-    void startPromise
+    void startQrScan(
+      video,
+      (text) => handleCapturedText(text, generation, dialogMode),
+      onError,
+      { once: false, signal: abortController.signal },
+    )
       .then((handle) => {
         if (
           generation !== sessionGenerationRef.current ||

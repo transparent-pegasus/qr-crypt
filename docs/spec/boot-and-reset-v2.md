@@ -326,7 +326,7 @@ redundant re-acknowledgement is allowed but skipping acknowledgement is not.
 | `user-requested`            | Settings runs the §4 sequence. On success the app performs a full reload; on partial failure it shows a terminal `RESET_FAILED` state with the failed steps and no resume path | Not re-set (§4 step 6) |
 
 `src/storage/best-effort-reset.ts` supplies the successful-reset database-removal
-side of this transition; `tests/ui/boot-controller.test.tsx:1149-1160` exercises
+side of this transition; `tests/ui/boot/deployment-verdict.test.tsx:60-71` exercises
 the later boot with no stored verdict and an unreachable sentinel.
 
 A display offline commit issues no sentinel; only when boot is

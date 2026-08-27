@@ -24,6 +24,57 @@ const reservePort = async (): Promise<number> => {
 }
 
 describe("serve-dist", () => {
+  it("rejects malformed headers during startup", async () => {
+    const temporary = await mkdtemp(path.join(tmpdir(), "qrypt-serve-dist-"))
+    const root = path.join(temporary, "dist")
+    const port = await reservePort()
+    let server: ReturnType<typeof spawn> | undefined
+
+    try {
+      await mkdir(root)
+      await writeFile(
+        path.join(root, "_headers"),
+        "/*\n  Content-Security-Policy default-src 'none'\n",
+      )
+
+      let stderr = ""
+      server = spawn("aube", ["run", "serve:dist"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          SERVE_DIST_PORT: String(port),
+          SERVE_DIST_ROOT: root,
+        },
+        stdio: ["ignore", "ignore", "pipe"],
+        timeout: 10_000,
+      })
+      server.stderr?.setEncoding("utf8")
+      server.stderr?.on("data", (chunk: string) => {
+        stderr += chunk
+      })
+      const exitCode = await new Promise<number | null>((resolve, reject) => {
+        server?.once("error", reject)
+        server?.once("exit", (code) => resolve(code))
+      })
+
+      expect(exitCode).toBe(1)
+      expect(stderr).toContain("SERVE_DIST_START_FAILED")
+    } finally {
+      if (
+        server !== undefined &&
+        server.exitCode === null &&
+        server.signalCode === null
+      ) {
+        const exited = new Promise<void>((resolve) =>
+          server?.once("exit", () => resolve()),
+        )
+        server.kill("SIGTERM")
+        await exited
+      }
+      await rm(temporary, { force: true, recursive: true })
+    }
+  }, 15_000)
+
   it("rejects a symlink that resolves outside the document root", async () => {
     const temporary = await mkdtemp(path.join(tmpdir(), "qrypt-serve-dist-"))
     const root = path.join(temporary, "dist")

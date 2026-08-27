@@ -1,4 +1,6 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/feature-detection"
+import "./helpers/module-mocks/qr-codec"
+import "./helpers/module-mocks/qr-scanner"
 import { StrictMode, useState, type ComponentProps } from "react"
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -12,15 +14,15 @@ import { translate } from "@/i18n/messages"
 import type { QrScanHandle } from "@/qr/decode"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import { deferred } from "../helpers/deferred"
+import { probeWebAssemblyRuntime } from "./helpers/fakes/feature-detection"
+import { multipartPayload } from "./helpers/fakes/qr-codec"
 import {
   emitScannedPayload,
-  multipartPayload,
-  probeWebAssemblyRuntime,
   readerModuleState,
   scannerStop,
   startQrScan,
   warmQrReader,
-} from "./helpers/fakes"
+} from "./helpers/fakes/qr-scanner"
 import { resetUi } from "./helpers/render-app"
 
 type PanelProps = ComponentProps<typeof QrScannerPanel>

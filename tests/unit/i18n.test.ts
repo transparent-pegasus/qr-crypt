@@ -5,11 +5,11 @@ import {
   messageFor,
 } from "@/crypto/errors"
 import {
-  interpolateMessage,
   messages,
   translate,
   type MessageKey,
 } from "@/i18n/messages"
+import { interpolateMessage } from "@/i18n/interpolate"
 
 describe("i18n catalog", () => {
   it("keeps the English and Japanese key sets identical", () => {

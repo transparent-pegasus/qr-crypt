@@ -321,7 +321,8 @@ it; treating it as required would disagree with the archive copy.
    [threat-model.md](../../security/threat-model.md) §2 for exactly what is
    lost. `scripts/serve-dist.mjs` in the source tree is this repository's
    reference implementation of the required behaviour and is the definition of
-   "`_headers` semantics" your server must reproduce. Read it to derive your own
+   "`_headers` semantics" your server must reproduce; it parses the file with
+   the shared parser exported by `scripts/csp-from-headers.mjs`, so read both. Read it to derive your own
    server's configuration — do **not** carry it onto the offline device as another
    artifact to verify; it is Node tooling, not part of the signed release.
 4. Open the exact `http://127.0.0.1:PORT` origin and wait until the app reports

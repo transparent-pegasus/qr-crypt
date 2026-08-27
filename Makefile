@@ -19,10 +19,10 @@ test-all:
 	aube run test
 	aube run test:e2e
 
-# TARGETED_TEST_COMMAND: make test-one FILE=tests/ui/keys-settings.test.tsx
+# TARGETED_TEST_COMMAND: make test-one FILE=tests/ui/keys.test.tsx
 .PHONY: test-one
 test-one:
-	@test -n '$(FILE)' || { echo 'usage: make test-one FILE=tests/ui/keys-settings.test.tsx'; exit 1; }
+	@test -n '$(FILE)' || { echo 'usage: make test-one FILE=tests/ui/keys.test.tsx'; exit 1; }
 	aube run test -- $(FILE)
 
 # What a UI change owes: baseline plus the e2e suite.
