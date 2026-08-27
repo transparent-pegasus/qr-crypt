@@ -137,7 +137,7 @@ describe("pq fingerprints", () => {
   })
 })
 
-describe("payload-v2 frame codec", () => {
+describe("wire-codec frame codec", () => {
   it("round-trips OCF2 frames and fits them within EC-Q", () => {
     const frame = {
       version: 2 as const,
