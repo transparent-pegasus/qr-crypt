@@ -8,7 +8,7 @@ import {
   FakeVideo,
   flushMicrotasks,
   getUserMedia,
-  loadDecoder,
+  loadCameraScan,
   mediaStream,
   videoElement,
   zxingFakes,
@@ -32,9 +32,9 @@ describe("frame pump", () => {
     getUserMedia.mockResolvedValue(mediaStream(track))
     const onText = vi.fn()
     const onError = vi.fn()
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     zxing.readBarcodes.mockResolvedValueOnce(barcode("SCANTEXT:autoplay"))
-    const scanPromise = decoder.startQrScan(
+    const scanPromise = cameraScan.startQrScan(
       asVideoElement(fakeVideo),
       onText,
       onError,
@@ -72,7 +72,7 @@ describe("frame pump", () => {
     })
     getUserMedia.mockResolvedValue(mediaStream(track))
     const onError = vi.fn()
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     const nativeSetTimeout = globalThis.setTimeout
     let suppressedTimerHandle = 1_000_000
     const setTimeoutSpy = vi
@@ -85,7 +85,7 @@ describe("frame pump", () => {
         ) => {
           if (
             timeout === 0 ||
-            timeout === decoder.CAMERA_FRAME_READY_TIMEOUT_MS
+            timeout === cameraScan.CAMERA_FRAME_READY_TIMEOUT_MS
           ) {
             suppressedTimerHandle += 1
             return suppressedTimerHandle
@@ -94,8 +94,8 @@ describe("frame pump", () => {
         }) as typeof globalThis.setTimeout,
       )
 
-    expect(decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS).toBe(12_000)
-    const handle = await decoder.startQrScan(
+    expect(cameraScan.CAMERA_DECODE_PROGRESS_TIMEOUT_MS).toBe(12_000)
+    const handle = await cameraScan.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
       onError,
@@ -104,11 +104,11 @@ describe("frame pump", () => {
     await flushMicrotasks()
 
     expect(fakeVideo.play).toHaveBeenCalledOnce()
-    await advance(decoder.CAMERA_START_TIMEOUT_MS)
+    await advance(cameraScan.CAMERA_START_TIMEOUT_MS)
     expect(onError).not.toHaveBeenCalled()
     await advance(
-      decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS -
-        decoder.CAMERA_START_TIMEOUT_MS,
+      cameraScan.CAMERA_DECODE_PROGRESS_TIMEOUT_MS -
+        cameraScan.CAMERA_START_TIMEOUT_MS,
     )
 
     expect(onError).toHaveBeenCalledWith(
@@ -153,8 +153,8 @@ describe("frame pump", () => {
       const fakeVideo = makeVideo(play)
       getUserMedia.mockResolvedValue(mediaStream(track))
       const onError = vi.fn()
-      const decoder = await loadDecoder()
-      const handle = await decoder.startQrScan(
+      const cameraScan = await loadCameraScan()
+      const handle = await cameraScan.startQrScan(
         asVideoElement(fakeVideo),
         vi.fn(),
         onError,
@@ -186,12 +186,12 @@ describe("frame pump", () => {
     getUserMedia.mockResolvedValue(mediaStream(track))
     const decodeStartedAt: number[] = []
     const onError = vi.fn()
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     zxing.readBarcodes.mockImplementation(async () => {
       decodeStartedAt.push(Date.now())
       return []
     })
-    const handle = await decoder.startQrScan(
+    const handle = await cameraScan.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
       onError,
@@ -224,7 +224,7 @@ describe("frame pump", () => {
     })
     const decodeStartedAt: number[] = []
     getUserMedia.mockResolvedValue(mediaStream(track))
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     zxing.readBarcodes.mockImplementation(async () => {
       decodeStartedAt.push(Date.now())
       if (decodeStartedAt.length === 1) {
@@ -232,7 +232,7 @@ describe("frame pump", () => {
       }
       return []
     })
-    const handle = await decoder.startQrScan(
+    const handle = await cameraScan.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
       vi.fn(),
@@ -281,9 +281,9 @@ describe("frame pump", () => {
       getUserMedia.mockResolvedValue(mediaStream(track))
       const onText = vi.fn()
       const onError = vi.fn()
-      const decoder = await loadDecoder()
+      const cameraScan = await loadCameraScan()
       zxing.readBarcodes.mockResolvedValueOnce(barcode("SCANTEXT:recovered"))
-      const handle = await decoder.startQrScan(
+      const handle = await cameraScan.startQrScan(
         asVideoElement(fakeVideo),
         onText,
         onError,
@@ -315,15 +315,15 @@ describe("frame pump", () => {
     })
     getUserMedia.mockResolvedValue(mediaStream(track))
     const onError = vi.fn()
-    const decoder = await loadDecoder()
-    const handle = await decoder.startQrScan(
+    const cameraScan = await loadCameraScan()
+    const handle = await cameraScan.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
       onError,
       { once: false },
     )
 
-    await advance(decoder.CAMERA_FRAME_READY_TIMEOUT_MS - 1)
+    await advance(cameraScan.CAMERA_FRAME_READY_TIMEOUT_MS - 1)
     expect(onError).not.toHaveBeenCalled()
     await advance(1)
 
@@ -342,9 +342,9 @@ describe("frame pump", () => {
     const track = new FakeTrack()
     const fakeVideo = new FakeVideo(1920, 1080)
     getUserMedia.mockResolvedValue(mediaStream(track))
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     zxing.readBarcodes.mockResolvedValue([])
-    const handle = await decoder.startQrScan(
+    const handle = await cameraScan.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
       vi.fn(),
@@ -391,7 +391,7 @@ describe("frame pump", () => {
     const decodeStartedAt: number[] = []
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     zxing.readBarcodes
       .mockImplementationOnce(() => {
         decodeStartedAt.push(Date.now())
@@ -401,7 +401,7 @@ describe("frame pump", () => {
         decodeStartedAt.push(Date.now())
         return []
       })
-    const handle = await decoder.startQrScan(
+    const handle = await cameraScan.startQrScan(
       videoElement(),
       vi.fn(),
       vi.fn(),
@@ -427,8 +427,8 @@ describe("frame pump", () => {
       videoFrameCallbacks: true,
     })
     getUserMedia.mockResolvedValue(mediaStream(track))
-    const decoder = await loadDecoder()
-    const handle = await decoder.startQrScan(
+    const cameraScan = await loadCameraScan()
+    const handle = await cameraScan.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
       vi.fn(),
@@ -449,8 +449,8 @@ describe("frame pump", () => {
   it("cancels the fallback-only frame scheduler", async () => {
     const track = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(track))
-    const decoder = await loadDecoder()
-    const handle = await decoder.startQrScan(
+    const cameraScan = await loadCameraScan()
+    const handle = await cameraScan.startQrScan(
       videoElement(),
       vi.fn(),
       vi.fn(),
@@ -469,16 +469,16 @@ describe("frame pump", () => {
     const track = new FakeTrack()
     const onError = vi.fn()
     getUserMedia.mockResolvedValue(mediaStream(track))
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     zxing.readBarcodes.mockResolvedValue([])
-    const handle = await decoder.startQrScan(
+    const handle = await cameraScan.startQrScan(
       videoElement(),
       vi.fn(),
       onError,
       { once: false },
     )
 
-    await advance(decoder.CAMERA_DECODE_PROGRESS_TIMEOUT_MS * 10)
+    await advance(cameraScan.CAMERA_DECODE_PROGRESS_TIMEOUT_MS * 10)
 
     expect(zxing.readBarcodes.mock.calls.length).toBeGreaterThan(100)
     expect(onError).not.toHaveBeenCalled()
@@ -494,12 +494,12 @@ describe("frame pump", () => {
     getUserMedia.mockResolvedValue(mediaStream(track))
     const decodeStartedAt: number[] = []
     const onError = vi.fn()
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     zxing.readBarcodes.mockImplementation(async () => {
       decodeStartedAt.push(Date.now())
       return []
     })
-    const handle = await decoder.startQrScan(
+    const handle = await cameraScan.startQrScan(
       videoElement(),
       vi.fn(),
       onError,
@@ -543,9 +543,9 @@ describe("frame pump", () => {
       const error = new Error("decoder failed")
       error.name = name
       const onError = vi.fn()
-      const decoder = await loadDecoder()
+      const cameraScan = await loadCameraScan()
       arrange(error)
-      const handle = await decoder.startQrScan(
+      const handle = await cameraScan.startQrScan(
         videoElement(),
         vi.fn(),
         onError,
@@ -578,8 +578,8 @@ describe("frame pump", () => {
     const signalAdd = vi.spyOn(controller.signal, "addEventListener")
     const signalRemove = vi.spyOn(controller.signal, "removeEventListener")
     getUserMedia.mockResolvedValue(mediaStream(track))
-    const decoder = await loadDecoder()
-    const handle = await decoder.startQrScan(
+    const cameraScan = await loadCameraScan()
+    const handle = await cameraScan.startQrScan(
       asVideoElement(fakeVideo),
       vi.fn(),
       vi.fn(),

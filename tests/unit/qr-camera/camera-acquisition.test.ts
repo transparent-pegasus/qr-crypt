@@ -4,7 +4,7 @@ import {
   FakeTrack,
   flushMicrotasks,
   getUserMedia,
-  loadDecoder,
+  loadCameraScan,
   mediaStream,
   videoElement,
 } from "./scanner-harness"
@@ -21,8 +21,8 @@ describe("camera acquisition", () => {
       .mockRejectedValueOnce(new DOMException("camera", "NotReadableError"))
       .mockResolvedValueOnce(mediaStream(track))
     const onError = vi.fn()
-    const decoder = await loadDecoder()
-    const scanPromise = decoder.startQrScan(
+    const cameraScan = await loadCameraScan()
+    const scanPromise = cameraScan.startQrScan(
       videoElement(),
       vi.fn(),
       onError,
@@ -41,9 +41,9 @@ describe("camera acquisition", () => {
   it("reports a persistent transient acquisition failure after three retries", async () => {
     getUserMedia.mockRejectedValue(new DOMException("camera", "NotReadableError"))
     const onError = vi.fn()
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     const rejection = expect(
-      decoder.startQrScan(videoElement(), vi.fn(), onError),
+      cameraScan.startQrScan(videoElement(), vi.fn(), onError),
     ).rejects.toMatchObject({ code: "CAMERA_NOT_AVAILABLE" })
     await flushMicrotasks()
 
@@ -88,15 +88,15 @@ describe("camera acquisition", () => {
           acquisitionsInFlight -= 1
         }
       })
-    const decoder = await loadDecoder()
-    const firstPromise = decoder.startQrScan(videoElement(), vi.fn(), vi.fn())
+    const cameraScan = await loadCameraScan()
+    const firstPromise = cameraScan.startQrScan(videoElement(), vi.fn(), vi.fn())
     const firstRejection = expect(firstPromise).rejects.toMatchObject({
       code: "CAMERA_NOT_AVAILABLE",
     })
     await flushMicrotasks()
     expect(getUserMedia).toHaveBeenCalledOnce()
 
-    const secondPromise = decoder.startQrScan(
+    const secondPromise = cameraScan.startQrScan(
       videoElement(),
       vi.fn(),
       vi.fn(),
@@ -121,8 +121,8 @@ describe("camera acquisition", () => {
     const firstTrack = new FakeTrack()
     const secondTrack = new FakeTrack()
     getUserMedia.mockResolvedValue(mediaStream(firstTrack, secondTrack))
-    const decoder = await loadDecoder()
-    const handle = await decoder.startQrScan(
+    const cameraScan = await loadCameraScan()
+    const handle = await cameraScan.startQrScan(
       videoElement(),
       vi.fn(),
       vi.fn(),
@@ -137,15 +137,15 @@ describe("camera acquisition", () => {
   })
 
   it("uses visibility restart only to request the stopped UI", async () => {
-    const decoder = await loadDecoder()
+    const cameraScan = await loadCameraScan()
     expect(
-      decoder.shouldRestartQrScanOnVisibility("failed", "visible"),
+      cameraScan.shouldRestartQrScanOnVisibility("failed", "visible"),
     ).toBe(true)
     expect(
-      decoder.shouldRestartQrScanOnVisibility("track-ended", "visible"),
+      cameraScan.shouldRestartQrScanOnVisibility("track-ended", "visible"),
     ).toBe(true)
     expect(
-      decoder.shouldRestartQrScanOnVisibility("failed", "hidden"),
+      cameraScan.shouldRestartQrScanOnVisibility("failed", "hidden"),
     ).toBe(false)
   })
 })
