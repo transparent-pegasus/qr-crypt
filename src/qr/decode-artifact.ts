@@ -28,7 +28,7 @@ type DecodedPayload =
   | { kind: "sym-message"; envelope: SymMessageEnvelopeV2 }
   | { kind: "symmetric-key"; envelope: SymmetricKeyEnvelopeV2 }
   | { kind: "pq-public-identity"; envelope: PublicIdentityBundleV2 }
-  | { kind: "frame"; envelope: QrFrameV2; frame: QrFrameV2 }
+  | { kind: "frame"; envelope: QrFrameV2 }
 
 function decodeV2Payload(text: string): DecodedPayload {
   const classified = classifyV2Payload(text)
@@ -38,7 +38,7 @@ function decodeV2Payload(text: string): DecodedPayload {
     if (frame.artifactType === "encrypted-seed-backup") {
       throw new AppError("UNSUPPORTED_ALGORITHM")
     }
-    return { kind: "frame", envelope: frame, frame }
+    return { kind: "frame", envelope: frame }
   }
 
   const artifact = splitV2Payload(text)
