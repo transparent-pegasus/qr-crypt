@@ -9,13 +9,9 @@ import type {
   PublicIdentityBundleV2,
 } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
+import { assertUsableIdentity } from "@/crypto/pq/identity-policy"
 import { PQ_PROFILES } from "@/crypto/pq/profiles"
-import {
-  ACTIVE_PROFILE,
-  assertActiveProfile,
-  assertActiveSuite,
-  resolveSuite,
-} from "@/crypto/pq/suites"
+import { ACTIVE_PROFILE, assertActiveProfile } from "@/crypto/pq/suites"
 import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
 import { generateKeyId } from "@/crypto/random"
 import { keyNameSchema } from "@/schemas/key-schema"
@@ -44,11 +40,6 @@ function generateDistinctIdentityIds(): [string, string, string] {
   if (ids.size !== 3) throw new AppError("ENCRYPTION_FAILED")
   const values = [...ids]
   return [values[0]!, values[1]!, values[2]!]
-}
-
-function assertActiveIdentity(identity: PostQuantumIdentity): void {
-  assertActiveProfile(identity.profile)
-  assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
 }
 
 export async function createIdentity(
@@ -131,7 +122,7 @@ interface RotatedIdentity {
 export async function rotateIdentity(args: RotateIdentityArgs): Promise<RotatedIdentity> {
   try {
     assertTimestamp(args.now)
-    assertActiveIdentity(args.current)
+    assertUsableIdentity(args.current)
     if (args.current.status !== "active" || args.now < args.current.createdAt) {
       throw new AppError("ENCRYPTION_FAILED")
     }
@@ -156,7 +147,7 @@ export async function rotateIdentity(args: RotateIdentityArgs): Promise<RotatedI
 }
 
 export function buildPublicBundle(identity: PostQuantumIdentity): PublicIdentityBundleV2 {
-  assertActiveIdentity(identity)
+  assertUsableIdentity(identity)
   return {
     version: 2,
     type: "pq-public-identity",
