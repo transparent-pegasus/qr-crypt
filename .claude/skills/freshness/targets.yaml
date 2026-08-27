@@ -489,6 +489,7 @@ units:
     files:
       - src/i18n/catalog-en.ts # canonical disclosure copy, en (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/i18n/catalog-ja.ts # the same disclosure copy, ja; both locales move together
+      - src/pages/settings-confirmations.ts # exact destructive ceremony phrases mirrored in both catalogs
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
       - src/components/key-add-dialog.tsx # experimental / not-independently-audited banners
       - src/components/online-gate.tsx # offline-switch compromise-assumption copy
@@ -510,7 +511,7 @@ units:
       ML-KEM / wipe honesty wording against the same docs, and keep
       public/about/index.html and messages.js in step — the English text lives
       only in the HTML, the other locales only in messages.js.
-    verify: aube run test -- tests/ui/keys.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
+    verify: aube run test -- tests/unit/i18n.test.ts tests/ui/keys.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
 
   - id: readme
     category: docs
