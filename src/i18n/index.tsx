@@ -21,10 +21,10 @@ import {
   LANGUAGES,
   isMessageKey,
   translate,
-  type InterpolationValues,
   type Language,
   type MessageKey,
 } from "@/i18n/messages"
+import type { InterpolationValues } from "@/i18n/interpolate"
 import { errorMessageKey, isErrorCode, type ErrorCode } from "@/crypto/errors"
 import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
 
