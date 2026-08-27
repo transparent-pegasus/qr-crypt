@@ -12,6 +12,7 @@ import {
 import { interpolateMessage } from "@/i18n/interpolate"
 import {
   DELETE_ALL_CONFIRMATION,
+  DISABLE_WIPE_CONFIRMATION,
   KEEP_KEYS_CONFIRMATION,
 } from "@/pages/settings-confirmations"
 
@@ -120,6 +121,9 @@ describe("i18n catalog", () => {
       )
       expect(translate(language, "settings.delete.desc.reset")).toContain(
         DELETE_ALL_CONFIRMATION,
+      )
+      expect(translate(language, "settings.wipeOff.body")).toContain(
+        DISABLE_WIPE_CONFIRMATION,
       )
     }
   })
