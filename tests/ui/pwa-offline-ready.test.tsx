@@ -1,9 +1,14 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/feature-detection"
+import "./helpers/module-mocks/pwa"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { useEffect, useState } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { UseRegisterSwHook } from "@/components/pwa-offline-ready"
-import { fakeFeatures, fakePwa, useFakeRegisterSW } from "./helpers/fakes"
+import { fakeFeatures } from "./helpers/fakes/feature-detection"
+import {
+  fakePwa,
+  useFakeRegisterSW,
+} from "./helpers/fakes/pwa"
 import { resetUi } from "./helpers/render-app"
 
 function useOfflineReadyAfterMount() {

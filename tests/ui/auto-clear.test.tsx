@@ -1,16 +1,10 @@
+import "./helpers/module-mocks/feature-detection"
 import { act, render } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"
-import * as fakes from "./helpers/fakes"
+import * as fakes from "./helpers/fakes/feature-detection"
 import { resetUi } from "./helpers/render-app"
-
-vi.mock("@/lib/feature-detect", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/feature-detect")>()),
-  detectFeatures: fakes.detectFeatures,
-  probeWebAssemblyRuntime: fakes.probeWebAssemblyRuntime,
-  webAssemblyRuntimeSupport: fakes.webAssemblyRuntimeSupport,
-}))
 
 function setVisibility(value: DocumentVisibilityState): void {
   Object.defineProperty(document, "visibilityState", {

@@ -1,4 +1,14 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/feature-detection"
+import "./helpers/module-mocks/pwa"
+import "./helpers/module-mocks/preferences"
+import "./helpers/module-mocks/crypto-runtime"
+import "./helpers/module-mocks/symmetric-crypto"
+import "./helpers/module-mocks/pq-crypto"
+import "./helpers/module-mocks/qr-codec"
+import "./helpers/module-mocks/qr-scanner"
+import "./helpers/module-mocks/key-records"
+import "./helpers/module-mocks/pq-records"
+import "./helpers/module-mocks/browser-effects"
 import { useState } from "react"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -17,36 +27,44 @@ import type {
   StoredKeyRecord,
 } from "@/schemas/domain"
 import { deferred } from "../helpers/deferred"
+import { fakeFeatures } from "./helpers/fakes/feature-detection"
+import { updatePreferences } from "./helpers/fakes/preferences"
+import {
+  buildSymmetricKeyEnvelopeV2,
+  rotateSymmetricKeyRecord,
+  sealSymMessage,
+} from "./helpers/fakes/symmetric-crypto"
+import {
+  encodeSymmetricKeyEnvelopeV2,
+  renderQrDataUrl,
+  splitIntoFrames,
+} from "./helpers/fakes/qr-codec"
+import {
+  deleteKeyRecord,
+  fakeKeys,
+  getActiveKeyRecord,
+  listKeyRecords,
+  renameKeyRecord,
+  saveSymmetricRotation,
+} from "./helpers/fakes/key-records"
 import {
   confirmBundleFingerprint,
-  buildSymmetricKeyEnvelopeV2,
-  copyTextToClipboard,
   deleteBundle,
   deleteIdentity,
-  deleteKeyRecord,
   deleteSupersededIdentities,
   fakeBundles,
-  fakeFeatures,
   fakeIdentities,
-  fakeKeys,
-  encodeSymmetricKeyEnvelopeV2,
-  getActiveKeyRecord,
   listIdentities,
-  listKeyRecords,
   renameIdentity,
-  renameKeyRecord,
-  renderQrDataUrl,
-  qrPngBlob,
   revokeBundle,
   revokeIdentity,
-  rotateSymmetricKeyRecord,
   saveRotation,
-  saveSymmetricRotation,
-  sealSymMessage,
-  splitIntoFrames,
+} from "./helpers/fakes/pq-records"
+import {
+  copyTextToClipboard,
+  qrPngBlob,
   triggerDownload,
-  updatePreferences,
-} from "./helpers/fakes"
+} from "./helpers/fakes/browser-effects"
 import { expectSingleAlertCancelWithoutClose } from "./helpers/dialog-assertions"
 import { renderApp, resetUi } from "./helpers/render-app"
 

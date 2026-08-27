@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react"
 import { createElement, type ComponentProps } from "react"
 import { expect } from "vitest"
-import { resetFakes } from "./fakes"
+import { resetFakes } from "./fakes/reset"
 import { setTestOnlineStatus } from "./network"
 import { clearAckPending } from "@/app/offline-ack-marker"
 import { MemoryStorage } from "../../helpers/memory-storage"
