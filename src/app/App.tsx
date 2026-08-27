@@ -28,7 +28,7 @@ import {
   useI18n,
   type Language,
 } from "@/i18n"
-import { warmQrReader } from "@/qr/decode"
+import { warmQrReader } from "@/qr/camera-scan"
 
 export interface AppProps {
   bootController?: BootController

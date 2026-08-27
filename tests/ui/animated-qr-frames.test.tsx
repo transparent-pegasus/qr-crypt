@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { encodeFrameToPayload } from "@/qr/wire-codec"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"

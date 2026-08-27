@@ -15,7 +15,7 @@ import {
   TriangleAlert,
 } from "lucide-react"
 import type { QrFrameV2 } from "@/schemas/domain"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { encodeFrameToPayload } from "@/qr/wire-codec"
 import { exportQrFramePayloads } from "@/qr/export-frames"
 import { toAppError } from "@/crypto/errors"
 import { formatFramePositions } from "@/features/presentation"

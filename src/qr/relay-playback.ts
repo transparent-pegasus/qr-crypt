@@ -1,5 +1,5 @@
 import { renderQrDataUrl } from "@/qr/encode"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { encodeFrameToPayload } from "@/qr/wire-codec"
 import { parseRelayText, type RelayParseErrorCode } from "@/qr/relay-frames"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"

@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { resetDefaultBootControllerForTesting } from "@/app/boot/boot-controller"
 import { formatFingerprint } from "@/features/presentation"
 import { translate } from "@/i18n/messages"
-import { buildV2Payload } from "@/qr/payload-v2"
+import { buildV2Payload } from "@/qr/wire-codec"
 import type {
   PublicIdentityBundleV2,
   StoredKeyRecord,

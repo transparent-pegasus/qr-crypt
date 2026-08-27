@@ -38,8 +38,8 @@ import { usePqRecords } from "@/hooks/use-pq-records"
 import { usePreferences } from "@/hooks/use-preferences"
 import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
 import { countUnicodeFormatCharacters } from "@/lib/bytes"
-import { buildV2Payload } from "@/qr/payload-v2"
-import { decodePayload } from "@/qr/payload"
+import { decodePayload } from "@/qr/decode-artifact"
+import { buildV2Payload } from "@/qr/wire-codec"
 import type { WireSuite } from "@/schemas/domain"
 
 function isActiveWireSuite(suite: WireSuite): boolean {

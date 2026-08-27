@@ -17,8 +17,8 @@ const readerModuleState = vi.hoisted(() =>
 )
 const warmQrReader = vi.hoisted(() => vi.fn<() => Promise<void>>())
 
-vi.mock("@/qr/decode", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/qr/decode")>()),
+vi.mock("@/qr/camera-scan", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/qr/camera-scan")>()),
   readerModuleState,
   startQrScan: scanStart,
   warmQrReader,
@@ -60,7 +60,7 @@ import {
   decodeFramePayload,
   encodeFrameToPayload,
   QR_PREFIX_V2,
-} from "@/qr/payload-v2"
+} from "@/qr/wire-codec"
 import type {
   MlKemMessageEnvelopeV2,
   QrFrameV2,

@@ -4,7 +4,7 @@ import {
   CAMERA_READER_READY_TIMEOUT_MS,
   readerModuleState,
   warmQrReader,
-} from "@/qr/decode"
+} from "@/qr/camera-scan"
 
 const QR_READER_CLASSIFICATION_TIMEOUT_MS = 2_000
 

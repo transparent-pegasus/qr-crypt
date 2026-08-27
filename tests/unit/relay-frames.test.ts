@@ -7,7 +7,7 @@ import {
 } from "@/crypto/pq/canonical-cbor"
 import { toBase64Url } from "@/lib/base64url"
 import { FRAME_BYTES_MAX, PROTOCOL_MAX_FRAMES } from "@/lib/limits"
-import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
+import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/wire-codec"
 import {
   acceptRelayCapture,
   EMPTY_RELAY_CAPTURE,

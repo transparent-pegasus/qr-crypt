@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { QR_PREFIX_V2 } from "@/qr/payload-v2"
+import { QR_PREFIX_V2 } from "@/qr/wire-codec"
 
 describe("payload prefix contract", () => {
   it("payload prefixes expose only the v2 wire family", () => {

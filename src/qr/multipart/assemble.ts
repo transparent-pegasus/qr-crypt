@@ -27,7 +27,7 @@ import {
   type FrameTransferMetadata,
   type TransferState,
 } from "@/qr/multipart/transfer-state"
-import { decodeFramePayload } from "@/qr/payload-v2"
+import { decodeFramePayload } from "@/qr/wire-codec"
 import { V2_ARTIFACT_TYPES } from "@/schemas/domain"
 
 interface TransferAssemblerOptions {
