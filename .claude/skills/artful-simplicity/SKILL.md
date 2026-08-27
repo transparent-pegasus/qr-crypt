@@ -12,5 +12,3 @@ Local reading judges clarity, not necessity. Rewrite may follow from sight only 
 Before changing behavior, name the change, the observer, the safety direction, and the broken alternative. Direction decides, not size.
 
 Exclude append-only/frozen targets in `../freshness/targets.yaml`.
-
-
