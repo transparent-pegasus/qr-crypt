@@ -1,4 +1,5 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/qr-codec"
+import "./helpers/module-mocks/browser-effects"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState, type ReactNode } from "react"

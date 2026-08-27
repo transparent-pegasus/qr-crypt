@@ -1,4 +1,7 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/feature-detection"
+import "./helpers/module-mocks/pwa"
+import "./helpers/module-mocks/preferences"
+import "./helpers/module-mocks/qr-scanner"
 import { act, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -10,7 +13,7 @@ import {
 import { translate } from "@/i18n/messages"
 import type { BestEffortResetReport } from "@/storage/best-effort-reset"
 import { decision, response } from "../helpers/boot-fixtures"
-import { getPreferences } from "./helpers/fakes"
+import { getPreferences } from "./helpers/fakes/preferences"
 import {
   expectLanguageField,
   renderApp,
