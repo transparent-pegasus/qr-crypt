@@ -60,7 +60,7 @@ import {
   type LocalizedMessage,
 } from "@/i18n"
 import { cn } from "@/lib/utils"
-import { decodePayload } from "@/qr/payload"
+import { decodePayload } from "@/qr/decode-artifact"
 import type {
   PqPublicBundleRecord,
   PublicIdentityBundleV2,

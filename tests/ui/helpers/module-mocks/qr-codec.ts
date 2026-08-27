@@ -24,8 +24,8 @@ vi.mock("@/crypto/pq/canonical-cbor", async (importOriginal) => {
     decodePublicIdentityBundleV2: fakes.decodePublicIdentityBundleV2,
   }
 })
-vi.mock("@/qr/payload", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/qr/payload")>()),
+vi.mock("@/qr/decode-artifact", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/qr/decode-artifact")>()),
   decodePayload: fakes.decodePayload,
   payloadSha256Hex: fakes.payloadSha256Hex,
 }))

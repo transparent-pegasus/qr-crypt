@@ -11,8 +11,8 @@ import {
 import { generateKeyId } from "@/crypto/random"
 import { dropVaultKeyCache, getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { utf8ToBytes } from "@/lib/bytes"
-import { buildV2Payload } from "@/qr/payload-v2"
-import { decodePayload } from "@/qr/payload"
+import { decodePayload } from "@/qr/decode-artifact"
+import { buildV2Payload } from "@/qr/wire-codec"
 import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
 import {
   closeDb,

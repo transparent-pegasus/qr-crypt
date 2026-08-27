@@ -11,7 +11,7 @@ import {
   pqIdentityFingerprint,
   pqKeyFingerprint,
 } from "@/crypto/pq/wire-bytes"
-import { encodeFrameToPayload, decodeFramePayload, QR_PREFIX_V2, classifyV2Payload, splitV2Payload } from "@/qr/payload-v2"
+import { encodeFrameToPayload, decodeFramePayload, QR_PREFIX_V2, classifyV2Payload, splitV2Payload } from "@/qr/wire-codec"
 import { bytesToHex } from "@/lib/bytes"
 import {
   FRAME_CHUNK_MAX_BYTES,

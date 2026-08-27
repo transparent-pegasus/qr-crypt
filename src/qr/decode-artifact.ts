@@ -21,7 +21,7 @@ import {
   validateSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/validation"
 import { sha256Hex, utf8ToBytes } from "@/lib/bytes"
-import { classifyV2Payload, decodeFramePayload, splitV2Payload } from "@/qr/payload-v2"
+import { classifyV2Payload, decodeFramePayload, splitV2Payload } from "@/qr/wire-codec"
 
 type DecodedPayload =
   | { kind: "pq-message"; envelope: MlKemMessageEnvelopeV2 }

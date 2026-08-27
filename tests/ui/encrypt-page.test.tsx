@@ -18,7 +18,7 @@ import {
   FRAME_BYTES_VALUES,
   MAX_SYM_PLAINTEXT_BYTES,
 } from "@/lib/limits"
-import { decodeFramePayload } from "@/qr/payload-v2"
+import { decodeFramePayload } from "@/qr/wire-codec"
 import { translate } from "@/i18n/messages"
 import type {
   MlKemMessageEnvelopeV2,

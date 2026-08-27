@@ -20,7 +20,7 @@ import {
   MAX_V2_PAYLOAD_CHARS,
   QR_PREFIX_V2,
   splitV2Payload,
-} from "@/qr/payload-v2"
+} from "@/qr/wire-codec"
 
 const MILLISECONDS_PER_MINUTE = 60_000
 const ACCEPTED_BARE_V2_KINDS = ["pq-message", "pq-public-identity"] as const

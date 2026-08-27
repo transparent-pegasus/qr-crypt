@@ -11,8 +11,8 @@ import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { isUsableBundle, isUsableIdentity } from "@/crypto/pq/identity-policy"
 import { recordReceipt, type ReceiptVerdict } from "@/features/receipt-cache"
 import { bytesToHex, bytesToUtf8 } from "@/lib/bytes"
-import { buildV2Payload } from "@/qr/payload-v2"
-import { payloadSha256Hex } from "@/qr/payload"
+import { payloadSha256Hex } from "@/qr/decode-artifact"
+import { buildV2Payload } from "@/qr/wire-codec"
 import type {
   MlKemMessageEnvelopeV2,
   PqPublicBundleRecord,

@@ -14,8 +14,8 @@ import {
   renderQrSvgString,
 } from "@/qr/encode"
 import { buildExportFileName, qrSvgBlob, sanitizeQrFileName } from "@/qr/export-image"
-import { decodePayload, payloadSha256Hex } from "@/qr/payload"
-import { isQrCryptPayload, QR_PREFIX_V2 } from "@/qr/payload-v2"
+import { decodePayload, payloadSha256Hex } from "@/qr/decode-artifact"
+import { isQrCryptPayload, QR_PREFIX_V2 } from "@/qr/wire-codec"
 import {
   OCK1_SYMMETRIC_KEY,
   OCM1_MESSAGE_33,

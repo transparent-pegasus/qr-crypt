@@ -20,7 +20,7 @@ import { formatDateTime } from "@/features/presentation"
 import { LanguageProvider } from "@/i18n"
 import { translate } from "@/i18n/messages"
 import { FRAME_BYTES_VALUES } from "@/lib/limits"
-import { buildV2Payload, decodeFramePayload } from "@/qr/payload-v2"
+import { buildV2Payload, decodeFramePayload } from "@/qr/wire-codec"
 import type {
   PostQuantumIdentity,
   PqPublicBundleRecord,
