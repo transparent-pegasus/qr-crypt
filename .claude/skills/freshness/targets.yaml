@@ -107,7 +107,7 @@ units:
   - id: ci-actions
     category: dependencies
     cadence_days: 60
-    last_checked: 2026-08-08
+    last_checked: 2026-09-07
     files:
       - .github/workflows/cloudflare-pages.yml
       - .github/workflows/dev-to-main-pr.yml
@@ -537,7 +537,7 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-09-06
+    last_checked: 2026-09-07
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together
