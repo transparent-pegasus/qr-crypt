@@ -180,7 +180,7 @@ validation or an independent security assessment. Current status and blockers:
 * [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — Browser verification matrix and reference measurements
 * [docs/develop/deviations.md](docs/develop/deviations.md) — Managed deviations from the specification
 * [SECURITY.md](SECURITY.md) — Reporting a vulnerability
-* [design-system/](design-system/) — Design system derived from ui-ux-pro-max
+* [design-system/](design-system/) — Archived design snapshots and provenance derived from ui-ux-pro-max; not current implementation specifications
 * [LICENSE](LICENSE) — Apache License 2.0, under which this project is distributed
 * [design-system/PROVENANCE.md](design-system/PROVENANCE.md) — Provenance of the archival design-system exports, which include MIT-licensed generator output
 

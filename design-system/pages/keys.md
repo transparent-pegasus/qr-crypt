@@ -1,6 +1,9 @@
 # /keys — 鍵一覧ページ
 
-MASTER.md を継承。旧 `/saved` 相当の鍵一覧。ページ見出し・サブタイトルは出さない。作成・読込 UI はページ本体ではなく `KeyAddDialog` モーダル(`src/components/key-add-dialog.tsx`)に置く。
+> **アーカイブ（現行実装の仕様ではありません）。** ここに記された RSA・OCM1・EC レベル選択を現行実装の要件として採用しないでください。
+> 来歴と保存範囲は [README](../README.md) を参照してください。現行実装は [ソース](../../src/)・[テスト](../../tests/)、契約は [QR プロトコル仕様](../../docs/spec/qr-protocol-v2.md)・[起動とリセットの仕様](../../docs/spec/boot-and-reset-v2.md) を参照してください。
+
+以下は当時の MASTER.md を前提としたページ別設計記録です。旧 `/saved` 相当の鍵一覧。ページ見出し・サブタイトルは出さない。作成・読込 UI はページ本体ではなく `KeyAddDialog` モーダル(`src/components/key-add-dialog.tsx`)に置く。
 
 ## 一覧クロム
 
