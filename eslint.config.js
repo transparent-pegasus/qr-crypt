@@ -71,6 +71,11 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } },
   },
   {
+    files: ["scripts/release/validate-static-closure.cjs"],
+    languageOptions: { sourceType: "commonjs", globals: { ...globals.node } },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  {
     // Static landing page under public/: plain browser modules, no build step.
     files: ["public/**/*.js"],
     languageOptions: { globals: { ...globals.browser } },
