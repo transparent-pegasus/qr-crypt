@@ -6,6 +6,36 @@ type HandoffWindow = Window & {
   relayHandoff: { requested: boolean; completed: boolean; resume: () => void }
 }
 
+async function openProbePage(page: Page): Promise<Page> {
+  // Inherit A's origin without a navigation the service worker could turn into
+  // another app client, whose boot-time storage check would contend with us.
+  const popup = page.waitForEvent("popup")
+  await page.evaluate(() => {
+    window.open("about:blank")
+  })
+  const second = await popup
+  expect(await second.opener()).toBe(page)
+  expect(
+    await second.evaluate(async () => ({
+      origin: window.origin,
+      readyState: document.readyState,
+      body: document.body.innerHTML,
+      scripts: document.scripts.length,
+      nativeLocks: navigator.locks instanceof LockManager,
+      databases: (await indexedDB.databases()).map(({ name }) => name),
+    })),
+  ).toEqual({
+    origin: new URL(page.url()).origin,
+    readyState: "complete",
+    body: "",
+    scripts: 0,
+    nativeLocks: true,
+    databases: expect.arrayContaining(["qr-crypt"]),
+  })
+  expect(await page.evaluate(() => navigator.locks instanceof LockManager)).toBe(true)
+  return second
+}
+
 // Delay only the handoff to the native API. All requests still use Chromium's
 // real origin-wide Web Locks, and every IDB transaction below is real. This
 // instrumentation lives exclusively in the test; the app exposes no test hook.
@@ -127,17 +157,13 @@ async function sharedLock(page: Page): Promise<string> {
 
 for (const store of ["keys", "pqIdentities", "appMetadata"] as const) {
   test(`refuses stale clean eligibility after page B completes a ${store} write before page A acquires its lease`, async ({
-    context,
     page,
   }) => {
     await loadOnlineGate(page)
     await page.getByRole("button", { name: "Relay", exact: true }).click()
     const open = page.getByRole("button", { name: "Text → QR" })
     await expect(open).toBeEnabled() // A has recorded the old clean proof.
-    const second = await context.newPage()
-    await second.goto("/reachability-sentinel.txt")
-    expect(new URL(second.url()).origin).toBe(new URL(page.url()).origin)
-    expect(await page.evaluate(() => navigator.locks instanceof LockManager)).toBe(true)
+    const second = await openProbePage(page)
     await pauseSessionRequest(page)
     try {
       await open.click()
@@ -188,13 +214,11 @@ for (const store of ["keys", "pqIdentities", "appMetadata"] as const) {
 }
 
 test("pagehide cancels a delayed native admission without reopening or retaining the lock", async ({
-  context,
   page,
 }) => {
   await loadOnlineGate(page)
   await page.getByRole("button", { name: "Relay", exact: true }).click()
-  const second = await context.newPage()
-  await second.goto("/reachability-sentinel.txt")
+  const second = await openProbePage(page)
   await pauseSessionRequest(page)
   try {
     await page.getByRole("button", { name: "Text → QR" }).click()
@@ -222,7 +246,6 @@ test("pagehide cancels a delayed native admission without reopening or retaining
 })
 
 test("a held relay lease blocks a real IDB writer until the dialog closes", async ({
-  context,
   page,
 }) => {
   await loadOnlineGate(page)
@@ -230,8 +253,7 @@ test("a held relay lease blocks a real IDB writer until the dialog closes", asyn
   await page.getByRole("button", { name: "Text → QR" }).click()
   const dialog = page.getByRole("dialog", { name: "Turn relay text into QR" })
   await expect(dialog).toBeVisible()
-  const second = await context.newPage()
-  await second.goto("/reachability-sentinel.txt")
+  const second = await openProbePage(page)
   let completed = false
   const write = cooperatingWrite(second, "keys").then(() => {
     completed = true
