@@ -813,7 +813,7 @@ describe("online relay UI", () => {
             serviceWorker: true,
           }}
         >
-          <OnlineRelay eligible />
+          <OnlineRelay eligible onSessionAcquire={acquireRelayLease} />
         </FeatureSupportProvider>
       </LanguageProvider>,
     )

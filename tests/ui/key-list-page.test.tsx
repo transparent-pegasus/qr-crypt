@@ -211,9 +211,30 @@ describe("key list page", () => {
 
     await user.click(rowFor("自分のPQ ID"))
     let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    expect(within(dialog).getByText("3".repeat(64))).toBeInTheDocument()
-    expect(within(dialog).getByText("1".repeat(64))).toBeInTheDocument()
-    expect(within(dialog).getByText("2".repeat(64))).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        "3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333",
+        { exact: false },
+      ),
+    ).toBeVisible()
+    const supplementalDisclosure = within(dialog).getByText(
+      "Supplemental KEM and signing fingerprints",
+      { exact: true },
+    )
+    expect(supplementalDisclosure).toBeVisible()
+    await user.click(supplementalDisclosure)
+    expect(
+      within(dialog).getByText(
+        "1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111",
+        { exact: false },
+      ),
+    ).toBeVisible()
+    expect(
+      within(dialog).getByText(
+        "2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222",
+        { exact: false },
+      ),
+    ).toBeVisible()
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
     await user.click(kindFilter)

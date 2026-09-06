@@ -200,7 +200,12 @@ describe("keys page", () => {
     await waitFor(() => expect(createIdentity).toHaveBeenCalledOnce())
     expect(fakeIdentities).toHaveLength(identityCount + 1)
     dialog = await screen.findByRole("dialog", { name: "新しいPQ ID" })
-    expect(within(dialog).getByText("3".repeat(64))).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        "3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333",
+        { exact: false },
+      ),
+    ).toBeVisible()
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
     expect(screen.queryByText(/Create a maximum ID/)).not.toBeInTheDocument()
   })

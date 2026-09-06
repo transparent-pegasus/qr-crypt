@@ -61,6 +61,14 @@ test("saved-key confirmation wraps all 64 identity digits at 320px with secondar
   const identity = dialog.getByText(IDENTITY_COMPARISON, { exact: false })
   await expect(identity).toBeVisible()
   await expect(dialog.getByRole("checkbox")).toHaveAccessibleName(/64/)
+  // Visibility precedes the end of the dialog's opening animation.
+  await dialog.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations()
+        .filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+        .map((animation) => animation.finished),
+    )
+  })
   const dialogBounds = await dialog.boundingBox()
   expect(dialogBounds).not.toBeNull()
   expect(dialogBounds!.x).toBeGreaterThanOrEqual(0)
@@ -89,6 +97,12 @@ test("saved-key confirmation wraps all 64 identity digits at 320px with secondar
   expect(layout.clipped).toBe(false)
   expect(layout.pageOverflow).toBe(false)
   expect(layout.elementOverflow).toBe(false)
+  const supplementalDisclosure = dialog.getByText(
+    "Supplemental KEM and signing fingerprints",
+    { exact: true },
+  )
+  await expect(supplementalDisclosure).toBeVisible()
+  await supplementalDisclosure.click()
   for (const text of [KEM_COMPARISON, SIGNING_COMPARISON]) {
     const supplemental = dialog.getByText(text, { exact: false })
     await expect(supplemental).toBeVisible()
