@@ -286,9 +286,10 @@
             Throughout all six steps, plaintext remains on the offline devices. Only
             ciphertext and the framing data needed to carry it cross the boundary. The
             key-exchange process depends on the method. A symmetric key is scanned in one
-            direction only. With post-quantum identities, each person must scan the other
-            person’s public key when signatures are used or messages travel in both
-            directions. The steps below show the post-quantum identity workflow.
+            direction only. With post-quantum identities, each person scans the other’s
+            public identity even for one-way messages. The sender needs the recipient’s
+            public encryption key, and the recipient needs the sender’s public signing key.
+            The steps below show the post-quantum identity workflow.
           </p>
 
           <div class="flow">
@@ -393,8 +394,8 @@
                   ><span data-i18n="flow.s3.where">Encrypt page</span>
                 </p>
                 <p class="step__note" data-i18n="flow.s3.note">
-                  Encrypt the message with the recipient’s key. If you choose a signed
-                  suite, your key signs the message so the recipient can verify who sent it.
+                  Encrypt the message with the recipient’s key. Every post-quantum message
+                  is signed with the sender’s key, and the recipient verifies its signature.
                 </p>
               </li>
 
