@@ -68,6 +68,11 @@ import type {
   V2ArtifactType,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
+import {
+  acquireRelayLease,
+  withSensitiveWriteLock,
+  type RelayLease,
+} from "@/storage/database"
 
 const TRANSFER_ID = new Uint8Array(16).fill(0x11)
 const KEY_ID = "AAECAwQFBgcICQoLDA0ODw"
@@ -236,7 +241,10 @@ async function enterRelayText(
   await user.paste(text)
 }
 
-function relayElement(props: Partial<React.ComponentProps<typeof OnlineRelay>> = {}) {
+function relayElement(
+  props: Partial<React.ComponentProps<typeof OnlineRelay>> = {},
+  authorize = true,
+) {
   return (
     <LanguageProvider initialLanguage="en">
       <FeatureSupportProvider
@@ -247,7 +255,11 @@ function relayElement(props: Partial<React.ComponentProps<typeof OnlineRelay>> =
           serviceWorker: true,
         }}
       >
-        <OnlineRelay eligible {...props} />
+        <OnlineRelay
+          eligible
+          {...(authorize ? { onSessionAcquire: acquireRelayLease } : {})}
+          {...props}
+        />
       </FeatureSupportProvider>
     </LanguageProvider>
   )
@@ -295,6 +307,170 @@ afterEach(() => {
 })
 
 describe("online relay UI", () => {
+  it("fails closed when eligible is true but the admission callback is missing", async () => {
+    render(relayElement({}, false))
+    await userEvent.setup().click(screen.getByRole("button", { name: "Text → QR" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("authorizes only through onSessionAcquire and never refreshes eligibility from openDialog", async () => {
+    const onEligibilityRefresh = vi.fn(async () => true)
+    const onSessionAcquire = vi.fn<(signal: AbortSignal) => Promise<null>>(
+      async () => null,
+    )
+    renderRelay({ onEligibilityRefresh, onSessionAcquire })
+    await userEvent.setup().click(screen.getByRole("button", { name: "Text → QR" }))
+    expect(onEligibilityRefresh).not.toHaveBeenCalled()
+    expect(onSessionAcquire).toHaveBeenCalledWith(expect.any(AbortSignal))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it.each(["denied", "rejected"] as const)(
+    "does not open after a %s admission",
+    async (result) => {
+      renderRelay({
+        onSessionAcquire: async () => {
+          if (result === "rejected") throw new Error("Storage read failed")
+          return null
+        },
+      })
+      await userEvent.setup().click(screen.getByRole("button", { name: "Text → QR" }))
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    },
+  )
+
+  it.each([
+    "hidden",
+    "pagehide",
+    "unmount",
+    "eligibility prop",
+    "eligibility boundary",
+  ] as const)(
+    "aborts a pending admission on %s and releases a stale returned lease",
+    async (boundary) => {
+      const admission = deferred<RelayLease | null>()
+      const lease = await acquireRelayLease()
+      expect(lease).not.toBeNull()
+      let signal: AbortSignal | undefined
+      let endSession:
+        | ((reason: import("@/app/boot/boot-controller").RelaySessionEndReason) => void)
+        | undefined
+      const props: Partial<React.ComponentProps<typeof OnlineRelay>> = {
+        onSessionAcquire: (attemptSignal: AbortSignal) => {
+          signal = attemptSignal
+          return admission.promise
+        },
+        registerRelaySessionEndHandler(handler) {
+          endSession = handler
+          return () => {
+            endSession = undefined
+          }
+        },
+      }
+      const rendered = renderRelay(props)
+      const visibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
+      try {
+        await userEvent.setup().click(screen.getByRole("button", { name: "Text → QR" }))
+        expect(signal).toBeDefined()
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+        if (boundary === "hidden") {
+          Object.defineProperty(document, "visibilityState", {
+            configurable: true,
+            value: "hidden",
+          })
+          act(() => document.dispatchEvent(new Event("visibilitychange")))
+        } else if (boundary === "pagehide") {
+          act(() => window.dispatchEvent(new Event("pagehide")))
+        } else if (boundary === "unmount") rendered.unmount()
+        else if (boundary === "eligibility prop")
+          rendered.rerender(relayElement({ ...props, eligible: false }))
+        else act(() => endSession?.("eligibility-loss"))
+        expect(signal?.aborted).toBe(true)
+
+        // Model a late handoff even when the external operation ignored abort.
+        // Prompt release during an unresolved decision belongs to the real
+        // controller tests, which retain the real read and lease lifecycle.
+        await act(async () => {
+          admission.resolve(lease)
+          await admission.promise
+        })
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+        let completed = false
+        const writer = withSensitiveWriteLock(async () => {
+          completed = true
+        })
+        await waitFor(() => expect(completed).toBe(true), { timeout: 500 })
+        await writer
+      } finally {
+        rendered.unmount()
+        lease?.release()
+        admission.resolve(null)
+        if (visibility) Object.defineProperty(document, "visibilityState", visibility)
+        else Reflect.deleteProperty(document, "visibilityState")
+      }
+    },
+  )
+
+  it("cancels a replaced open and ignores its stale completion after the new dialog closes", async () => {
+    const first = deferred<RelayLease | null>()
+    let firstSignal: AbortSignal | undefined
+    const onSessionAcquire = vi
+      .fn<(signal: AbortSignal) => Promise<RelayLease | null>>()
+      .mockImplementationOnce((signal) => {
+        firstSignal = signal
+        return first.promise
+      })
+      .mockImplementationOnce(acquireRelayLease)
+    const rendered = renderRelay({ onSessionAcquire })
+    const user = userEvent.setup()
+    try {
+      await user.click(screen.getByRole("button", { name: "QR → Text" }))
+      expect(firstSignal).toBeDefined()
+      await user.click(screen.getByRole("button", { name: "Text → QR" }))
+      expect(firstSignal?.aborted).toBe(true)
+      const dialog = await screen.findByRole("dialog", {
+        name: "Turn relay text into QR",
+      })
+      await user.click(within(dialog).getByRole("button", { name: "Close" }))
+      const staleLease = await acquireRelayLease()
+      expect(staleLease).not.toBeNull()
+      try {
+        await act(async () => {
+          first.resolve(staleLease)
+          await first.promise
+        })
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+        let completed = false
+        const writer = withSensitiveWriteLock(async () => {
+          completed = true
+        })
+        await waitFor(() => expect(completed).toBe(true), { timeout: 500 })
+        await writer
+      } finally {
+        staleLease?.release()
+      }
+    } finally {
+      rendered.unmount()
+      first.resolve(null)
+    }
+  })
+
+  it("releases an open lease before requesting a visibility proof lock", async () => {
+    const onEligibilityRefresh = vi.fn(async () => {
+      await withSensitiveWriteLock(async () => undefined)
+      return true
+    })
+    renderRelay({ onEligibilityRefresh })
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    expect(await screen.findByRole("dialog")).toBeVisible()
+    onEligibilityRefresh.mockClear()
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    await waitFor(() => expect(onEligibilityRefresh).toHaveResolvedWith(true), {
+      timeout: 500,
+    })
+  })
   it("describes an OCF2-only pq-message and sym-message relay boundary", () => {
     renderRelay()
 
@@ -1039,26 +1215,6 @@ describe("online relay UI", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     },
   )
-
-  it("does not reopen after pagehide while an open-time proof is pending", async () => {
-    let resolveRefresh: ((eligible: boolean) => void) | undefined
-    const onEligibilityRefresh = vi.fn(
-      () =>
-        new Promise<boolean>((resolve) => {
-          resolveRefresh = resolve
-        }),
-    )
-    renderRelay({ onEligibilityRefresh })
-    const user = userEvent.setup()
-    await user.click(screen.getByRole("button", { name: "QR → Text" }))
-    expect(onEligibilityRefresh).toHaveBeenCalledOnce()
-
-    act(() => window.dispatchEvent(new Event("pagehide")))
-    await act(async () => resolveRefresh?.(true))
-
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-    expect(scanStart).not.toHaveBeenCalled()
-  })
 
   it("stops both camera paths synchronously on eligibility loss", async () => {
     const rendered = renderRelay()
