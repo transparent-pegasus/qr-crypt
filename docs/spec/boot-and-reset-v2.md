@@ -153,18 +153,30 @@ checker remains required.
   sensitive rows therefore publish `ineligible`; they never reuse an earlier
   state object. Every probe, offline request, destructive/terminal transition,
   and peer wipe invalidates relay eligibility.
-- An eligible relay proof is re-read with the same boot scanner before a relay
-  dialog opens and whenever the document becomes visible, and each re-read is
-  taken under the same exclusive hold. After the dialog-opening re-read, the
-  session requests that same origin-wide lock exclusively with `ifAvailable`
-  and holds the acquired lease until the single `endSession` teardown path
-  releases it. A shared lock-taking writer therefore cannot land during a live
-  session, and a writer already inside the lock denies the session instead of
-  making it wait. The remaining stale-signal window between eligibility
-  publication and session acquisition is bounded by the re-reads and costs
-  policy freshness rather than database disclosure. Imported public bundles,
-  deletes, renames, and usage stamps take no such lock; the clean-origin proof
-  counts none of those paths.
+- `refreshRelayEligibility()` is a display-only refresh, not session
+  authorization. The opening callback is
+  `BootController.acquireRelaySession(signal: AbortSignal)`. It obtains the
+  exclusive `acquireRelayLease(signal)` hold before the same boot scanner
+  reads actual key/PQ-identity/Vault stores, and retains that very lease until
+  the single `endSession` teardown path. A completed cooperating write before
+  acquisition is therefore seen by the admission read. An already-held lock
+  denies admission; no second lock-taking refresh occurs inside the lease.
+- Admission checks cancellation and the current controller session,
+  confirmation episode/generations, and eligible network-confirmed lifecycle
+  after each await. Missing callback or Web Locks, acquisition failure,
+  sensitive/indeterminate stores, read failure, cancellation, and stale
+  lifecycle deny admission and release an acquired hold. Cancellation races
+  the decision wait so a read that never settles cannot retain the lease.
+  Late grants and stale UI results release rather than open a dialog.
+- Close/replacement, hide, `pagehide`, persisted `pageshow`, unmount,
+  eligibility loss, and controller teardown abort pending admission and
+  release the session lease through the existing teardown path. Visibility
+  refresh drops the session before taking its separate display proof.
+  These rules close the accepted check-to-lock window; they are not evidence
+  of a database-exfiltration attack. Imported public bundles, deletes,
+  renames, and usage stamps remain outside the sensitive-store proof.
+  The implementation is recorded in security-review §1.4; independent
+  regression verification on the integrated tree remains pending.
 - The active preference and write vocabulary has two algorithms:
   `A256GCM` and `MLKEM1024_MLDSA87_A256GCM`. Boot deliberately has one
   read-only exception: its `defaultAlgorithm` allowlist also accepts the

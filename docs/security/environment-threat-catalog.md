@@ -39,284 +39,294 @@ where consequence and feasibility are recorded separately.
 
 ## Currency
 
-- Catalog created 2026-08-03; entries reviewed on that date.
-- Re-reviewed with the merged nation-state review on 2026-08-08. It found no
-  new environment technique and no entry warranting promotion to a `T` row.
-- Full E1–E12 freshness sweep completed 2026-08-14. It rechecked every named
-  external publication and in-repo record, date, evidence label, relationship,
-  position, and `Touches` reference. No cited source was superseded, and no
-  additional technique or `T`-row promotion was warranted.
-- NSR-05 removes the chunk-length partition channel on the symmetric relay
-  path. E8/T21's dominant capability and severity are unchanged: one legitimate
-  symmetric transfer still has 277 bits of sender-controlled capacity, enough
-  to exfiltrate a whole 256-bit key.
-- E5 now includes Guo, Nabokov, and Johansson's USENIX Security 2026
-  decryption-failure-oracle result. It demonstrates attacks against
-  ML-KEM-768-class targets in lab/native settings, not this JavaScript/browser
-  stack; browser-sandbox restrictions are explicitly outside its scope. The
-  for-this-stack label therefore remains `Speculation`, with no silent upgrade.
-- Registered in `.claude/skills/freshness/targets.yaml` (unit
-  `environment-threats`). A sweep re-checks the dated sources, adds techniques
-  that gained a credible relationship, and records what changed.
-- Cited external sources are dated. A source that has been superseded is
-  replaced, not accumulated.
+- E1–E12 sources and applicability were assessed on 2026-09-07. This updates
+  the 2026-08-14 review; it does not certify a deployment or device.
+- The final USENIX 2026 paper replaces the E5 prepublication account: its
+  ML-KEM-768 result is simulated, while its native experiment uses ML-KEM-512.
+  Neither is an attack measurement on QR Crypt's JS ML-KEM-1024 stack.
+- E1 uses author-hosted papers instead of the old generic repository redirect.
+  E3's original van Eck paper could not be freshly retrieved; Kuhn's paper
+  supports the mechanism. E4's 2004 primary abstract was read, not its full
+  paper. E7's unidentified “2013 disclosures” claim was removed.
+- E8 now names primary demonstrations; E9 distinguishes HTTP interference
+  from authenticated HTTPS; E10 adds the 2026-07-16 sanitization FAQ. E11
+  records the full identity comparison and actual trust decision; E12 retains
+  the sentinel-only limit and points to Route A §7, step 4.
+- No new technique or promotion to a `T` row is justified by this assessment.
+  E8/T21's 277-bit sender-controlled floor in a legitimate symmetric transfer
+  remains unchanged. Source retrieval and exact-device measurement gaps are
+  retained below; this is not an exhaustive search for every possible attack.
+- Registered in `.claude/skills/freshness/targets.yaml` as
+  `environment-threats`. Integrated application/release verification remains
+  pending; the prior `last_checked` date is retained until the complete unit
+  passes. Physical-device and procedure-effectiveness evidence is unmeasured.
 
 ---
 
 ## E1 — Optical capture of a displayed QR
 
-**Relationship.** The QR display *is* the transfer mechanism. Every key QR
-(`OCK2`), public bundle (`OCI2`), and ciphertext frame is rendered on a screen
-that anything with a lens can read, including from an angle the operator cannot
-see. This is the most direct environment technique against the system: it needs
-no software compromise and leaves no trace on the device.
+**Relationship.** Every key QR (`OCK2`), public bundle (`OCI2`), and ciphertext
+frame is displayed for optical transfer. A camera with sufficient sightline
+and resolution may capture it, including from an angle outside the operator's
+view, without software compromise or an application-visible trace.
 
-**Evidence.** `Observed` for direct photography — a rendered QR is readable by
-any lens, which is what makes it a transfer mechanism. `Evidence` for the
-indirect optical paths: Backes, Dürmuth, Unruh, *Compromising Reflections — or How to Read
-LCD Monitors Around the Corner*, IEEE S&P 2008; Backes et al., *Tempest in a
-Teapot: Compromising Reflections Revisited*, IEEE S&P 2009 (reconstruction from
-reflections in eyeglasses, teapots, and eyes at a distance).
+**Evidence.** `Observed` for direct photography of a readable display.
+`Evidence` for indirect optical paths: Backes, Dürmuth, Unruh,
+[*Compromising Reflections* (2008)](https://kodu.ut.ee/~unruh/publications/reflections.pdf),
+and Backes et al.,
+[*Tempest in a Teapot* (2009)](https://www.mia.uni-saarland.de/Publications/backes-sp09.pdf).
+They study reconstruction through reflections; no distance or resolution
+bound for this phone/display has been measured here.
 
-**Position.** `ARCHITECTURAL_RESIDUAL` for the display itself;
-`DEPLOYMENT_ENFORCED` for the room (sightlines, window coverings, no cameras).
-The application contributes only the sensitive-display warning and the
-strong-confirmation gate before export.
+**Position.** `ARCHITECTURAL_RESIDUAL` for the display;
+`DEPLOYMENT_ENFORCED` for sightlines, window coverings, and camera exclusion.
+The app contributes sensitive-display warnings and export confirmation only.
 
 **Touches.** threat-model T3, T19, non-goal 6.
 
 ## E2 — Ambient capture by the application's own camera
 
-**Relationship.** Scanning is user-initiated, but while it runs the camera sees
-whatever is behind the QR: documents on the desk, other screens, people in the
-room. The device cannot narrow its own field of view, and the operator is
-looking at the code, not the frame edges.
+**Relationship.** While a user-initiated scan runs, the camera may capture
+documents, other screens, or people around the QR. QR Crypt provides no
+privacy boundary guaranteeing QR-only acquisition.
 
-**Evidence.** `Observed` — a camera returns the frame in front of it, and
-`getUserMedia` exposes no field-of-view restriction. Definitional, not
-researched; there is nothing to cite and nothing to measure.
+**Evidence.** `Observed` for ambient pixels in a camera frame. The
+[W3C Media Capture and Streams draft (2025-10-09)](https://www.w3.org/TR/2025/CRD-mediacapture-streams-20251009/)
+provides cropping/scaling constraints, but these do not prove that the
+sensor/platform never captured surroundings. Camera teardown is an
+application control; its device timing and the room's protection are separate,
+unmeasured questions.
 
-**Position.** `DEPLOYMENT_ENFORCED` (where scanning happens) plus the in-app
-teardown that bounds *when* the camera is live.
+**Position.** `DEPLOYMENT_ENFORCED` for scan location;
+`REPOSITORY_IMPLEMENTABLE` for teardown bounding when capture is active.
 
 **Touches.** threat-model T12, T19, non-goals 2/3.
 
 ## E3 — Screen electromagnetic emanation (TEMPEST / van Eck)
 
-**Relationship.** A QR is a high-contrast, error-corrected, self-delimiting
-image — the best possible target for a partial screen reconstruction, because
-error correction repairs exactly the degradation such a channel produces. A
-symmetric key QR reconstructed this way is a full key compromise with no
-proximity to the device.
+**Relationship.** Reconstruction of a displayed symmetric-key QR would expose
+the key. Contrast and error correction may assist decoding but do not
+establish receiver feasibility, range, or a phone's emissions.
 
-**Evidence.** Evidence for the mechanism: van Eck, *Electromagnetic Radiation
-from Video Display Units*, Computers & Security, 1985; Kuhn, *Electromagnetic
-Eavesdropping Risks of Flat-Panel Displays*, PETS 2004 (digital flat panels,
-including laptop LCDs, remain readable at distance). Speculation for this stack:
-no measurement exists of QR reconstruction from a modern phone OLED at a stated
-distance, and phone panels are not the displays those papers characterized.
+**Evidence.** `Evidence` for the general mechanism: van Eck,
+*Electromagnetic Radiation from Video Display Units* (1985), and Kuhn,
+[*Electromagnetic Eavesdropping Risks of Flat-Panel Displays* (2004)](https://www.cl.cam.ac.uk/~mgk25/pet2004-fpd.pdf).
+The original van Eck paper could not be freshly retrieved on 2026-09-07;
+Kuhn's studied display/cable mechanisms support this entry. `Speculation` for
+modern phone OLED QR reconstruction at a stated distance: no such measurement
+exists here, and those panels differ from the studied displays.
 
-**Position.** `EXTERNAL_ASSURANCE` (shielding, distance, facility choice). The
-application cannot reduce it; rendering a QR is the feature.
+**Position.** `EXTERNAL_ASSURANCE` for shielding, distance, and facility choice.
+No application resistance follows from the cited demonstrations.
 
-**Touches.** threat-model non-goal 1/5 boundary; no `T` row claims resistance,
-and none may be added without measurement.
+**Touches.** threat-model non-goals 1/5; no `T` row claims resistance.
 
 ## E4 — Acoustic and mechanical emanation while typing plaintext
 
-**Relationship.** Plaintext is typed on the offline device before encryption.
-The acoustic channel bypasses every cryptographic control because it captures
-the message before it becomes a message.
+**Relationship.** Plaintext entry precedes encryption, so observations of
+typing can bypass the message's cryptography.
 
-**Evidence.** Evidence: Asonov & Agrawal, *Keyboard Acoustic Emanations*, IEEE
-S&P 2004; Zhuang, Zhou, Tygar, *Keyboard Acoustic Emanations Revisited*, CCS
-2005; Harrison, Toreini, Mehrnezhad, *A Practical Deep Learning-Based Acoustic
-Side Channel Attack on Keyboards*, EuroS&PW 2023 (phone-microphone and
-video-call recordings of a laptop keyboard). Speculation for this stack:
-touchscreen soft-keyboard entry is the expected input method here and is a
-weaker acoustic target than a mechanical keyboard; motion-sensor variants of the
-same idea exist but are unmeasured for this system.
+**Evidence.** `Evidence` for hardware keyboards: Asonov & Agrawal,
+[*Keyboard Acoustic Emanations* (primary abstract, 2004-08-16)](https://research.ibm.com/publications/keyboard-acoustic-emanations);
+Zhuang, Zhou, Tygar,
+[*Keyboard Acoustic Emanations Revisited* (2005)](https://www.cs.cornell.edu/~shmat/courses/cs6431/zhuang.pdf);
+and Harrison, Toreini, Mehrnezhad,
+[*A Practical Deep Learning-Based Acoustic Side Channel Attack on Keyboards* (submitted 2023-08-02)](https://arxiv.org/abs/2308.01074).
+The 2023 study classifies laptop keys from phone/Zoom recordings, not phone
+touchscreen entry. `Speculation` for the expected touchscreen input here;
+neither its relative weakness nor motion-sensor variants were measured. The
+2004 full paper was not freshly retrieved in this assessment.
 
-**Position.** `DEPLOYMENT_ENFORCED` (no recording devices, including the
-operator's own phone, near the offline device).
+**Position.** `DEPLOYMENT_ENFORCED` for excluding recording devices, including
+the operator's online phone, from plaintext-entry areas.
 
-**Touches.** threat-model non-goal 2; asset row "plaintext".
+**Touches.** threat-model non-goal 2; asset row “plaintext”.
 
 ## E5 — Physical side channels against the cryptographic implementation
 
-**Relationship.** ML-KEM decapsulation and ML-DSA signing run in JavaScript on a
-consumer device. `@noble/post-quantum` documents that constant-time execution is
-not guaranteed under JS/JIT, and the ML-KEM implicit-rejection path is named
-explicitly. Timing, power, and EM channels are the classical way to turn that
-into key recovery.
+**Relationship.** ML-KEM-1024 decapsulation and ML-DSA-87 signing run in
+JavaScript. The selected
+[Noble 0.7.1 security statement](https://github.com/paulmillr/noble-post-quantum/blob/0.7.1/README.md#security)
+does not guarantee constant-time JS/JIT execution, including implicit rejection.
+The cleanup changes assessed in [security-review.md](security-review.md) §1
+do not bound timing, power, EM leakage, or GC/native copies.
 
-**Evidence.** `Evidence` for the general class against CCA-secure lattice KEM
-implementations: Ravi, Roy, Chattopadhyay, Bhasin, *Generic Side-channel attacks
-on CCA-secure lattice-based PKE and KEMs*, IACR TCHES 2020(3). `Evidence` for
-the sharper decryption-failure-oracle class: Qian Guo, Denis Nabokov, Thomas
-Johansson, *Unlocking the True Potential of Decryption Failure Oracles: A
-Hybrid Adaptive-LDPC Attack on ML-KEM Using Imperfect Oracles*, USENIX Security
-2026. The work demonstrates ML-KEM-768-class attacks in lab/native settings and
-explicitly leaves browser-sandbox restrictions outside scope; it does not
-demonstrate this JavaScript/browser stack. `Evidence` for the implementation
-caveat itself as an in-repo record
-(`@noble/post-quantum` documentation, recorded in
-[security-review.md](security-review.md) §1). `Speculation` for this system: no
-key-recovery attack has been demonstrated against this JS stack on this
-hardware, and none has been attempted here.
+**Evidence.** `Evidence` for generic lattice-KEM implementation attacks:
+Ravi et al.,
+[*Generic Side-channel attacks on CCA-secure lattice-based PKE and KEMs* (2020-06-19)](https://tches.iacr.org/index.php/TCHES/article/view/8592).
+Guo, Nabokov, Johansson's
+[USENIX Security 2026 paper](https://www.usenix.org/conference/usenixsecurity26/presentation/guo-qian)
+([final PDF](https://www.usenix.org/system/files/usenixsecurity26-guo-qian.pdf))
+reports **simulated ML-KEM-768** recovery at 2,950 queries with 95% oracle
+accuracy. Its **native GoFetch experiment uses ML-KEM-512**, Apple M1/macOS
+13.5, and unprivileged code in a separate address space with native
+high-resolution timing. In 73 of 100 runs, recovered-key Hamming distance is
+at most four, the paper's success definition. Browser-sandbox restrictions
+are explicitly outside scope. `Speculation` for QR Crypt: no measured attack
+on its ML-KEM-1024 JavaScript/browser/device configuration is supplied or
+attempted here.
 
-**Position.** `EXTERNAL_ASSURANCE` — an independent audit is the mechanism that
-would bound this; see the `release-approved` blocker.
+**Position.** `EXTERNAL_ASSURANCE`. A scoped review and timing/power/EM campaign
+must identify hardware, firmware, OS/browser, build, workload, attacker access,
+and statistical limits. A generic audit or throughput benchmark alone provides
+no exact-stack leakage bound; the independent-review blocker remains.
 
-**Touches.** security-review.md §1 side-channel statement; threat-model T14
-residual. The prohibited-claims rule already forbids any absolute
-side-channel claim.
+**Touches.** security-review §1; threat-model T14; prohibited side-channel claims.
 
 ## E6 — Custody of the offline device between sessions
 
-**Relationship.** The operating model is a dedicated device that never
-reconnects, which means it spends most of its life unattended and holding keys.
-That is precisely the condition an evil-maid or implant technique needs; unlike
-a networked target, nothing on the device is watching for a change.
+**Relationship.** A permanently offline device may hold keys during periods
+without supervision. Brief physical access can target its boot or firmware
+layers; QR Crypt cannot attest those layers or repair their compromise.
 
-**Evidence.** `Evidence` for the class: Rutkowska, *Evil Maid goes after
-TrueCrypt!*, Invisible Things Lab, October 2009 (unattended boot-path tampering
-against an encrypted laptop); ESET, *LoJax: First UEFI rootkit found in the
-wild*, September 2018 (firmware-level persistence surviving disk replacement).
-`Speculation` for prevalence against a specific private installation — no
-measurement here bounds how likely such an actor is to reach one device.
+**Evidence.** `Evidence` on the studied systems: Rutkowska,
+[*Evil Maid goes after TrueCrypt!* (2009-10-15)](https://blog.invisiblethings.org/2009/10/15/evil-maid-goes-after-truecrypt.html),
+and ESET,
+[*LoJax* (2018-09-27, Secure Boot correction 2018-10-09)](https://www.welivesecurity.com/2018/09/27/lojax-first-uefi-rootkit-found-wild-courtesy-sednit-group/).
+These support boot-path tampering and firmware persistence, not a universal
+phone exploit or absence of platform monitoring. `Speculation` for access
+probability at a particular installation; no measurement here bounds it.
 
-**Position.** `DEPLOYMENT_ENFORCED` (custody, tamper-evidence, storage) — the
-application's wipe and boot gates do not survive a platform below them.
+**Position.** `DEPLOYMENT_ENFORCED` for custody, tamper evidence, and storage.
+Application boot/wipe gates do not restore trust in a compromised lower layer.
 
-**Touches.** threat-model non-goals 1 and 5; T17 residual ("cannot defend
-against code that ran before").
+**Touches.** threat-model non-goals 1/5 and T17.
 
 ## E7 — Removable media as the sanctioned crossing
 
-**Relationship.** Route A requires carrying a ZIP on physical media to a device
-that must never be networked, and [threat-model.md](threat-model.md) T11's
-download control lets files leave the same way. The medium is therefore a
-bidirectional bridge, and its controller (firmware, not filesystem) is trusted
-by both ends.
+**Relationship.** Route A carries an archive to the offline device; explicit
+T11 exports can leave on media too. The bridge includes controller/firmware
+behavior, not just the files the operator sees.
 
-**Evidence.** Evidence: Nohl & Lell, *BadUSB — On Accessories that Turn Evil*,
-Black Hat USA 2014 (reprogrammable USB controller firmware; a filesystem scan
-cannot see it). Evidence for interdiction of shipped hardware as a state
-practice (2013 disclosures).
+**Evidence.** `Evidence`: SRLabs,
+[*BadUSB / USB peripherals that turn evil* (2014-07-31)](https://srlabs.de/blog/usb-peripherals-turn)
+describes reprogrammable controller firmware outside filesystem scans. The
+unidentified “2013 disclosures” reference is not retained as verified evidence.
 
-**Position.** `DEPLOYMENT_ENFORCED`. Route A §7 already states that whatever
-carries the archive must be trusted; this catalog records *why* a clean-looking
-filesystem is not that assurance.
+**Position.** `DEPLOYMENT_ENFORCED`. An authenticated ZIP or clean filesystem
+does not authenticate the medium's controller. Route A §7 requires trusted
+transport and custody; **reject any medium or transfer that cannot meet this
+threat model**. No specific medium is approved by this catalog.
 
 **Touches.** install-route-a/README.md §7; threat-model T11, non-goal 4.
 
 ## E8 — Air-gap covert channels from an already-compromised offline device
 
-**Relationship.** T21 establishes that a compromised offline endpoint can
-exfiltrate through the QR path the user carries. This entry records that the QR
-path is not the only exit: the same compromised endpoint controls screen
-brightness, LEDs, speakers, fans, and radios. Closing or narrowing the QR
-channel therefore does not bound total egress — an argument the threat model
-must never make.
+**Relationship.** T21's valid QR egress is not the only possible channel after
+platform compromise. Other emitters depend on the host's hardware and the
+attacker's privileges. Narrowing QR syntax does not bound total egress.
 
-**Evidence.** Evidence for a large body of demonstrated techniques (Guri et al.
-have published optical, acoustic, thermal, magnetic, and RF variants against
-air-gapped hosts, 2014 onward). Speculation for this stack: those demonstrations
-assume native code on the host; a browser-sandboxed PWA reaches far fewer of
-those emitters, and no measurement exists here.
+**Evidence.** `Evidence` for distinct native-host demonstrations:
+[AirHopper (2014-11-02)](https://arxiv.org/abs/1411.0237),
+[BitWhisper (2015-03-26)](https://arxiv.org/abs/1503.07919),
+[LED-it-GO (2017-02-22)](https://arxiv.org/abs/1702.06715),
+[MAGNETO (2018-02-07)](https://arxiv.org/abs/1802.02317), and
+[MOSQUITO (2018-03-09)](https://arxiv.org/abs/1803.03422).
+Their radios, thermal paths, LEDs, magnetic emissions, and audio channels
+require different capabilities and receivers. `Speculation` for this PWA's
+access to each emitter; no device measurement establishes it. Not every phone
+has controllable fans, radios, or an HDD LED.
 
-**Position.** `ARCHITECTURAL_RESIDUAL` — outside application control once the
-platform or install is compromised (non-goals 1 and 4).
+**Position.** `ARCHITECTURAL_RESIDUAL`. Preserve valid-egress risk through QR,
+clipboard, PNG, ZIP, and removable media, including T21's 277-bit floor. An
+export carried on media bypasses the relay parser entirely.
 
-**Touches.** threat-model T21, T17; install-route-a/README.md §1 (why Route A
-determines the guarantee).
+**Touches.** threat-model T21, T17; install-route-a/README.md §1.
 
 ## E9 — Hostile network at the online relay location
 
-**Relationship.** The relay device is deliberately online, and the wipe decision
-depends on a same-origin sentinel body match. A network that rewrites or replays
-responses — a captive portal, a hostile access point — is an environment
-property of *where the relay device is used*, not a property of the code.
+**Relationship.** The relay is deliberately online; destructive reachability
+depends on a same-origin sentinel body match. A hostile network may interfere
+with delivery, but ordinary access-point control alone does not let an
+attacker rewrite authenticated HTTPS without an additional trust/platform
+compromise.
 
-**Evidence.** Evidence: T18 already records the captive-portal pass-through case
-as accepted-equivalent-to-reachable; captive portals modifying HTTP responses
-are ordinary observed behavior.
+**Evidence.** `Evidence`: in-repo T18 accepts sentinel pass-through as reachable;
+[RFC 8952 (2020-11)](https://www.rfc-editor.org/rfc/rfc8952)
+describes captive-portal architecture and authenticated TLS treatment. HTTP
+interception and authenticated HTTPS are distinct cases. A body match is not
+proof of a physical air gap or of response-header conformity.
 
-**Position.** `DEPLOYMENT_ENFORCED` (choose the network) with the in-app
-separation of display probe from destructive probe as the bounding control.
+**Position.** `DEPLOYMENT_ENFORCED` for network choice;
+`REPOSITORY_IMPLEMENTABLE` for separating display and destructive probes.
 
 **Touches.** threat-model T18, T19.
 
 ## E10 — Media sanitization and disposal
 
-**Relationship.** The wipe path is explicitly best-effort logical deletion plus
-Vault-key shredding. Flash translation layers, wear levelling, and over-
-provisioned blocks mean the physical medium can retain what the application
-believes it deleted, which matters at device retirement and after any
-`wipe-on-online` event.
+**Relationship.** Wipe attempts logical deletion and Vault-key destruction.
+Flash translation, wear levelling, and spare blocks can retain prior data;
+retirement and online-wipe events therefore require separate media assurance.
 
-**Evidence.** Evidence: NIST SP 800-88 Rev. 2, *Guidelines for Media
-Sanitization* (published 2025-09-26; sanitization-program and technique guidance
-that supersedes Rev. 1). Already cited by
-[threat-model.md](threat-model.md) §5.
+**Evidence.** `Evidence`:
+[NIST SP 800-88 Rev. 2 (2025-09-26)](https://csrc.nist.gov/pubs/sp/800/88/r2/final)
+supersedes Rev. 1; its
+[FAQ (2026-07-16)](https://csrc.nist.gov/files/pubs/sp/800/88/r2/final/docs/sp800-88r2-faq.pdf)
+distinguishes sanitization-program guidance from technique-specific standards.
+Browser deletion and attempted Vault-key destruction are not demonstrated
+NIST cryptographic erase: prior plaintext, every key copy, implementation,
+media characteristics, and verification matter.
 
-**Position.** `EXTERNAL_ASSURANCE` (media-appropriate sanitization or physical
-destruction).
+**Position.** `EXTERNAL_ASSURANCE` for media-specific sanitization and verified
+disposal. The citation alone approves no physical destruction method.
 
-**Touches.** threat-model §5 "No update path", T17 residual.
+**Touches.** threat-model §5 “No update path”, T17.
 
 ## E11 — Operator conditions
 
-**Relationship.** The security-relevant steps are manual and unverifiable by the
-device: the out-of-band fingerprint comparison (the only person-binding in the
-system), the Route A rebuild-and-compare, and the decision to accept a
-displayed warning. Fatigue, time pressure, coercion, and an attacker-supplied
-"comparison channel" all defeat them without touching a byte of code.
+**Relationship.** Person-binding requires a manual comparison with the intended
+person through an independent channel. Route A rebuilding and acceptance of
+warnings also depend on operators. Fatigue, coercion, time pressure, or an
+attacker-controlled comparison channel can defeat these procedures.
 
-**Evidence.** Evidence within this repository: the threat model already states
-that the application cannot establish that the user compared against the
-intended person for either public-bundle or symmetric-key import (T6, T23), and
-the invisible-character scan is explicitly a detection aid whose value depends
-on alerts staying rare enough to be read (T21).
+**Evidence.** `Evidence` in the 2026-09-07 application implementation record
+([security-review.md](security-review.md) §1.4): `formatFingerprint` shows
+all 64 lowercase hex digits, grouped in fours, in one display. The complete
+composite identity digest is authoritative at import and saved-key
+confirmation; complete KEM/signing hashes are supplementary. Confirmed save
+requires acknowledging comparison of every digit with the intended person
+over an independent channel. **Save without verification** is a separate choice;
+unverified bundles cannot be encryption recipients, while signatures under
+their stored keys can still be checked without asserting person-binding.
+Symmetric import requires the full key comparison but persists no trust state.
+Independent regression verification remains pending on the integrated tree.
 
-**Position.** `EXTERNAL_ASSURANCE` for the procedure; `REPOSITORY_IMPLEMENTABLE`
-only where an interface change would reduce the load — e.g. the deliberate
-non-dismissible fingerprint confirmation, which exists for this reason.
+**Position.** `REPOSITORY_IMPLEMENTABLE` for the display and trust-state gate;
+`EXTERNAL_ASSURANCE` for the comparison procedure. A checkbox or
+non-dismissible dialog does not prove comparison occurred or bound fatigue,
+coercion, or channel trust.
 
 **Touches.** threat-model T6, T15, T21, T22, T23;
-install-route-a/README.md §5–§6.
+install-route-a/README.md §§2–5/7.
 
 ## E12 — Serving configuration of the Route A local server
 
-**Relationship.** Route A requires the operator to supply their own audited
-static server. The security headers, MIME types, SPA fallback, and the
-sentinel's `no-store` rule are all properties of *that server's configuration*,
-not of the signed bundle. Most static servers ignore `_headers` entirely, so a
-correct release can be served with the six non-CSP security headers simply
-absent.
+**Relationship.** Headers, MIME types, SPA fallback, and sentinel caching are
+properties of the actual local server. A signed archive cannot ensure that
+server interprets `_headers` or sends the intended policy.
 
-**Evidence.** `public/_headers` is a Cloudflare-style file that only some
-servers interpret; `docs/develop/install-route-a/README.md` §3 records the
-requirement and names `scripts/serve-dist.mjs` as the reference behaviour.
+**Evidence.** `Evidence` from the 2026-09-07 source review: the
+[Cloudflare header format](https://developers.cloudflare.com/pages/configuration/headers/)
+is host-specific, and [CSP meta delivery](https://w3c.github.io/webappsec-csp/#meta-element)
+cannot deliver every response-header control. The reference server and shared
+parser implement this repository's rules, not the entire Cloudflare language.
 
-**Position.** `DEPLOYMENT_ENFORCED`. The bounding in-app control is the
-deployment verdict: the app checks the seven `/*` headers, the sentinel's
-`Cache-Control: no-store`, content type, status, redirect state, and response
-URL on the reachability-sentinel response — the only route excluded from the
-service worker — persists the verdict, and refuses to mount the Router on a
-failing or absent one.
+**Position.** `DEPLOYMENT_ENFORCED`. The app evaluates seven `/*` header
+values, sentinel `Cache-Control: no-store`, MIME, status, redirects, and URL
+on the sentinel response, persists the verdict, and refuses to mount the
+Router when that verdict is failing or absent. This control already exists;
+it is not a new navigation validator.
 
-**Residual.** The check inspects the sentinel response only. It does not prove
-the top-level navigation response carries the same headers, so a per-path
-misconfiguration or a hostile server can pass it. It is misconfiguration
-detection, not independent assurance; an independently provisioned checker
-covering the real navigation response, MIME types, SPA fallback, `/sw.js` and
-`/registerSW.js` cache headers, method restrictions, and path boundaries is
-still required.
+**Residual.** The expected policy is derived from the same checkout's
+`public/_headers`, not an independently provisioned security floor. A passing
+sentinel says nothing about actual navigation or arbitrary script/style/WASM/
+service-worker responses or browser enforcement. Route A requires a separate
+checker against those real responses, cache/MIME rules, SPA handling, method
+restrictions, and path containment on the chosen server. Release tests on the
+reference server provide separate evidence and do not discharge that duty.
 
-**Touches.** threat-model T18; boot-and-reset-v2.md §2.2;
-install-route-a/README.md §3.
+**Touches.** threat-model §2, T18; boot-and-reset-v2.md §2.2;
+[install-route-a/README.md](../develop/install-route-a/README.md) §7, step 4.
 
 ---
 

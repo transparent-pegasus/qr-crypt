@@ -28,9 +28,10 @@ request targeting `main` or `dev`:
   it (`aube audit`), then runs type checking, lint, unit tests, post-quantum
   known-answer and integration tests, multipart QR tests, and the production
   build. The audit step has no `continue-on-error`: an open known npm advisory
-  fails the job on the next triggered run. There is no scheduled audit, and
-  this gate does not replace the freshness review that maintains the written
-  advisory record. The `e2e` job also always runs. Playwright builds with
+  fails the job on the next triggered run. Scheduled/manual external
+  maintenance is also required by the approved 2026-09-07 contract below;
+  neither gate replaces the freshness review of the written advisory record.
+  The `e2e` job also always runs. Playwright builds with
   `aube run build:prod` and serves `dist/` with `aube run serve:dist`, so the
   browser receives the `_headers` response policy rather than running against
   Vite preview without those headers
@@ -51,13 +52,10 @@ request targeting `main` or `dev`:
   from the versioned template
   `docs/develop/install-route-a/INSTALL.template.txt` through
   `scripts/generate-install-txt.mjs`, so a verifier can regenerate that member
-  byte-for-byte. Before upload, packaging extracts the exact archive, and
-  `scripts/release/test-packaged-pwa.sh` starts the shared server on port 4173
-  with `SERVE_DIST_ROOT` set to that extracted tree. It checks the sentinel body
-  and `no-store` response, required CSP response directives, manifest MIME type,
-  and SPA fallback against the archived bytes. It then runs the e2e suite;
-  Playwright rebuilds the checkout and starts its own server on a cwd-derived
-  port, so those browser tests exercise the rebuilt site
+  byte-for-byte. The approved archive-browser contract below requires
+  `scripts/release/test-packaged-pwa.sh` to run the full browser suite against
+  those extracted archive bytes and bind signing/publication to the checked
+  archive digest. Integration verification remains pending.
 
 `.github/workflows/dev-to-main-pr.yml` checks out full history on a `dev` push,
 or on an intentional `workflow_dispatch`, and builds a manifest from merge
@@ -74,6 +72,88 @@ deploys production and publishes the signed release.
 * If `dev` is behind or diverged from `main`, strict required status checks block the merge until `dev` contains `main`; resolve that human sync problem before merging
 * A PR opened by Actions may show **"Approve workflows to run"** for its pull-request checks; approve it when shown. The push-event `validate` and `e2e` checks on the same head SHA have already run
 * Force-pushing `dev` is blocked by the ruleset's `non_fast_forward` rule and empty `bypass_actors`, so the workflow needs no separate force-push guard
+
+## Release browser and archive verification (2026-09-07)
+
+Implemented in release-track commit
+`1295d5c02674493f3a14b332f311ef26f460f2d3`. The implementation report records
+local archive/browser checks below. Independent new regressions and final
+combined-tree/CI verification remain pending; the release implementation is
+not present on this documentation-only branch.
+
+- `E2E_ARTIFACT_ROOT` selects an absolute, existing directory for browser tests.
+  In that mode Playwright starts the header-aware server from the selected
+  root without a build. The full release browser suite must execute the
+  extracted ZIP's JavaScript, assets, and service worker. The ordinary
+  checkout test mode still builds before serving.
+- Check the existing archive SHA-256 and complete member identity before and
+  after browser execution. Export that same archive digest to signing and
+  publication and compare it in both jobs. A changed archive must fail;
+  testing one archive and signing another does not meet this contract.
+- A separate corrupted archive copy must make browser boot fail when packaged
+  JavaScript is broken while checkout `dist/` remains good. This demonstrates
+  browser execution of packaged bytes. It is distinct from the digest gate,
+  which must independently reject archive mutation.
+
+`scripts/release/check-packaged-responses.mjs` runs in Playwright's artifact
+setup on that same server: sentinel body/cache, root CSP, manifest MIME, SPA
+fallback bytes, and every packaged JS/CSS/WASM response and MIME type are
+checked. `scripts/release/verify-tested-archive.py` compares every extracted
+member directly with the verified ZIP, including `INSTALL.txt` and
+`SHA256SUMS.files`; the manifest is not trusted as an inventory. Unsafe,
+duplicate, non-regular, missing, extra, or differing members fail.
+
+The gate is `bash scripts/release/test-packaged-pwa.sh`, with the packager's
+`RUNNER_TEMP` layout, `ARCHIVE_NAME`, and `GITHUB_OUTPUT`. Only success writes
+`tested_archive_sha256`; build exports `tested-archive-sha256`, checked before
+Cosign signing, before publication, and against the published/downloaded ZIP.
+Existing checksum, immutable artifact-ID, source-identity, signature, and job
+privilege checks remain. No repackage or rebuild follows the gate.
+
+The release report's local package used source identity
+`1ae9cf5c675068b30d8b5e3a8f7fa092106824a5` and the old Noble `0.7.0` pin.
+Its ZIP SHA-256 was
+`ef2912cdbdbdf8b422b427712078ceec5dfd888d456fc71939633aae7b221e53`;
+all 19 members matched before/after, and the full then-existing browser suite
+reported `33 passed (37.9s)`. The emitted tested digest matched. A separate
+broken entry-point copy produced the browser error
+`ARCHIVE_ONLY_BOOT_FAILURE` and a failed existing `app-boot.spec.ts`; the
+unchanged checkout build passed the same scenario. This negative bypassed the
+integrity gate intentionally; the byte-comparison helper independently rejected
+the corrupted member. Remote sign/publish jobs were inspected and linted, not
+executed. These are attributed local release-track results, not verification
+of the new independent regressions or the integrated Noble 0.7.1 archive.
+
+The independent regression report and complete integrated verification are
+required before the `ci-actions` and `security-review` units can be stamped.
+Reference-server archive tests do not certify benign source,
+the build toolchain, hardware, the actual Route A server, or reproducibility
+across environments. Route A's independently obtained policy, signature
+verification, authenticated source rebuild, complete member comparison,
+trusted server, reserved origin, and physical custody remain mandatory.
+
+## External security maintenance (2026-09-07)
+
+The owner superseded the earlier D5 deferral. Release-track commit
+`b983bb7fcfcac3c82b3bb21c563e75696d392724` adds
+`.github/workflows/security-maintenance.yml`, daily at **06:23 UTC** and on
+manual dispatch. Workflow permissions default to empty; its job has only
+`contents: read`. Actions use full SHA pins and checkout credentials are not
+persisted. After frozen installation it runs `aube audit`; the release check
+still runs after an earlier install/audit failure unless cancelled.
+
+`bash scripts/check-crypto-release.sh` reads the exact stable pin from cwd
+`package.json` and queries the official GitHub latest-release endpoint.
+Equal versions with or without a leading `v` pass. A differing version,
+non-exact local pin, draft/prerelease, malformed or empty response, or fetch
+error fails visibly; trailing whitespace is rejected. The release report's
+live check correctly failed against its unchanged `0.7.0` pin and upstream
+`0.7.1`. Actionlint/shellcheck passed in that track; independent signal tests,
+the check with the integrated new pin, and final CI remain pending.
+
+This is maintainer-side monitoring only. It installs no offline updater,
+changes no device key or policy, and does not silently select a new crypto
+version. A detected release still requires the complete `crypto-noble` review.
 
 ## Release rebuild evidence
 
@@ -116,12 +196,13 @@ the cache rules are not represented by that tag.
 validation. It reads the selected document root's `_headers`, applies matching
 rules, serves the MIME types used by the PWA, and implements the current
 `_redirects` SPA fallback to `/index.html`. The Playwright configuration uses it
-for the normal e2e suite; the release workflow reuses it for the extracted ZIP.
+for the normal e2e suite; the release contract also uses it for the extracted
+ZIP. These checks do not validate a different operator-supplied server.
 
 A self-hosted install (route A) still needs a separately trusted static server
 that reproduces the bundled response-header and routing behavior. Authoritative
 server and CSP/`frame-ancestors` requirements:
-[install-route-a/README.md](install-route-a/README.md) §7.3. The full Route A
+[install-route-a/README.md](install-route-a/README.md) §7, steps 3–4. The full Route A
 procedure — Cosign inputs, checksum, independent rebuild-and-compare, deploy,
 and host:port origin boundary — is
 [install-route-a/README.md](install-route-a/README.md). Its mandatory set matches
