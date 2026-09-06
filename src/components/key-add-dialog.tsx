@@ -1,36 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { KeyRound, LoaderCircle, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 import { useFeatureSupport } from "@/app/providers"
+import { BundleConfirmView } from "@/components/key-add/bundle-confirm-view"
+import {
+  CreateKeyView,
+  type CreateKeyType,
+} from "@/components/key-add/create-key-view"
+import { ImportSourceView } from "@/components/key-add/import-source-view"
+import { SymmetricImportView } from "@/components/key-add/symmetric-import-view"
 import {
   KeyDetailContent,
   type KeyDetailContentProps,
   type KeySelection,
 } from "@/components/key-detail-dialog"
-import { Fingerprint } from "@/components/fingerprint"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
-import { QrScannerModal } from "@/components/qr-scanner-modal"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button, buttonVariants } from "@/components/ui/button"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
   createSymmetricKeyRecord,
@@ -56,7 +46,6 @@ import {
   useLocalizedMessage,
   type LocalizedMessage,
 } from "@/i18n"
-import { cn } from "@/lib/utils"
 import { decodePayload } from "@/qr/decode-artifact"
 import type {
   PqPublicBundleRecord,
@@ -70,8 +59,6 @@ import { confirmBundleFingerprint, saveBundle } from "@/storage/pq-bundle-reposi
 import { saveIdentity } from "@/storage/pq-identity-repository"
 
 export type KeyAddMode = "create" | "import"
-
-type CreateKeyType = "pq-identity" | "symmetric"
 
 type AddView =
   | { kind: "create" }
@@ -500,7 +487,7 @@ export function KeyAddDialog({
           )}
 
           {view.kind === "create" && (
-            <CreateField
+            <CreateKeyView
               kind={createKind}
               onKindChange={setCreateKindOverride}
               value={keyName}
@@ -513,233 +500,40 @@ export function KeyAddDialog({
           )}
 
           {view.kind === "import" && (
-            <div className="space-y-4">
-              <Card aria-labelledby="camera-import-title">
-                <CardHeader className="p-4 pb-3">
-                  <h3
-                    id="camera-import-title"
-                    className="font-semibold leading-none tracking-tight"
-                  >
-                    {t("keys.import.cameraTitle")}
-                  </h3>
-                </CardHeader>
-                <CardContent className="space-y-4 p-4 pt-0">
-                  <p className="text-sm text-muted-foreground">{t("keys.demo.hint")}</p>
-                  <QrScannerModal
-                    triggerLabel={t("keys.import.scanTrigger")}
-                    cameraAvailable={camera}
-                    title={t("keys.import.scanTrigger")}
-                    multipart={{
-                      session: scanSession,
-                      onComplete: (completion) => handleCompletedArtifact(completion),
-                    }}
-                  />
-                </CardContent>
-              </Card>
-              <Card aria-labelledby="paste-import-title">
-                <CardHeader className="p-4 pb-3">
-                  <h3
-                    id="paste-import-title"
-                    className="font-semibold leading-none tracking-tight"
-                  >
-                    {t("common.pastePayload")}
-                  </h3>
-                </CardHeader>
-                <CardContent className="p-4 pt-0">
-                  <div className="space-y-2">
-                    <Label htmlFor="key-payload">{t("keys.import.payloadLabel")}</Label>
-                    <Textarea
-                      id="key-payload"
-                      value={importPayload}
-                      onChange={(event) => setImportPayload(event.target.value)}
-                      placeholder={t("keys.import.payloadPlaceholder")}
-                      className="min-h-28 break-all font-mono"
-                    />
-                    <Button
-                      type="button"
-                      className="h-11 w-full"
-                      disabled={busy || !importPayload.trim()}
-                      onClick={() => void importPastedPayload()}
-                    >
-                      <KeyRound aria-hidden="true" />
-                      {t("keys.import.readButton")}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <ImportSourceView
+              cameraAvailable={camera}
+              scanSession={scanSession}
+              importPayload={importPayload}
+              busy={busy}
+              onComplete={handleCompletedArtifact}
+              onPasteChange={setImportPayload}
+              onReadPaste={importPastedPayload}
+            />
           )}
 
           {view.kind === "symmetric-import" && (
-            <div className="space-y-4">
-              <Alert variant="destructive">
-                <AlertTitle>{t("keys.symmetricImport.warnTitle")}</AlertTitle>
-                <AlertDescription>{t("keys.symmetricImport.warnBody")}</AlertDescription>
-              </Alert>
-              <div className="space-y-2">
-                <Label htmlFor="symmetric-import-name">
-                  {t("keys.symmetricImport.nameLabel")}
-                </Label>
-                <Input
-                  id="symmetric-import-name"
-                  value={symmetricImportName}
-                  maxLength={80}
-                  onChange={(event) => setSymmetricImportName(event.target.value)}
-                />
-              </div>
-              <Fingerprint
-                label={t("keys.symmetricImport.fingerprintHint")}
-                value={view.record.fingerprint}
-              />
-              <div className="flex items-start gap-2">
-                <Checkbox
-                  id="symmetric-import-ack"
-                  checked={symmetricImportAcknowledged}
-                  onCheckedChange={(checked) =>
-                    setSymmetricImportAcknowledged(checked === true)
-                  }
-                />
-                <Label htmlFor="symmetric-import-ack">
-                  {t("keys.symmetricImport.ackLabel")}
-                </Label>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  disabled={busy || !symmetricImportAcknowledged}
-                  onClick={() => void savePendingSymmetricImport()}
-                >
-                  {t("keys.symmetricImport.saveButton")}
-                </Button>
-              </DialogFooter>
-            </div>
+            <SymmetricImportView
+              record={view.record}
+              name={symmetricImportName}
+              acknowledged={symmetricImportAcknowledged}
+              busy={busy}
+              onNameChange={setSymmetricImportName}
+              onAcknowledgedChange={setSymmetricImportAcknowledged}
+              onSave={savePendingSymmetricImport}
+            />
           )}
 
           {view.kind === "bundle-confirm" && (
-            <div className="space-y-4">
-              <Fingerprint
-                label={t("common.identityFingerprint")}
-                value={view.bundle.identityFingerprint}
-              />
-              <Fingerprint
-                label={t("keys.bundle.fingerprintKem")}
-                value={view.bundle.kem.fingerprint}
-              />
-              <Fingerprint
-                label={t("keys.bundle.fingerprintSigning")}
-                value={view.bundle.signing.fingerprint}
-              />
-              <div className="flex items-start gap-2">
-                <Checkbox
-                  id="fingerprint-confirmed"
-                  checked={fingerprintChecked}
-                  onCheckedChange={(checked) => setFingerprintChecked(checked === true)}
-                />
-                <Label htmlFor="fingerprint-confirmed">
-                  {t("keys.bundle.confirmLabel")}
-                </Label>
-              </div>
-              <DialogFooter className="gap-2 sm:justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void savePendingBundle(false)}
-                >
-                  {t("keys.bundle.saveUnverified")}
-                </Button>
-                <Button
-                  type="button"
-                  disabled={busy || !fingerprintChecked}
-                  onClick={() => void savePendingBundle(true)}
-                >
-                  {t("keys.bundle.saveConfirmed")}
-                </Button>
-              </DialogFooter>
-            </div>
+            <BundleConfirmView
+              bundle={view.bundle}
+              fingerprintChecked={fingerprintChecked}
+              busy={busy}
+              onFingerprintCheckedChange={setFingerprintChecked}
+              onSave={savePendingBundle}
+            />
           )}
         </NoAutofocusDialogContent>
       )}
     </Dialog>
-  )
-}
-
-function CreateField({
-  kind,
-  onKindChange,
-  value,
-  onChange,
-  busy,
-  onCreate,
-}: {
-  kind: CreateKeyType
-  onKindChange: (kind: CreateKeyType) => void
-  value: string
-  onChange: (value: string) => void
-  busy: boolean
-  onCreate: () => void
-}) {
-  const { t } = useI18n()
-  const pq = kind === "pq-identity"
-  const nameLabel = t(pq ? "keys.create.nameLabel.pq" : "keys.create.nameLabel.symmetric")
-  const buttonLabel = t(pq ? "keys.create.button.pq" : "keys.create.button.symmetric")
-  return (
-    <Card>
-      <CardContent className="space-y-3 p-4">
-        <div className="space-y-2">
-          <Label htmlFor="create-key-kind">{t("keys.create.kindLabel")}</Label>
-          <Select
-            value={kind}
-          onValueChange={(value) => onKindChange(value as CreateKeyType)}
-          >
-            <SelectTrigger id="create-key-kind" className="h-11">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pq-identity">
-                {t("keys.create.kind.pqIdentity")}
-              </SelectItem>
-              <SelectItem value="symmetric">
-                {t("algorithm.A256GCM")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Label htmlFor="create-key-name">{nameLabel}</Label>
-        <Input
-          id="create-key-name"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          maxLength={80}
-        />
-        {kind === "pq-identity" && (
-          <div
-            role="note"
-            className={cn(
-              buttonVariants({ variant: "outline" }),
-              // buttonVariants carries whitespace-nowrap, which pushed this note
-              // past the modal's content box on a narrow screen.
-              "min-h-11 w-full cursor-default select-text touch-auto whitespace-normal py-2 text-center text-muted-foreground hover:bg-background hover:text-muted-foreground",
-            )}
-          >
-            <ShieldCheck aria-hidden="true" />
-            {t("keys.create.experimentalNote")}
-          </div>
-        )}
-        <Button
-          type="button"
-          className="h-11 w-full"
-          disabled={busy || !value.trim()}
-          onClick={onCreate}
-        >
-          {busy ? (
-            <LoaderCircle aria-hidden="true" className="animate-spin" />
-          ) : (
-            <KeyRound aria-hidden="true" />
-          )}
-          {buttonLabel}
-        </Button>
-      </CardContent>
-    </Card>
   )
 }

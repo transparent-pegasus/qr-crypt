@@ -8,10 +8,15 @@ import "./helpers/module-mocks/qr-codec"
 import "./helpers/module-mocks/qr-scanner"
 import "./helpers/module-mocks/key-records"
 import "./helpers/module-mocks/pq-records"
-import { act, screen, waitFor } from "@testing-library/react"
+import { type ReactNode } from "react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent, { type UserEvent } from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { AppProviders } from "@/app/providers"
+import { KeyAddDialog } from "@/components/key-add-dialog"
+import { LanguageProvider } from "@/i18n"
 import { deferred } from "../helpers/deferred"
+import { fakeFeatures } from "./helpers/fakes/feature-detection"
 import { createSymmetricKeyRecord } from "./helpers/fakes/symmetric-crypto"
 import { createIdentity } from "./helpers/fakes/pq-crypto"
 import { saveKeyRecord } from "./helpers/fakes/key-records"
@@ -24,6 +29,24 @@ async function openCreateForm(user: UserEvent): Promise<HTMLElement> {
   await renderApp("/keys")
   await user.click(await screen.findByRole("button", { name: "Create a key" }))
   return screen.findByLabelText("Shared-key name")
+}
+
+async function selectIdentityForm(user: UserEvent): Promise<HTMLElement> {
+  await user.click(screen.getByRole("combobox", { name: "Key type" }))
+  await user.click(
+    screen.getByRole("option", { name: "Public key ML-KEM-1024 + ML-DSA-87" }),
+  )
+  return screen.findByLabelText("Public-key name")
+}
+
+function DialogProviders({ children }: { children: ReactNode }) {
+  return (
+    <LanguageProvider initialLanguage="en">
+      <AppProviders features={fakeFeatures} pwaHook={undefined}>
+        {children}
+      </AppProviders>
+    </LanguageProvider>
+  )
 }
 
 // A resumed continuation crosses several microtask hops before it reaches its
@@ -123,13 +146,8 @@ describe("KeyAddDialog abandonment", () => {
         name: "Public key ML-KEM-1024 + ML-DSA-87",
       }),
     )
-    await user.type(
-      await screen.findByLabelText("Public-key name"),
-      "abandoned id",
-    )
-    await user.click(
-      screen.getByRole("button", { name: "Create a public key" }),
-    )
+    await user.type(await screen.findByLabelText("Public-key name"), "abandoned id")
+    await user.click(screen.getByRole("button", { name: "Create a public key" }))
     await waitFor(() => expect(createIdentity).toHaveBeenCalledOnce())
 
     await user.keyboard("{Escape}")
@@ -138,5 +156,175 @@ describe("KeyAddDialog abandonment", () => {
     generation.resolve(await real({ name: "abandoned id", now: Date.now() }))
     await settle()
     expect(saveIdentity).not.toHaveBeenCalled()
+  })
+
+  it.each(["success", "rejection"] as const)(
+    "blocks identity write dismissal before and after paint until $0",
+    async (outcome) => {
+      const write = deferred<void>()
+      const real = saveIdentity.getMockImplementation()!
+      saveIdentity.mockImplementationOnce(async (identity) => {
+        // Dispatch inside the writer, before React can paint the pending state.
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        )
+        await write.promise
+        await real(identity)
+      })
+      const user = userEvent.setup()
+
+      await openCreateForm(user)
+      await user.type(await selectIdentityForm(user), "committing identity")
+      await user.click(screen.getByRole("button", { name: "Create a public key" }))
+      await waitFor(() => expect(saveIdentity).toHaveBeenCalledOnce())
+      expect(screen.getByRole("dialog", { name: "Create" })).toBeInTheDocument()
+
+      await user.keyboard("{Escape}")
+      expect(screen.getByRole("dialog", { name: "Create" })).toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument()
+
+      if (outcome === "success") {
+        write.resolve()
+        expect(
+          await screen.findByRole("dialog", { name: "committing identity" }),
+        ).toBeInTheDocument()
+      } else {
+        write.reject(new Error("identity write failed"))
+        await screen.findByRole("alert")
+        await user.click(screen.getByRole("button", { name: "Close" }))
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+      }
+    },
+  )
+})
+
+describe("KeyAddDialog parent-controlled sessions", () => {
+  beforeEach(resetUi)
+  afterEach(resetUi)
+
+  it.each([
+    { mode: "create", field: "Shared-key name", submit: "Create a shared key" },
+    { mode: "import", field: "Key payload", submit: "Read the key" },
+  ] as const)(
+    "clears $mode fields and errors when reopened in the same mode",
+    async ({ mode, field, submit }) => {
+      if (mode === "create") {
+        createSymmetricKeyRecord.mockRejectedValueOnce(new Error("generation failed"))
+      }
+      const callbacks = {
+        onOpenChange: vi.fn(),
+        onCreated: vi.fn(async () => undefined),
+        onImported: vi.fn(async () => undefined),
+      }
+      const rendered = render(<KeyAddDialog mode={mode} detail={null} {...callbacks} />, {
+        wrapper: DialogProviders,
+      })
+      const user = userEvent.setup()
+
+      await user.type(await screen.findByLabelText(field), "previous input")
+      await user.click(screen.getByRole("button", { name: submit }))
+      await screen.findByRole("alert")
+      expect(screen.getByLabelText(field)).toHaveValue("previous input")
+
+      rendered.rerender(<KeyAddDialog mode={null} detail={null} {...callbacks} />)
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      rendered.rerender(<KeyAddDialog mode={mode} detail={null} {...callbacks} />)
+
+      expect(screen.getByLabelText(field)).toHaveValue("")
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: submit })).toBeDisabled()
+    },
+  )
+
+  describe.each(["symmetric", "identity"] as const)("%s creation", (kind) => {
+    it.each([
+      { nextMode: "import", pending: "generation", outcome: "success" },
+      { nextMode: null, pending: "generation", outcome: "success" },
+      { nextMode: null, pending: "generation", outcome: "rejection" },
+      { nextMode: null, pending: "write", outcome: "success" },
+      { nextMode: null, pending: "write", outcome: "rejection" },
+    ] as const)(
+      "suppresses stale $pending $outcome after the parent sets mode=$nextMode",
+      async ({ nextMode, pending, outcome }) => {
+        const operation = deferred<void>()
+        if (pending === "generation") {
+          if (kind === "symmetric") {
+            const generate = createSymmetricKeyRecord.getMockImplementation()!
+            createSymmetricKeyRecord.mockImplementationOnce(async (name, now) => {
+              await operation.promise
+              return generate(name, now)
+            })
+          } else {
+            const generate = createIdentity.getMockImplementation()!
+            createIdentity.mockImplementationOnce(async (args) => {
+              await operation.promise
+              return generate(args)
+            })
+          }
+        } else if (kind === "symmetric") {
+          const save = saveKeyRecord.getMockImplementation()!
+          saveKeyRecord.mockImplementationOnce(async (record) => {
+            await operation.promise
+            await save(record)
+          })
+        } else {
+          const save = saveIdentity.getMockImplementation()!
+          saveIdentity.mockImplementationOnce(async (identity) => {
+            await operation.promise
+            await save(identity)
+          })
+        }
+        const callbacks = {
+          onOpenChange: vi.fn(),
+          onCreated: vi.fn(async () => undefined),
+          onImported: vi.fn(async () => undefined),
+        }
+        const rendered = render(
+          <KeyAddDialog mode="create" detail={null} {...callbacks} />,
+          { wrapper: DialogProviders },
+        )
+        const user = userEvent.setup()
+        const field =
+          kind === "identity"
+            ? await selectIdentityForm(user)
+            : await screen.findByLabelText("Shared-key name")
+        await user.type(field, "previous opening")
+        await user.click(
+          screen.getByRole("button", {
+            name: kind === "identity" ? "Create a public key" : "Create a shared key",
+          }),
+        )
+        const generate = kind === "identity" ? createIdentity : createSymmetricKeyRecord
+        const save = kind === "identity" ? saveIdentity : saveKeyRecord
+        await waitFor(() =>
+          expect(pending === "generation" ? generate : save).toHaveBeenCalledOnce(),
+        )
+
+        rendered.rerender(<KeyAddDialog mode={nextMode} detail={null} {...callbacks} />)
+        if (nextMode === null) {
+          expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+          // Reopen before settlement so stale errors would be visible to the user.
+          rendered.rerender(<KeyAddDialog mode="create" detail={null} {...callbacks} />)
+        }
+        const currentField = nextMode === "import" ? "Key payload" : "Shared-key name"
+        await user.type(screen.getByLabelText(currentField), "current opening")
+
+        if (outcome === "success") operation.resolve()
+        else operation.reject(new Error("abandoned operation failed"))
+        await settle()
+
+        expect(callbacks.onCreated).not.toHaveBeenCalled()
+        expect(callbacks.onOpenChange).not.toHaveBeenCalled()
+        expect(
+          screen.getByRole("dialog", {
+            name: nextMode === "import" ? "Import" : "Create",
+          }),
+        ).toBeInTheDocument()
+        expect(screen.getByLabelText(currentField)).toHaveValue("current opening")
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+        if (pending === "generation") expect(save).not.toHaveBeenCalled()
+        else expect(save).toHaveBeenCalledOnce()
+      },
+    )
   })
 })
