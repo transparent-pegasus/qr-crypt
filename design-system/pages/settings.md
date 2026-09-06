@@ -1,51 +1,53 @@
-# /settings — 設定ページ
+# /settings — Settings page
 
-> **アーカイブ（現行実装の仕様ではありません）。** ここに記された RSA・OCM1・EC レベル選択を現行実装の要件として採用しないでください。
-> 来歴と保存範囲は [README](../README.md) を参照してください。現行実装は [ソース](../../src/)・[テスト](../../tests/)、契約は [QR プロトコル仕様](../../docs/spec/qr-protocol-v2.md)・[起動とリセットの仕様](../../docs/spec/boot-and-reset-v2.md) を参照してください。
+> **Archive — not current implementation specifications.** Do not use the retired RSA, OCM1, or EC-level selector controls described here as active implementation requirements.
+> See [README](../README.md) for provenance and the scope of preservation. For the current implementation, see [Source](../../src/) and [Tests](../../tests/); for its contracts, see the [QR protocol specification](../../docs/spec/qr-protocol-v2.md) and [Boot and reset specification](../../docs/spec/boot-and-reset-v2.md).
 
-以下は当時の MASTER.md を前提としたページ別設計記録です。セクションは Card 区切り、見出し h2。spec §28 の全項目を以下の 5 セクションに配置。
+This is a page-specific design record based on MASTER.md as it stood at the time. Separate sections with Cards and use h2 headings. The recorded layout places all items from spec §28 in the following 5 sections.
 
-## 1. 既定値
+## 1. Defaults
 
-- デフォルト暗号方式(Select: A256GCM / RSA ハイブリッド ※enableRsa 時のみ)
-- デフォルトQR誤り訂正レベル(Select: L/M/Q/H + 説明「高いほど読み取りに強く、入る量は減ります」)
+- Default encryption method (Select: A256GCM / RSA hybrid, the latter only when enableRsa is enabled)
+- Default QR error correction level (Select: L/M/Q/H + explanation, "Higher levels are more resilient when scanning, but hold less data")
 
-## 2. 平文の扱い
+## 2. Plaintext handling
 
-- 暗号化後に平文を自動消去(Switch、既定 ON)
-- バックグラウンド移行後に自動消去(Switch、既定 ON)。遅延は env `VITE_AUTO_CLEAR_SECONDS=300` の固定値で、説明に「約5分後」と表示する
-- 「すべての平文を消去」ボタン(secondary)→ `oc:clear-transient` 発火+トースト
+- Automatically clear plaintext after encryption (Switch, ON by default)
+- Automatically clear after moving to the background (Switch, ON by default). The delay is fixed by env `VITE_AUTO_CLEAR_SECONDS=300`; the explanation says "after approximately 5 minutes"
+- "Clear all plaintext" button (secondary) → fire `oc:clear-transient` + show a toast
 
-## 3. 表示
+## 3. Display
 
-- テーマ(Select: システム / ライト / ダーク)→ `localStorage['oc-theme']`
+- Theme (Select: System / Light / Dark) → `localStorage['oc-theme']`
 
-## 4. アプリ情報(PWA)
+## 4. App information (PWA)
 
-- PWA インストール状態(standalone 判定: インストール済み / ブラウザー表示中)
-- オフライン利用準備状態(SW offlineReady: 準備完了 / 準備中)— **安全性の主張はしない**
-- 方針注記: 「アプリの更新は行わない方針です。新しいバージョンの利用には端末の完全フォーマット後の再インストールが必要です。」
-- バージョン(`__APP_VERSION__`)/ ビルド(`env.buildSha` 先頭 7 桁 mono)
-- 保存されている鍵の件数 / 保存済みQRの件数
+- PWA installation status (standalone detection: Installed / Viewing in browser)
+- Offline readiness (SW offlineReady: Ready / Preparing) — **make no safety claim**
+- Policy note: "The policy is not to update the app. Using a new version requires reinstallation after the device has been completely formatted."
+- Version (`__APP_VERSION__`) / build (first 7 characters of `env.buildSha`, mono)
+- Number of stored keys / number of saved QRs
 
-## 5. データの消去(destructive ゾーン: 見出しと枠を destructive 色、TriangleAlert)
+## 5. Data deletion (destructive zone: destructive-colored heading and border, TriangleAlert)
 
-| 操作 | 確認強度 |
+The exact-match phrase below is glossed as "delete all," an English translation of the historical Japanese phrase. The historical input token was Japanese, not this English gloss.
+
+| Action | Confirmation strength |
 |---|---|
-| すべての保存QRを消去 | 通常 AlertDialog |
-| すべての鍵を消去 | **最強: 「全削除」完全一致入力**(spec §28)+「すべての暗号文が復号できなくなります」 |
-| 全ローカルデータ初期化(IndexedDB 削除+localStorage の oc-* 削除) | **最強: 「全削除」完全一致入力** |
+| Clear all saved QRs | Normal AlertDialog |
+| Clear all keys | **Strongest: exact-match entry of the historical phrase meaning "delete all"** (spec §28) + "You will no longer be able to decrypt any ciphertext" |
+| Reset all local data (delete IndexedDB + oc-* entries from localStorage) | **Strongest: exact-match entry of the historical phrase meaning "delete all"** |
 
-確認ダイアログ文言例: 「削除を実行するには「全削除」と入力してください。」入力が一致するまで実行ボタン無効。実行後トースト+件数リセット。
+Example confirmation dialog (English translation of the historical Japanese, with the typed phrase shown as an English gloss): "To delete, enter 'delete all'." Disable the action button until the input matches the historical Japanese phrase exactly. After execution, show a toast + reset the counts.
 
-## 6. セキュリティについて(Collapsible、既定で開く)
+## 6. About security (Collapsible, open by default)
 
-spec §2 の免責リストを全文掲載:
+Include the complete disclaimer list from spec §2:
 
-- このアプリが保証するのは、アプリケーションが意図的に平文や秘密鍵を外部送信しないことまでです。
-- 防御対象外: OS・ブラウザー・ファームウェアの侵害 / キーロガー・画面録画・スクリーンショット / カメラフレームを取得するマルウェア / PWA 初回取得時・再インストール時の供給網侵害 / 端末の物理的な窃取 / ユーザー自身による秘密QRの誤共有 / ブラウザーデータ削除による鍵の消失
-- オフライン表示は現在のネットワーク状態を示す補助情報であり、安全性の証明ではありません。
+- The app's guarantee extends only to the application not intentionally transmitting plaintext or secret keys externally.
+- Outside the scope of protection: compromised OS, browser, or firmware / keyloggers, screen recordings, or screenshots / malware that captures camera frames / supply-chain compromise during the initial PWA download or reinstallation / physical theft of the device / users accidentally sharing secret QRs / key loss through deletion of browser data
+- The offline indicator is supplementary information about the current network state, not proof of safety.
 
-## 機能検出
+## Feature detection
 
-Web Crypto / IndexedDB / カメラ / Service Worker の利用可否一覧(利用不能項目は warning アイコン+「この機能は利用できません: 〜」)。UNSUPPORTED_BROWSER の詳細説明もここへ。
+List availability of Web Crypto / IndexedDB / camera / Service Worker (unavailable items use a warning icon + "This feature is unavailable: …"). Also place the detailed UNSUPPORTED_BROWSER explanation here.

@@ -1,50 +1,50 @@
-# OnlineGate — オンライン導入・暗号文QRリレー
+# OnlineGate — Online setup and ciphertext QR relay
 
-> **アーカイブ（現行実装の仕様ではありません）。** ここに記された RSA・OCM1・EC レベル選択を現行実装の要件として採用しないでください。
-> 来歴と保存範囲は [README](../README.md) を参照してください。現行実装は [ソース](../../src/)・[テスト](../../tests/)、契約は [QR プロトコル仕様](../../docs/spec/qr-protocol-v2.md)・[起動とリセットの仕様](../../docs/spec/boot-and-reset-v2.md) を参照してください。
+> **Archive — not current implementation specifications.** Do not use the retired RSA, OCM1, or EC-level selector controls described here as active implementation requirements.
+> See [README](../README.md) for provenance and the scope of preservation. For the current implementation, see [Source](../../src/) and [Tests](../../tests/); for its contracts, see the [QR protocol specification](../../docs/spec/qr-protocol-v2.md) and [Boot and reset specification](../../docs/spec/boot-and-reset-v2.md).
 
-以下は後の改訂と廃止済み OCM1 の規則が混在する、当時の設計記録です。
+This historical design record mixes later revisions with rules for the retired OCM1 format.
 
-機能検出ゲートの次、通常ルーターの前に配置する全画面ゲート。オンライン中は `/encrypt`・`/decrypt`・`/keys`・`/settings` を一切表示せず、PWA の導入情報と、鍵・PQ 身元・Vault 鍵の各ストアが読めた上で 1 行も無いと確認できた場合（読み取り失敗は不許可側に倒す fail-closed）だけ、正規 OCM1 メッセージ 1 件または OCF2 フレーム一式を扱う暗号文 QR リレーを表示する。オンラインシェル自体の固定 localStorage 書き込み（`oc-theme` / `oc-lang` / ack マーカー / 最後に開いたタブ `oc-online-tab`）は従来どおり行われるため「保存領域が空」ではない。鍵を保持する端末をオンラインにしない運用は変わらない。
+A fullscreen gate placed after feature detection and before the normal router. While online, never show `/encrypt`, `/decrypt`, `/keys`, or `/settings`; show PWA setup information and, only when the key, PQ identity, and Vault key stores have all been read successfully and confirmed to contain 0 rows (fail closed on read failure), a ciphertext QR relay handling 1 canonical OCM1 message or a complete set of OCF2 frames. The online shell still performs its fixed localStorage writes (`oc-theme` / `oc-lang` / ack markers / last-opened tab `oc-online-tab`), so this does not mean "storage is empty." The operational rule that a device holding keys must not go online remains unchanged.
 
-## 表示内容
+## Display content
 
-- 言語選択、アプリアイコン、アプリ名、ネットワーク状態バッジ（オンライン）はトップ / リレーの両ページに共通して表示する。
-- トップページ:
-  - PWA インストール状態（インストール済み / 未インストール）
-  - `beforeinstallprompt` を捕捉できた場合の「PWAをインストール」ボタン
-  - iOS Safari では共有メニューの「ホーム画面に追加」手順
-  - Service Worker の offlineReady（準備完了 / 準備中）
-  - 「オフライン（機内モード）に切り替えると暗号化・復号・鍵管理・設定が利用できます」という主案内（オフライン表示は安全性の証明として表現しない）
-- リレーページ:
-  - boot の破壊判断完了後に限る「暗号文QRリレー」カード。正規 OCM1 メッセージ 1 件または、信頼できない外側ヘッダが `pq-message` と表明する正規 OCF2 フレーム一式を受け入れる
-  - 「QR → テキスト」（英語ラベルは `QR → Text`）: ボタンでダイアログを開き、さらに明示操作した時だけカメラを取得する。OCM1 は 1 回のスキャンで取り込みを完了し、OCF2 は一式を収集する
-  - 「テキスト → QR」: OCM1 文字列 1 件または改行区切りの OCF2 フレーム一式を貼り付ける。OCF2 は既存の animated QR で再生し、OCM1 は単一 QR として表示する
-  - 「QR → QR」: 「QR → テキスト」と同じカメラ取得経路を使い、受け入れた最初のフレームが `frameCount > 1` を宣言した場合は取り込みを破棄してカメラを止め、「QR → テキスト」を使うよう案内する。1 フレームで完結する場合だけ、その正規文字列を `renderQrDataUrl` で QR 画像として描き直し、「QR画像をコピー」を提供する。ダウンロード操作は追加しない（`relay.playback.noDownloadControls` は真のまま）
-  - 3 つのボタンは `sm:grid-cols-3` の 1 行に矢印ラベルだけを並べ、その直下に「QR → QR」の利用条件（メッセージアプリが画像貼り付けに対応し、かつ 1 枚の QR に収まること）を示すヒント文を両言語で置く
-  - ダイアログ自身に上端・下端の safe-area padding を持たせる
-  - 44 px 操作、`focus-visible:ring-2`、lucide のアイコン＋テキストを使う
-- relay eligible の時だけ、共通下部シェルにアイコンのみの「トップ」「リレー」2 項目を表示する。選択したリレータブの eligibility が一時的に pending になった間もナビを消さないため、表示条件 `navVisible` は `relayEligible || tab === "relay"` とする。固定ナビ表示中は本文に `pb-content-safe` を付ける。
-- 下部操作は offline ナビと同じ `<nav>` + 各 `<button aria-current="page">` のページナビとして扱い、`role="tablist"` は使わない。
-- ナビを押した時だけ選択タブを localStorage `oc-online-tab`（`top` / `relay` の 2 値のみ）へ保存し、次回起動はその値で開く。未設定・未知の値は `top`。オンライン専用端末が毎回リレーを選び直さずに済むことが目的で、一度も押していない端末は書き込まない。`oc-*` 全削除で消えるため wipe / 全初期化後はトップに戻る。
-- 保存値 `relay` の復元は relay eligible が確定してからに限る。ineligible / 判定待ちの間は復元せず `tab` は `top` のままなので、ナビも書き込み経路も現れない（`navVisible` の既存規則を跨いだ復元で緩めない）。
+- Show language selection, the app icon, app name, and network status badge (Online) on both the Top and Relay pages.
+- Top page:
+  - PWA installation status (Installed / Not installed)
+  - "Install PWA" button when `beforeinstallprompt` has been captured
+  - Instructions for "Add to Home Screen" in the share menu on iOS Safari
+  - Service Worker offlineReady (Ready / Preparing)
+  - Main guidance: "Switch to offline mode (airplane mode) to use encryption, decryption, key management, and settings" (do not describe an offline indicator as proof of safety)
+- Relay page:
+  - "Ciphertext QR relay" card, available only after boot has completed its wipe decision. Accept 1 canonical OCM1 message or a complete set of canonical OCF2 frames whose untrusted outer headers declare `pq-message`
+  - "QR → Text" (the English label was `QR → Text`): the button opens a dialog; acquire the camera only after a further explicit action. OCM1 capture completes in 1 scan; OCF2 collects the complete set
+  - "Text → QR": paste 1 OCM1 string or a complete set of newline-delimited OCF2 frames. Play OCF2 with the existing animated QR display; show OCM1 as a single QR
+  - "QR → QR": use the same camera acquisition path as "QR → Text." If the first accepted frame declares `frameCount > 1`, discard the capture, stop the camera, and direct the user to "QR → Text." Only when complete in 1 frame, redraw that canonical string as a QR image with `renderQrDataUrl` and offer "Copy QR image." Do not add a download action (`relay.playback.noDownloadControls` remains true)
+  - Arrange the 3 buttons in one `sm:grid-cols-3` row with only the arrow labels. Immediately below, provide a hint in both languages explaining the requirements for "QR → QR" (the messaging app must support pasting images, and the message must fit in 1 QR)
+  - Give the dialog itself top and bottom safe-area padding
+  - Use 44 px controls, `focus-visible:ring-2`, and lucide icons + text
+- Only when relay eligible, show 2 icon-only items, "Top" and "Relay," in the shared bottom shell. To keep navigation visible while the selected Relay tab's eligibility is temporarily pending, use `navVisible` = `relayEligible || tab === "relay"`. Add `pb-content-safe` to the body while fixed navigation is visible.
+- Treat the bottom controls as page navigation using `<nav>` + individual `<button aria-current="page">` elements, like the offline navigation; do not use `role="tablist"`.
+- Save the selected tab to localStorage `oc-online-tab` (only 2 values: `top` / `relay`) only when navigation is pressed, and open that tab on the next launch. Missing or unknown values mean `top`. This avoids making an online-only device select Relay on every launch; do not write on a device where navigation has never been pressed. Deleting all `oc-*` entries removes it, so wipe / full reset returns to Top.
+- Restore a saved `relay` value only after relay eligibility is confirmed. While ineligible / pending, do not restore it: `tab` stays `top`, so neither navigation nor its write path appears (do not weaken the existing `navVisible` rule by restoring across that boundary).
 
-## 状態遷移と保護
+## State transitions and protections
 
-- relay は `network-confirmed/eligible` かつ表示状態も online の時だけ表示する。decision pending、`wiping`、`partial-failure`、maintenance token で鍵が残った場合、`wipeOnOnline:false` で鍵が残った場合、保存領域を読み切れない場合は表示しない。
-- 選択状態 `tab` は eligibility 変化でリセットしない。表示パネルだけを `activeTab = relayEligible ? tab : "top"` でトップへ fail-closed し、トップとリレーの wrapper は `hidden` 属性で切り替える。
-- `OnlineRelay` のコンポーネント instance はトップ / リレーのどちらを表示している間も常に mount し、eligibility が false の時も条件付き mount にしない。これにより `visibilitychange` / `pagehide` / `pageshow` の監視と session-end handler 登録を維持し、`openDialog` 内で eligibility refresh が同期的に pending を emit しても pending-open generation を失わず、判断完了後にダイアログを開ける。
-- `keys`・`pqIdentities`・Vault key metadata・preferences は boot の同一 readonly transaction で確認し、open/store/count/get/transaction のどの失敗も `indeterminate` として fail-closed に扱う。
-- online→offline: relay の命令的 `endSession` を同期実行してからゲートを閉じる。通常ページは既存の acknowledgement 条件を満たすまで表示しない。
-- offline→online: 通常ページを即時隠し、同時に TransientClear を発火して平文・復号結果・結果ペイロードを消去する。
-- relay を開く直前と visible への `visibilitychange` で空状態を再確認する。cross-tab の排他 lease は持たないため、確認直後に別タブが鍵を作る stale-policy race は残る。
-- camera startup の AbortController と取得済み `QrScanHandle.stop()` は別々に保持し、close、unmount、hidden、pagehide、BFCache pageshow、表示/eligibility 喪失、local/peer wipe、timeout、terminal error のすべてで両方を終了する。BFCache 復帰時に自動再取得しない。
-- Web Crypto または IndexedDB が不足する場合は、OnlineGate より先に `UNSUPPORTED_BROWSER` を表示する。
-- オフライン表示は運用上の機能許可条件であり、安全性の証明として表現しない。
+- Show the relay only when `network-confirmed/eligible` and the display state is also online. Do not show it while the decision is pending, during `wiping` or `partial-failure`, when keys remain because of a maintenance token or `wipeOnOnline:false`, or when storage cannot be read completely.
+- Do not reset the selected `tab` when eligibility changes. Fail closed by showing only the Top panel through `activeTab = relayEligible ? tab : "top"`; switch the Top and Relay wrappers with the `hidden` attribute.
+- Keep the `OnlineRelay` component instance mounted while either Top or Relay is displayed; do not conditionally unmount it when eligibility is false. This preserves `visibilitychange` / `pagehide` / `pageshow` monitoring and session-end handler registration. Even if an eligibility refresh inside `openDialog` synchronously emits pending, the pending-open generation survives so the dialog can open after the decision completes.
+- Check `keys`, `pqIdentities`, Vault key metadata, and preferences in the same readonly boot transaction; treat any open/store/count/get/transaction failure as `indeterminate` and fail closed.
+- online→offline: synchronously call the relay's imperative `endSession` before closing the gate. Do not show normal pages until the existing acknowledgement conditions are met.
+- offline→online: hide normal pages immediately and simultaneously fire TransientClear to clear plaintext, decryption results, and the result payload.
+- Recheck the empty state immediately before opening the relay and on `visibilitychange` to visible. There is no cross-tab exclusive lease, so a stale-policy race remains if another tab creates keys immediately after the check.
+- Keep the camera-startup AbortController and acquired `QrScanHandle.stop()` separately; terminate both on close, unmount, hidden, pagehide, BFCache pageshow, loss of visibility/eligibility, local/peer wipe, timeout, and terminal error. Do not automatically reacquire the camera on BFCache return.
+- If Web Crypto or IndexedDB is unavailable, show `UNSUPPORTED_BROWSER` before OnlineGate.
+- An offline indicator is an operational condition for enabling features; do not present it as proof of safety.
 
-## リレー境界の表現
+## Describing the relay boundary
 
-- 受け入れるのは「信頼できない外側ヘッダーが `pq-message` と表明する正規 OCF2 フレーム」または「エンベロープ全体の decode と canonical re-encode が入力と byte-for-byte で一致する正規 OCM1 メッセージ 1 件」。OCM1 の確認は構造的正規性だけを示す。リレーは OCF2 を再組立せず、全体 hash、AEAD、署名、送信者、真正性、安全性を検証せず、何も復号しない。トップレベルの鍵アーティファクトのプレフィックスと不許可の OCF2 外部タイプを拒否しても、受け入れた不透明なバイト列に鍵素材が含まれないことは保証できない。受信側オフライン端末を authority とし、鍵交換は対面を推奨運用として示す。
-- OCF2 フレーム文字列は検証後も verbatim で保持し、順序だけ index 昇順にして LF で結合する。再組立・再分割・density control は行わない。OCM1 は正規性確認後に単一 QR として再表示し、animation control は表示しない。
-- Copy は clipboard への意図的 export であり、アプリ外に残存・同期し得る警告を表示する。これはテキストの copy だけでなく「QR → QR」の PNG `ClipboardItem` 書き出しにも同じく当てはまり、そちらにも専用の警告文を表示する。QR は長押し保存、印刷、screenshot、画面録画を防げない。
-- enforceable な UI 制約は「アプリ提供のファイル download control がないこと」。frame-derived 値と OCM1-derived 値を app-managed IndexedDB/localStorage/CacheStorage/URL/history/log や relay-payload-bearing network request に意図的に書き込まない。shell 固有の固定 storage/network 動作は別に存在する。
+- Accept only "canonical OCF2 frames whose untrusted outer headers declare `pq-message`" or "1 canonical OCM1 message whose full-envelope decode and canonical re-encode match the input byte-for-byte." The OCM1 check establishes only structural canonicality. The relay does not reassemble OCF2 or verify the whole hash, AEAD, signatures, senders, authenticity, or safety. It decrypts nothing. Rejecting top-level key-artifact prefixes and disallowed OCF2 outer types cannot guarantee that accepted opaque bytes contain no key material. Treat the receiving offline endpoint as the authority, and recommend in-person key exchange as an operational practice.
+- Retain OCF2 frame strings verbatim even after validation; only sort them by ascending index and join them with LF. Do not reassemble, resplit, or provide density control. Redisplay OCM1 as a single QR after the canonicality check, without animation controls.
+- Copy is an intentional export to the clipboard; show a warning that the data may persist or sync outside the app. This applies both to text copy and to PNG `ClipboardItem` export in "QR → QR"; provide dedicated warning text for the latter too. QR displays cannot prevent long-press saving, printing, screenshots, or screen recording.
+- The enforceable UI constraint is "no app-provided file download controls." Do not intentionally write frame-derived or OCM1-derived values to app-managed IndexedDB/localStorage/CacheStorage/URL/history/log or relay-payload-bearing network requests. The shell has separate fixed storage/network behavior.
