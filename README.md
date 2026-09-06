@@ -94,7 +94,7 @@ channel, checksum check, and an independent rebuild-and-compare — is required 
 installation. The complete procedure is in
 [docs/develop/install-route-a/](docs/develop/install-route-a/README.md). The archive's
 `INSTALL.txt` is the self-contained copy that reaches the offline device; its
-verification contract is §8 of that procedure.
+verification contract is in §§2–5 of that procedure.
 
 ### Install route B: direct-origin PWA
 
