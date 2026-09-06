@@ -150,32 +150,43 @@ export interface RelayLease {
   release: () => void
 }
 
-// The boot proof excludes writers only while it runs, so an origin can be
-// proved clean and then have a key written into it while the relay session that
-// proof authorised is still open. A session therefore takes the same lock and
-// keeps it: not every write holds the shared side, but the create-and-rotate
-// set that can move an origin from clean to dirty does, which is exactly what
-// the proof counts. ifAvailable means a writer already inside the lock denies
-// the session instead of queueing it — fail closed, and never make the operator
-// wait on a lock to open a dialog.
-export async function acquireRelayLease(): Promise<RelayLease | null> {
+// Admission re-reads cleanliness under this lease and keeps it for the session.
+// Every cooperating write that can move the origin from clean to dirty takes
+// the shared side of this same lock. ifAvailable refuses an active writer
+// immediately instead of making the operator wait to open a dialog.
+export async function acquireRelayLease(signal?: AbortSignal): Promise<RelayLease | null> {
   const locks = lockManager()
-  if (locks === undefined) return null
-  let release = (): void => {}
+  if (locks === undefined || signal?.aborted) return null
+  let releaseHold = (): void => {}
   const held = new Promise<void>((resolve) => {
-    release = resolve
+    releaseHold = resolve
   })
   return new Promise<RelayLease | null>((resolve) => {
-    void locks
-      .request(SENSITIVE_WRITE_LOCK, { mode: "exclusive", ifAvailable: true }, (lock) => {
-        if (lock === null) {
-          resolve(null)
-          return Promise.resolve()
-        }
-        resolve({ release })
-        return held
-      })
-      .catch(() => resolve(null))
+    const release = () => {
+      signal?.removeEventListener("abort", cancel)
+      releaseHold()
+    }
+    const cancel = () => {
+      release()
+      resolve(null)
+    }
+    // Web Locks forbids combining signal with ifAvailable. Cancel the admission
+    // ourselves and refuse a grant delivered after cancellation.
+    signal?.addEventListener("abort", cancel, { once: true })
+    try {
+      void locks
+        .request(SENSITIVE_WRITE_LOCK, { mode: "exclusive", ifAvailable: true }, (lock) => {
+          if (lock === null || signal?.aborted) {
+            cancel()
+            return
+          }
+          resolve({ release })
+          return held
+        })
+        .catch(cancel)
+    } catch {
+      cancel()
+    }
   })
 }
 

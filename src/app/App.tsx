@@ -272,6 +272,7 @@ function BootGate({
         <OnlineInstallScreen
           relayEligible={display.online && state.relayEligibility === "eligible"}
           onRelayEligibilityRefresh={() => resolvedController.refreshRelayEligibility()}
+          onRelaySessionAcquire={(signal) => resolvedController.acquireRelaySession(signal)}
           registerRelaySessionEndHandler={
             resolvedController.registerRelaySessionEndHandler
           }
