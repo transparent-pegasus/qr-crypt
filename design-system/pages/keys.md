@@ -1,43 +1,46 @@
-# /keys — 鍵一覧ページ
+# /keys — Key list page
 
-MASTER.md を継承。旧 `/saved` 相当の鍵一覧。ページ見出し・サブタイトルは出さない。作成・読込 UI はページ本体ではなく `KeyAddDialog` モーダル(`src/components/key-add-dialog.tsx`)に置く。
+> **Archive — not current implementation specifications.** Do not use the retired RSA, OCM1, or EC-level selector controls described here as active implementation requirements.
+> See [README](../README.md) for provenance and the scope of preservation. For the current implementation, see [Source](../../src/) and [Tests](../../tests/); for its contracts, see the [QR protocol specification](../../docs/spec/qr-protocol-v2.md) and [Boot and reset specification](../../docs/spec/boot-and-reset-v2.md).
 
-## 一覧クロム
+This is a page-specific design record based on MASTER.md as it stood at the time. The key list corresponds to the former `/saved` page. Do not show a page heading or subtitle. Place creation and import UI in the `KeyAddDialog` modal (`src/components/key-add-dialog.tsx`), rather than in the page body.
 
-- `Tabs`: 自分の鍵 / 相手の鍵
-- タブ直下に操作 2 つを 2 等分で並べる。`TabsList`(`role="tablist"`)の外に置き、視覚的にも別の要素として独立させる(枠で囲って一体に見せない)。いずれも `Button variant="outline"`、44px、アイコン + ラベル:
-  - Plus — 鍵を作成 → `KeyAddDialog` を create モードで開く
-  - ScanLine — 鍵QRを読み取る → 同モーダルを import モードで開く
-- 作成直後は同一モーダル内で鍵詳細ビューへ切り替える(別ダイアログへ遷移しない)
+## List controls
 
-## 作成モード(`KeyAddDialog` create)
+- `Tabs`: My keys / Others' keys
+- Place 2 equally sized actions directly below the tabs. Keep them outside `TabsList` (`role="tablist"`) and visually separate (do not enclose them in a border that makes them look like one element). Both use `Button variant="outline"`, 44px, icon + label:
+  - Plus — Create key → open `KeyAddDialog` in create mode
+  - ScanLine — Scan key QR → open the same modal in import mode
+- Immediately after creation, switch to the key detail view inside the same modal (do not transition to a separate dialog)
 
-- 「共通鍵を生成」/「鍵ペアを生成」などの作成フォーム(鍵名 Input + 生成ボタン primary)。生成後は詳細ビューへ切替+トースト
-- **共通鍵 QR**: 「QR を表示」で即 QrDisplay(白面、全画面可)を表示する。「暗号化と復号に使える秘密鍵を含む」という説明だけを添え、警告 Alert、確認チェックボックス、表示・コピー・ダウンロードのゲートは置かない。
-- QR 画面の操作: QR の下にコピー、ダウンロードの順で2ボタンを1行に並べる。アプリ内保存・命名保存・SVG 操作(Saved-QR / `qrArtifacts`)は無い。単一画像として操作列は置かず、左寄せのアイコンのみ全画面ボタンを表示し、全画面面は右寄せの閉じるボタンだけを表示する。
-- 公開鍵ペア: RSA-3072 生成は数秒かかる → ボタン内 spinner+「生成中…(数秒かかります)」、二重実行防止。公開鍵 QR は警告不要で、説明は共通鍵 QR と同じ構造の「暗号化と署名検証に使う公開鍵を含む」とする。秘密鍵は QR 表示・エクスポート UI を出さない(`enablePrivateKeyExport=false` 固定)
-- 重複: 生成/取込時に指紋一致があれば DUPLICATE_KEY 文言+既存鍵名を表示し保存しない。PQ 公開バンドル取込は KEM/署名アルゴリズムと両方の公開鍵バイトが一致する再取込を `DUPLICATE_KEY`、それ以外の鍵ID衝突(部分衝突・失効行との衝突を含む)を `KEY_ID_CONFLICT` で拒否する。ただし、いずれかの一致行が失効済みなら、同じ鍵素材でも、一覧から隠れた利用停止済みバンドルによる予約として常に `KEY_ID_CONFLICT` にする
+## Create mode (`KeyAddDialog` create)
 
-## 読込モード(`KeyAddDialog` import)
+- Creation forms such as "Generate symmetric key" / "Generate key pair" (key name Input + primary generation button). After generation, switch to the detail view + show a toast
+- **Symmetric key QR**: "Show QR" immediately displays QrDisplay (white surface, fullscreen available). Include only the explanation "Contains a secret key that can be used for encryption and decryption"; do not add a warning Alert, confirmation checkbox, or gates for display, copy, or download.
+- QR screen actions: below the QR, place 2 buttons in one row, Copy then Download. There are no in-app save, named-save, or SVG actions (Saved-QR / `qrArtifacts`). For a single image, omit the action row and show a left-aligned, icon-only fullscreen button; in fullscreen, show only a right-aligned close button.
+- Public-key pair: RSA-3072 generation takes several seconds → spinner inside the button + "Generating… (this takes a few seconds)"; prevent duplicate execution. Public key QRs need no warning; use an explanation with the same structure as for symmetric key QRs: "Contains public key material used for encryption and signature verification." Do not provide QR display or export UI for private keys (`enablePrivateKeyExport=false` fixed)
+- Duplicates: if a matching fingerprint exists during generation/import, show DUPLICATE_KEY text + the existing key name, and do not save. For PQ public bundle imports, reject a reimport with matching KEM/signature algorithms and both public-key byte sequences as `DUPLICATE_KEY`; reject other key-ID collisions (including partial collisions and collisions with revoked rows) as `KEY_ID_CONFLICT`. However, if either matching row is revoked, always use `KEY_ID_CONFLICT` even for identical key material: the disabled bundle hidden from the list reserves those IDs
 
-1. 読取対象を先に選択(RadioGroup 縦 44px): 「共通鍵を読み取る」/「公開鍵を読み取る」(spec §16。暗号文の読取は `/decrypt`)
-2. 「カメラを起動」ボタン → QrScannerDialog(カメラ権限はこの時点で要求)
-3. 読取成功 → 確認カード: 種別 / 方式 / 指紋(4×4 mono、照合を促す文言「相手の画面の指紋と一致することを確認してください」+**完全 SHA-256 hex も併記・コピー可**。短縮表示は簡易照合である旨を添える)/ 作成日時 + 鍵名入力(提案 `共通鍵-取込` 等)
-   - 選択した対象種別とプレフィックス不一致 → 拒否文言(例: 「これは公開鍵のQRです。読取対象を切り替えてください」)
-   - 共通鍵の保存は追加確認(チェックボックス「この鍵の共有経路を信頼しています」)
-   - 指紋重複 → DUPLICATE_KEY(既存鍵名提示、保存不可)
-   - PQ バンドル: KEM/署名アルゴリズムと両方の公開鍵バイトが一致する再取込 → DUPLICATE_KEY; いずれかの鍵IDが既存(失効行含む)と衝突 → KEY_ID_CONFLICT(保存不可)。一致行が失効済みなら、同じ鍵素材でも KEY_ID_CONFLICT
-4. 失敗: CAMERA_PERMISSION_DENIED / CAMERA_NOT_AVAILABLE を文言+対処(設定アプリで許可 等)で表示
+## Import mode (`KeyAddDialog` import)
 
-## 一覧行操作
+1. Select the scan target first (vertical RadioGroup, 44px): "Scan symmetric key" / "Scan public key" (spec §16; ciphertext scanning is on `/decrypt`)
+2. "Start camera" button → QrScannerDialog (request camera permission at this point)
+3. Successful scan → confirmation card: type / method / fingerprint (4×4 mono, with a comparison prompt, "Confirm that the fingerprint matches the one on the other person's screen," + **the full SHA-256 hex alongside it, copyable**. Explain that the shortened display is a quick check) / creation date/time + key name input (suggestions such as `Symmetric-key-import`, an English translation of the historical Japanese name)
+   - Prefix does not match the selected target type → rejection text (e.g. "This is a public key QR. Change the scan target")
+   - Saving a symmetric key requires extra confirmation (checkbox: "I trust the channel used to share this key")
+   - Duplicate fingerprint → DUPLICATE_KEY (show the existing key name; saving is unavailable)
+   - PQ bundle: reimport with matching KEM/signature algorithms and both public-key byte sequences → DUPLICATE_KEY; either key ID collides with an existing row (including revoked rows) → KEY_ID_CONFLICT (saving is unavailable). If a matching row is revoked, use KEY_ID_CONFLICT even for identical key material
+4. Failure: show CAMERA_PERMISSION_DENIED / CAMERA_NOT_AVAILABLE with explanatory text + a remedy (e.g. grant permission in the settings app)
 
-- 行操作(DropdownMenu / 詳細): QR を表示 / 名前を変更 / 失効(公開バンドル) / 削除
-- 失効(公開バンドル): 確認文言に、失効すると行が非表示になり、このインストールでは署名鍵IDとKEM鍵IDの両方が永久に予約されること、元に戻せず、その後この画面から削除もできないこと、予約を解除できるのはローカルデータの全消去だけであることを明記する。両IDを解放する必要がある場合は、失効前に削除を選ぶ
-- 削除: AlertDialog(通常確認)+「この鍵で復号できなくなります」説明。秘密鍵ありの鍵ペアは**強確認**
-- 機密度バッジ「最高機密」は共通鍵で常時表示
+## List row actions
 
-## QrScannerDialog 共通規則
+- Row actions (DropdownMenu / details): Show QR / Rename / Revoke (public bundle) / Delete
+- Revoke (public bundle): the confirmation text must state that revocation hides the row and permanently reserves both the signing key ID and KEM key ID in this installation; it cannot be undone, and the row cannot subsequently be deleted from this screen. Only clearing all local data releases the reservation. If both IDs need to be released, choose Delete before revoking
+- Delete: AlertDialog (normal confirmation) + explanation, "You will no longer be able to decrypt with this key." Key pairs containing a private key require **strong confirmation**
+- Always show the "Highly sensitive" sensitivity badge for symmetric keys
 
-- 開いたときのみ getUserMedia。閉じる(成功・キャンセル・エラーいずれも)でストリーム必ず停止
-- 読取成功時は即ロック(多重発火防止)、ビープ等の音は鳴らさない、読取画像を保存しない
-- 枠ガイド+「QRコードを枠内に合わせてください」、`aria-live` で状態通知
+## Shared QrScannerDialog rules
+
+- Call getUserMedia only when opened. Always stop the stream when closed (whether success, cancellation, or error)
+- Lock immediately on a successful scan (prevent repeated firing); do not play beeps or other sounds, and do not save scanned images
+- Frame guide + "Align the QR code within the frame"; announce status with `aria-live`

@@ -2,7 +2,7 @@
 
 This document is the normative specification of the v2 wire format (post-quantum
 and symmetric). The implementation (`src/crypto/pq/*`, `src/crypto/aes-gcm.ts`,
-`src/qr/payload-v2.ts`, `src/qr/multipart/*`) and the golden fixtures in
+`src/qr/wire-codec.ts`, `src/qr/multipart/*`) and the golden fixtures in
 `tests/pq/*` follow this document. There is no v1 wire family: prefixes
 `OCM1` / `OCK1` / `OCP1` / `OCB1` and the cbor-x envelope stack are rejected at
 every boundary.

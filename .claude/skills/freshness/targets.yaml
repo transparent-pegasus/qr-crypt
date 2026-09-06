@@ -17,13 +17,13 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-08-15 # last revision of this registry itself
+updated: 2026-09-07 # last revision of this registry itself
 
 units:
   - id: deps
     category: dependencies
     cadence_days: 14
-    last_checked: 2026-08-08
+    last_checked: 2026-09-06
     files:
       - package.json
       - aube-lock.yaml
@@ -107,7 +107,7 @@ units:
   - id: ci-actions
     category: dependencies
     cadence_days: 60
-    last_checked: 2026-08-08
+    last_checked: 2026-09-07
     files:
       - .github/workflows/cloudflare-pages.yml
       - .github/workflows/dev-to-main-pr.yml
@@ -116,9 +116,18 @@ units:
       - docs/develop/install-route-a/README.md # complete Route A procedure; README is summary + link
       - docs/locales/ja/develop/install-route-a/README.md # Japanese mirror under docs/locales/<lang>/; must not diverge from README.md
       - docs/develop/install-route-a/INSTALL.template.txt # the only copy of the archive's INSTALL.txt text
-      - scripts/generate-install-txt.mjs # renders that template; the workflow and the verifier both call it
+      - scripts/release/verify-build-determinism.sh # rebuilds, compares, and restores the first dist
+      - tests/unit/release-build-determinism.test.ts # executable rebuild comparison and dist restoration contract
+      - scripts/release/package-static-pwa.sh # validates and stages the static install archive
+      - tests/unit/release-static-package.test.ts # executable archive, checksum, source identity, and fail-closed contract
+      - scripts/release/validate-static-closure.cjs # packaging's root-relative asset, manifest, and precache checks
+      - tests/unit/release-static-closure.test.ts # executable root-relative asset, manifest, and precache contract
+      - scripts/release/write-static-zip.py # packaging's sorted stored ZIP with fixed modes and commit timestamps
+      - scripts/release/test-packaged-pwa.sh # archived-byte HTTP checks followed by Playwright's separate rebuild
+      - tests/fixtures/release-fixture.ts # shared isolated fixtures for the release contract tests
+      - scripts/generate-install-txt.mjs # renders that template; package-static-pwa.sh and the verifier both call it
       - tests/unit/generate-install-txt.test.ts # executable derivation, fail-closed, and about/-exclusion contract
-      - scripts/serve-dist.mjs # header-aware server called directly by the release workflow
+      - scripts/serve-dist.mjs # header-aware server called by test-packaged-pwa.sh and Playwright
       - tests/unit/serve-dist.test.ts # executable containment and server startup contract
       - tests/unit/release-tag-read.test.ts # extracts assert_canonical_tag and read_canonical_tag from github-release.yml; breaks if either helper is renamed or reshaped
       - tests/unit/release-audit-gate.test.ts # pins the release build audit ordering and build -> sign -> publish needs chain
@@ -130,8 +139,9 @@ units:
       docs/develop/install-route-a/README.md holds the complete Route A Cosign /
       rebuild procedure while the README publishes only a summary plus a link.
     method: |
-      Review all three workflows. Check each action repository for newer majors and
-      security advisories. Keep release-workflow actions pinned to full SHAs;
+      Review all three workflows and the scripts/release programs they invoke.
+      Check each action repository for newer majors and security advisories.
+      Keep release-workflow actions pinned to full SHAs;
       verify each SHA still matches the documented tag. Review the pinned
       Cosign release, verifier image digest, and verification contract. Keep
       mise-action reading mise.toml and VITE_BUILD_SHA sourced from
@@ -148,10 +158,14 @@ units:
       docs/develop/deployment.md with the workflows. Reconcile
       docs/develop/install-route-a/README.md (mandatory set, cosign verify-blob variables,
       rebuild-and-compare) with INSTALL.template.txt and the verification contract
-      in github-release.yml. The template is the archive text: keep the workflow
-      calling generate-install-txt.mjs rather than inlining a second copy, and keep
+      in github-release.yml and scripts/release/package-static-pwa.sh. The template
+      is the archive text: keep package-static-pwa.sh calling generate-install-txt.mjs
+      rather than inlining a second copy, and keep
       every rebuild-side comparison excluding the online-only about/ tree the
-      workflow deletes before staging. Confirm README.md / README.ja.md Route A sections
+      packaging script deletes before staging. Confirm test-packaged-pwa.sh checks
+      archived bytes over HTTP on port 4173 before Playwright browser-tests its
+      separate rebuild; deployment prose must preserve that distinction.
+      Confirm README.md / README.ja.md Route A sections
       remain a summary plus a link to that document (not a second incomplete
       procedure) and that their quoted policy values still match the workflow.
     sync: [readme]
@@ -161,10 +175,17 @@ units:
       aube run test -- tests/unit/release-tag-read.test.ts
       aube run test -- tests/unit/release-audit-gate.test.ts
       aube run test -- tests/unit/generate-install-txt.test.ts
+      aube run test -- tests/unit/release-build-determinism.test.ts
+      aube run test -- tests/unit/release-static-closure.test.ts
+      aube run test -- tests/unit/release-static-package.test.ts
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \
         actionlint .github/workflows/*.yml
+      mise x \
+        github:rhysd/actionlint@v1.7.12 \
+        github:koalaman/shellcheck@v0.11.0 -- \
+        shellcheck -s bash scripts/release/*.sh
       Extract each run block from .github/workflows/dev-to-main-pr.yml without
       YAML indentation and pipe each one to:
       mise x \
@@ -189,12 +210,12 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-08-14
+    last_checked: 2026-09-06
     files:
       - docs/security/threat-model.md
       - src/crypto/pq/canonical-cbor.ts # structural allocation caps and retained-key behavior cited by T20
       - src/lib/limits.ts # frames × chunk receiver-allocation bound cited by T20
-      - src/qr/payload-v2.ts # bare-paste character and decoded-byte bounds cited by T20
+      - src/qr/wire-codec.ts # bare-paste character and decoded-byte bounds cited by T20
       - src/qr/multipart/assemble.ts # receiver assembly enforcement cited by T20
       - src/qr/camera/frame-pump.ts # scanner downscale, in-flight bound, and scheduled interval cited by T5
     why: >
@@ -209,8 +230,9 @@ units:
       src/app/boot/, including the read-only RSA-HYBRID preference exception
       that protects wipeOnOnline=false while repository normalization removes
       it. Reconcile T5's scanner bounds with qr/camera/frame-pump.ts
-      — decode.ts is now a thin facade and holds none of them — and T20's
-      frame/paste allocation and CBOR caps with limits.ts, payload-v2.ts,
+      — camera-scan.ts orchestrates attempts and timeouts and holds none of
+      them — and T20's
+      frame/paste allocation and CBOR caps with limits.ts, wire-codec.ts,
       assemble.ts, and canonical-cbor.ts. Re-check the §5 session-memory
       receipt / replay bullet and the §7 imported-bundle key-ID shadowing row
       (T22) against src/features/receipt-cache.ts and
@@ -219,7 +241,7 @@ units:
     verify: >
       Diff claims against README security section and the settings page
       "About security" copy (settings.security.* keys in
-      src/i18n/messages.ts, both locales); spot-check advisory IDs still
+      src/i18n/catalog-en.ts and src/i18n/catalog-ja.ts); spot-check advisory IDs still
       resolve.
     sync: [ui-security-copy, readme]
 
@@ -263,7 +285,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-08-15
+    last_checked: 2026-09-06
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
@@ -355,7 +377,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-08-21
+    last_checked: 2026-09-07
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
@@ -364,7 +386,7 @@ units:
       - src/lib/limits.ts # artifact ceiling, algorithm-specific sizes, and timeout floor
       - src/lib/frame-bytes.ts # generated-density grid and per-artifact effective clamps
       - src/lib/frame-interval.ts # preference dwells, relay playback cadence, and legacy normalization
-      - src/qr/payload-v2.ts # bare-paste and decoded-artifact ceilings
+      - src/qr/wire-codec.ts # bare-paste and decoded-artifact ceilings
       - src/schemas/domain.ts # exact default and compatible generated-display pairs
       - src/storage/preferences-repository.ts # atomic pair writes and boot-readable pair canonicalization
       - src/pages/encrypt-page.tsx # message-display preference and per-artifact effective clamp
@@ -373,8 +395,9 @@ units:
       - src/features/decrypt-message.ts # the one open operation: action-time identity re-resolution, replay refusal, and plaintext zeroize
       - src/lib/generated-display.ts # the one effectiveGeneratedDisplay (pair + per-artifact clamp), shared by every display surface
       - src/components/qr-display.tsx # renders at the caller-supplied env.qrRenderSize; holds no size default of its own
-      - src/components/key-detail-dialog.tsx # identity-display preference and per-artifact effective clamp
+      - src/components/key-detail-dialog.tsx # identity-display preference, symmetric single-frame QR, and portal/export ownership
       - src/components/key-detail/identity-qr-session.tsx # the identity display surface that consumes the pair
+      - src/components/key-detail/symmetric-qr-view.tsx # controlled symmetric QR host and copy/download presentation
       - src/components/animated-qr-frames.tsx # labelled compatibility switch, commit-gated dwell, and one-button export
       - src/components/online-relay.tsx # independent replay cadence and deliberately absent switch
       - src/qr/relay-playback.ts # canonical round-trip check and whole-set render admissibility before any frame is shown
@@ -397,10 +420,10 @@ units:
       protocol revisions — never "refreshed" to make tests pass). Reconcile
       the documented allocation, exact display preferences, per-artifact
       effective clamps, cycle, relay-cadence, and export contracts with
-      limits.ts, frame-bytes.ts, frame-interval.ts, payload-v2.ts, domain.ts,
+      limits.ts, frame-bytes.ts, frame-interval.ts, wire-codec.ts, domain.ts,
       preferences-repository.ts, encrypt-page.tsx, decrypt-page.tsx,
       generated-display.ts, key-detail-dialog.tsx,
-      key-detail/identity-qr-session.tsx,
+      key-detail/identity-qr-session.tsx, key-detail/symmetric-qr-view.tsx,
       animated-qr-frames.tsx, and online-relay.tsx. Reconcile the documented
       sym-message/symmetric-key layouts, prefixes, HKDF inputs, byte bounds,
       and single-frame rule with sym-envelope.golden.test.ts. Confirm the relay
@@ -415,7 +438,7 @@ units:
       and wipe coordinator behavior, including the read-only RSA-HYBRID boot
       exception and clearReceipts in the buffer-drop inventory. Update dated
       statements to current state.
-    verify: aube run test:pq && aube run test -- tests/ui/boot-controller.test.tsx
+    verify: aube run test:pq && aube run test -- tests/ui/boot tests/ui/key-list-page.test.tsx
 
   - id: size-goldens
     category: crypto
@@ -484,11 +507,19 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-08-15
+    last_checked: 2026-09-07
     files:
-      - src/i18n/messages.ts # canonical disclosure copy, en + ja (settings.security.*, gate.*, offlineAck.*, keys.* banners)
+      - src/i18n/catalog-en.ts # canonical disclosure copy, en (settings.security.*, gate.*, offlineAck.*, keys.* banners)
+      - src/i18n/catalog-ja.ts # the same disclosure copy, ja; both locales move together
+      - src/pages/settings-confirmations.ts # exact destructive ceremony phrases mirrored in both catalogs
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
-      - src/components/key-add-dialog.tsx # experimental / not-independently-audited banners
+      - src/components/key-add-dialog.tsx # import ceremony descriptions and dismissal boundary
+      - src/components/key-add/create-key-view.tsx # experimental / not-independently-audited banner
+      - src/components/key-add/import-source-view.tsx # camera and paste import guidance
+      - src/components/key-add/symmetric-import-view.tsx # symmetric-secret warning and acknowledgement
+      - src/components/key-add/bundle-confirm-view.tsx # fingerprint-confirmed versus unverified trust ceremony
+      - src/components/key-detail/delete-confirm.tsx # key deletion disclosure
+      - src/components/key-detail/destroy-superseded-confirm.tsx # superseded secret destruction disclosure
       - src/components/online-gate.tsx # offline-switch compromise-assumption copy
       - src/components/offline-ack-shell.tsx # "a connected device can always be compromised" copy
       - public/about/index.html # landing page, en source of record: AES-256 default, ML-KEM as KEM, wipe honesty (attempts / Rev. 2)
@@ -502,18 +533,23 @@ units:
       encapsulation, wipe as best-effort with NIST SP 800-88 Rev. 2), so it
       moves with them.
     method: |
-      Diff the disclosure copy (both locales in src/i18n/messages.ts) against
+      Diff the disclosure copy (src/i18n/catalog-en.ts and catalog-ja.ts) against
       docs/security/security-review.md and docs/security/threat-model.md; update banners when
-      audit/release status moves. Re-read the landing page's AES-256 /
+      audit/release status moves. Check the rendered disclosures in
+      key-add-dialog.tsx, key-add/{create-key-view,import-source-view,
+      symmetric-import-view,bundle-confirm-view}.tsx, and
+      key-detail/{delete-confirm,destroy-superseded-confirm}.tsx against those
+      catalogs, including fingerprint trust and destructive-action wording.
+      Re-read the landing page's AES-256 /
       ML-KEM / wipe honesty wording against the same docs, and keep
       public/about/index.html and messages.js in step — the English text lives
       only in the HTML, the other locales only in messages.js.
-    verify: aube run test -- tests/ui/keys-settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
+    verify: aube run test -- tests/unit/i18n.test.ts tests/ui/keys.test.tsx tests/ui/key-add-dialog.test.tsx tests/ui/key-list-page.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
 
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-08-15
+    last_checked: 2026-09-07
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together
@@ -557,7 +593,7 @@ units:
   - id: external-links
     category: links
     cadence_days: 180
-    last_checked: 2026-08-02
+    last_checked: 2026-09-07
     files:
       - components.json # https://ui.shadcn.com/schema.json
       - design-system/PROVENANCE.md # plugin path/version provenance
@@ -569,8 +605,8 @@ units:
       - public/about/install-qr.svg # encodes the production app URL; regenerate whenever that URL moves
     why: >
       External URLs rot; provenance paths/versions drift from reality.
-      (README.md and docs/security/threat-model.md carry bare advisory IDs, not URLs —
-      advisory-ID resolution belongs to the deps/threat-model units.)
+      (Advisory IDs and links in README.md and the security documents are
+      checked by the deps/threat-model/security-review units.)
       The landing page's install QR is an opaque mirror of the production
       URL: a stale one silently sends readers to the wrong origin.
     method: |
@@ -615,7 +651,7 @@ invariants:
       vocabulary-single-active, and removed-vocabulary-rejected.
     verify: >
       aube run test -- tests/unit/qr-density-safety.test.ts
-      tests/integration/storage.test.ts tests/ui/boot-controller.test.tsx
+      tests/integration/storage.test.ts tests/ui/boot
   - id: boot-retired-rsa-read-safety
     files:
       - src/app/boot/boot-controller.ts
@@ -705,7 +741,7 @@ invariants:
       && rg -q 'NetworkOnly' vite.config.ts
       && ! rg -q 'reachability-sentinel' <(rg -o 'globPatterns:[^]]*]' vite.config.ts)
       && rg -A2 'reachability-sentinel' public/_headers | rg -q 'no-store'
-      && aube run test -- tests/ui/boot-controller.test.tsx
+      && aube run test -- tests/ui/boot
   - id: build-sha-placeholder
     files:
       - .env.example
@@ -724,7 +760,11 @@ excluded:
     reason: Vendored; refreshed via the deps unit.
   - path: test-results/**
     reason: Generated by test runs.
+  - path: design-system/README.md
+    reason: Archive index for mixed historical design snapshots and ui-ux-pro-max provenance; not a current implementation specification. Keep undated; PROVENANCE.md remains registered in external-links.
+  - path: design-system/MASTER.md
+    reason: Archived design instructions, including later amendments; retained for history and provenance, not current implementation requirements. Do not add time-decaying claims.
   - path: design-system/pages/**
-    reason: Live page contracts — design-system/MASTER.md sends every page implementation here first. Excluded because nothing in them decays with time; they go stale only when a change invalidates them, so the change that renames a key or moves a row updates them in the same commit.
+    reason: Archived page instructions with mixed historical snapshots; retained for history and provenance, not current implementation requirements. Do not add time-decaying claims.
   - path: .claude/skills/**
     reason: Agent tooling docs (herdr/orchestration/freshness itself); not product surface. This registry's own revision is tracked by its updated field.

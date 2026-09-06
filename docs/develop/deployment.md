@@ -44,17 +44,20 @@ request targeting `main` or `dev`:
   the frozen dependency graph and runs `aube audit` unconditionally before type
   checking, building, or packaging. The sign job requires that build job, and
   publication requires both, so a failed release audit cannot reach signing or
-  publication. The workflow packages `dist` into the static install ZIP offered
-  as the default install route A, signs it with Cosign, and renders the
-  `INSTALL.txt` verification and local-server instructions carried inside the ZIP
+  publication. The workflow calls `scripts/release/package-static-pwa.sh` to
+  package `dist` into the static install ZIP offered as the default install
+  route A, signs it with Cosign, and renders the `INSTALL.txt` verification and
+  local-server instructions carried inside the ZIP
   from the versioned template
   `docs/develop/install-route-a/INSTALL.template.txt` through
   `scripts/generate-install-txt.mjs`, so a verifier can regenerate that member
-  byte-for-byte. Before upload, it extracts the exact archive, starts
-  the shared server with `SERVE_DIST_ROOT` set to that extracted tree, checks the
-  sentinel body and `no-store` response, required CSP response directives,
-  manifest MIME type, and SPA fallback, then runs the e2e suite against those
-  archived bytes
+  byte-for-byte. Before upload, packaging extracts the exact archive, and
+  `scripts/release/test-packaged-pwa.sh` starts the shared server on port 4173
+  with `SERVE_DIST_ROOT` set to that extracted tree. It checks the sentinel body
+  and `no-store` response, required CSP response directives, manifest MIME type,
+  and SPA fallback against the archived bytes. It then runs the e2e suite;
+  Playwright rebuilds the checkout and starts its own server on a cwd-derived
+  port, so those browser tests exercise the rebuilt site
 
 `.github/workflows/dev-to-main-pr.yml` checks out full history on a `dev` push,
 or on an intentional `workflow_dispatch`, and builds a manifest from merge
@@ -74,15 +77,20 @@ deploys production and publishes the signed release.
 
 ## Release rebuild evidence
 
-The release workflow builds the production PWA twice with the same source SHA and
-toolchain in one runner. It moves the first `dist` under `RUNNER_TEMP` before the
-second build, compares the sorted file sets and every file hash, and restores the
-first build for packaging. Keeping build A outside the repository is required:
+After its first production build, the release workflow calls
+`scripts/release/verify-build-determinism.sh` to build again with the same source
+SHA and toolchain in one runner. The script moves the first `dist` under
+`RUNNER_TEMP` before the second build, compares the sorted file sets and every
+file hash, and restores the first build for packaging. Keeping build A outside
+the repository is required:
 Tailwind scans the project tree, so a copied build or extracted archive left there
 can change the second build's CSS and create a false mismatch.
 
-Packaging adds `SHA256SUMS.files` as a member inside the signed ZIP after
-`INSTALL.txt` and before mode/timestamp normalization. It hashes every other
+`scripts/release/package-static-pwa.sh` checks the static closure through
+`scripts/release/validate-static-closure.cjs` and writes the archive through
+`scripts/release/write-static-zip.py`. Packaging adds `SHA256SUMS.files` as a
+member inside the signed ZIP after `INSTALL.txt` and before mode/timestamp
+normalization. It hashes every other
 archive member, including `INSTALL.txt`, and excludes only itself. The published
 release assets remain exactly three: the ZIP, the external ZIP-only
 `SHA256SUMS`, and the `.sigstore.json` bundle. `SHA256SUMS.files` is not a fourth

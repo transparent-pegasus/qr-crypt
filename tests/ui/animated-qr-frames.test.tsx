@@ -1,4 +1,5 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/qr-codec"
+import "./helpers/module-mocks/browser-effects"
 import {
   act,
   fireEvent,
@@ -9,15 +10,15 @@ import {
 } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { encodeFrameToPayload } from "@/qr/wire-codec"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"
+import { renderQrDataUrl } from "./helpers/fakes/qr-codec"
 import {
   qrPngBlob,
-  renderQrDataUrl,
   triggerDownload,
-} from "./helpers/fakes"
+} from "./helpers/fakes/browser-effects"
 import { resetUi } from "./helpers/render-app"
 
 const defaultQrMaxFrames = env.qrMaxFrames

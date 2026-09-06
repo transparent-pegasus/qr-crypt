@@ -84,7 +84,8 @@
       "@trickfilm400/rollup-plugin-off-main-thread": "npm:@surma/rollup-plugin-off-main-thread@2.2.3",
       "brace-expansion@5": "5.0.9",
       "brace-expansion@2": "5.0.9",
-      "fast-uri": "3.1.5",
+      "fast-uri": "3.1.6",
+      "browserslist": "4.28.7",
       "nanoid": "3.3.18",
       "undici": "7.29.0"
     }

@@ -284,8 +284,7 @@ export interface QrFrameV2 {
 }
 
 // ---------------------------------------------------------------------------
-// Preferences. As in v1, theme is owned by localStorage "oc-theme",
-// outside the database.
+// Preferences. Theme is owned by localStorage "oc-theme", outside the database.
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_GENERATED_DISPLAY_PAIR = {
@@ -313,9 +312,9 @@ export interface Preferences {
   resetChurnMb: number // 0–512, default 0 (experimental option).
 }
 
-// Defaults for v2 additions. Construct Preferences literals by spreading this value
-// as the single source; preferences-repository / limits.ts validate numeric ranges.
-export const PQ_PREFERENCE_DEFAULTS = {
+// Construct Preferences literals by spreading this value as the single source;
+// preferences-repository / limits.ts validate numeric ranges.
+export const PREFERENCE_DEFAULTS = {
   frameBytes: DEFAULT_GENERATED_DISPLAY_PAIR.frameBytes,
   frameIntervalMs: DEFAULT_GENERATED_DISPLAY_PAIR.frameIntervalMs,
   transferTimeoutMinutes: 10,

@@ -33,9 +33,11 @@ What this app guarantees extends only to: **the application does not intentional
   `index.html`. What does **not** survive, because no meta equivalent exists:
   `Permissions-Policy` (T12), `X-Content-Type-Options`, `X-Frame-Options`,
   `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy`, and CSP
-  `frame-ancestors`. Nothing in the app detects their absence. Treat every one
-  of those as a control the deployment may simply not have; the install
-  procedure's server requirement is the only thing that supplies them. On a
+  `frame-ancestors`. Boot checks these headers on the sentinel response and
+  requires a passing deployment verdict before publishing `offline-confirmed`
+  (T18). This detects an honest server that ignores `_headers`; it cannot prove
+  that the top-level navigation response carries the same headers. An
+  independently provisioned deployment checker remains required. On a
   loopback origin that is never networked and frames nothing, the practical
   exposure is low — but the threat model must not credit a control that the
   serving environment silently dropped
@@ -111,7 +113,7 @@ As a cross-cutting countermeasure for T8/T11, OnlineGate fail-closes encryption,
 - **The symmetric key is extractable**: generating the `OCK2` symmetric-key QR is a spec requirement. The exposure surface is reduced by T3's UI countermeasures. Stronger non-extractable protection belongs to a PQ identity, whose seeds are stored only under the non-extractable Vault key (T13). Symmetric keys support active/rotated lineage; encryption and OCK2 share use the active head only, while decrypt resolves any generation by `keyId`.
 - **Symmetric-key import has no persisted person-binding state**: the sender detail and import surfaces show the same key fingerprint. Saving an imported `OCK2` requires an acknowledgment that the user compared that fingerprint with the sender through an independent channel, but the application records neither the comparison nor a trust state. This is deliberately lighter than PQ bundle confirmation and leaves the user-verification residual in T23.
 - **Symmetric messages authenticate the envelope, not the sender**: `sym-message` AAD binds `version` / `type` / `suite` / `keyId` / `createdAt`. Sender authentication for the post-quantum path is ML-DSA-87 on every PQ message (T15).
-- **createdAt is metadata; window-memory receipts cover re-presentation**: one loaded app window's JavaScript realm keeps a module-local receipt map (`src/features/receipt-cache.ts`), bounded at `MAX_SESSION_RECEIPTS` with oldest-first eviction. A matching ciphertext hash is flagged before plaintext is shown; an authenticated message ID seen with a different ciphertext is refused. The map is not shared with another tab or window of the same app. Reload/restart, transient clear, or wipe resets it, and evicted entries become undetectable again. PQ receipts use recipient KEM key ID plus the authenticated `messageId` as identity and compare the ciphertext hash for the verdict. Symmetric (`sym-message`) receipts use the symmetric key ID plus ciphertext hash (no inner `messageId`). Neither case authenticates a sender by itself. `createdAt` remains sender-asserted and is never a freshness source. Nothing frame- or assembled-artifact-derived is persisted, so the asset table at §1, T11, T19, and the clean-origin boot gate are unchanged by this work.
+- **createdAt is metadata; window-memory receipts cover re-presentation**: one loaded app window's JavaScript realm keeps a module-local receipt map (`src/features/receipt-cache.ts`), bounded at `MAX_SESSION_RECEIPTS` with oldest-first eviction. A matching ciphertext hash is flagged before plaintext is shown; an authenticated message ID seen with a different ciphertext is refused within the same receipt identity. The map is not shared with another tab or window of the same app. Reload/restart, transient clear, or wipe resets it, and evicted entries become undetectable again. PQ receipts use sender fingerprint, recipient KEM key ID, and the authenticated `messageId` as identity and compare the ciphertext hash for the verdict. Symmetric (`sym-message`) receipts use the symmetric key ID plus ciphertext hash (no inner `messageId`). Neither case authenticates a sender by itself. `createdAt` remains sender-asserted and is never a freshness source. Nothing frame- or assembled-artifact-derived is persisted, so the asset table at §1, T11, T19, and the clean-origin boot gate are unchanged by this work.
 - **Private-key backup (`OCB2`) not implemented**: the `OCB2` prefix is reserved and unconditionally rejected — there is no feature flag. Any implementation must satisfy these conditions: encryption under a passphrase-derived key, a random salt/IV, and a restore test.
 - **No update path**: eliminating the update path is a maintainer decision on operational policy. Devices that hold or have held protected material (keys, PQ identities, Vault key, or plaintext-bearing session state) operate permanently offline; a new version is installed fresh only after the device has been sanitized. A dedicated clean-origin relay device is not a key/plaintext-bearing device and may stay online for the optical relay only. A simple full format alone does not guarantee erasure on flash/SSD media — use a media-appropriate sanitization procedure (e.g. NIST SP 800-88) or destroy the media when assurance matters.
 
@@ -162,6 +164,35 @@ history the new CI gate answers; neither is erased by the now-clean result.
 | Target | Status | Notes |
 | --- | --- | --- |
 | `nanoid` override moved `3.3.17` → `3.3.18` | **RESOLVED** high-severity `GHSA-2v37-7h3g-55p8` (custom generators can loop indefinitely when size is zero); every version below `3.3.18` is affected | The advisory published after the 2026-08-08 sweep recorded above, so the `3.3.17` row was accurate when written and stale by 2026-08-14. Reached only through `postcss` in the build toolchain; absent from the browser bundle. Found by CI `validate`, which runs `aube audit` on every push — the case the "no scheduled run" note below describes. `aube audit` now reports no known vulnerabilities. This was a targeted remediation, not a full `deps` sweep |
+
+### Build-tool advisory re-check (2026-09-06)
+
+The initial `aube audit` reported six high-severity findings. GitHub Advisory
+Database publication dates are 2026-09-01 for browserslist and 2026-09-02 for
+fast-uri; these are distinct from the patched npm release dates,
+2026-07-21 (`browserslist@4.28.7`) and 2026-08-23 (`fast-uri@3.1.6`).
+
+| Target | Resolved advisory | Affected locked line / issue |
+| --- | --- | --- |
+| `browserslist@4.28.7` override | [GHSA-c83g-rgw3-j3cx](https://github.com/advisories/GHSA-c83g-rgw3-j3cx) | `<=4.28.6`; unbounded query-cache growth |
+| `browserslist@4.28.7` override | [GHSA-73wf-gq98-2v4g](https://github.com/advisories/GHSA-73wf-gq98-2v4g) | `<=4.28.6`; untrusted custom-statistics crash / prototype write |
+| `fast-uri@3.1.6` override | [GHSA-jqff-g426-hqxp](https://github.com/advisories/GHSA-jqff-g426-hqxp) | `>=3.0.0 <3.1.6`; percent-encoded scheme host confusion |
+| `fast-uri@3.1.6` override | [GHSA-5jgf-p345-68v8](https://github.com/advisories/GHSA-5jgf-p345-68v8) | `>=3.1.3 <3.1.6`; scheme-relative IDN host confusion |
+| `fast-uri@3.1.6` override | [GHSA-f65p-4m7j-42xc](https://github.com/advisories/GHSA-f65p-4m7j-42xc) | `>=3.0.0 <3.1.6`; malformed IPv6 normalization |
+| `fast-uri@3.1.6` override | [GHSA-fph4-wmhf-6fwf](https://github.com/advisories/GHSA-fph4-wmhf-6fwf) | `>=3.1.2 <3.1.6`; repeated hostname percent-decoding |
+
+Both paths start at `vite-plugin-pwa@1.3.0` → `workbox-build@7.4.1`:
+browserslist is reached through Babel's `@babel/helper-compilation-targets`
+and `core-js-compat`; fast-uri through `ajv@8.20.0`, directly and via
+`@apideck/better-ajv-errors`. No direct application import was found in `src/`.
+These findings concern build-tool inputs; the URI-parser advisories do not
+establish application SSRF exposure in this offline PWA.
+
+The two patch versions satisfy their parents' dependency ranges. Lockfile
+regeneration preserved all other package versions, integrity values, direct
+pins, and overrides. `aube ci` passed and `aube audit` reported no known
+vulnerabilities on 2026-09-06. `aube outdated` was reviewed; broader upgrades
+were outside this bounded remediation.
 
 CI `validate` now runs `aube audit` unconditionally after `aube ci`. It detects
 known advisories on the next triggered run — every push, or a pull request

@@ -9,30 +9,13 @@ import fs from "node:fs"
 import fsp from "node:fs/promises"
 import http from "node:http"
 import path from "node:path"
+import { parseHeadersFile } from "./csp-from-headers.mjs"
 
 try {
   const root = fs.realpathSync(path.resolve(process.env.SERVE_DIST_ROOT ?? "dist"))
   const port = Number(process.env.SERVE_DIST_PORT ?? 4173)
 
-  const rules = []
-  {
-    let activeRule
-    const text = await fsp.readFile(path.join(root, "_headers"), "utf8")
-    for (const rawLine of text.split("\n")) {
-      if (rawLine.trim() === "") continue
-      if (!rawLine.startsWith(" ") && !rawLine.startsWith("\t")) {
-        activeRule = { pattern: rawLine.trim(), headers: {} }
-        rules.push(activeRule)
-        continue
-      }
-      if (!activeRule) throw new Error("HEADERS_PARSE_FAILED")
-      const separator = rawLine.indexOf(":")
-      if (separator < 1) throw new Error("HEADERS_PARSE_FAILED")
-      activeRule.headers[rawLine.slice(0, separator).trim()] = rawLine
-        .slice(separator + 1)
-        .trim()
-    }
-  }
+  const rules = parseHeadersFile(await fsp.readFile(path.join(root, "_headers"), "utf8"))
 
   const matches = (pattern, pathname) =>
     pattern === "/*"

@@ -1,11 +1,11 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/qr-codec"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { AppError } from "@/crypto/errors"
 import { useFrameSplit } from "@/hooks/use-frame-split"
 import type { QrFrameV2 } from "@/schemas/domain"
 import { deferred } from "../helpers/deferred"
-import { splitIntoFrames } from "./helpers/fakes"
+import { splitIntoFrames } from "./helpers/fakes/qr-codec"
 import { resetUi } from "./helpers/render-app"
 
 function frame(

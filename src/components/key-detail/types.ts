@@ -1,5 +1,11 @@
 import type { StorableArtifactKind } from "@/schemas/domain"
 
+export interface PendingDelete {
+  kind: "identity" | "symmetric"
+  id: string
+  name: string
+}
+
 export interface IdentityQrView {
   kind: "identity-qr"
   targetName: string

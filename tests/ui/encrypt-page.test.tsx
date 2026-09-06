@@ -1,4 +1,14 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/feature-detection"
+import "./helpers/module-mocks/pwa"
+import "./helpers/module-mocks/preferences"
+import "./helpers/module-mocks/crypto-runtime"
+import "./helpers/module-mocks/symmetric-crypto"
+import "./helpers/module-mocks/pq-crypto"
+import "./helpers/module-mocks/qr-codec"
+import "./helpers/module-mocks/qr-scanner"
+import "./helpers/module-mocks/key-records"
+import "./helpers/module-mocks/pq-records"
+import "./helpers/module-mocks/browser-effects"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -8,7 +18,7 @@ import {
   FRAME_BYTES_VALUES,
   MAX_SYM_PLAINTEXT_BYTES,
 } from "@/lib/limits"
-import { decodeFramePayload } from "@/qr/payload-v2"
+import { decodeFramePayload } from "@/qr/wire-codec"
 import { translate } from "@/i18n/messages"
 import type {
   MlKemMessageEnvelopeV2,
@@ -18,18 +28,22 @@ import type {
 import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"
 import {
-  encryptPq,
+  fakePreferences,
+  updatePreferences,
+} from "./helpers/fakes/preferences"
+import { sealSymMessage } from "./helpers/fakes/symmetric-crypto"
+import { encryptPq } from "./helpers/fakes/pq-crypto"
+import {
   encodeSymMessageEnvelopeV2,
+  renderQrDataUrl,
+  splitIntoFrames,
+} from "./helpers/fakes/qr-codec"
+import { fakeKeys } from "./helpers/fakes/key-records"
+import {
   fakeBundles,
   fakeIdentities,
-  fakeKeys,
-  fakePreferences,
-  qrPngBlob,
-  renderQrDataUrl,
-  sealSymMessage,
-  splitIntoFrames,
-  updatePreferences,
-} from "./helpers/fakes"
+} from "./helpers/fakes/pq-records"
+import { qrPngBlob } from "./helpers/fakes/browser-effects"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 const defaultQrMaxFrames = env.qrMaxFrames

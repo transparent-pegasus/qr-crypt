@@ -1,8 +1,10 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/feature-detection"
+import "./helpers/module-mocks/pwa"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { fakeFeatures, useFakeRegisterSW } from "./helpers/fakes"
+import { fakeFeatures } from "./helpers/fakes/feature-detection"
+import { useFakeRegisterSW } from "./helpers/fakes/pwa"
 import { setTestOnlineStatus } from "./helpers/network"
 import {
   expectLanguageField,

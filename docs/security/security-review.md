@@ -46,15 +46,21 @@ retained four-suite wire/codec contract. Boot alone keeps a read-only
 Self-investigation and self-authored documents (including this one) are no
 substitute for independent review and do not close the blocker.
 
-Measured maximum fixture (`maxPlaintext=120,000B`, `name="テスト"` — the literal
-fixture string):
+Maximum fixture re-verified 2026-09-06 by
+`tests/pq/maximum-artifact-size.golden.test.ts` (`maxPlaintext=120,000B`,
+`name="テスト"` — the literal fixture string):
 
 | artifact | canonical CBOR (bytes) | compatible-preference frames | default-preference frames |
 |---|---:|---:|---:|
-| signed empty / max | 6,570 / 126,576 | 66 / 127* | 7 / 127 |
+| signed empty / max | 6,570 / 126,576 | 33 / 127* | 7 / 127 |
 | OCI2 bundle | 4,402 | 45 | 5 |
 | OCB2 reserved sizing fixture | 4,637 | 47 | 5 |
 | sym-message at plaintext ceiling | 1,000 (exactly one frame) | 1 | 1 |
+
+The compatible preference clamps density to 200B for the empty signed
+message (33 frames) and 1,000B for the maximum signed message (127 frames,
+marked `*`); both retain the 2,000ms dwell. The byte counts are unchanged.
+The symmetric row is verified by `tests/pq/sym-envelope.golden.test.ts`.
 
 Plaintext ceilings are algorithm-specific; owners live in `src/lib/limits.ts`
 and the suite size tables beside them. The post-quantum path accepts at most
@@ -110,20 +116,28 @@ confirmation is the documented non-dismissible exception).
 
 ## 1. Facts About the Adopted Libraries
 
-Library-specific checks carry their own review date. The Noble pin and NIST
-errata were reviewed 2026-08-13; the zxing facts remain dated 2026-08-02; the
-supply-chain incident record extends through the 2026-08-08 remediation.
+Library-specific checks carry their own review date. Noble advisory status,
+NIST errata, and build-tool advisories were re-checked 2026-09-06. The Noble
+pin-change source review remains dated 2026-08-13 and the zxing facts
+2026-08-02; neither dependency moved in this re-check.
 
 ### @noble/post-quantum 0.7.0 (exact pin; version ranges forbidden)
 
 - Released: 2026-08-09. npm publish and SLSA provenance attestations present.
   **Re-verified 2026-08-13: 0.7.0 is the latest; no advisories in the repo /
   GHSA / OSV**
+- Re-checked 2026-09-06: `aube audit` and the GitHub Advisory Database report
+  no known findings for the locked version. The
+  [0.7.1 changelog](https://github.com/paulmillr/noble-post-quantum/releases/tag/0.7.1)
+  (released 2026-08-27) was reviewed; that release requires a separate
+  `crypto-noble` evaluation. The exact pin stays `0.7.0`.
 - Dependencies: noble family only (@noble/ciphers / @noble/curves /
   @noble/hashes ~2.3.0)
 - Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-08-13): the current NIST FIPS 203
-  workbook (planning note 2025-11-17) and FIPS 204 workbook (updated
+- FIPS errata (§3 step 1, checked 2026-09-06): the NIST
+  [FIPS 203 workbook](https://csrc.nist.gov/files/pubs/fips/203/final/docs/fips-203-potential-updates.xlsx)
+  (planning note 2025-11-17) and
+  [FIPS 204 workbook](https://csrc.nist.gov/files/pubs/fips/204/final/docs/fips-204-potential-updates.xlsx) (updated
   2026-07-31) state that their prospective corrections introduce no new
   technical requirements. The FIPS 204 corrections include a documented
   minimum internal-signing loop limit of 821 rather than 814; none changes
@@ -136,7 +150,9 @@ supply-chain incident record extends through the 2026-08-08 remediation.
   intermediate within 32-bit arithmetic. The active adapter API is unchanged;
   the new prepared-key and prehash surfaces are not used
 - **Not independently audited.** The audit status as of 0.7.0 remains
-  self-audit only (scope: everything)
+  self-audit only (scope: everything). The upstream
+  [0.7.1 security statement](https://github.com/paulmillr/noble-post-quantum/blob/0.7.1/README.md#security)
+  still reports no independent audit (checked 2026-09-06).
 - **Side channels: as a JS implementation, constant-time execution is not guaranteed.** In particular, for the ML-KEM decaps implicit-rejection path, constant-time behavior under JS/JIT is explicitly documented and not guaranteed
 - APIs used by the active policy (verified against the actual 0.7.0 source):
   `ml_kem1024.keygen(seed64?)` / `.encapsulate(pk)` / `.decapsulate(ct, sk)`,
@@ -210,11 +226,23 @@ supply-chain incident record extends through the 2026-08-08 remediation.
 - **RESOLVED (build/test/deploy chain, 2026-08-08)**: `brace-expansion` is
   forced to `5.0.9` for both the `@5` and `@2` selectors; `2.1.4` is also
   patched, and choosing `5.0.9` for both is a deliberate one-version-in-the-graph
-  decision. Additional overrides force `fast-uri@3.1.5`, `nanoid@3.3.17`, and
+  decision. Additional overrides then forced `fast-uri@3.1.5`,
+  `nanoid` (now `3.3.18`, after the 2026-08-14 remediation), and
   `undici@7.29.0`. These packages are build, test, or deploy tooling and none is
   in the browser bundle. The known-advisory set grew from seven findings to
   eight during remediation; after the overrides, `aube audit` reported no known
   vulnerabilities on 2026-08-08.
+- **RESOLVED (build chain, 2026-09-06)**: `fast-uri` moved from `3.1.5` to
+  `3.1.6`; an override now pins `browserslist@4.28.7` instead of locked
+  `4.28.6`. These close the six findings published to the GitHub Advisory
+  Database on 2026-09-01/2026-09-02, individually recorded in
+  [threat-model.md](threat-model.md) §5.1. Their Workbox/Babel/AJV paths have
+  no direct application imports; the URI-parser findings do not establish
+  application SSRF exposure. Only these two package versions and their lock
+  references changed; every unrelated pin, integrity, and override remains
+  unchanged. `aube ci` passed and `aube audit` reported no known
+  vulnerabilities on 2026-09-06. Independent audit and release approval
+  remain unresolved.
 - CI `validate` now runs `aube audit` unconditionally after `aube ci`. It
   detects known advisories on the next triggered run — every push, or a pull
   request targeting `main` or `dev`. There is no schedule, so advisories

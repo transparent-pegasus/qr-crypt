@@ -9,7 +9,7 @@
 // Every key in `strings` must match a data-i18n* attribute in index.html;
 // tests/unit/about-page-i18n.test.ts fails the build when the two disagree.
 //
-// Japanese follows the repo's house style in src/i18n/messages.ts: no manual
+// Japanese follows the repo's house style in src/i18n/catalog-ja.ts: no manual
 // space between Japanese characters and adjacent Latin letters or digits, and
 // the same page names the app itself shows.
 
@@ -90,7 +90,7 @@ export const LOCALES = {
       "flow.eyebrow": "使い方",
       "flow.heading": "文章が相手に届くまで",
       "flow.lede":
-        "以下の6つの手順を通じて、平文はどちらのオフライン端末からも外へ出ません。境界を越えるのは、暗号文と運搬に必要な付帯情報だけです。方式によって異なるのは鍵の交換方法です。共通鍵方式では、一方向に読み取るだけで済みます。ポスト量子ID方式では、署名を使う場合、または双方向にメッセージをやり取りする場合に、双方が相手の公開鍵を読み取る必要があります。以下では、ポスト量子ID方式の流れを示します。",
+        "以下の6つの手順を通じて、平文はどちらのオフライン端末からも外へ出ません。境界を越えるのは、暗号文と運搬に必要な付帯情報だけです。方式によって異なるのは鍵の交換方法です。共通鍵方式では、一方向に読み取るだけで済みます。ポスト量子ID方式では、一方向にメッセージを送る場合でも、双方が相手の公開IDを読み取ります。送信者には受信者の暗号化用の公開鍵が、受信者には送信者の署名検証用の公開鍵が必要です。以下では、ポスト量子ID方式の流れを示します。",
       "flow.online": "オンライン",
       "flow.onlineSub": "侵害されている前提",
       "flow.offline": "オフライン",
@@ -108,7 +108,7 @@ export const LOCALES = {
       "flow.s3.title": "送信者が文章を暗号化する",
       "flow.s3.where": "暗号化ページ",
       "flow.s3.note":
-        "相手の鍵でメッセージを暗号化します。署名付きの方式を選んだ場合は、自分の鍵で署名し、送信者であることを示します。",
+        "相手の鍵でメッセージを暗号化します。ポスト量子ID方式では、すべてのメッセージに送信者の鍵で署名し、受信者がその署名を検証します。",
       "flow.s4.title": "QRコードを読み取り、文字列として送る",
       "flow.s4.where": "オンラインモード",
       "flow.s4.cross":

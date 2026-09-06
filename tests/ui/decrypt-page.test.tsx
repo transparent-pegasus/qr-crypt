@@ -1,11 +1,22 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/feature-detection"
+import "./helpers/module-mocks/pwa"
+import "./helpers/module-mocks/preferences"
+import "./helpers/module-mocks/crypto-runtime"
+import "./helpers/module-mocks/symmetric-crypto"
+import "./helpers/module-mocks/pq-crypto"
+import "./helpers/module-mocks/qr-codec"
+import "./helpers/module-mocks/qr-scanner"
+import "./helpers/module-mocks/key-records"
+import "./helpers/module-mocks/pq-records"
+import "./helpers/module-mocks/browser-effects"
+import "./helpers/module-mocks/receipts"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
 import { formatDateTime } from "@/features/presentation"
 import { translate } from "@/i18n/messages"
-import { buildV2Payload } from "@/qr/payload-v2"
+import { buildV2Payload } from "@/qr/wire-codec"
 import type {
   MlKemMessageEnvelopeV2,
   PqPublicBundleRecord,
@@ -15,30 +26,40 @@ import type {
 import { env } from "@/schemas/env-schema"
 import { deferred } from "../helpers/deferred"
 import {
-  deferNextMultipartAdd,
-  decodeSymMessageEnvelopeV2,
+  openSymMessage,
+  sealSymMessage,
+} from "./helpers/fakes/symmetric-crypto"
+import {
   decryptPqMessage,
-  emitScannedPayload,
-  encodeSymMessageEnvelopeV2,
   encryptPq,
-  fakeBundles,
-  fakeIdentities,
-  fakeKeys,
   fakePqCreatedAt,
   fakePqDecrypt,
   fakePqMessageId,
+} from "./helpers/fakes/pq-crypto"
+import {
+  deferNextMultipartAdd,
+  decodeSymMessageEnvelopeV2,
+  encodeSymMessageEnvelopeV2,
+  multipartPayload,
+  payloadSha256Hex,
+  setNextMultipartArtifactBytes,
+} from "./helpers/fakes/qr-codec"
+import {
+  emitScannedPayload,
+  startQrScan,
+} from "./helpers/fakes/qr-scanner"
+import {
+  fakeKeys,
+  markKeyUsed,
+} from "./helpers/fakes/key-records"
+import {
+  fakeBundles,
+  fakeIdentities,
   findBundleBySigningKeyId,
   findIdentityByKemKeyId,
   markIdentityUsed,
-  markKeyUsed,
-  multipartPayload,
-  openSymMessage,
-  payloadSha256Hex,
-  recordReceipt,
-  sealSymMessage,
-  setNextMultipartArtifactBytes,
-  startQrScan,
-} from "./helpers/fakes"
+} from "./helpers/fakes/pq-records"
+import { recordReceipt } from "./helpers/fakes/receipts"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 const defaultQrMaxFrames = env.qrMaxFrames

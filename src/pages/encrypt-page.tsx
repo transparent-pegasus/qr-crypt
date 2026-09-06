@@ -40,7 +40,6 @@ import {
   type EncryptMessageRequest,
 } from "@/features/encrypt-message"
 import {
-  ALGORITHM_LABELS,
   formatDateTime,
   formatSuggestedDate,
 } from "@/features/presentation"
@@ -62,7 +61,7 @@ import { copyTextToClipboard } from "@/lib/clipboard"
 import { effectiveGeneratedDisplay } from "@/lib/generated-display"
 import { MAX_SYM_PLAINTEXT_BYTES } from "@/lib/limits"
 import { exportQrFramePayloads } from "@/qr/export-frames"
-import { encodeFrameToPayload } from "@/qr/payload-v2"
+import { encodeFrameToPayload } from "@/qr/wire-codec"
 import { type UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { qrNameSchema } from "@/schemas/key-schema"
@@ -360,7 +359,7 @@ export function EncryptPage() {
           <SelectContent>
             {algorithms.map((option) => (
               <SelectItem key={option} value={option}>
-                {ALGORITHM_LABELS[language][option]}
+                {t(`algorithm.${option}`)}
               </SelectItem>
             ))}
           </SelectContent>

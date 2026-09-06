@@ -13,7 +13,7 @@ import {
   minimumFrameBytesForArtifact,
   singleFrameBytesFor,
 } from "@/lib/limits"
-import { buildV2Payload } from "@/qr/payload-v2"
+import { buildV2Payload } from "@/qr/wire-codec"
 import type {
   MlKemMessageEnvelopeV2,
   PostQuantumIdentity,

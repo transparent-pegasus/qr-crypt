@@ -30,7 +30,7 @@ describe("AES-256-GCM key primitives", () => {
     const [aesGcm, keyGeneration, payload] = await Promise.all([
       import("@/crypto/aes-gcm"),
       import("@/crypto/key-generation"),
-      import("@/qr/payload"),
+      import("@/qr/decode-artifact"),
     ])
 
     expect(aesGcm).not.toHaveProperty("encryptWithAesKey")

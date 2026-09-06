@@ -94,7 +94,7 @@ channel, checksum check, and an independent rebuild-and-compare — is required 
 installation. The complete procedure is in
 [docs/develop/install-route-a/](docs/develop/install-route-a/README.md). The archive's
 `INSTALL.txt` is the self-contained copy that reaches the offline device; its
-verification contract is §8 of that procedure.
+verification contract is in §§2–5 of that procedure.
 
 ### Install route B: direct-origin PWA
 
@@ -149,7 +149,7 @@ residual: [docs/security/threat-model.md](docs/security/threat-model.md) T19 / T
 
 | Mode | When to use it |
 | --- | --- |
-| **Shared-key mode** (default; AES-256-GCM, HKDF per message) | One-to-one messages, with a secret the two of you shared in person. The data stays small, so a message travels in few QR codes. Shared keys can be rotated; superseded generations still decrypt. |
+| **Shared-key mode** (default; AES-256-GCM, HKDF per message) | One-to-one messages, with a secret the two of you shared in person. Each message travels in exactly one QR code. Shared keys can be rotated; superseded generations still decrypt. |
 | **Public-key mode** (ML-KEM-1024 + ML-DSA-87 + AES-256-GCM) | Several senders writing to one recipient, or anywhere you do not want a sender holding a secret that can decrypt. ML-KEM establishes the message secret from the recipient's public key and ML-DSA confirms the sender. The body is AES-256-GCM either way; the signature and public-key data make the message larger, so it becomes a sequence of QR codes. |
 
 For post-quantum identities and shared keys, the rotation cadence is the granularity of
@@ -180,7 +180,7 @@ validation or an independent security assessment. Current status and blockers:
 * [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — Browser verification matrix and reference measurements
 * [docs/develop/deviations.md](docs/develop/deviations.md) — Managed deviations from the specification
 * [SECURITY.md](SECURITY.md) — Reporting a vulnerability
-* [design-system/](design-system/) — Design system derived from ui-ux-pro-max
+* [design-system/](design-system/) — Archived design snapshots and provenance derived from ui-ux-pro-max; not current implementation specifications
 * [LICENSE](LICENSE) — Apache License 2.0, under which this project is distributed
 * [design-system/PROVENANCE.md](design-system/PROVENANCE.md) — Provenance of the archival design-system exports, which include MIT-licensed generator output
 

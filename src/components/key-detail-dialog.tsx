@@ -1,24 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { ArrowLeft, Clipboard, Download } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
 import { toast } from "sonner"
+import { DeleteConfirm } from "@/components/key-detail/delete-confirm"
+import { DestroySupersededConfirm } from "@/components/key-detail/destroy-superseded-confirm"
 import { IdentityDetails } from "@/components/key-detail/identity-details"
 import { IdentityQrSession } from "@/components/key-detail/identity-qr-session"
+import { RenameField } from "@/components/key-detail/rename-field"
 import { SymmetricDetails } from "@/components/key-detail/symmetric-details"
-import type { DetailView } from "@/components/key-detail/types"
+import { SymmetricQrView } from "@/components/key-detail/symmetric-qr-view"
+import type { DetailView, PendingDelete } from "@/components/key-detail/types"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrDisplay } from "@/components/qr-display"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -26,8 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { AppError, toAppError } from "@/crypto/errors"
 import {
   buildSymmetricKeyEnvelopeV2,
@@ -41,7 +33,6 @@ import { buildPublicBundle, rotateIdentity } from "@/crypto/pq/identity"
 import { assertUsableIdentity } from "@/crypto/pq/identity-policy"
 import { zeroize } from "@/crypto/pq/zeroize"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
-import { formatDateTime } from "@/features/presentation"
 import { useCompatibilityMode } from "@/hooks/use-compatibility-mode"
 import { usePqCryptoClient } from "@/hooks/use-pq-crypto-client"
 import { usePreferences } from "@/hooks/use-preferences"
@@ -63,7 +54,7 @@ import {
   triggerDownload,
 } from "@/qr/export-image"
 import { splitIntoFrames } from "@/qr/multipart/split"
-import { buildV2Payload, encodeFrameToPayload } from "@/qr/payload-v2"
+import { buildV2Payload, encodeFrameToPayload } from "@/qr/wire-codec"
 import {
   type PostQuantumIdentity,
   type StoredKeyRecord,
@@ -87,12 +78,6 @@ import {
 
 export type KeySelection =
   { kind: "identity"; id: string } | { kind: "symmetric"; id: string }
-
-interface PendingDelete {
-  kind: "identity" | "symmetric"
-  id: string
-  name: string
-}
 
 interface KeyDetailDialogProps {
   selection: KeySelection | null
@@ -159,7 +144,7 @@ export function KeyDetailContent({
   fullscreenOpen,
   onFullscreenOpenChange,
 }: KeyDetailContentProps) {
-  const { language, t } = useI18n()
+  const { t } = useI18n()
   const {
     preferences,
     loading: preferencesLoading,
@@ -513,28 +498,12 @@ export function KeyDetailContent({
             )}
 
             {view.kind === "detail" && record && (
-              <div className="space-y-2">
-                <Label htmlFor="key-rename">{t("keyDetail.rename.label")}</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="key-rename"
-                    value={renameDraft}
-                    onChange={(event) => setRenameDraft(event.target.value)}
-                    maxLength={80}
-                    className="h-11"
-                    disabled={busy}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 shrink-0"
-                    disabled={busy || renameDraft.trim().length === 0}
-                    onClick={() => void submitRename()}
-                  >
-                    {t("keyDetail.rename.submit")}
-                  </Button>
-                </div>
-              </div>
+              <RenameField
+                value={renameDraft}
+                busy={busy}
+                onChange={setRenameDraft}
+                onSubmit={submitRename}
+              />
             )}
 
             {view.kind === "detail" && identity && (
@@ -577,31 +546,13 @@ export function KeyDetailContent({
             {view.kind === "identity-qr" && <div ref={setQrHostRef} />}
 
             {view.kind === "symmetric-qr" && symmetric && (
-              <div className="space-y-4">
+              <SymmetricQrView
+                busy={busy}
+                onCopy={copySymmetricQr}
+                onExport={exportSymmetricQr}
+              >
                 <div ref={setQrHostRef} />
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11"
-                    disabled={busy}
-                    onClick={() => void copySymmetricQr()}
-                  >
-                    <Clipboard aria-hidden="true" />
-                    {t("common.copy")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11"
-                    disabled={busy}
-                    onClick={() => void exportSymmetricQr()}
-                  >
-                    <Download aria-hidden="true" />
-                    {t("common.download")}
-                  </Button>
-                </div>
-              </div>
+              </SymmetricQrView>
             )}
           </div>
         </div>
@@ -642,76 +593,28 @@ export function KeyDetailContent({
           qrHost,
         )}
 
-      <AlertDialog
+      <DeleteConfirm
         open={pendingDelete !== null}
+        target={pendingDelete}
+        busy={busy}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             setPendingDelete(null)
             setPendingDestroy(null)
           }
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingDelete
-                ? t("keyDetail.delete.titleNamed", { name: pendingDelete.name })
-                : t("keyDetail.delete.titleGeneric")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingDelete?.kind === "identity"
-                ? t("keyDetail.delete.body.identity")
-                : t("keyDetail.delete.body.symmetric")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={busy}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => void remove()}
-            >
-              {t("keyDetail.delete.confirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={remove}
+      />
 
-      <AlertDialog
+      <DestroySupersededConfirm
         open={pendingDestroy !== null}
+        generations={pendingDestroy}
+        busy={busy}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) setPendingDestroy(null)
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("keyDetail.destroy.title", {
-                count: pendingDestroy?.length ?? 0,
-              })}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("keyDetail.destroy.body", {
-                dates: (pendingDestroy ?? [])
-                  .map((generation) =>
-                    formatDateTime(generation.createdAt, language),
-                  )
-                  .join(", "),
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={busy}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => void destroySuperseded()}
-            >
-              {t("keyDetail.destroy.confirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        onConfirm={destroySuperseded}
+      />
     </>
   )
 }

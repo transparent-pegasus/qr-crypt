@@ -1,4 +1,5 @@
-import "./helpers/module-mocks"
+import "./helpers/module-mocks/qr-codec"
+import "./helpers/module-mocks/qr-scanner"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -8,12 +9,12 @@ import { MultipartScanSession } from "@/features/multipart-scan-session"
 import { LanguageProvider } from "@/i18n"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import { deferred } from "../helpers/deferred"
+import { multipartPayload } from "./helpers/fakes/qr-codec"
 import {
   emitScannedPayload,
-  multipartPayload,
   scannerStop,
   startQrScan,
-} from "./helpers/fakes"
+} from "./helpers/fakes/qr-scanner"
 import { resetUi } from "./helpers/render-app"
 
 function scanner(

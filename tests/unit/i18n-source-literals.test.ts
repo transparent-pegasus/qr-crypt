@@ -4,7 +4,10 @@ import ts from "typescript"
 import { describe, expect, it } from "vitest"
 
 const SOURCE_ROOT = resolve(process.cwd(), "src")
-const CATALOG_FILE = resolve(SOURCE_ROOT, "i18n/messages.ts")
+const CATALOG_FILES = new Set([
+  resolve(SOURCE_ROOT, "i18n/catalog-en.ts"),
+  resolve(SOURCE_ROOT, "i18n/catalog-ja.ts"),
+])
 const JAPANESE_TEXT = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u
 
 function sourceFiles(directory: string): string[] {
@@ -55,7 +58,7 @@ function japaneseLiterals(file: string): string[] {
 describe("production localization source guard", () => {
   it("keeps Japanese user-facing literals inside the catalog", () => {
     const findings = sourceFiles(SOURCE_ROOT)
-      .filter((file) => file !== CATALOG_FILE)
+      .filter((file) => !CATALOG_FILES.has(file))
       .flatMap(japaneseLiterals)
 
     expect(findings, findings.join("\n")).toEqual([])

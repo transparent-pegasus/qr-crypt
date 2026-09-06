@@ -39,7 +39,7 @@ QR Cryptは、恒久的にオフラインにするデバイスにインストー
 
 ### インストール方法A：署名付きZIP
 
-これがデフォルトの方法です。オフラインデバイスがライブのアプリオリジンに一切接続しないようにします。署名付きZIPの独立検証（別チャネルからのCosignポリシー値、チェックサム確認、独立したリビルドと比較）は、インストール前に必須です。完全な手順は[docs/locales/ja/develop/install-route-a/README.md](docs/locales/ja/develop/install-route-a/README.md)にあります。アーカイブ内の`INSTALL.txt`は、オフラインデバイスに届く自己完結型のコピーです。その検証内容は同手順の§8にあります。
+これがデフォルトの方法です。オフラインデバイスがライブのアプリオリジンに一切接続しないようにします。署名付きZIPの独立検証（別チャネルからのCosignポリシー値、チェックサム確認、独立したリビルドと比較）は、インストール前に必須です。完全な手順は[docs/locales/ja/develop/install-route-a/README.md](docs/locales/ja/develop/install-route-a/README.md)にあります。アーカイブ内の`INSTALL.txt`は、オフラインデバイスに届く自己完結型のコピーです。その検証内容は同手順の§§2–5にあります。
 
 ### インストール方法B：ダイレクトオリジンPWA
 
@@ -70,7 +70,7 @@ AES-256-GCM（`sym-message` / `OCA2`）では、オフラインデバイスは�
 
 | モード | 用途 |
 | --- | --- |
-| **共有鍵モード**（デフォルト；AES-256-GCM、メッセージごとにHKDF） | 1対1のやり取り。対面で共有した秘密を使用します。データ量が小さく、少ないQRコードで送受信できます。共有鍵はローテートでき、置き換えられた世代でも復号できます。 |
+| **共有鍵モード**（デフォルト；AES-256-GCM、メッセージごとにHKDF） | 1対1のやり取り。対面で共有した秘密を使用します。各メッセージは必ず1個のQRコードで送受信します。共有鍵はローテートでき、置き換えられた世代でも復号できます。 |
 | **公開鍵モード**（ML-KEM-1024 + ML-DSA-87 + AES-256-GCM） | 複数の送信者から1人の受信者へ送る場合や、送信者に復号用の共有秘密を持たせたくない場合。ML-KEMが受信者の公開鍵からメッセージ用の秘密を確立し、ML-DSAが送信者を確認します。本文の暗号化はどちらのモードもAES-256-GCMです。署名と公開鍵データのためメッセージは大きくなり、一連のQRコードになります。 |
 
 ポスト量子暗号のアイデンティティと共有鍵では、ローテーションの頻度が前方秘匿性の粒度となります。ローテーションでは、復号のために置き換えられた世代を保持するため、古い世代宛てのすべてのエンベロープは、その世代を明示的に破棄するまで復号可能です。
@@ -91,7 +91,7 @@ AES-256-GCM（`sym-message` / `OCA2`）では、オフラインデバイスは�
 * [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — ブラウザ検証マトリクスおよびリファレンス計測
 * [docs/develop/deviations.md](docs/develop/deviations.md) — 仕様からの管理された逸脱
 * [SECURITY.md](SECURITY.md) — 脆弱性の報告
-* [design-system/](design-system/) — ui-ux-pro-maxから派生したデザインシステム
+* [design-system/](design-system/) — ui-ux-pro-maxから派生した設計スナップショットと来歴のアーカイブ（現行実装の仕様ではありません）
 * [LICENSE](LICENSE) — Apache License 2.0（本プロジェクトの配布ライセンス）
 * [design-system/PROVENANCE.md](design-system/PROVENANCE.md) — MIT ライセンスのジェネレーター出力を含む、アーカイブ用デザインシステムエクスポートの出所
 

@@ -16,9 +16,9 @@ import {
   type CameraFailureState,
   type CameraScanState,
   type QrScanHandle,
-} from "@/qr/decode"
+} from "@/qr/camera-scan"
 import type { TransferState } from "@/qr/multipart/transfer-state"
-import { QR_PREFIX_V2 } from "@/qr/payload-v2"
+import { QR_PREFIX_V2 } from "@/qr/wire-codec"
 import {
   deliveryError,
   localized,
@@ -306,25 +306,10 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       setCameraStatus(localized("scanner.status.cameraError"))
     }
 
-    let startPromise: Promise<QrScanHandle>
-    try {
-      // The acquisition queue in decode.ts can delay getUserMedia, so the UI layer cannot
-      // guarantee strict user activation timing.
-      startPromise = startQrScan(video, onText, onCameraError, {
-        once: false,
-        signal: run.abortController.signal,
-      })
-    } catch (caught) {
-      const appError = deliveryError(caught)
-      run.errorReported = true
-      cancelRun(run, "failed")
-      publishCameraMode("stopped")
-      setError(localizedErrorCode(appError.code))
-      setCameraStatus(localized("scanner.status.startFailed"))
-      return
-    }
-
-    void startPromise
+    void startQrScan(video, onText, onCameraError, {
+      once: false,
+      signal: run.abortController.signal,
+    })
       .then((handle) => {
         if (
           run.cancelled ||
