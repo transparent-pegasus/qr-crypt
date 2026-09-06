@@ -55,18 +55,23 @@ export function IdentityDetails({
         label={t("common.identityFingerprint")}
         value={identity.identityFingerprint}
       />
-      <Fingerprint
-        label={t("keyDetail.identity.kemFingerprintLabel", {
-          algorithm: identity.kem.algorithm,
-        })}
-        value={identity.kem.fingerprint}
-      />
-      <Fingerprint
-        label={t("keyDetail.identity.signingFingerprintLabel", {
-          algorithm: identity.signing.algorithm,
-        })}
-        value={identity.signing.fingerprint}
-      />
+      <details className="min-w-0 space-y-3 rounded-lg border p-3 text-muted-foreground">
+        <summary className="cursor-pointer text-xs">
+          {t("common.supplementalFingerprints")}
+        </summary>
+        <Fingerprint
+          label={t("keyDetail.identity.kemFingerprintLabel", {
+            algorithm: identity.kem.algorithm,
+          })}
+          value={identity.kem.fingerprint}
+        />
+        <Fingerprint
+          label={t("keyDetail.identity.signingFingerprintLabel", {
+            algorithm: identity.signing.algorithm,
+          })}
+          value={identity.signing.fingerprint}
+        />
+      </details>
       <p className="text-xs text-muted-foreground">
         {t("common.created", {
           datetime: formatDateTime(identity.createdAt, language),

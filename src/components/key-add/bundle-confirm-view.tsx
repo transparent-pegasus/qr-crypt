@@ -26,14 +26,19 @@ export function BundleConfirmView({
         label={t("common.identityFingerprint")}
         value={bundle.identityFingerprint}
       />
-      <Fingerprint
-        label={t("keys.bundle.fingerprintKem")}
-        value={bundle.kem.fingerprint}
-      />
-      <Fingerprint
-        label={t("keys.bundle.fingerprintSigning")}
-        value={bundle.signing.fingerprint}
-      />
+      <details className="min-w-0 space-y-3 rounded-lg border p-3 text-muted-foreground">
+        <summary className="cursor-pointer text-xs">
+          {t("common.supplementalFingerprints")}
+        </summary>
+        <Fingerprint
+          label={t("keys.bundle.fingerprintKem")}
+          value={bundle.kem.fingerprint}
+        />
+        <Fingerprint
+          label={t("keys.bundle.fingerprintSigning")}
+          value={bundle.signing.fingerprint}
+        />
+      </details>
       <div className="flex items-start gap-2">
         <Checkbox
           id="fingerprint-confirmed"

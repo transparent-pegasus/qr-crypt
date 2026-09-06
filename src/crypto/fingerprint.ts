@@ -1,6 +1,6 @@
 // Key fingerprints.
-// Internal identity is the complete sha256 hex; the abbreviated visual check
-// users compare out of band is rendered by features/presentation.formatFingerprint.
+// The complete SHA-256 hex is grouped for out-of-band comparison by
+// features/presentation.formatFingerprint.
 import { exportAesKeyRaw } from "@/crypto/key-import-export"
 import { toAppError } from "@/crypto/errors"
 import { zeroize } from "@/crypto/pq/zeroize"

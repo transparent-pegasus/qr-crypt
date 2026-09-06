@@ -21,6 +21,7 @@ export const ja = {
   "common.deleteAriaLabel": "{name}を削除",
   "common.created": "作成: {datetime}",
   "common.identityFingerprint": "公開鍵セット指紋",
+  "common.supplementalFingerprints": "補足のKEM鍵・署名鍵指紋",
   "common.fingerprintCompare": "比較表示: {value}",
   "common.loading": "読込中",
   "common.openKeysPage": "鍵ページを開く",
@@ -341,9 +342,9 @@ export const ja = {
   "keyList.bundle.confirmOpen": "指紋を比較して確認する",
   "keyList.bundle.confirmTitle": "この識別子の指紋を確認しますか?",
   "keyList.bundle.confirmBody":
-    "以下の各グループを、相手本人の端末に表示された値と、通話や対面など別の経路で突き合わせてください。確認するとその事実が記録され、この識別子が暗号化の宛先として選べるようになります。比較そのものをアプリが検証することはできません。",
+    "公開鍵セット指紋の16進数64桁すべてを、意図した相手本人の端末に表示された値と、通話や対面など独立した別経路で照合してください。KEM鍵・署名鍵の指紋は補足情報です。確認するとその事実が記録され、この識別子が暗号化の宛先として選べるようになります。比較そのものをアプリが検証することはできません。",
   "keyList.bundle.confirmCheck":
-    "別の経路で指紋を比較し、一致することを確認しました",
+    "公開鍵セット指紋の16進数64桁すべてを、意図した相手本人と独立した別経路で照合し、すべて一致することを確認しました",
   "keyList.bundle.confirmSubmit": "確認する",
   "keyList.toast.bundleConfirmed": "指紋を確認しました",
 
@@ -364,10 +365,11 @@ export const ja = {
   "keys.import.readButton": "鍵を読み取る",
   "keys.bundle.dialogTitle": "別経路で指紋を比較してください",
   "keys.bundle.dialogDesc":
-    "取込を完了する前に、相手と通話・対面など別経路で full hex を照合します。自己署名だけでは人物を証明しません。未確認のまま保存した識別子は暗号化の宛先に選べませんが、保存済み鍵の画面から後で指紋を確認できます。",
+    "取込を完了する前に、公開鍵セット指紋の16進数64桁すべてを、意図した相手本人と通話・対面など独立した別経路で照合してください。KEM鍵・署名鍵の指紋は補足情報です。自己署名だけでは人物を証明しません。未確認のまま保存した識別子は暗号化の宛先に選べませんが、保存済み鍵の画面から後で指紋を確認できます。",
   "keys.bundle.fingerprintKem": "ML-KEM鍵指紋",
   "keys.bundle.fingerprintSigning": "ML-DSA鍵指紋",
-  "keys.bundle.confirmLabel": "別経路で一致を確認した",
+  "keys.bundle.confirmLabel":
+    "公開鍵セット指紋の16進数64桁すべてを、意図した相手本人と独立した別経路で照合し、すべて一致することを確認しました",
   "keys.bundle.saveUnverified": "未確認のまま保存",
   "keys.bundle.saveConfirmed": "確認して保存",
   "keys.symmetricImport.dialogTitle": "共有鍵を取り込みます",
@@ -378,9 +380,9 @@ export const ja = {
     "第三者が同じ鍵を持つと、暗号文を復号されるおそれがあります。",
   "keys.symmetricImport.nameLabel": "鍵名",
   "keys.symmetricImport.fingerprintHint":
-    "この指紋を別経路で送信者と照合してください",
+    "この共有鍵指紋の16進数64桁すべてを、意図した送信者本人と独立した別経路で照合してください",
   "keys.symmetricImport.ackLabel":
-    "別経路で送信者が読み上げた指紋と一致しています",
+    "この共有鍵指紋の16進数64桁すべてを、意図した送信者本人と独立した別経路で照合し、すべて一致することを確認しました",
   "keys.symmetricImport.saveButton": "共有鍵を保存",
   "keys.demo.hint":
     "相手の画面の輝度を上げてもらい、カメラを15〜20cmほど離してピントが合うまで静止すると読み取りやすくなります。",

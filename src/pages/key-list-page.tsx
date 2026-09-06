@@ -486,18 +486,23 @@ export function KeyListPage() {
                 label={t("common.identityFingerprint")}
                 value={bundleConfirmation.identityFingerprint}
               />
-              <Fingerprint
-                label={t("keyList.bundle.fingerprintKem", {
-                  algorithm: bundleConfirmation.kem.algorithm,
-                })}
-                value={bundleConfirmation.kem.fingerprint}
-              />
-              <Fingerprint
-                label={t("keyList.bundle.fingerprintSigning", {
-                  algorithm: bundleConfirmation.signing.algorithm,
-                })}
-                value={bundleConfirmation.signing.fingerprint}
-              />
+              <details className="min-w-0 space-y-3 rounded-lg border p-3 text-muted-foreground">
+                <summary className="cursor-pointer text-xs">
+                  {t("common.supplementalFingerprints")}
+                </summary>
+                <Fingerprint
+                  label={t("keyList.bundle.fingerprintKem", {
+                    algorithm: bundleConfirmation.kem.algorithm,
+                  })}
+                  value={bundleConfirmation.kem.fingerprint}
+                />
+                <Fingerprint
+                  label={t("keyList.bundle.fingerprintSigning", {
+                    algorithm: bundleConfirmation.signing.algorithm,
+                  })}
+                  value={bundleConfirmation.signing.fingerprint}
+                />
+              </details>
               <div className="flex items-start gap-2">
                 <Checkbox
                   id="stored-bundle-fingerprint-confirmed"
