@@ -1,3 +1,6 @@
+> **アーカイブ（現行実装の仕様ではありません）。** ここに記された RSA・OCM1・EC レベル選択を現行実装の要件として採用しないでください。
+> 来歴と保存範囲は [README](README.md) を参照してください。現行実装は [ソース](../src/)・[テスト](../tests/)、契約は [QR プロトコル仕様](../docs/spec/qr-protocol-v2.md)・[起動とリセットの仕様](../docs/spec/boot-and-reset-v2.md) を参照してください。
+
 # design-system 生成来歴(ui-ux-pro-max-skill)
 
 spec §5「ui-ux-pro-max-skill の使用」の実施記録。

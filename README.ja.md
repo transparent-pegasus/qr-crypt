@@ -91,7 +91,7 @@ AES-256-GCM（`sym-message` / `OCA2`）では、オフラインデバイスは�
 * [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — ブラウザ検証マトリクスおよびリファレンス計測
 * [docs/develop/deviations.md](docs/develop/deviations.md) — 仕様からの管理された逸脱
 * [SECURITY.md](SECURITY.md) — 脆弱性の報告
-* [design-system/](design-system/) — ui-ux-pro-maxから派生したデザインシステム
+* [design-system/](design-system/) — ui-ux-pro-maxから派生した設計スナップショットと来歴のアーカイブ（現行実装の仕様ではありません）
 * [LICENSE](LICENSE) — Apache License 2.0（本プロジェクトの配布ライセンス）
 * [design-system/PROVENANCE.md](design-system/PROVENANCE.md) — MIT ライセンスのジェネレーター出力を含む、アーカイブ用デザインシステムエクスポートの出所
 
