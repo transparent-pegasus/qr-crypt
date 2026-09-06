@@ -43,6 +43,7 @@ jobs:
       package-artifact-id: ${{ steps.upload-package.outputs.artifact-id }}
       release-tag: ${{ steps.package.outputs.release_tag }}
       version: ${{ steps.package.outputs.version }}
+      tested-archive-sha256: ${{ steps.test-package.outputs.tested_archive_sha256 }}
 
     steps:
       - name: Checkout the source commit
@@ -98,6 +99,7 @@ jobs:
         run: aube exec playwright install --with-deps chromium
 
       - name: E2E-test the exact packaged PWA
+        id: test-package
         env:
           ARCHIVE_NAME: ${{ steps.package.outputs.archive_name }}
         run: bash scripts/release/test-packaged-pwa.sh
@@ -152,11 +154,14 @@ jobs:
           ARCHIVE_NAME: ${{ needs.build.outputs.archive-name }}
           BUNDLE_NAME: ${{ needs.build.outputs.bundle-name }}
           SOURCE_SHA: ${{ github.sha }}
+          TESTED_ARCHIVE_SHA256: ${{ needs.build.outputs.tested-archive-sha256 }}
         run: |
           set -euo pipefail
           cd "$RUNNER_TEMP/unsigned-release"
           [[ "$GITHUB_REPOSITORY" == "$EXPECTED_REPOSITORY" ]]
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$TESTED_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          printf '%s  %s\n' "$TESTED_ARCHIVE_SHA256" "$ARCHIVE_NAME" | sha256sum -c -
 
           cosign sign-blob "$ARCHIVE_NAME" \
             --bundle "$BUNDLE_NAME" \
@@ -205,6 +210,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
           SIGNATURE_ARTIFACT_ID: ${{ needs.sign.outputs.signature-artifact-id }}
           SOURCE_SHA: ${{ github.sha }}
+          TESTED_ARCHIVE_SHA256: ${{ needs.build.outputs.tested-archive-sha256 }}
         run: |
           set -euo pipefail
 
@@ -229,6 +235,8 @@ jobs:
             fail "package artifact ID is invalid"
           [[ "$SIGNATURE_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]] ||
             fail "signature artifact ID is invalid"
+          [[ "$TESTED_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] ||
+            fail "tested archive SHA-256 is invalid"
 
           package_dir="$RUNNER_TEMP/release-package"
           signature_dir="$RUNNER_TEMP/release-signature"
@@ -278,6 +286,7 @@ jobs:
           (
             cd "$package_dir"
             sha256sum -c SHA256SUMS
+            printf '%s  %s\n' "$TESTED_ARCHIVE_SHA256" "$ARCHIVE_NAME" | sha256sum -c -
           )
           unzip -tqq "$archive_path"
           archive_root="${ARCHIVE_NAME%.zip}"
@@ -407,6 +416,7 @@ jobs:
             (
               cd "$published_dir"
               sha256sum -c SHA256SUMS
+              printf '%s  %s\n' "$TESTED_ARCHIVE_SHA256" "$ARCHIVE_NAME" | sha256sum -c -
             )
             unzip -tqq "$published_dir/$ARCHIVE_NAME"
             published_install="$(
