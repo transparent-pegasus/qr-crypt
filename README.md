@@ -149,7 +149,7 @@ residual: [docs/security/threat-model.md](docs/security/threat-model.md) T19 / T
 
 | Mode | When to use it |
 | --- | --- |
-| **Shared-key mode** (default; AES-256-GCM, HKDF per message) | One-to-one messages, with a secret the two of you shared in person. The data stays small, so a message travels in few QR codes. Shared keys can be rotated; superseded generations still decrypt. |
+| **Shared-key mode** (default; AES-256-GCM, HKDF per message) | One-to-one messages, with a secret the two of you shared in person. Each message travels in exactly one QR code. Shared keys can be rotated; superseded generations still decrypt. |
 | **Public-key mode** (ML-KEM-1024 + ML-DSA-87 + AES-256-GCM) | Several senders writing to one recipient, or anywhere you do not want a sender holding a secret that can decrypt. ML-KEM establishes the message secret from the recipient's public key and ML-DSA confirms the sender. The body is AES-256-GCM either way; the signature and public-key data make the message larger, so it becomes a sequence of QR codes. |
 
 For post-quantum identities and shared keys, the rotation cadence is the granularity of
