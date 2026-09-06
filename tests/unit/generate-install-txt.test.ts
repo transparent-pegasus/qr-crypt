@@ -11,6 +11,7 @@ const run = promisify(execFile)
 const REPO_ROOT = path.resolve(__dirname, "../..")
 const GENERATOR = path.join(REPO_ROOT, "scripts/generate-install-txt.mjs")
 const WORKFLOW = path.join(REPO_ROOT, ".github/workflows/github-release.yml")
+const PACKAGE_SCRIPT = path.join(REPO_ROOT, "scripts/release/package-static-pwa.sh")
 const SOURCE_SHA = "1234567890abcdef1234567890abcdef12345678"
 
 const generate = (sourceSha: string | undefined) =>
@@ -62,7 +63,9 @@ describe("INSTALL.txt generation", () => {
 
   it("stays the release workflow's only source of that text", async () => {
     const workflow = await readFile(WORKFLOW, "utf8")
-    expect(workflow).toContain("node scripts/generate-install-txt.mjs")
+    expect(await readFile(PACKAGE_SCRIPT, "utf8")).toContain(
+      "node scripts/generate-install-txt.mjs",
+    )
     expect(workflow).not.toContain('INSTALL.txt" <<')
   })
 
@@ -135,6 +138,6 @@ describe("Route A rebuild comparison", () => {
   })
 
   it("is what the release workflow does", async () => {
-    expect(await readFile(WORKFLOW, "utf8")).toContain("rm -rf -- dist/about")
+    expect(await readFile(PACKAGE_SCRIPT, "utf8")).toContain("rm -rf -- dist/about")
   })
 })
