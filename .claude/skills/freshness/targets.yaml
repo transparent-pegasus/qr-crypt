@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-09-06 # last revision of this registry itself
+updated: 2026-09-07 # last revision of this registry itself
 
 units:
   - id: deps
@@ -117,10 +117,14 @@ units:
       - docs/locales/ja/develop/install-route-a/README.md # Japanese mirror under docs/locales/<lang>/; must not diverge from README.md
       - docs/develop/install-route-a/INSTALL.template.txt # the only copy of the archive's INSTALL.txt text
       - scripts/release/verify-build-determinism.sh # rebuilds, compares, and restores the first dist
+      - tests/unit/release-build-determinism.test.ts # executable rebuild comparison and dist restoration contract
       - scripts/release/package-static-pwa.sh # validates and stages the static install archive
+      - tests/unit/release-static-package.test.ts # executable archive, checksum, source identity, and fail-closed contract
       - scripts/release/validate-static-closure.cjs # packaging's root-relative asset, manifest, and precache checks
+      - tests/unit/release-static-closure.test.ts # executable root-relative asset, manifest, and precache contract
       - scripts/release/write-static-zip.py # packaging's sorted stored ZIP with fixed modes and commit timestamps
       - scripts/release/test-packaged-pwa.sh # archived-byte HTTP checks followed by Playwright's separate rebuild
+      - tests/fixtures/release-fixture.ts # shared isolated fixtures for the release contract tests
       - scripts/generate-install-txt.mjs # renders that template; package-static-pwa.sh and the verifier both call it
       - tests/unit/generate-install-txt.test.ts # executable derivation, fail-closed, and about/-exclusion contract
       - scripts/serve-dist.mjs # header-aware server called by test-packaged-pwa.sh and Playwright
@@ -171,6 +175,9 @@ units:
       aube run test -- tests/unit/release-tag-read.test.ts
       aube run test -- tests/unit/release-audit-gate.test.ts
       aube run test -- tests/unit/generate-install-txt.test.ts
+      aube run test -- tests/unit/release-build-determinism.test.ts
+      aube run test -- tests/unit/release-static-closure.test.ts
+      aube run test -- tests/unit/release-static-package.test.ts
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \
