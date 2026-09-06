@@ -1,53 +1,53 @@
 # QR Crypt — Design System MASTER
 
-> **アーカイブ（現行実装の仕様ではありません）。** ここに記された RSA・OCM1・EC レベル選択を現行実装の要件として採用しないでください。
-> 来歴と保存範囲は [README](README.md) を参照してください。現行実装は [ソース](../src/)・[テスト](../tests/)、契約は [QR プロトコル仕様](../docs/spec/qr-protocol-v2.md)・[起動とリセットの仕様](../docs/spec/boot-and-reset-v2.md) を参照してください。
+> **Archive — not current implementation specifications.** Do not use the retired RSA, OCM1, or EC-level selector controls described here as active implementation requirements.
+> See [README](README.md) for provenance and the scope of preservation. For the current implementation, see [Source](../src/) and [Tests](../tests/); for its contracts, see the [QR protocol specification](../docs/spec/qr-protocol-v2.md) and [Boot and reset specification](../docs/spec/boot-and-reset-v2.md).
 
-以下は ui-ux-pro-max-skill の生成結果(`design-system/offline-cipher/MASTER.md`、検索クエリは spec §5 の 3 件)を、本アプリの制約(外部フォント禁止・オフライン・日本語 UI・モバイルファースト)へ適合させ、その後の改訂も含めて保存した設計記録です。
-当時はページ別文書を優先し、独自の色・余白トークンを追加しない方針でした。これらの優先関係や以下の規則は歴史的な記録であり、現行実装を規定しません。
+This design record preserves the ui-ux-pro-max-skill output (`design-system/offline-cipher/MASTER.md`, using the 3 search queries from spec §5), adapted to the app's constraints (no external fonts, offline operation, Japanese UI, and mobile-first design), together with subsequent revisions.
+At the time, page-specific documents took precedence, and no custom color or spacing tokens were to be added. That precedence and the rules below are historical records and do not govern the current implementation.
 
-## 0. 生成結果からの意図的変更
+## 0. Intentional changes from the generated output
 
-| 生成結果 | 当時の採用内容 | 理由 |
+| Generated output | Choice adopted at the time | Reason |
 |---|---|---|
-| JetBrains Mono (Google Fonts) | システムフォントスタック | spec §17/§18 が外部フォント・CDN を禁止。日本語グリフ対応 |
-| 全文モノスペース | UI 本文=サンセリフ、技術データ=モノスペース | 日本語本文の可読性。terminal/precision の気分は データ表示で維持 |
-| ダーク単一パレット | ライト/ダーク両対応トークン | spec §6 ダークモード対応 + WCAG AA |
-| マーケティング的ページ構成 (Hero/Proof/CTA) | ツール型 1 カラム構成 | 本アプリはユーティリティ PWA。信頼性は明快な警告・状態表示で担保 |
+| JetBrains Mono (Google Fonts) | System font stack | spec §17/§18 prohibits external fonts and CDNs. Support for Japanese glyphs |
+| Monospace throughout | Sans-serif UI body text; monospace technical data | Readability of Japanese body text. Retain the terminal/precision feel in data displays |
+| Dark-only palette | Tokens supporting both light and dark | spec §6 dark mode support + WCAG AA |
+| Marketing page structure (Hero/Proof/CTA) | Single-column tool layout | This app is a utility PWA. Convey trustworthiness through clear warnings and status displays |
 
-## 1. スタイル方針
+## 1. Style direction
 
-**Exaggerated Minimalism(抑制版)**: 高コントラスト、余白広め、装飾なし、太字見出し、要素数最小。
-セキュリティツールとしての「精密さ」はモノスペースのデータ表示・整然としたグリッド・一貫した状態表示で表現する。
-禁止: 遊び感のある装飾、紫/ピンクのAIグラデーション、色のみによる状態表現、絵文字アイコン(アイコンは lucide-react のみ)。
+**Exaggerated Minimalism (restrained)**: high contrast, generous whitespace, no decoration, bold headings, minimal elements.
+Express the "precision" of a security tool through monospace data displays, orderly grids, and consistent status displays.
+Prohibited: playful decoration, purple/pink AI gradients, status conveyed only by color, and emoji icons (use only lucide-react icons).
 
-## 2. カラートークン(shadcn CSS variables へマップ)
+## 2. Color tokens (mapped to shadcn CSS variables)
 
-QR コード表示面だけは例外: **常に白背景 `#FFFFFF`・黒セル `#000000`**(ダークモードでも固定。トークン非適用)。
+The QR code display surface is the sole exception: **always a white background `#FFFFFF` and black cells `#000000`** (fixed even in dark mode; tokens do not apply).
 
 ### Light
 
-| Token | 値 | 用途 |
+| Token | Value | Use |
 |---|---|---|
-| `--background` | `#FFFFFF` | ページ背景 |
-| `--foreground` | `#0F172A` | 本文 |
-| `--card` | `#F8FAFC` | カード面 |
+| `--background` | `#FFFFFF` | Page background |
+| `--foreground` | `#0F172A` | Body text |
+| `--card` | `#F8FAFC` | Card surface |
 | `--card-foreground` | `#0F172A` | |
 | `--popover` / `--popover-foreground` | `#FFFFFF` / `#0F172A` | |
-| `--primary` | `#1E3A5F` | 主ボタン・リンク・選択状態(紺=shield) |
+| `--primary` | `#1E3A5F` | Primary buttons, links, and selected states (navy = shield) |
 | `--primary-foreground` | `#FFFFFF` | |
-| `--secondary` / `--secondary-foreground` | `#E2E8F0` / `#1E293B` | 副ボタン |
-| `--muted` / `--muted-foreground` | `#F1F5F9` / `#475569` | 補助面・補助文字 |
-| `--accent` / `--accent-foreground` | `#DCFCE7` / `#14532D` | ホバー・強調面(green) |
-| `--success` / `--success-foreground` | `#15803D` / `#FFFFFF` | 成功・オンライン(AA 確保) |
-| `--warning` / `--warning-foreground` | `#B45309` / `#FFFFFF` | 機密警告 |
-| `--destructive` / `--destructive-foreground` | `#DC2626` / `#FFFFFF` | 破壊的操作・最高機密 |
+| `--secondary` / `--secondary-foreground` | `#E2E8F0` / `#1E293B` | Secondary buttons |
+| `--muted` / `--muted-foreground` | `#F1F5F9` / `#475569` | Supporting surfaces and text |
+| `--accent` / `--accent-foreground` | `#DCFCE7` / `#14532D` | Hover and emphasis surfaces (green) |
+| `--success` / `--success-foreground` | `#15803D` / `#FFFFFF` | Success and online status (AA compliant) |
+| `--warning` / `--warning-foreground` | `#B45309` / `#FFFFFF` | Sensitive-content warnings |
+| `--destructive` / `--destructive-foreground` | `#DC2626` / `#FFFFFF` | Destructive actions and highly sensitive content |
 | `--border` / `--input` | `#E2E8F0` / `#CBD5E1` | |
-| `--ring` | `#1E3A5F` | フォーカスリング |
+| `--ring` | `#1E3A5F` | Focus ring |
 
 ### Dark
 
-| Token | 値 |
+| Token | Value |
 |---|---|
 | `--background` | `#0F172A` |
 | `--foreground` | `#F8FAFC` |
@@ -63,74 +63,74 @@ QR コード表示面だけは例外: **常に白背景 `#FFFFFF`・黒セル `#
 | `--border` / `--input` | `rgba(255,255,255,0.10)` / `rgba(255,255,255,0.16)` |
 | `--ring` | `#8AB0DE` |
 
-テーマ切替: `documentElement.class` の `dark`。既定は `system`(prefers-color-scheme 追従)。保存先は `localStorage['oc-theme']` のみ。
+Theme switching: `dark` on `documentElement.class`. Default: `system` (follows prefers-color-scheme). Stored only in `localStorage['oc-theme']`.
 
-## 3. タイポグラフィ
+## 3. Typography
 
 ```css
 --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", sans-serif;
 --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 ```
 
-| 用途 | スタイル |
+| Use | Style |
 |---|---|
-| ページタイトル (h1) | 1.375rem / 700 / tracking-tight |
-| セクション見出し (h2) | 1.125rem / 600 |
-| 本文 | 0.9375rem / 400 / leading-relaxed |
-| 補助・キャプション | 0.8125rem / `--muted-foreground` |
-| 技術データ(指紋・鍵ID・バイト数・ペイロード) | `--font-mono` / tabular-nums / 0.8125–0.875rem |
+| Page title (h1) | 1.375rem / 700 / tracking-tight |
+| Section heading (h2) | 1.125rem / 600 |
+| Body text | 0.9375rem / 400 / leading-relaxed |
+| Supporting text and captions | 0.8125rem / `--muted-foreground` |
+| Technical data (fingerprints, key IDs, byte counts, payloads) | `--font-mono` / tabular-nums / 0.8125–0.875rem |
 
-鍵指紋は `7392 1840 5521 9074` 形式(4 桁×4、半角スペース区切り、mono、コピー可能)。
+Key fingerprints use the format `7392 1840 5521 9074` (4 groups × 4 digits, separated by ASCII spaces, mono, copyable).
 
-## 4. スペーシング / 形状 / 標高 / z-index
+## 4. Spacing / shape / elevation / z-index
 
-- スペーシング: 4/8/16/24/32/48/64px(`--space-xs..3xl`)。ページ左右パディング 16px。セクション間 24px。
-- 角丸: カード・ダイアログ 12px、ボタン・入力 8px、バッジ 9999px。
-- 影: sm `0 1px 2px rgba(0,0,0,.05)` / md `0 4px 6px rgba(0,0,0,.1)` / lg `0 10px 15px rgba(0,0,0,.1)`(ダークでは影に頼らず border で区切る)。
-- z-index スケール(任意値禁止): ヘッダー `z-20` / 下部ナビ `z-30` / ダイアログ `z-50` / トースト `z-[60]`。
+- Spacing: 4/8/16/24/32/48/64px (`--space-xs..3xl`). Horizontal page padding: 16px. Between sections: 24px.
+- Corner radius: cards and dialogs 12px, buttons and inputs 8px, badges 9999px.
+- Shadows: sm `0 1px 2px rgba(0,0,0,.05)` / md `0 4px 6px rgba(0,0,0,.1)` / lg `0 10px 15px rgba(0,0,0,.1)` (in dark mode, separate elements with borders rather than relying on shadows).
+- z-index scale (no arbitrary values): header `z-20` / bottom navigation `z-30` / dialogs `z-50` / toasts `z-[60]`.
 
-## 5. レイアウト / ナビゲーション
+## 5. Layout / navigation
 
-- 1 カラム、`max-width: 28rem`、中央寄せ。
-- ヘッダー: sticky top、アプリ名(左)+ ネットワーク状態バッジ(右)。`padding-top: env(safe-area-inset-top)`。
-- 本文下端余白: `calc(64px + env(safe-area-inset-bottom) + 16px)`(固定ナビと重なり禁止)。
-- 下部ナビ共通シェル: `position: fixed; left:0; right:0; bottom:0; padding-bottom: env(safe-area-inset-bottom);` 高さ 64px、子要素数にかかわらず等幅。オフラインは 4 項目(暗号化=`LockKeyhole` `/encrypt`、復号=`LockKeyholeOpen` `/decrypt`、鍵=`KeyRound` `/keys`、設定=`Settings` `/settings`)、対象時のオンライン画面は 2 項目(トップ=Home, リレー=MessageSquareText)のアイコンナビ。現在項目: `aria-current="page"` + `--primary` 色 + 上端 2px インジケーター。各項目タップ領域 ≥44×44px。
-- 横スクロール禁止。長いペイロード文字列は `break-all` + `max-h` + スクロール領域。
+- Single column, `max-width: 28rem`, centered.
+- Header: sticky top, app name (left) + network status badge (right). `padding-top: env(safe-area-inset-top)`.
+- Bottom content padding: `calc(64px + env(safe-area-inset-bottom) + 16px)` (must not overlap fixed navigation).
+- Shared bottom navigation shell: `position: fixed; left:0; right:0; bottom:0; padding-bottom: env(safe-area-inset-bottom);`, height 64px, equal-width items regardless of the number of children. Offline icon navigation has 4 items (Encrypt = `LockKeyhole` `/encrypt`, Decrypt = `LockKeyholeOpen` `/decrypt`, Keys = `KeyRound` `/keys`, Settings = `Settings` `/settings`); the online screen, when eligible, has 2 items (Top = Home, Relay = MessageSquareText). Current item: `aria-current="page"` + `--primary` color + a 2px top indicator. Each item's tap target is ≥44×44px.
+- No horizontal scrolling. Long payload strings use `break-all` + `max-h` + a scrollable area.
 
-## 6. コンポーネント規約(shadcn/ui ベース)
+## 6. Component conventions (based on shadcn/ui)
 
-- **タップ対象**: Button、TabsTrigger、SelectTrigger、Label、オフライン確認の raw `<label>`、鍵一覧の raw key-row `<button>`、密度再起動警告の `<summary>` には、表示テキストの長押し選択とダブルタップズーム遅延を防ぐ `select-none touch-manipulation` を常に併記する。鍵行は主要なタップ対象なので鍵名の長押し選択性を意図的に失わせるが、鍵名の閲覧・コピーは詳細ダイアログで行う。非対話的な `buttonVariants` 適用 `role="note"` は `select-text touch-auto` で元に戻す。
-- **Button**: 高さ 44px(`size="lg"` 相当を既定)。primary=主操作(暗号化・生成)、secondary=補助、destructive=削除系、ghost=行内操作。アイコンのみボタンは 44×44 + `aria-label` 必須。`cursor-pointer`、遷移 150–200ms、`hover:opacity-90`。レイアウトが動く transform ホバー禁止。
-- **Card**: 面=`--card`、区切りは border 優先。ホバーで浮かせない(ツール UI。リスト行のみ `hover:bg-accent`)。
-- **Input/Textarea**: 高さ 44px(Textarea は min-h 120px)、フォントサイズ 16px(iOS ズーム防止)、`focus-visible:ring-2 ring-[--ring] ring-offset-2`。ラベルは `htmlFor` で必ず関連付け(placeholder をラベル代わりにしない)。
-- **Dialog / AlertDialog**: 破壊的・不可逆操作は必ず AlertDialog で確認(直接実行禁止)。確認強度 3 段階: (1) 通常=確認ボタン、(2) 強=「リスクを理解しました」チェックボックスで確認ボタン活性化、(3) 最強=「全削除」の完全一致入力で活性化。destructive ボタンは右側。Esc/オーバーレイで安全側へ閉じる。
-- **Badge(機密度)**: 公開=`secondary`+Globe / 機密=`--warning` 面+ShieldAlert / 最高機密=`--destructive` 面+TriangleAlert。**必ずアイコン+テキスト併記**(色のみ禁止)。最高機密は一覧・詳細で常時表示。
-- **ネットワーク状態バッジ**: オンライン=`--success` ドット+「オンライン」/ オフライン=`--muted-foreground` ドット+「オフライン」。**安全性の主張をしない**(「オフラインなので安全」等の文言禁止、spec §2)。
-- **トースト(sonner)**: 暗黙の設定自動保存には成功トーストを出さず、コントロールが表示する新しい値をフィードバックとする。エラーはインライン `role="alert"`(アイコン+文言)を優先し、QR の全画面ダイアログ中はインライン alert が覆われるため、互換モード設定ペアの保存失敗に限りエラートーストを補助してよい。この非対称性は意図的である。
-- **QR 表示**: 白面パネル(padding 16px、白 `#FFFFFF` 固定、border `#E2E8F0`、rounded 12px)。サイズ既定 512px・`max-width:100%`。全画面は白全面・四辺 safe-area 対応・`h-dvh overflow-hidden` とし、QR は残り領域内で `max-height:100%; width:auto; object-fit:contain`。全画面内の `Button` は `border-slate-300`、44×44px以上とする。
-  - 単一画像 QR は操作列とカウンターを置かず、QR の下に左寄せのアイコンのみ全画面ボタンを置く。全画面面は QR と右寄せのアイコンのみ閉じるボタンだけを表示する。
-  - 複数 QR の非全画面面は **QR → カウンター → 1 行の操作列(前へ / 一時停止・再生 / 次へ / ラベル付き互換モード / 全画面) → 1 個のダウンロードボタン** の順とする。前へ・一時停止/再生・次へ・全画面は44×44pxのアイコンのみボタンとし、移動/再生ボタンの名前は `sr-only` で保つ。全画面面も QR → カウンター → 同じ1行とし、末尾だけを閉じるボタンに置き換える。
-  - 互換モードは `1000 B / 200 ms` と `100 B / 2000 ms` の固定ペアを切り替える1個のスイッチで、密度と速度は個別調整できない。`/settings` にも調整 UI を置かない。データサイズ・EC レベル行と輝度ヒントは表示しない。
+- **Tap targets**: always pair `select-none touch-manipulation` on Button, TabsTrigger, SelectTrigger, Label, the raw `<label>` for offline acknowledgement, the raw key-row `<button>` in the key list, and the `<summary>` for the density restart warning, to prevent long-press text selection and the double-tap zoom delay. Key rows are primary tap targets, so long-press selection of key names is deliberately disabled; names can be viewed and copied in the detail dialog. Restore `select-text touch-auto` on noninteractive `role="note"` elements styled with `buttonVariants`.
+- **Button**: height 44px (default equivalent to `size="lg"`). primary = main actions (encrypt, generate), secondary = supporting actions, destructive = deletion, ghost = inline actions. Icon-only buttons require 44×44 and an `aria-label`. `cursor-pointer`, 150–200ms transitions, `hover:opacity-90`. No transform hover effects that move the layout.
+- **Card**: surface = `--card`; prefer borders for separation. Do not lift cards on hover (tool UI; only list rows use `hover:bg-accent`).
+- **Input/Textarea**: height 44px (Textarea min-h 120px), font size 16px (prevents iOS zoom), `focus-visible:ring-2 ring-[--ring] ring-offset-2`. Always associate labels with `htmlFor` (do not substitute placeholders for labels).
+- **Dialog / AlertDialog**: always confirm destructive or irreversible actions with AlertDialog (no direct execution). Three confirmation strengths: (1) normal = confirmation button; (2) strong = a checkbox labelled with the historical Japanese phrase meaning "I understand the risks" enables the confirmation button; (3) strongest = exact-match entry of the historical Japanese phrase meaning "delete all" enables it. Both phrases here are English translations of historical Japanese UI text; the latter was not a literal English input token. Place the destructive button on the right. Esc/overlay dismissal takes the safe path.
+- **Badge (sensitivity)**: Public = `secondary` + Globe / Sensitive = `--warning` surface + ShieldAlert / Highly sensitive = `--destructive` surface + TriangleAlert. **Always include both icon and text** (never color alone). Always show the highly sensitive badge in lists and details.
+- **Network status badge**: online = `--success` dot + "Online" / offline = `--muted-foreground` dot + "Offline." **Make no safety claim** (wording such as "Safe because offline" is prohibited, spec §2).
+- **Toasts (sonner)**: do not show success toasts for implicit settings autosave; the new value shown by the control is the feedback. Prefer inline `role="alert"` errors (icon + text). While the fullscreen QR dialog covers inline alerts, an error toast may supplement them only for a failure to save the compatibility-mode settings pair. This asymmetry is intentional.
+- **QR display**: white panel (padding 16px, fixed white `#FFFFFF`, border `#E2E8F0`, rounded 12px). Default size 512px, `max-width:100%`. Fullscreen uses an entirely white surface, safe-area support on all four sides, and `h-dvh overflow-hidden`; within the remaining space, the QR uses `max-height:100%; width:auto; object-fit:contain`. Fullscreen `Button` elements use `border-slate-300` and are at least 44×44px.
+  - For a single-image QR, omit the action row and counter; place a left-aligned, icon-only fullscreen button below the QR. The fullscreen surface shows only the QR and a right-aligned, icon-only close button.
+  - For multiple QRs outside fullscreen, use this order: **QR → counter → one action row (previous / pause-play / next / labelled compatibility mode / fullscreen) → one download button**. Previous, pause/play, next, and fullscreen are 44×44px icon-only buttons; retain navigation/playback button names with `sr-only`. Fullscreen also uses QR → counter → the same single row, replacing only the final button with close.
+  - Compatibility mode is one switch between the fixed pairs `1000 B / 200 ms` and `100 B / 2000 ms`; density and speed cannot be adjusted separately. Do not add adjustment UI to `/settings` either. Do not show the data-size/EC-level row or a brightness hint.
 
-## 7. アクセシビリティ / モーション
+## 7. Accessibility / motion
 
-- セマンティック HTML(`button`/`nav`/`main`/`h1..`)。div+onClick 禁止。
-- フォーカス可視必須: `focus-visible:ring-2`。Tab 順序=視覚順序。
-- 状態表示は アイコン+テキスト(+`aria-live="polite"` のステータス領域)。エラーは `role="alert"`。
-- ダイアログはフォーカストラップ+初期フォーカスは安全側ボタン(radix 既定)。
-- `prefers-reduced-motion: reduce` で transition/animation を実質無効化(グローバル CSS)。
-- コントラスト: 本文 4.5:1 以上(上記トークンは充足)。
+- Semantic HTML (`button`/`nav`/`main`/`h1..`). No div+onClick.
+- Visible focus is mandatory: `focus-visible:ring-2`. Tab order = visual order.
+- Status displays use icon + text (+ a status region with `aria-live="polite"`). Errors use `role="alert"`.
+- Dialogs trap focus and initially focus the safe button (radix default).
+- Effectively disable transitions/animations under `prefers-reduced-motion: reduce` (global CSS).
+- Contrast: at least 4.5:1 for body text (the tokens above meet this).
 
-## 8. 文言トーン
+## 8. Wording and tone
 
-- 丁寧・断定・短文。「〜できます」「〜してください」。
-- 警告は結果を具体的に(「撮影・画面共有・クラウド同期された場合、暗号文を復号される可能性があります」)。
-- エラーは原因候補+次の行動。内部詳細・スタックは出さない。
-- オフライン表示は状態情報であり安全性の保証ではない、という前提を崩す文言を書かない。
+- Polite, definite, short sentences: "You can…" and "Please…"
+- Warnings state concrete consequences ("If photographed, screen-shared, or synced to the cloud, it may allow ciphertext to be decrypted").
+- Errors give possible causes + the next action. Do not expose internal details or stacks.
+- Wording must preserve the premise that an offline indicator reports status and does not guarantee safety.
 
-## 9. 当時のチェックリスト（参考記録）
+## 9. Checklist used at the time (historical reference)
 
-- [ ] 絵文字アイコンなし(lucide のみ) / [ ] クリック要素に cursor-pointer / [ ] ホバー・遷移 150–300ms
-- [ ] ライト・ダーク両方でコントラスト AA / [ ] QR は常に白背景 / [ ] フォーカス可視 / [ ] reduced-motion 対応
-- [ ] 375px で横スクロールなし / [ ] 固定ナビに内容が隠れない / [ ] タッチ領域 44px / [ ] 色のみの状態表現なし
-- [ ] 破壊的操作に確認 / [ ] 最高機密に常時警告 / [ ] `aria-current`・`htmlFor`・`role="alert"` 適用
+- [ ] No emoji icons (lucide only) / [ ] cursor-pointer on clickable elements / [ ] 150–300ms hover effects and transitions
+- [ ] AA contrast in both light and dark / [ ] Always-white QR background / [ ] Visible focus / [ ] reduced-motion support
+- [ ] No horizontal scrolling at 375px / [ ] Fixed navigation does not hide content / [ ] 44px touch targets / [ ] No status conveyed only by color
+- [ ] Confirmation for destructive actions / [ ] Persistent warning for highly sensitive content / [ ] `aria-current`, `htmlFor`, and `role="alert"` applied

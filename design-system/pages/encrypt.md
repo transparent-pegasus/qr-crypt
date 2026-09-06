@@ -1,28 +1,28 @@
-# /encrypt — 暗号化ページ(既定ページ)
+# /encrypt — Encryption page (default page)
 
-> **アーカイブ（現行実装の仕様ではありません）。** ここに記された RSA・OCM1・EC レベル選択を現行実装の要件として採用しないでください。
-> 来歴と保存範囲は [README](../README.md) を参照してください。現行実装は [ソース](../../src/)・[テスト](../../tests/)、契約は [QR プロトコル仕様](../../docs/spec/qr-protocol-v2.md)・[起動とリセットの仕様](../../docs/spec/boot-and-reset-v2.md) を参照してください。
+> **Archive — not current implementation specifications.** Do not use the retired RSA, OCM1, or EC-level selector controls described here as active implementation requirements.
+> See [README](../README.md) for provenance and the scope of preservation. For the current implementation, see [Source](../../src/) and [Tests](../../tests/); for its contracts, see the [QR protocol specification](../../docs/spec/qr-protocol-v2.md) and [Boot and reset specification](../../docs/spec/boot-and-reset-v2.md).
 
-以下は当時の MASTER.md を前提としたページ別設計記録です。復号は別ルート `/decrypt`(`decrypt.md`)。
+This is a page-specific design record based on MASTER.md as it stood at the time. Decryption uses the separate `/decrypt` route (`decrypt.md`).
 
-## 構成(上から、spec §7.1 の順序厳守)
+## Structure (top to bottom, strictly following spec §7.1)
 
-1. アプリ名(h1、ヘッダー内)
-2. ネットワーク状態バッジ(ヘッダー右)
-3. 暗号化方式選択 — `Select`。表示名は spec §7.3 どおり:「共通鍵 — AES-256-GCM」「公開鍵 — RSA-OAEP-3072 + AES-256-GCM」。`enableRsa=false` なら B を出さない
-4. 使用鍵選択 — `Select`。方式で絞る(A=共通鍵 / B=公開鍵・鍵ペア公開側)。候補 0 件なら「鍵ページで作成してください」の空状態リンク。鍵名+指紋先頭 1 グループを併記
-5. 平文入力 — `Textarea`(min-h 120px、複数行)。下に「文字数 / UTF-8 バイト数(mono, aria-live=polite)」と上限 4096B。超過時: バイト数を destructive 色+アイコン+説明、暗号化ボタン無効
-6. バイト数・予想QRサイズ — 「予想ペイロード: 約 N 文字 / EC=Q 上限 1663」形式。収まらない見込みは警告アイコン+文言
-7. 暗号化ボタン — primary、全幅、44px。無効条件: 鍵未選択・平文空・バイト超過・処理中(spinner+「暗号化中…」)
-8. 暗号結果 — 成功時のみ。ペイロード文字列(mono、break-all、max-h 96px スクロール、コピー)
-9. 暗号文QR — QR 表示パネル(白固定)。生成失敗時は理由(例: サイズ超過)を `role="alert"`
-10. QR名入力 — `Input`。自動提案 `暗号文-YYYYMMDD-HHmmss`。1〜80 文字検証
-11. 操作列 — 保存(アプリ内)/ PNG / SVG / コピー。保存成功はトースト+保存済みへのリンク。重複(同一 payloadSha256)は確認ダイアログ「同じ内容のQRが保存済みです」
-12. 詳細情報 — `Collapsible`「詳細」: アルゴリズム・鍵ID・作成日時・IV(hex)・暗号文サイズ・AAD 内容
+1. App name (h1, in the header)
+2. Network status badge (right side of the header)
+3. Encryption method selector — `Select`. Display names follow spec §7.3: "Symmetric key — AES-256-GCM" and "Public key — RSA-OAEP-3072 + AES-256-GCM." Hide B when `enableRsa=false`
+4. Key selector — `Select`. Filter by method (A = symmetric key / B = public key or the public part of a key pair). If there are 0 candidates, show an empty-state link: "Create a key on the keys page." Show the key name + the first group of its fingerprint
+5. Plaintext input — `Textarea` (min-h 120px, multiline). Below it, show "Character count / UTF-8 byte count (mono, aria-live=polite)" and the 4096B limit. When exceeded: use the destructive color + icon + explanation for the byte count, and disable the encryption button
+6. Byte count and estimated QR size — format: "Estimated payload: about N characters / EC=Q limit 1663." If it is unlikely to fit, show a warning icon + text
+7. Encryption button — primary, full width, 44px. Disabled when: no key selected, plaintext empty, byte limit exceeded, or processing (spinner + "Encrypting…")
+8. Encryption result — only on success. Payload string (mono, break-all, max-h 96px with scrolling, copy)
+9. Ciphertext QR — QR display panel (fixed white background). On generation failure, show the reason (e.g. size limit exceeded) with `role="alert"`
+10. QR name input — `Input`. Automatic suggestion: `Ciphertext-YYYYMMDD-HHmmss` (English translation of the historical Japanese name template). Validate 1–80 characters
+11. Action row — Save (in-app) / PNG / SVG / Copy. On successful save, show a toast + a link to saved items. For a duplicate (same payloadSha256), show a confirmation dialog: "A QR with the same content is already saved"
+12. Details — `Collapsible` labelled "Details": algorithm, key ID, creation date/time, IV (hex), ciphertext size, and AAD contents
 
-## 平文の扱い(spec §7.2)
+## Plaintext handling (spec §7.2)
 
-- 自動保存・復元をしない(state のみ)。「平文を消去」ボタン常設(入力があるときのみ活性)
-- 暗号化成功後: 既定 ON の設定「暗号化後に平文を自動消去」が ON なら消去+トースト、OFF なら残す
-- 既定 ON の「バックグラウンド移行後に自動消去」が有効な場合、visibilitychange hidden から env 固定の約5分経過で平文・復号結果・結果ペイロードを消去(復帰時に「自動消去しました」表示)
-- `oc:clear-transient` イベント(設定ページ「すべての平文を消去」)で即時消去
+- Do not automatically save or restore plaintext (state only). Always show the "Clear plaintext" button (enabled only when input exists)
+- After successful encryption: if "Automatically clear plaintext after encryption" (ON by default) is ON, clear it + show a toast; if OFF, retain it
+- When "Automatically clear after moving to the background" is enabled (ON by default), clear plaintext, decryption results, and the result payload approximately 5 minutes after visibilitychange hidden; the delay is fixed by env (show "Automatically cleared" on return)
+- Clear immediately on the `oc:clear-transient` event ("Clear all plaintext" on the settings page)
