@@ -160,19 +160,25 @@ export function KeyAddDialog({
   useEffect(() => {
     openingRef.current += 1
     persistingRef.current = false
+    return () => {
+      openingRef.current += 1
+    }
   }, [mode])
   useEffect(() => {
     if (mode === null) scanSession.discard()
   }, [mode, scanSession])
 
   const persist = async (write: () => Promise<void>) => {
+    const opening = openingRef.current
     persistingRef.current = true
     setPersisting(true)
     try {
       await write()
     } finally {
-      persistingRef.current = false
-      setPersisting(false)
+      if (!abandoned(opening)) {
+        persistingRef.current = false
+        setPersisting(false)
+      }
     }
   }
 
@@ -206,6 +212,7 @@ export function KeyAddDialog({
       if (created === undefined || abandoned(opening)) return
       setKeyName("")
       await onCreated({ kind: "symmetric", id: created.id })
+      if (abandoned(opening)) return
       toast.success(t("keys.toast.symmetricCreated"))
     } catch (caught) {
       if (abandoned(opening)) return
@@ -254,6 +261,7 @@ export function KeyAddDialog({
       if (abandoned(opening)) return
       setKeyName("")
       await onCreated({ kind: "identity", id: identity.id })
+      if (abandoned(opening)) return
       toast.success(t("keys.toast.identityCreated"))
     } catch (caught) {
       if (abandoned(opening)) return
@@ -272,7 +280,9 @@ export function KeyAddDialog({
     return parsed.success ? { name: parsed.data } : {}
   }
 
-  const prepareBundleImport = async (bundle: PublicIdentityBundleV2) => {
+  const prepareBundleImport = async (
+    bundle: PublicIdentityBundleV2,
+  ): Promise<AddView> => {
     assertUsableBundle(bundle)
     const importedAt = Date.now()
     const [kemFingerprint, signingFingerprint, identityFingerprint] = await Promise.all([
@@ -280,8 +290,7 @@ export function KeyAddDialog({
       pqKeyFingerprint("signing", bundle.signing.algorithm, bundle.signing.publicKey),
       pqIdentityFingerprint(bundle),
     ])
-    setFingerprintChecked(false)
-    setView({
+    return {
       kind: "bundle-confirm",
       bundle: {
         recordId: generateKeyId(),
@@ -294,13 +303,16 @@ export function KeyAddDialog({
         bundleCreatedAt: bundle.createdAt,
         importedAt,
       },
-    })
+    }
   }
 
-  const beginSymmetricImport = (record: StoredKeyRecord) => {
-    setSymmetricImportName(record.name)
+  const showPreparedImport = (nextView: AddView) => {
+    setFingerprintChecked(false)
+    setSymmetricImportName(
+      nextView.kind === "symmetric-import" ? nextView.record.name : "",
+    )
     setSymmetricImportAcknowledged(false)
-    setView({ kind: "symmetric-import", record })
+    setView(nextView)
   }
 
   const symmetricImportDefaultName = () =>
@@ -308,11 +320,9 @@ export function KeyAddDialog({
       date: formatSuggestedDate(Date.now()),
     })
 
-  const importDecoded = async (
+  const prepareImport = async (
     decoded: ReturnType<typeof decodePayload>,
-    opening: number,
-  ) => {
-    if (abandoned(opening)) return
+  ): Promise<AddView> => {
     switch (decoded.kind) {
       case "symmetric-key": {
         const record = await importSymmetricKeyRecordV2(
@@ -320,12 +330,10 @@ export function KeyAddDialog({
           decoded.envelope,
           Date.now(),
         )
-        beginSymmetricImport(record)
-        return
+        return { kind: "symmetric-import", record }
       }
       case "pq-public-identity":
-        await prepareBundleImport(decoded.envelope)
-        return
+        return prepareBundleImport(decoded.envelope)
       default:
         throw new AppError("INVALID_QR_PAYLOAD")
     }
@@ -336,8 +344,9 @@ export function KeyAddDialog({
     setBusy(true)
     setError(null)
     try {
-      await importDecoded(decodePayload(importPayload.trim()), opening)
+      const nextView = await prepareImport(decodePayload(importPayload.trim()))
       if (abandoned(opening)) return
+      showPreparedImport(nextView)
       setImportPayload("")
     } catch (caught) {
       if (abandoned(opening)) return
@@ -351,29 +360,34 @@ export function KeyAddDialog({
     artifactType: string
     artifactBytes: Uint8Array
   }) => {
+    const opening = openingRef.current
     // The decoders copy what they need, so release the assembler's own copy of the
-    // delivered artifact and leave the session ready for the next transfer.
+    // delivered artifact only while this opening still owns the scan session.
     try {
+      let decoded: ReturnType<typeof decodePayload>
       if (args.artifactType === "pq-public-identity") {
-        await prepareBundleImport(decodePublicIdentityBundleV2(args.artifactBytes))
-        return
-      }
-      if (args.artifactType === "symmetric-key") {
-        const envelope = validateSymmetricKeyEnvelopeV2(
-          decodeSymmetricKeyEnvelopeV2(args.artifactBytes),
-        )
-        beginSymmetricImport(
-          await importSymmetricKeyRecordV2(
-            symmetricImportDefaultName(),
-            envelope,
-            Date.now(),
+        decoded = {
+          kind: "pq-public-identity",
+          envelope: decodePublicIdentityBundleV2(args.artifactBytes),
+        }
+      } else if (args.artifactType === "symmetric-key") {
+        decoded = {
+          kind: "symmetric-key",
+          envelope: validateSymmetricKeyEnvelopeV2(
+            decodeSymmetricKeyEnvelopeV2(args.artifactBytes),
           ),
-        )
-        return
+        }
+      } else {
+        throw new AppError("INVALID_QR_PAYLOAD")
       }
-      throw new AppError("INVALID_QR_PAYLOAD")
+      const nextView = await prepareImport(decoded)
+      if (abandoned(opening)) return
+      showPreparedImport(nextView)
+    } catch (caught) {
+      if (abandoned(opening)) return
+      throw caught
     } finally {
-      scanSession.discard()
+      if (!abandoned(opening)) scanSession.discard()
     }
   }
 
@@ -394,6 +408,7 @@ export function KeyAddDialog({
     setError(null)
     try {
       await persist(() => saveKeyRecord({ ...view.record, name: parsedName.data }))
+      if (abandoned(opening)) return
       await onImported()
       if (abandoned(opening)) return
       toast.success(t("keys.toast.symmetricImported"))
@@ -415,8 +430,10 @@ export function KeyAddDialog({
     setError(null)
     try {
       await saveBundle(view.bundle)
+      if (abandoned(opening)) return
       if (confirmed) {
         await confirmBundleFingerprint(view.bundle.recordId, Date.now())
+        if (abandoned(opening)) return
       }
       await onImported()
       if (abandoned(opening)) return
@@ -499,7 +516,7 @@ export function KeyAddDialog({
             />
           )}
 
-          {view.kind === "import" && (
+          {open && view.kind === "import" && (
             <ImportSourceView
               cameraAvailable={camera}
               scanSession={scanSession}

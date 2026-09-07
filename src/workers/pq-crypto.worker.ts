@@ -111,8 +111,8 @@ async function generateIdentityKeys(
     dsaSeed = generateDsaSeed()
     stage = "keygen"
     const kemKeys = kem.keygen(kemSeed)
-    const dsaKeys = dsa.keygen(dsaSeed)
     kemSecretKey = kemKeys.secretKey
+    const dsaKeys = dsa.keygen(dsaSeed)
     dsaSecretKey = dsaKeys.secretKey
     stage = "public-key-digest"
     const [kemPublicKeySha256, dsaPublicKeySha256] = await Promise.all([

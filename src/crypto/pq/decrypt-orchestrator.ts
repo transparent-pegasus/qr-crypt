@@ -2,11 +2,11 @@
 //
 // Flow (frozen):
 //   openPqEnvelope (Worker: Decaps → HKDF → successful GCM authentication
-//   → inner-schema validation)
+//   → inner-schema validation; copies unverified plaintext-bearing CBOR to main)
 //   → resolveSigningKey by the inner senderSigningKeyId (repository lookup)
 //     → unknown key: {kind:"signed-key-unknown", senderSigningKeyId}
-//       (do not construct plaintext; zeroize in the Worker; continue to the signing-key
-//       import path)
+//       (withhold plaintext from UI; finally zeroizes the main-thread CBOR copy;
+//       continue to the signing-key import path)
 //     → known key: verifySignedMessage → return plaintext plus messageId / createdAt from
 //       the verified signed body only, never from the pre-verification open
 //       failure: AppError("SIGNATURE_INVALID") (do not display plaintext)

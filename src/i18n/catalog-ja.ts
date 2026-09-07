@@ -112,7 +112,7 @@ export const ja = {
   "boot.wiped.body": "論理削除を試行しました。物理消去は保証されません。",
   "boot.wiped.backOnline": "オンラインページへ戻る",
   "boot.partialFailure.retryHint":
-    "このタブを閉じてください。再び利用するには、端末を完全フォーマットしてからアプリを導入し直してください。",
+    "このタブを閉じてください。アプリの初期化や通常のフォーマットでは物理消去は保証されません。再び利用するには、記憶媒体に適したサニタイズ手順に従うか端末を交換してから、新規インストールしてください。",
 
   "gate.install.error":
     "インストールを開始できませんでした。ブラウザーのメニューから操作してください。",
@@ -412,8 +412,6 @@ export const ja = {
     "対応するOCA2/OCM2暗号文を入力してください。",
   "decrypt.button.busy": "復号中…",
   "decrypt.button.idle": "復号する",
-  "decrypt.pqUnsupported.body":
-    "この暗号文は現在利用できない旧ポスト量子プロファイルです。",
   "decrypt.signingKeyId": " 鍵ID: {id}",
   "decrypt.importSigningKey": "署名鍵を取り込む",
   "decrypt.result.modalTitle": "復号が完了しました",
@@ -596,7 +594,7 @@ export const ja = {
   "settings.sw.unavailable":
     "この機能は利用できません: Service Worker。オフライン起動を利用できません。",
   "settings.pwa.noUpdatePolicy":
-    "アプリの更新は行わない方針です。新しいバージョンの利用には端末の完全フォーマット後の再インストールが必要です。",
+    "既存のインストールをそのまま更新する方法はサポートしていません。新しいバージョンを使うには、記憶媒体に適したサニタイズ手順に従うか端末を交換してから、新規インストールしてください。アプリの初期化や通常のフォーマットでは物理消去は保証されません。",
   "settings.info.version": "バージョン",
   "settings.info.build": "ビルド",
   "settings.pwa.offlineReadyNote":

@@ -110,7 +110,7 @@ export const en = {
     "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
   "boot.wiped.backOnline": "Return to the online page",
   "boot.partialFailure.retryHint":
-    "Close this tab. To use the app again, fully format the device, then reinstall the app.",
+    "Close this tab. App reset and ordinary formatting do not guarantee physical erasure. Before using the app again, follow media-appropriate sanitization guidance or use a replacement device, then install afresh.",
 
   "gate.install.error":
     "Installation could not be started. Use the browser menu instead.",
@@ -409,8 +409,6 @@ export const en = {
   "decrypt.invalidBody": "Enter a supported OCA2 or OCM2 ciphertext.",
   "decrypt.button.busy": "Decrypting…",
   "decrypt.button.idle": "Decrypt",
-  "decrypt.pqUnsupported.body":
-    "This ciphertext uses a legacy post-quantum profile that is no longer available.",
   "decrypt.signingKeyId": " Key ID: {id}",
   "decrypt.importSigningKey": "Import a signing key",
   "decrypt.result.modalTitle": "Decryption complete",
@@ -592,7 +590,7 @@ export const en = {
   "settings.sw.unavailable":
     "This feature is unavailable: Service Worker. Offline startup is unavailable.",
   "settings.pwa.noUpdatePolicy":
-    "The app does not update in place. To use a new version, fully format the device and reinstall the app.",
+    "In-place upgrades are not supported. To install a new version, follow media-appropriate sanitization guidance or use a replacement device. App reset and ordinary formatting do not guarantee physical erasure.",
   "settings.info.version": "Version",
   "settings.info.build": "Build",
   "settings.pwa.offlineReadyNote":

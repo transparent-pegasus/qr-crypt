@@ -66,8 +66,8 @@ import { type UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { qrNameSchema } from "@/schemas/key-schema"
 
-// The generation is the page's own: it distinguishes the result currently on screen
-// from one a later encryption superseded while an export was still running.
+// Each encryption owns a generation, retired by clear or the next encryption.
+// Results keep it so frame rendering and exports follow the same lifetime.
 type EncryptionResult = EncryptedMessage & { generation: number }
 
 const EMPTY_ARTIFACT_BYTES = new Uint8Array()
@@ -213,6 +213,7 @@ export function EncryptPage() {
 
   useEffect(
     () => () => {
+      resultGenerationRef.current += 1
       resultAbortRef.current?.abort()
       resultAbortRef.current = null
       resetCompatibilityMode()
@@ -221,6 +222,8 @@ export function EncryptPage() {
   )
 
   const clearTransient = useCallback(() => {
+    resultGenerationRef.current += 1
+    setBusy(false)
     resultAbortRef.current?.abort()
     resultAbortRef.current = null
     resetCompatibilityMode()
@@ -242,6 +245,7 @@ export function EncryptPage() {
 
   const handleEncrypt = async () => {
     if (!canEncrypt) return
+    const generation = ++resultGenerationRef.current
     resultAbortRef.current?.abort()
     resultAbortRef.current = null
     resetCompatibilityMode()
@@ -268,11 +272,11 @@ export function EncryptPage() {
       }
       if (request !== null) {
         const message = await encryptMessage(request)
-        resultGenerationRef.current += 1
+        if (generation !== resultGenerationRef.current) return
         setOutputName(
           t("encrypt.output.suggestedName", { date: formatSuggestedDate(now) }),
         )
-        setResult({ ...message, generation: resultGenerationRef.current })
+        setResult({ ...message, generation })
       }
       if (preferences.autoClearPlaintextAfterEncrypt) {
         setPlaintext("")
@@ -280,9 +284,11 @@ export function EncryptPage() {
       }
       await refreshPq()
     } catch (caught) {
-      setError(toAppError(caught, "ENCRYPTION_FAILED").code)
+      if (generation === resultGenerationRef.current) {
+        setError(toAppError(caught, "ENCRYPTION_FAILED").code)
+      }
     } finally {
-      setBusy(false)
+      if (generation === resultGenerationRef.current) setBusy(false)
     }
   }
 
