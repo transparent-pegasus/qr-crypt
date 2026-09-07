@@ -30,7 +30,7 @@ retained four-suite wire/codec contract. Boot alone keeps a read-only
     byte counts in the table below, the OCF2 frame counts across the internal
     100–1,000B chunk set, both exact display preference pairs and the
     per-artifact effective density clamps, real EC-Q generation for every
-    displayable frame, the 1,529-character
+    displayable frame, the 1,525-character
     worst-metadata payload at the 1,000B ceiling, and boundary agreement with
     the env capacity guard. `tests/pq/sym-envelope.golden.test.ts` pins the
     sym-message overhead (131 B) and plaintext ceiling (853 B).
@@ -54,7 +54,6 @@ Maximum fixture re-verified 2026-09-06 by
 |---|---:|---:|---:|
 | signed empty / max | 6,570 / 126,576 | 33 / 127* | 7 / 127 |
 | OCI2 bundle | 4,402 | 45 | 5 |
-| OCB2 reserved sizing fixture | 4,637 | 47 | 5 |
 | sym-message at plaintext ceiling | 1,000 (exactly one frame) | 1 | 1 |
 
 The compatible preference clamps density to 200B for the empty signed
@@ -76,7 +75,7 @@ atomic write, per-artifact clamp, dwell-not-cadence) matches
 [qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6. The automatic reader-based
 selector was removed; that same section owns the display contract.
 
-Receiver allocation ceiling, 1,529-vs-1,663 frame fit, and related wire budgets:
+Receiver allocation ceiling, 1,525-vs-1,663 frame fit, and related wire budgets:
 [qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6.
 
 Verified 2026-07-30: assembly timeout floor and default match

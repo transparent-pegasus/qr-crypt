@@ -15,7 +15,6 @@ every boundary.
 | `OCA2:` | `sym-message` | Symmetric HKDF-AES message envelope |
 | `OCK2:` | `symmetric-key` | Symmetric AES-256 key envelope |
 | `OCI2:` | `pq-public-identity` | Public key (KEM+DSA) |
-| `OCB2:` | `encrypted-seed-backup` | Reserved (neither produced nor accepted) |
 | `OCF2:` | frame | Multi-frame QR |
 
 - `OCM2` / `OCA2` / `OCK2` / `OCI2` are single-payload
@@ -23,9 +22,8 @@ every boundary.
   goes through `OCF2` (frameCount ≥ 1)**.
 - Import supports both (a) `OCF2` assembly → inner artifact, and (b) a bare
   `OC?2` single paste.
-- `OCB2` is a reserved prefix, rejected unconditionally as
-  `UNSUPPORTED_ALGORITHM` at classification time. There is no feature flag: it
-  is never generated and never accepted.
+- Unknown prefixes are rejected as `INVALID_QR_PREFIX`; unknown `OCF2`
+  artifact types are rejected as `INVALID_QR_PAYLOAD`.
 - Retired vocabulary: `OCP2` / `OCS2` and the single-key artifact types
   `pq-kem-public-key` / `pq-dsa-public-key` are removed. A public key travels
   only as the `OCI2` KEM+DSA pair, so those prefixes are unrecognized at
@@ -297,9 +295,9 @@ QrFrameV2 = {
   single frame string, prefix included, is **≤1663
   characters** (QR v40-Q). After generation, check `payloadFits(…, "Q")`;
   if it does not fit, `QR_TOO_LARGE`. At the 1,000B chunk ceiling, the
-  worst-case metadata across every artifact type produces a 1,529-character
+  worst-case metadata across every artifact type produces a 1,525-character
   OCF2 payload, below the 1,663-character EC-Q version 40 capacity. A raw
-  worst-metadata 1,100B frame would land exactly at that capacity, but the
+  worst-metadata 1,100B frame produces 1,659 characters and fits EC-Q, but the
   protocol chunk and generated-density ceilings remain 1,000B
 - A sender splits on a fixed `frameBytes`: every chunk but the last carries
   exactly that many bytes. `frameBytes` outside 100–1,000B, non-integer, or a
@@ -493,13 +491,14 @@ Shared fixture key id as in §8.1. Active suite only.
 
 | Situation | Code |
 |---|---|
-| Non-canonical / malformed v2 structure | `INVALID_QR_PAYLOAD` |
+| Unknown QR prefix | `INVALID_QR_PREFIX` |
+| Non-canonical / malformed v2 structure or unknown OCF2 artifact type | `INVALID_QR_PAYLOAD` |
 | Multi-frame `sym-message` / `symmetric-key` OCF2 frame on decode | `INVALID_QR_PAYLOAD` |
 | Signature verification failure (body withheld) | `SIGNATURE_INVALID` |
 | Sender signing key not imported (import flow offered) | `SIGNING_KEY_NOT_FOUND` |
 | Frame from another transferId mixed in / frame inconsistency | `FRAME_MISMATCH` |
 | Generation capacity exceeded (artifact >128,000B, frameCount>128, `frameBytes` outside 100–1,000B, OCF2 payload >1,663 characters, or the honest splitter cannot satisfy the symmetric single-frame constraint) | `QR_TOO_LARGE` |
-| OCB2 (reserved) / removed vocabulary (v1 prefixes, `OCP2` / `OCS2`, unsigned suites, 768/65, `balanced`) | `UNSUPPORTED_ALGORITHM` or `INVALID_QR_PREFIX` / `INVALID_QR_PAYLOAD` |
+| Removed vocabulary (v1 prefixes, `OCP2` / `OCS2`, unsigned suites, 768/65, `balanced`) | `UNSUPPORTED_ALGORITHM` or `INVALID_QR_PREFIX` / `INVALID_QR_PAYLOAD` |
 | Worker unavailable (fallback to the main thread is forbidden) | `WORKER_UNAVAILABLE` |
 | Partial failure of local reset | `RESET_FAILED` |
 
