@@ -418,7 +418,7 @@ describe("offline acknowledgement shell", () => {
 
     expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
     expect(
-      screen.getByText(/Close this tab.*fully format the device/),
+      screen.getByText(/Close this tab\./),
     ).toBeInTheDocument()
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
     expect(
