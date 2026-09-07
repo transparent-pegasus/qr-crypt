@@ -582,11 +582,12 @@ concentration record, not evidence of a present break.
 
 This bounded follow-up starts from `1ae9cf5c675068b30d8b5e3a8f7fa092106824a5`.
 The Noble assessment, application and release implementation reports, and
-independent app-test/integration reports were read. Release commits are
+independent app/release-test and integration/harness reports were read. Release commits are
 `1295d5c02674493f3a14b332f311ef26f460f2d3` (archive/browser gate) and
-`b983bb7fcfcac3c82b3bb21c563e75696d392724` (external maintenance). The documentation branch
-contains the pin and assurance changes, not the separately owned app/release
-implementations. No combined-tree GREEN result is claimed here.
+`b983bb7fcfcac3c82b3bb21c563e75696d392724` (external maintenance). Integrated revision
+`619d03fe2167e2b677f34502c3215b7f46da08b5` contains those implementations,
+the application fixes, Noble 0.7.1, and the independent app/release tests.
+No combined-tree GREEN result is claimed here.
 
 The assessment assumes persistent targeting of a few installations across
 provisioning, years of use, captured ciphertext, and retirement; initial
@@ -601,10 +602,10 @@ repository checks; see [environment-threat-catalog.md](environment-threat-catalo
 
 | Item | Control class | Implemented or required behavior and verification disposition |
 | --- | --- | --- |
-| F1 — incomplete fingerprint comparison | `REPOSITORY_IMPLEMENTABLE` | App commit `203b515ed1f81e7ab0ffab1526d3b027b46454c8` changes `formatFingerprint` and the shared `Fingerprint` display to all 64 lowercase hex digits. The composite identity is authoritative at import, details, and saved-key confirmation; complete KEM/signing hashes are supplementary. Symmetric import also requires full comparison. Independent tests cover every digit, modulo aliases, suffix differences, EN/JA acknowledgement, trust gating, and 320px layout; integration GREEN is pending. |
-| F2 — relay admission after a stale display proof | `REPOSITORY_IMPLEMENTABLE` | App commit `ae4a6b6b9457ab08f20aea944fbba02bbe406967` adds `BootController.acquireRelaySession(signal)`, wired through `OnlineInstallScreen.onRelaySessionAcquire` to `OnlineRelay.onSessionAcquire`. It acquires first, reads actual sensitive stores, checks lifecycle, and holds that same lease until teardown. Missing callback/locks, cancellation, failed/dirty reads, and stale lifecycle reject and release. `refreshRelayEligibility` is display-only. Independent completed-writer, cancellation, delayed-read, and lifecycle regressions await integration GREEN. No database-exfiltration attack was demonstrated. |
-| F3 — release browser evidence | `REPOSITORY_IMPLEMENTABLE` | Required: no-build `E2E_ARTIFACT_ROOT` execution of extracted bytes, archive digest/full-member checks before and after, the same digest checked by sign/publish, and a separate broken-JS archive regression. The source report records 33 existing browser scenarios passing against one archive, the before/after digest/member checks, and a separate broken-JS browser failure plus healthy control. Independent new regressions, integrated 0.7.1 archive checks, and remote CI remain pending; [deployment.md](../develop/deployment.md) records the exact scope. |
-| F4 — selected crypto dependency and monitoring | `REPOSITORY_IMPLEMENTABLE` | Exact Noble 0.7.1, active/transitive/provenance dispositions, and local evidence are recorded in §1. External read-only scheduled/manual audit and exact-pin/latest-upstream checking replace D5's deferral, with maintenance-helper verification pending. No new application exploit or exact-stack assurance is claimed. |
+| F1 — incomplete fingerprint comparison | `REPOSITORY_IMPLEMENTABLE` | App commit `203b515ed1f81e7ab0ffab1526d3b027b46454c8` changes `formatFingerprint` and the shared `Fingerprint` display to all 64 lowercase hex digits. The composite identity is authoritative at import, details, and saved-key confirmation; complete KEM/signing hashes are supplementary. Symmetric import also requires full comparison. Independent tests cover every digit, modulo aliases, suffix differences, EN/JA acknowledgement, trust gating, and 320px layout. Focused integrated checks pass; final combined verification remains pending. |
+| F2 — relay admission after a stale display proof | `REPOSITORY_IMPLEMENTABLE` | App commit `ae4a6b6b9457ab08f20aea944fbba02bbe406967` adds `BootController.acquireRelaySession(signal)`, wired through `OnlineInstallScreen.onRelaySessionAcquire` to `OnlineRelay.onSessionAcquire`. It acquires first, reads actual sensitive stores, checks lifecycle, and holds that same lease until teardown. Missing callback/locks, cancellation, failed/dirty reads, and stale lifecycle reject and release. `refreshRelayEligibility` is display-only. Independent completed-writer, cancellation, delayed-read, and lifecycle regressions pass the focused integrated checks; final combined verification remains pending. No database-exfiltration attack was demonstrated. |
+| F3 — release browser evidence | `REPOSITORY_IMPLEMENTABLE` | Implemented: no-build `E2E_ARTIFACT_ROOT` execution of extracted bytes, archive digest/full-member checks before and after, the same digest checked by sign/publish, and a separate broken-JS archive regression. The source report records 33 existing browser scenarios passing against one archive, the before/after digest/member checks, and a separate broken-JS browser failure plus healthy control. Integrated unit/helper and workflow checks pass; real artifact-browser regressions, integrated 0.7.1 archive checks, and remote CI remain pending; [deployment.md](../develop/deployment.md) records the exact scope. |
+| F4 — selected crypto dependency and monitoring | `REPOSITORY_IMPLEMENTABLE` | Exact Noble 0.7.1, active/transitive/provenance dispositions, and local evidence are recorded in §1. External read-only scheduled/manual audit and exact-pin/latest-upstream checking replace D5's deferral. Integrated maintenance-helper tests and the live 0.7.1 comparison pass; the complete workflow remains pending. No new application exploit or exact-stack assurance is claimed. |
 | F5 — deployment-header assurance | `DEPLOYMENT_ENFORCED` | The persisted sentinel-response verdict already fails closed on absent/failing values. It cannot validate navigation or arbitrary asset responses. Route A §7 step 4 and the archive template require a separate actual-server check; reference-server release tests do not replace it. External deployment evidence remains pending. |
 
 Each item has a potential **HIGH** consequence if its relied-upon boundary
@@ -623,14 +624,33 @@ and the missing complete comparison at 320px. Required final checks include
 `tests/ui/boot/relay-session-admission.test.tsx`,
 `tests/e2e/fingerprint-comparison.spec.ts`, and
 `tests/e2e/relay-admission.spec.ts`, alongside existing import/trust/relay tests.
-These tests are not present or claimed passing on this documentation branch.
-The separate initial integration report at
+These tests are present in the integrated revision above. The initial integration report at
 `70ec1cf0b0228b44578cb1a6007ca0fba098a1ce` records 408 passing/3 failing
 unit/UI tests and 9 passing/1 failing browser tests. Full comparison and
 controller tests and all native relay cases passed there; the report attributes
 the remaining failures to old raw-value/missing-callback fixtures and browser
-layout synchronization/disclosure handling. Corrections and a complete GREEN
-run remain pending, so those partial results authorize no dependent stamp.
+layout synchronization/disclosure handling. Harness correction
+`3d163d76fd684613c3271b2ed1dffbf0d33feef9` fixes those assumptions; its report
+records passing focused and fingerprint checks but a pagehide probe setup race
+in the combined browser run. Commit `16f6970ffe5a4852b680beda4ae825eadff2efd3`
+then changes only the relay test's second-page fixture to a verified inert
+same-origin document. Its report records passing combined app-browser checks
+and repeated native relay cases. Whole-tree and packaged-browser verification
+remain pending, so these scoped results authorize no dependent stamp.
+
+Independent release-test commit `b6f87bb1ece873f1bffd4ddb77a2df1789909bbf`
+is integrated as `619d03fe2167e2b677f34502c3215b7f46da08b5`. Its baseline RED
+covers root selection, archive/member mutation, and the broken-JavaScript
+browser case. Concrete final checks are
+`tests/unit/release-packaged-pwa.test.ts`,
+`tests/unit/release-tested-archive.test.ts`,
+`tests/unit/crypto-release-check.test.ts`, and
+`tests/e2e/release-artifact.spec.ts`, with their registered fixtures. The
+controlled process fixtures establish orchestration behavior only; the
+browser regression requires an actual damaged-asset error and healthy
+controls. The release-verification report at the same integrated revision
+records passing unit/helper, workflow/shell, action-tag, and live release
+checks. Real artifact-browser and final combined outcomes remain pending.
 
 E8/T21 valid-egress risk (QR, clipboard, PNG, ZIP, removable media), retained
 old decryption keys, bounded window-memory replay detection, best-effort wipe,

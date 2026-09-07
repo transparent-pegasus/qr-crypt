@@ -77,9 +77,10 @@ deploys production and publishes the signed release.
 
 Implemented in release-track commit
 `1295d5c02674493f3a14b332f311ef26f460f2d3`. The implementation report records
-local archive/browser checks below. Independent new regressions and final
-combined-tree/CI verification remain pending; the release implementation is
-not present on this documentation-only branch.
+local archive/browser checks below. Real artifact-browser and final
+combined-tree/CI verification remain pending. The release implementation and
+independent regression commit `b6f87bb1ece873f1bffd4ddb77a2df1789909bbf` are
+integrated at `619d03fe2167e2b677f34502c3215b7f46da08b5`.
 
 - `E2E_ARTIFACT_ROOT` selects an absolute, existing directory for browser tests.
   In that mode Playwright starts the header-aware server from the selected
@@ -124,8 +125,17 @@ the corrupted member. Remote sign/publish jobs were inspected and linted, not
 executed. These are attributed local release-track results, not verification
 of the new independent regressions or the integrated Noble 0.7.1 archive.
 
-The independent regression report and complete integrated verification are
-required before the `ci-actions` and `security-review` units can be stamped.
+The independent regressions are `tests/unit/release-packaged-pwa.test.ts`,
+`tests/unit/release-tested-archive.test.ts`, and
+`tests/e2e/release-artifact.spec.ts`. The browser regression uses healthy and
+damaged copies through the existing app-boot scenario, requires the damaged
+asset's error and URL in a browser trace, and checks the original bytes and
+boot. It runs in both full browser suites. Its report records baseline RED;
+complete integrated verification is still required before the `ci-actions`
+and `security-review` units can be stamped. The integrated release-verification
+report at `619d03fe2167e2b677f34502c3215b7f46da08b5` records passing release
+unit/helper tests, workflow and shell checks, and action-tag comparisons;
+those checks execute no real browser.
 Reference-server archive tests do not certify benign source,
 the build toolchain, hardware, the actual Route A server, or reproducibility
 across environments. Route A's independently obtained policy, signature
@@ -148,8 +158,12 @@ Equal versions with or without a leading `v` pass. A differing version,
 non-exact local pin, draft/prerelease, malformed or empty response, or fetch
 error fails visibly; trailing whitespace is rejected. The release report's
 live check correctly failed against its unchanged `0.7.0` pin and upstream
-`0.7.1`. Actionlint/shellcheck passed in that track; independent signal tests,
-the check with the integrated new pin, and final CI remain pending.
+`0.7.1`. Actionlint/shellcheck passed in that track. Independent signal tests
+are in `tests/unit/crypto-release-check.test.ts`, using the offline
+`tests/fixtures/crypto-release-gh.py` API fixture. The integrated verification
+at `619d03fe2167e2b677f34502c3215b7f46da08b5` passed those tests and the live
+helper with pin/release `0.7.1`. The complete maintenance workflow and final
+CI remain pending.
 
 This is maintainer-side monitoring only. It installs no offline updater,
 changes no device key or policy, and does not silently select a new crypto

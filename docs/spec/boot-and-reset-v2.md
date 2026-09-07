@@ -98,9 +98,10 @@ both the value and the events. Physical disconnection remains the requirement.
 
 ### 2.2 Deployment verdict
 
-The reachability sentinel is the only route excluded from the service worker, so
-its response is the one response guaranteed to come from the real server rather
-than the precache. The same response the destructive probe already fetches is
+Boot's non-navigation fetch of the reachability sentinel uses the service
+worker's `NetworkOnly` rule; the sentinel is excluded from the precache.
+Navigating a page to that URL is different: the SPA navigation fallback can
+serve the app shell there. The same response the destructive probe fetches is
 checked against the policy extracted from `public/_headers` at build time: the
 seven `/*` security headers, the sentinel's own `Cache-Control: no-store`, a
 `text/plain` content type, status 200, not redirected, and the expected
@@ -175,8 +176,8 @@ checker remains required.
   These rules close the accepted check-to-lock window; they are not evidence
   of a database-exfiltration attack. Imported public bundles, deletes,
   renames, and usage stamps remain outside the sensitive-store proof.
-  The implementation is recorded in security-review §1.4; independent
-  regression verification on the integrated tree remains pending.
+  The implementation and focused regression evidence are recorded in
+  security-review §1.4; final combined verification remains pending.
 - The active preference and write vocabulary has two algorithms:
   `A256GCM` and `MLKEM1024_MLDSA87_A256GCM`. Boot deliberately has one
   read-only exception: its `defaultAlgorithm` allowlist also accepts the

@@ -114,9 +114,15 @@ units:
       - .github/workflows/github-release.yml
       - .github/workflows/security-maintenance.yml # scheduled/manual read-only advisory and assessed-pin checks; integration-owned
       - scripts/check-crypto-release.sh # exact local pin / official latest-release schema and failure signal; integration-owned
+      - tests/unit/crypto-release-check.test.ts # exact-pin equality, invalid API/pin data, and request failures
+      - tests/fixtures/crypto-release-gh.py # offline official-release responses and real jq extraction
       - playwright.config.ts # no-build artifact root, isolated port, and server lifecycle contract
+      - tests/e2e/release-artifact.spec.ts # real healthy/damaged artifact boot, trace pageError, and unchanged original control
+      - tests/fixtures/artifact-browser.ts # isolated child ports, bounded processes, tree digests, and trace evidence
       - scripts/release/check-packaged-responses.mjs # archived JS/CSS/WASM and sentinel/CSP/MIME responses; integration-owned
       - scripts/release/verify-tested-archive.py # ZIP digest plus complete extracted member identity; integration-owned
+      - tests/unit/release-tested-archive.test.ts # public CLI rejection of changed bytes, unsafe members, and extra/missing paths
+      - tests/fixtures/tested-archive.ts # independent synthetic ZIP/tree construction for archive identity checks
       - docs/develop/deployment.md # prose mirror of the deploy/CI/release flow
       - docs/develop/install-route-a/README.md # complete Route A procedure; README is summary + link
       - docs/locales/ja/develop/install-route-a/README.md # Japanese mirror under docs/locales/<lang>/; must not diverge from README.md
@@ -129,6 +135,8 @@ units:
       - tests/unit/release-static-closure.test.ts # executable root-relative asset, manifest, and precache contract
       - scripts/release/write-static-zip.py # packaging's sorted stored ZIP with fixed modes and commit timestamps
       - scripts/release/test-packaged-pwa.sh # full browser suite on extracted bytes, before/after digest/member gate
+      - tests/unit/release-packaged-pwa.test.ts # real config selection and shell root/digest handoff under controlled child results
+      - tests/fixtures/release-test-command.py # controlled browser/HTTP process results for shell orchestration tests
       - tests/fixtures/release-fixture.ts # shared isolated fixtures for the release contract tests
       - scripts/generate-install-txt.mjs # renders that template; package-static-pwa.sh and the verifier both call it
       - tests/unit/generate-install-txt.test.ts # executable derivation, fail-closed, and about/-exclusion contract
@@ -184,9 +192,13 @@ units:
       failure. It must not update a dependency, installation, issue, or message.
       Reconcile deployment prose and the Route A EN/JA/template requirements;
       reference-server checks do not replace the actual-server response checker.
-      Register the independent release regression paths from the completed
-      test-author report before final integration verification. Their paths and
-      GREEN evidence remain pending in this documentation-only worktree.
+      Review release-packaged-pwa.test.ts, release-tested-archive.test.ts, and
+      crypto-release-check.test.ts with their registered fixtures. Their controlled
+      child results cover orchestration and rejection, not real browser execution.
+      Confirm release-artifact.spec.ts uses artifact-browser.ts to exercise healthy
+      and damaged copies through the existing app-boot.spec.ts, requires the damaged
+      asset's pageError and URL, and preserves original byte/boot controls. It must
+      run in both ordinary and packaged suites without recursion or artifact skips.
       Confirm README.md / README.ja.md Route A sections
       remain a summary plus a link to that document (not a second incomplete
       procedure) and that their quoted policy values still match the workflow.
@@ -195,13 +207,17 @@ units:
       Local only — a freshness sweep must not push:
       aube run test -- tests/unit/serve-dist.test.ts
       aube run test -- tests/unit/workflow-action-pins.test.ts
-      Run the independent archive-root/digest and maintenance-helper regressions
-      recorded in the release test-author handoff (concrete paths pending).
-      Run the full release browser gate through scripts/release/test-packaged-pwa.sh
-      against the packaged integrated tree. Confirm its before/after ZIP/member
-      evidence and tested_archive_sha256 output. The full ordinary PR/browser suite
-      must also include the package-only broken-JavaScript regression, with its
-      healthy checkout control. No scenario may silently skip artifact mode.
+      aube run test -- tests/unit/release-packaged-pwa.test.ts tests/unit/release-tested-archive.test.ts tests/unit/crypto-release-check.test.ts
+      aube run test:e2e -- tests/e2e/release-artifact.spec.ts --workers=1 --retries=0
+      aube run test:e2e
+      After packaging the integrated tree with package-static-pwa.sh, set
+      RUNNER_TEMP to its absolute staging directory, ARCHIVE_NAME to its ZIP
+      basename, and GITHUB_OUTPUT to the gate output file, then run:
+      bash scripts/release/test-packaged-pwa.sh
+      Confirm its before/after ZIP/member evidence and tested_archive_sha256
+      output. Both full browser suites must include release-artifact.spec.ts;
+      its damaged asset must fail in the browser while the healthy copy and
+      original still boot. No scenario may silently skip artifact mode.
       bash scripts/check-crypto-release.sh
       aube run test -- tests/unit/release-tag-read.test.ts
       aube run test -- tests/unit/release-audit-gate.test.ts
