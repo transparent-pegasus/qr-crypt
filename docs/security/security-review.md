@@ -83,28 +83,27 @@ Verified 2026-07-30: assembly timeout floor and default match
 [qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6 (dwell-only floors are not
 measured cycle times).
 
-**Long-text export, measured 2026-07-26** on the CI-class Linux desktop
-(mobile-chromium Playwright project, `aube run test:e2e`), 120,000-byte signed
-PQ fixture:
+**Long-text export, measured 2026-09-07** on the Linux desktop host
+(`make e2e`, mobile-chromium Playwright project, eight workers), using the
+120,000-byte signed PQ fixture at source
+`66076e0eb5be608424230c9ec6474fbd7d1e94c4`:
 
 | step | measurement |
 | --- | --- |
-| encryption | 141 ms |
-| split into frames | 247 ms |
-| first frame render | 31 ms |
-| complete 127-frame ZIP export | 7,085 ms |
-| archive size | 9,633,007 B (≈9.6 MB) |
+| encryption | 130 ms |
+| split into frames | 100 ms |
+| first frame render | 14 ms |
+| complete 127-frame ZIP export | 5,886 ms |
+| archive size | 9,633,018 B (≈9.6 MB) |
 | artifact / frames | 126,576 B / 127 frames at 1,000B |
 
-The artifact byte count is corrected to the current fixture. The timings and
-archive size retain the 2026-07-26 measurement; no new retained measurement
-attachment supersedes them in this change.
-
-These are desktop numbers. **On-device figures for Android Chrome and iOS Safari
-are not yet measured** — see `docs/develop/browser-matrix.md`. The ZIP path renders
-frames serially, so its peak memory is bounded by roughly one 1024px raster
-rather than by 127 of them, but its ~7s wall clock on desktop implies a
-materially longer wait on a phone.
+These values come from the retained `long-text-metrics.json` attachment of
+one complete passing browser run. They are desktop-emulation measurements,
+not phone measurements. **On-device figures for Android Chrome and iOS Safari
+are not yet measured** — see [browser-matrix.md](../develop/browser-matrix.md).
+The ZIP path renders frames serially, so its raster working set is roughly
+one 1024px frame rather than 127 concurrent frames. This host's 5.9-second
+export does not establish phone latency or total browser memory use.
 
 Numeric generated-display boot readability is append-only; non-exact
 historical pairs canonicalize to the default 1,000B/200ms pair before strict
@@ -351,9 +350,9 @@ above is not refreshed from an unrecorded value.
   request targeting `main` or `dev`. The approved 2026-09-07 maintenance
   contract additionally requires scheduled/manual, read-only external audit
   and exact-pin/latest-upstream comparison; see
-  [deployment.md](../develop/deployment.md). Its integration validation is
-  pending. Neither check updates an offline installation or maintains this
-  written record automatically.
+  [deployment.md](../develop/deployment.md). Local verification is recorded
+  in §1.4; hosted workflow execution is separate evidence. Neither check
+  updates an offline installation or maintains this written record automatically.
 - Supply-chain pins re-verified clean on 2026-07-29: `eslint-config-prettier@10.1.8` and the rollup OMT `aube.overrides` entry. `react-hook-form@7.82.0` was also pinned here until 2026-07-30, when it was removed from the dependency graph entirely: it was never imported by the application, so the pin guarded nothing.
 
 ## 1.1 Findings F-01 / F-02 / F-03 (2026-07-28)
@@ -553,8 +552,8 @@ The owner decisions and merged dispositions were taken as follows:
 - **D5 — superseded 2026-09-07:** the owner approved external
   scheduled/manual maintenance for advisories and unassessed Noble releases.
   The required workflow and helper are described in
-  [deployment.md](../develop/deployment.md); integration verification remains
-  pending. Offline installations still have no updater.
+  [deployment.md](../develop/deployment.md); local verification is recorded
+  in §1.4. Offline installations still have no updater.
 
 NSS-R8 remains `REPOSITORY_IMPLEMENTABLE` but deliberately deferred. Re-open
 unverified-signer plaintext gating first if operator reports show the current
@@ -578,86 +577,71 @@ family fails. Hybridization or diversification would be a versioned-protocol
 redesign requiring independent design review, not a dependency swap. This is a
 concentration record, not evidence of a present break.
 
-## 1.4 F1–F5 follow-up (2026-09-07; integration verification pending)
+## 1.4 F1–F5 follow-up (2026-09-07)
 
-This bounded follow-up starts from `1ae9cf5c675068b30d8b5e3a8f7fa092106824a5`.
-The Noble assessment, application and release implementation reports, and
-independent app/release-test and integration/harness reports were read. Release commits are
-`1295d5c02674493f3a14b332f311ef26f460f2d3` (archive/browser gate) and
-`b983bb7fcfcac3c82b3bb21c563e75696d392724` (external maintenance). Integrated revision
-`619d03fe2167e2b677f34502c3215b7f46da08b5` contains those implementations,
-the application fixes, Noble 0.7.1, and the independent app/release tests.
-No combined-tree GREEN result is claimed here.
+The integrated application, tests, Noble 0.7.1 dependency graph, and release
+controls were verified at `66076e0eb5be608424230c9ec6474fbd7d1e94c4`, based on
+`1ae9cf5c675068b30d8b5e3a8f7fa092106824a5`. Subsequent evidence and freshness
+edits change documentation only. An independently assigned agent source review found no
+remaining Critical or Important implementation findings. These local results
+are not a production-release approval or evidence of hosted signing/publication.
 
 The assessment assumes persistent targeting of a few installations across
-provisioning, years of use, captured ciphertext, and retirement; initial
-supply-chain influence, brief unsupervised custody, nearby observation, and
-browser/OS/firmware compromise are relevant capabilities. Device access,
-distance, duration, timers, and recovery probabilities remain uncertain. No
-demonstrated mathematical break or unlimited adversary is assumed. Honest
-Web Locks/IndexedDB and cooperating sensitive writers bound the relay control;
-an independently trusted comparison channel bounds person-binding. Platform,
-operator, media, and physical-environment assurance is not supplied by these
-repository checks; see [environment-threat-catalog.md](environment-threat-catalog.md).
+provisioning, use, captured ciphertext, and retirement. Supply-chain influence,
+unsupervised custody, nearby observation, and browser/OS/firmware compromise
+remain relevant; device access, observation duration, and attack cost remain
+uncertain. No demonstrated mathematical break or unlimited adversary is
+assumed. Honest Web Locks/IndexedDB and cooperating sensitive writers bound
+the relay control; an independently trusted comparison channel bounds
+person-binding. See [environment-threat-catalog.md](environment-threat-catalog.md).
 
-| Item | Control class | Implemented or required behavior and verification disposition |
-| --- | --- | --- |
-| F1 — incomplete fingerprint comparison | `REPOSITORY_IMPLEMENTABLE` | App commit `203b515ed1f81e7ab0ffab1526d3b027b46454c8` changes `formatFingerprint` and the shared `Fingerprint` display to all 64 lowercase hex digits. The composite identity is authoritative at import, details, and saved-key confirmation; complete KEM/signing hashes are supplementary. Symmetric import also requires full comparison. Independent tests cover every digit, modulo aliases, suffix differences, EN/JA acknowledgement, trust gating, and 320px layout. Focused integrated checks pass; final combined verification remains pending. |
-| F2 — relay admission after a stale display proof | `REPOSITORY_IMPLEMENTABLE` | App commit `ae4a6b6b9457ab08f20aea944fbba02bbe406967` adds `BootController.acquireRelaySession(signal)`, wired through `OnlineInstallScreen.onRelaySessionAcquire` to `OnlineRelay.onSessionAcquire`. It acquires first, reads actual sensitive stores, checks lifecycle, and holds that same lease until teardown. Missing callback/locks, cancellation, failed/dirty reads, and stale lifecycle reject and release. `refreshRelayEligibility` is display-only. Independent completed-writer, cancellation, delayed-read, and lifecycle regressions pass the focused integrated checks; final combined verification remains pending. No database-exfiltration attack was demonstrated. |
-| F3 — release browser evidence | `REPOSITORY_IMPLEMENTABLE` | Implemented: no-build `E2E_ARTIFACT_ROOT` execution of extracted bytes, archive digest/full-member checks before and after, the same digest checked by sign/publish, and a separate broken-JS archive regression. The source report records 33 existing browser scenarios passing against one archive, the before/after digest/member checks, and a separate broken-JS browser failure plus healthy control. Integrated unit/helper and workflow checks pass; real artifact-browser regressions, integrated 0.7.1 archive checks, and remote CI remain pending; [deployment.md](../develop/deployment.md) records the exact scope. |
-| F4 — selected crypto dependency and monitoring | `REPOSITORY_IMPLEMENTABLE` | Exact Noble 0.7.1, active/transitive/provenance dispositions, and local evidence are recorded in §1. External read-only scheduled/manual audit and exact-pin/latest-upstream checking replace D5's deferral. Integrated maintenance-helper tests and the live 0.7.1 comparison pass; the complete workflow remains pending. No new application exploit or exact-stack assurance is claimed. |
-| F5 — deployment-header assurance | `DEPLOYMENT_ENFORCED` | The persisted sentinel-response verdict already fails closed on absent/failing values. It cannot validate navigation or arbitrary asset responses. Route A §7 step 4 and the archive template require a separate actual-server check; reference-server release tests do not replace it. External deployment evidence remains pending. |
+| Item | Review severity | Control class | Implemented behavior |
+| --- | --- | --- | --- |
+| F1 — abbreviated fingerprint authentication | HIGH when short codes are the authentication check | `REPOSITORY_IMPLEMENTABLE` | `formatFingerprint` and `Fingerprint` display all 64 lowercase hexadecimal digits. The composite identity is authoritative at import and saved-key confirmation; complete KEM/signing hashes are supplementary. EN/JA instructions require the intended person's full digest through an independent channel. Symmetric import also requires full comparison. |
+| F2 — stale relay admission | MODERATE | `REPOSITORY_IMPLEMENTABLE` | `BootController.acquireRelaySession(signal)` acquires the exclusive lease before reading actual key/PQ-identity/Vault stores, validates lifecycle, and retains that lease through teardown. Missing callback/locks, cancellation, failed or dirty reads, and stale lifecycle reject and release. `refreshRelayEligibility` supplies display state only. |
+| F3 — packaged-browser verification gap | MODERATE | `REPOSITORY_IMPLEMENTABLE` | `E2E_ARTIFACT_ROOT` runs the full browser suite from the extracted ZIP without rebuilding. Complete member and archive checks run before and after; the exported tested digest is checked at signing and publication. A package-only damaged-JavaScript regression requires a real browser failure and healthy controls. |
+| F4 — crypto dependency assessment | LOW | `REPOSITORY_IMPLEMENTABLE` | Exact Noble 0.7.1 follows the active/transitive assessment and selected-version checks in §1. A daily/manual read-only maintenance workflow audits the lock and compares the exact pin with the official latest release, failing on an unassessed version or fetch error. |
+| F5 — header documentation mismatch | LOW | `REPOSITORY_IMPLEMENTABLE` | Threat model, Route A EN/JA instructions, environment references, and archive template agree: an absent/failing persisted sentinel-response verdict blocks boot. This checks the sentinel, not actual navigation or arbitrary asset responses. Actual-server validation remains `DEPLOYMENT_ENFORCED`. |
 
-Each item has a potential **HIGH** consequence if its relied-upon boundary
-fails: false person-binding, admission of a sensitive origin, substituted
-release bytes, exposed cryptographic state, or missing deployment controls.
-Feasibility depends on the prerequisites above; these are not five demonstrated
-exploits. F1/F2's independently authored baseline tests establish the old
-behavior, not successful remediation on the combined tree.
+Verification on 2026-09-07:
 
-The independent F1/F2 test commits are
-`ef5e450fd5d4ec683daa01ede700e813f42c3814` and
-`621f880c816dbac1e2ad2e7d330a733841a2a925`. Their reported baseline RED includes
-the actual-browser completed-writer cases for keys, PQ identities, and Vault,
-and the missing complete comparison at 320px. Required final checks include
-`tests/ui/fingerprint-confirmation.test.tsx`,
-`tests/ui/boot/relay-session-admission.test.tsx`,
-`tests/e2e/fingerprint-comparison.spec.ts`, and
-`tests/e2e/relay-admission.spec.ts`, alongside existing import/trust/relay tests.
-These tests are present in the integrated revision above. The initial integration report at
-`70ec1cf0b0228b44578cb1a6007ca0fba098a1ce` records 408 passing/3 failing
-unit/UI tests and 9 passing/1 failing browser tests. Full comparison and
-controller tests and all native relay cases passed there; the report attributes
-the remaining failures to old raw-value/missing-callback fixtures and browser
-layout synchronization/disclosure handling. Harness correction
-`3d163d76fd684613c3271b2ed1dffbf0d33feef9` fixes those assumptions; its report
-records passing focused and fingerprint checks but a pagehide probe setup race
-in the combined browser run. Commit `16f6970ffe5a4852b680beda4ae825eadff2efd3`
-then changes only the relay test's second-page fixture to a verified inert
-same-origin document. Its report records passing combined app-browser checks
-and repeated native relay cases. Whole-tree and packaged-browser verification
-remain pending, so these scoped results authorize no dependent stamp.
+- Frozen `aube ci` and `make check` passed on the verified revision:
+  **96 files / 1,305 tests**, typecheck, and lint with zero errors and 13
+  existing Fast Refresh warnings. Production build passed; `aube audit`
+  reported no known advisories. The selected Noble graph also passed
+  **179 PQ tests** and **6 independent vector tests**; §1 records their scope.
+- The complete ordinary browser suite passed **40/40**, with no retries.
+  Independent fingerprint regressions cover every digest position, former
+  modulo aliases, suffix differences, EN/JA acknowledgements, trust gating,
+  and the 320px comparison layout. Relay regressions complete real sensitive
+  writes in a second context before admission and cover lease retention,
+  pending-read cancellation, delayed acquisition, and lifecycle rejection.
+- The complete extracted-archive browser suite passed **40/40**, with no
+  rebuild or retries. ZIP SHA-256 was
+  `5f6ee82a14a142889beba28f4ad31cf3866c8a2c8be4abb963e6a7a2a3f336e0`;
+  all **19 members** and the ZIP digest matched before and after testing,
+  and the exported tested digest matched. Both browser suites observed
+  `QR_CRYPT_DAMAGED_ARTIFACT_EXECUTED` from the damaged asset while the
+  healthy control booted and the original tree remained unchanged.
+- Release helper regressions, all four workflows, release shell scripts and
+  promotion inline shell blocks passed their tests/lints. Action tag pins
+  matched, and the live upstream comparison passed for Noble 0.7.1.
+  [deployment.md](../develop/deployment.md) records the archive contract and
+  limits of these local checks.
 
-Independent release-test commit `b6f87bb1ece873f1bffd4ddb77a2df1789909bbf`
-is integrated as `619d03fe2167e2b677f34502c3215b7f46da08b5`. Its baseline RED
-covers root selection, archive/member mutation, and the broken-JavaScript
-browser case. Concrete final checks are
-`tests/unit/release-packaged-pwa.test.ts`,
-`tests/unit/release-tested-archive.test.ts`,
-`tests/unit/crypto-release-check.test.ts`, and
-`tests/e2e/release-artifact.spec.ts`, with their registered fixtures. The
-controlled process fixtures establish orchestration behavior only; the
-browser regression requires an actual damaged-asset error and healthy
-controls. The release-verification report at the same integrated revision
-records passing unit/helper, workflow/shell, action-tag, and live release
-checks. Real artifact-browser and final combined outcomes remain pending.
+The eight freshness invariants passed unchanged; only the nine affected
+units were reviewed and stamped. Unrelated due `toolchain` and
+`browser-support` units were not refreshed. The recorded host measurements
+above do not fill the real-device browser matrix.
 
+These severities describe the original findings' consequences within their
+stated scope, not five demonstrated exploits. No key recovery, application
+exfiltration, or exact-stack side-channel resistance was established.
 E8/T21 valid-egress risk (QR, clipboard, PNG, ZIP, removable media), retained
 old decryption keys, bounded window-memory replay detection, best-effort wipe,
-and export/media residue remain. Exact-device leakage, independent audit,
-authenticated tooling, independent rebuild, deployment checks, physical
-custody, and procedure effectiveness remain external work. No freshness unit
-depending on app/release integration is stamped by this follow-up.
+and export/media residue remain. Independent audit, exact-device leakage
+assessment, authenticated tooling, independent rebuild, actual deployment
+checks, custody, and procedure effectiveness remain external work.
 
 ## 2. Prohibited Claims (UI / README / CI)
 

@@ -55,7 +55,7 @@ request targeting `main` or `dev`:
   byte-for-byte. The approved archive-browser contract below requires
   `scripts/release/test-packaged-pwa.sh` to run the full browser suite against
   those extracted archive bytes and bind signing/publication to the checked
-  archive digest. Integration verification remains pending.
+  archive digest. Local verification is recorded below.
 
 `.github/workflows/dev-to-main-pr.yml` checks out full history on a `dev` push,
 or on an intentional `workflow_dispatch`, and builds a manifest from merge
@@ -75,26 +75,11 @@ deploys production and publishes the signed release.
 
 ## Release browser and archive verification (2026-09-07)
 
-Implemented in release-track commit
-`1295d5c02674493f3a14b332f311ef26f460f2d3`. The implementation report records
-local archive/browser checks below. Real artifact-browser and final
-combined-tree/CI verification remain pending. The release implementation and
-independent regression commit `b6f87bb1ece873f1bffd4ddb77a2df1789909bbf` are
-integrated at `619d03fe2167e2b677f34502c3215b7f46da08b5`.
-
-- `E2E_ARTIFACT_ROOT` selects an absolute, existing directory for browser tests.
-  In that mode Playwright starts the header-aware server from the selected
-  root without a build. The full release browser suite must execute the
-  extracted ZIP's JavaScript, assets, and service worker. The ordinary
-  checkout test mode still builds before serving.
-- Check the existing archive SHA-256 and complete member identity before and
-  after browser execution. Export that same archive digest to signing and
-  publication and compare it in both jobs. A changed archive must fail;
-  testing one archive and signing another does not meet this contract.
-- A separate corrupted archive copy must make browser boot fail when packaged
-  JavaScript is broken while checkout `dist/` remains good. This demonstrates
-  browser execution of packaged bytes. It is distinct from the digest gate,
-  which must independently reject archive mutation.
+`E2E_ARTIFACT_ROOT` selects an absolute, existing directory for browser tests.
+In that mode Playwright starts the header-aware server from the selected root
+without building. The full release browser suite executes the extracted ZIP's
+JavaScript, assets, and service worker. Ordinary checkout tests still build
+before serving. Invalid artifact roots fail instead of falling back to checkout.
 
 `scripts/release/check-packaged-responses.mjs` runs in Playwright's artifact
 setup on that same server: sentinel body/cache, root CSP, manifest MIME, SPA
@@ -105,49 +90,43 @@ member directly with the verified ZIP, including `INSTALL.txt` and
 duplicate, non-regular, missing, extra, or differing members fail.
 
 The gate is `bash scripts/release/test-packaged-pwa.sh`, with the packager's
-`RUNNER_TEMP` layout, `ARCHIVE_NAME`, and `GITHUB_OUTPUT`. Only success writes
-`tested_archive_sha256`; build exports `tested-archive-sha256`, checked before
-Cosign signing, before publication, and against the published/downloaded ZIP.
-Existing checksum, immutable artifact-ID, source-identity, signature, and job
-privilege checks remain. No repackage or rebuild follows the gate.
+`RUNNER_TEMP` layout, `ARCHIVE_NAME`, and `GITHUB_OUTPUT`. It verifies the
+existing archive digest and complete member identity before and after browser
+execution. Only success writes `tested_archive_sha256`; build exports
+`tested-archive-sha256`, checked before Cosign signing, before publication,
+and against the published/downloaded ZIP. Existing checksum, immutable
+artifact-ID, source-identity, signature, and job privilege checks remain.
+No repackage or rebuild follows the gate.
 
-The release report's local package used source identity
-`1ae9cf5c675068b30d8b5e3a8f7fa092106824a5` and the old Noble `0.7.0` pin.
-Its ZIP SHA-256 was
-`ef2912cdbdbdf8b422b427712078ceec5dfd888d456fc71939633aae7b221e53`;
-all 19 members matched before/after, and the full then-existing browser suite
-reported `33 passed (37.9s)`. The emitted tested digest matched. A separate
-broken entry-point copy produced the browser error
-`ARCHIVE_ONLY_BOOT_FAILURE` and a failed existing `app-boot.spec.ts`; the
-unchanged checkout build passed the same scenario. This negative bypassed the
-integrity gate intentionally; the byte-comparison helper independently rejected
-the corrupted member. Remote sign/publish jobs were inspected and linted, not
-executed. These are attributed local release-track results, not verification
-of the new independent regressions or the integrated Noble 0.7.1 archive.
+Local integrated verification used source
+`66076e0eb5be608424230c9ec6474fbd7d1e94c4` with Noble 0.7.1. The full ordinary
+and extracted-archive browser suites each passed **40/40**, with no retries.
+The archive SHA-256 was
+`5f6ee82a14a142889beba28f4ad31cf3866c8a2c8be4abb963e6a7a2a3f336e0`;
+all 19 members and archive bytes matched before/after, and the emitted tested
+digest matched. These are local results, not an executed hosted sign/publish run.
 
-The independent regressions are `tests/unit/release-packaged-pwa.test.ts`,
+Independent regressions are `tests/unit/release-packaged-pwa.test.ts`,
 `tests/unit/release-tested-archive.test.ts`, and
-`tests/e2e/release-artifact.spec.ts`. The browser regression uses healthy and
-damaged copies through the existing app-boot scenario, requires the damaged
-asset's error and URL in a browser trace, and checks the original bytes and
-boot. It runs in both full browser suites. Its report records baseline RED;
-complete integrated verification is still required before the `ci-actions`
-and `security-review` units can be stamped. The integrated release-verification
-report at `619d03fe2167e2b677f34502c3215b7f46da08b5` records passing release
-unit/helper tests, workflow and shell checks, and action-tag comparisons;
-those checks execute no real browser.
-Reference-server archive tests do not certify benign source,
-the build toolchain, hardware, the actual Route A server, or reproducibility
-across environments. Route A's independently obtained policy, signature
-verification, authenticated source rebuild, complete member comparison,
-trusted server, reserved origin, and physical custody remain mandatory.
+`tests/e2e/release-artifact.spec.ts`. The browser regression executes healthy
+and damaged copies through the existing app-boot scenario. In both complete
+suites, the healthy child passed and the damaged child failed with
+`QR_CRYPT_DAMAGED_ARTIFACT_EXECUTED` at the selected JavaScript asset URL.
+The original bytes and browser boot remained good. This proves execution of
+packaged bytes separately from the integrity gate's mutation rejection.
+Controlled process fixtures prove orchestration behavior only; they are not
+substitutes for that real browser result.
+
+Reference-server archive tests do not certify benign source, the build
+toolchain, hardware, the actual Route A server, or reproducibility across
+environments. Route A's independently obtained policy, signature verification,
+authenticated source rebuild, complete member comparison, trusted server,
+reserved origin, and physical custody remain mandatory.
 
 ## External security maintenance (2026-09-07)
 
-The owner superseded the earlier D5 deferral. Release-track commit
-`b983bb7fcfcac3c82b3bb21c563e75696d392724` adds
-`.github/workflows/security-maintenance.yml`, daily at **06:23 UTC** and on
-manual dispatch. Workflow permissions default to empty; its job has only
+`.github/workflows/security-maintenance.yml` runs daily at **06:23 UTC** and
+on manual dispatch. Workflow permissions default to empty; its job has only
 `contents: read`. Actions use full SHA pins and checkout credentials are not
 persisted. After frozen installation it runs `aube audit`; the release check
 still runs after an earlier install/audit failure unless cancelled.
@@ -156,14 +135,12 @@ still runs after an earlier install/audit failure unless cancelled.
 `package.json` and queries the official GitHub latest-release endpoint.
 Equal versions with or without a leading `v` pass. A differing version,
 non-exact local pin, draft/prerelease, malformed or empty response, or fetch
-error fails visibly; trailing whitespace is rejected. The release report's
-live check correctly failed against its unchanged `0.7.0` pin and upstream
-`0.7.1`. Actionlint/shellcheck passed in that track. Independent signal tests
-are in `tests/unit/crypto-release-check.test.ts`, using the offline
-`tests/fixtures/crypto-release-gh.py` API fixture. The integrated verification
-at `619d03fe2167e2b677f34502c3215b7f46da08b5` passed those tests and the live
-helper with pin/release `0.7.1`. The complete maintenance workflow and final
-CI remain pending.
+error fails visibly; trailing whitespace is rejected. Independent signal
+tests use `tests/unit/crypto-release-check.test.ts` and the offline
+`tests/fixtures/crypto-release-gh.py` API fixture. Integrated tests,
+Actionlint/ShellCheck, zero-advisory audit, and the live helper with pin/release
+0.7.1 passed. Hosted execution is separate evidence; local checks do not
+establish that a scheduler or its notification settings are provisioned.
 
 This is maintainer-side monitoring only. It installs no offline updater,
 changes no device key or policy, and does not silently select a new crypto

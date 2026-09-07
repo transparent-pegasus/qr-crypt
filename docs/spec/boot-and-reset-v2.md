@@ -176,8 +176,8 @@ checker remains required.
   These rules close the accepted check-to-lock window; they are not evidence
   of a database-exfiltration attack. Imported public bundles, deletes,
   renames, and usage stamps remain outside the sensitive-store proof.
-  The implementation and focused regression evidence are recorded in
-  security-review §1.4; final combined verification remains pending.
+  The implementation and passing integrated browser regressions are recorded
+  in [security-review.md](../security/security-review.md) §1.4.
 - The active preference and write vocabulary has two algorithms:
   `A256GCM` and `MLKEM1024_MLDSA87_A256GCM`. Boot deliberately has one
   read-only exception: its `defaultAlgorithm` allowlist also accepts the
