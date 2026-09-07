@@ -13,11 +13,33 @@ import {
 } from "./helpers/render-app"
 import { createBootController } from "@/app/boot/boot-controller"
 import { translate } from "@/i18n/messages"
+import { acquireRelayLease } from "@/storage/database"
 import { decision, response } from "../helpers/boot-fixtures"
 
 describe("OnlineGate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
+
+  it("uses the install screen's admission callback even when displayed eligibility is true", async () => {
+    const { AppProviders } = await import("@/app/providers")
+    const { OnlineInstallScreen } = await import("@/components/online-gate")
+    const onRelaySessionAcquire = vi.fn<(signal: AbortSignal) => Promise<null>>(
+      async () => null,
+    )
+    render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <OnlineInstallScreen
+          relayEligible
+          onRelaySessionAcquire={onRelaySessionAcquire}
+        />
+      </AppProviders>,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Relay" }))
+    await user.click(screen.getByRole("button", { name: "Text → QR" }))
+    expect(onRelaySessionAcquire).toHaveBeenCalledWith(expect.any(AbortSignal))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
 
   it("renders the language field on the online install screen", async () => {
     const { AppProviders } = await import("@/app/providers")
@@ -83,7 +105,7 @@ describe("OnlineGate", () => {
     const { OnlineInstallScreen } = await import("@/components/online-gate")
     render(
       <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
-        <OnlineInstallScreen relayEligible />
+        <OnlineInstallScreen relayEligible onRelaySessionAcquire={acquireRelayLease} />
       </AppProviders>,
     )
 
@@ -102,7 +124,7 @@ describe("OnlineGate", () => {
     const { OnlineInstallScreen } = await import("@/components/online-gate")
     render(
       <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
-        <OnlineInstallScreen relayEligible />
+        <OnlineInstallScreen relayEligible onRelaySessionAcquire={acquireRelayLease} />
       </AppProviders>,
     )
 
@@ -149,7 +171,7 @@ describe("OnlineGate", () => {
 
     rerender(
       <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
-        <OnlineInstallScreen relayEligible />
+        <OnlineInstallScreen relayEligible onRelaySessionAcquire={acquireRelayLease} />
       </AppProviders>,
     )
 
@@ -172,7 +194,7 @@ describe("OnlineGate", () => {
       }
       const view = render(
         <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
-          <OnlineInstallScreen relayEligible />
+          <OnlineInstallScreen relayEligible onRelaySessionAcquire={acquireRelayLease} />
         </AppProviders>,
       )
 
@@ -193,7 +215,7 @@ describe("OnlineGate", () => {
       const { OnlineInstallScreen } = await import("@/components/online-gate")
       render(
         <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
-          <OnlineInstallScreen relayEligible />
+          <OnlineInstallScreen relayEligible onRelaySessionAcquire={acquireRelayLease} />
         </AppProviders>,
       )
 

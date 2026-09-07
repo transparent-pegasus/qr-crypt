@@ -23,7 +23,7 @@ units:
   - id: deps
     category: dependencies
     cadence_days: 14
-    last_checked: 2026-09-06
+    last_checked: 2026-09-07
     files:
       - package.json
       - aube-lock.yaml
@@ -60,7 +60,7 @@ units:
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     category: crypto
     cadence_days: 90 # also triggered by any @noble/post-quantum advisory/release
-    last_checked: 2026-08-13
+    last_checked: 2026-09-07
     files:
       - package.json # "@noble/post-quantum" exact pin
       - aube-lock.yaml # frozen graph must move with the pin
@@ -78,7 +78,7 @@ units:
       provenance), refresh provider-noble.ts header comments, diff
       KEM_SIZES/DSA_SIZES/PQ_PROFILES in profiles.ts against the new source,
       update docs/security/security-review.md §1 (version, as-of date, audit status).
-    verify: aube audit && aube run test:pq && aube run test:pq-vectors && aube run bench:pq
+    verify: aube audit && aube run test:pq && aube run test:pq-vectors && aube run bench:pq -- --run
     constraint: >
       Never bump the pin without KAT (test:pq-vectors) and golden passes.
       Size tables are active-only: retired algorithms and profiles have no rows.
@@ -112,6 +112,17 @@ units:
       - .github/workflows/cloudflare-pages.yml
       - .github/workflows/dev-to-main-pr.yml
       - .github/workflows/github-release.yml
+      - .github/workflows/security-maintenance.yml # scheduled/manual read-only advisory and assessed-pin checks; integration-owned
+      - scripts/check-crypto-release.sh # exact local pin / official latest-release schema and failure signal; integration-owned
+      - tests/unit/crypto-release-check.test.ts # exact-pin equality, invalid API/pin data, and request failures
+      - tests/fixtures/crypto-release-gh.py # offline official-release responses and real jq extraction
+      - playwright.config.ts # no-build artifact root, isolated port, and server lifecycle contract
+      - tests/e2e/release-artifact.spec.ts # real healthy/damaged artifact boot, trace pageError, and unchanged original control
+      - tests/fixtures/artifact-browser.ts # isolated child ports, bounded processes, tree digests, and trace evidence
+      - scripts/release/check-packaged-responses.mjs # archived JS/CSS/WASM and sentinel/CSP/MIME responses; integration-owned
+      - scripts/release/verify-tested-archive.py # ZIP digest plus complete extracted member identity; integration-owned
+      - tests/unit/release-tested-archive.test.ts # public CLI rejection of changed bytes, unsafe members, and extra/missing paths
+      - tests/fixtures/tested-archive.ts # independent synthetic ZIP/tree construction for archive identity checks
       - docs/develop/deployment.md # prose mirror of the deploy/CI/release flow
       - docs/develop/install-route-a/README.md # complete Route A procedure; README is summary + link
       - docs/locales/ja/develop/install-route-a/README.md # Japanese mirror under docs/locales/<lang>/; must not diverge from README.md
@@ -123,7 +134,9 @@ units:
       - scripts/release/validate-static-closure.cjs # packaging's root-relative asset, manifest, and precache checks
       - tests/unit/release-static-closure.test.ts # executable root-relative asset, manifest, and precache contract
       - scripts/release/write-static-zip.py # packaging's sorted stored ZIP with fixed modes and commit timestamps
-      - scripts/release/test-packaged-pwa.sh # archived-byte HTTP checks followed by Playwright's separate rebuild
+      - scripts/release/test-packaged-pwa.sh # full browser suite on extracted bytes, before/after digest/member gate
+      - tests/unit/release-packaged-pwa.test.ts # real config selection and shell root/digest handoff under controlled child results
+      - tests/fixtures/release-test-command.py # controlled browser/HTTP process results for shell orchestration tests
       - tests/fixtures/release-fixture.ts # shared isolated fixtures for the release contract tests
       - scripts/generate-install-txt.mjs # renders that template; package-static-pwa.sh and the verifier both call it
       - tests/unit/generate-install-txt.test.ts # executable derivation, fail-closed, and about/-exclusion contract
@@ -139,7 +152,8 @@ units:
       docs/develop/install-route-a/README.md holds the complete Route A Cosign /
       rebuild procedure while the README publishes only a summary plus a link.
     method: |
-      Review all three workflows and the scripts/release programs they invoke.
+      Review all four workflows, scripts/check-crypto-release.sh, playwright.config.ts,
+      and the scripts/release programs they invoke.
       Check each action repository for newer majors and security advisories.
       Keep release-workflow actions pinned to full SHAs;
       verify each SHA still matches the documented tag. Review the pinned
@@ -162,9 +176,29 @@ units:
       is the archive text: keep package-static-pwa.sh calling generate-install-txt.mjs
       rather than inlining a second copy, and keep
       every rebuild-side comparison excluding the online-only about/ tree the
-      packaging script deletes before staging. Confirm test-packaged-pwa.sh checks
-      archived bytes over HTTP on port 4173 before Playwright browser-tests its
-      separate rebuild; deployment prose must preserve that distinction.
+      packaging script deletes before staging. Confirm E2E_ARTIFACT_ROOT must be
+      an existing absolute directory; artifact mode serves it without building,
+      ordinary mode builds and explicitly serves this checkout's dist, and neither
+      mode reuses an existing server. Confirm test-packaged-pwa.sh runs the full
+      browser suite against extracted archive bytes, on the same server used by
+      check-packaged-responses.mjs. Verify ZIP SHA-256 and complete member identity
+      before/after, including INSTALL.txt and SHA256SUMS.files, then follow
+      tested_archive_sha256 -> tested-archive-sha256 into sign/publish comparisons.
+      Preserve the separate corrupted-JavaScript browser regression and healthy
+      checkout control: a digest refusal is not evidence of browser execution.
+      Review the daily 06:23 UTC/manual maintenance workflow's read-only scope,
+      audit plus official latest-release signal, exact stable pin validation,
+      malformed/empty/request-error failure, and release check after an audit
+      failure. It must not update a dependency, installation, issue, or message.
+      Reconcile deployment prose and the Route A EN/JA/template requirements;
+      reference-server checks do not replace the actual-server response checker.
+      Review release-packaged-pwa.test.ts, release-tested-archive.test.ts, and
+      crypto-release-check.test.ts with their registered fixtures. Their controlled
+      child results cover orchestration and rejection, not real browser execution.
+      Confirm release-artifact.spec.ts uses artifact-browser.ts to exercise healthy
+      and damaged copies through the existing app-boot.spec.ts, requires the damaged
+      asset's pageError and URL, and preserves original byte/boot controls. It must
+      run in both ordinary and packaged suites without recursion or artifact skips.
       Confirm README.md / README.ja.md Route A sections
       remain a summary plus a link to that document (not a second incomplete
       procedure) and that their quoted policy values still match the workflow.
@@ -172,6 +206,19 @@ units:
     verify: |
       Local only — a freshness sweep must not push:
       aube run test -- tests/unit/serve-dist.test.ts
+      aube run test -- tests/unit/workflow-action-pins.test.ts
+      aube run test -- tests/unit/release-packaged-pwa.test.ts tests/unit/release-tested-archive.test.ts tests/unit/crypto-release-check.test.ts
+      aube run test:e2e -- tests/e2e/release-artifact.spec.ts --workers=1 --retries=0
+      aube run test:e2e
+      After packaging the integrated tree with package-static-pwa.sh, set
+      RUNNER_TEMP to its absolute staging directory, ARCHIVE_NAME to its ZIP
+      basename, and GITHUB_OUTPUT to the gate output file, then run:
+      bash scripts/release/test-packaged-pwa.sh
+      Confirm its before/after ZIP/member evidence and tested_archive_sha256
+      output. Both full browser suites must include release-artifact.spec.ts;
+      its damaged asset must fail in the browser while the healthy copy and
+      original still boot. No scenario may silently skip artifact mode.
+      bash scripts/check-crypto-release.sh
       aube run test -- tests/unit/release-tag-read.test.ts
       aube run test -- tests/unit/release-audit-gate.test.ts
       aube run test -- tests/unit/generate-install-txt.test.ts
@@ -185,7 +232,7 @@ units:
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \
-        shellcheck -s bash scripts/release/*.sh
+        shellcheck -s bash scripts/release/*.sh scripts/check-crypto-release.sh
       Extract each run block from .github/workflows/dev-to-main-pr.yml without
       YAML indentation and pipe each one to:
       mise x \
@@ -210,9 +257,12 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-09-06
+    last_checked: 2026-09-07
     files:
       - docs/security/threat-model.md
+      - src/app/boot/boot-controller.ts # T19 protected admission versus display-only eligibility
+      - src/storage/database.ts # origin-wide sensitive-write/session lease and cancellation
+      - src/features/presentation.ts # T6/T23 complete digest comparison
       - src/crypto/pq/canonical-cbor.ts # structural allocation caps and retained-key behavior cited by T20
       - src/lib/limits.ts # frames × chunk receiver-allocation bound cited by T20
       - src/qr/wire-codec.ts # bare-paste character and decoded-byte bounds cited by T20
@@ -225,6 +275,15 @@ units:
       structural defenses, and mitigations age.
     method: |
       Re-run aube audit; refresh §5.1 advisory status for the pinned deps.
+      Reconcile T6/T23 with the full 64-digit identity/key comparison at import
+      and saved-key confirmation, including supplementary KEM/signing hashes.
+      Reconcile T19 with acquireRelaySession(signal): acquire before actual
+      sensitive-store reads, validate lifecycle, retain the same lease until
+      teardown, reject/release on cancellation or indeterminate state.
+      refreshRelayEligibility is display-only; no accepted check-to-lock gap.
+      Keep D5/T7/§5.1 consistent with external scheduled/manual monitoring and
+      the no-offline-updater rule; source/report evidence never proves device
+      leakage resistance, benign source, or operator effectiveness.
       Reconcile threat/mitigation entries (T14/T15 algorithm names) with the
       active policy in src/crypto/pq/suites.ts and boot behavior in
       src/app/boot/, including the read-only RSA-HYBRID preference exception
@@ -248,7 +307,7 @@ units:
   - id: environment-threats
     category: security-knowledge
     cadence_days: 90 # same rhythm as threat-model; a review reads both together
-    last_checked: 2026-08-14
+    last_checked: 2026-09-07
     files:
       - docs/security/environment-threat-catalog.md
       - docs/locales/ja/security/environment-threat-catalog.md # Japanese mirror; entries, labels, and sources must not diverge
@@ -285,7 +344,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-09-06
+    last_checked: 2026-09-07
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
@@ -295,6 +354,9 @@ units:
       - src/lib/deployment-headers.ts # runtime gate comparing the sentinel response against that mirrored policy
       - tests/unit/deployment-headers.test.ts # executable contract for the per-field verdict
       - tests/e2e/security.spec.ts # executable half of the CSP claims
+      - tests/e2e/fingerprint-comparison.spec.ts # full identity comparison at 320px; integration-owned
+      - tests/e2e/relay-admission.spec.ts # completed real-store writer before native-lock admission; integration-owned
+      - tests/ui/boot/relay-session-admission.test.tsx # actual scanner and cancellation while read is unresolved; integration-owned
       - tests/e2e/online-relay.spec.ts # relay request/persistence leakage matrix and byte-oracle self-test
       - tests/e2e/persistence-inspector.ts # recursive byte-aware IndexedDB/CacheStorage oracle
       - tests/e2e/receipt-non-persistence.spec.ts # receipt-specific consumer of the same persistence oracle
@@ -320,9 +382,12 @@ units:
     verify: |
       aube audit
       aube run test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
-      aube run test -- tests/unit/csp-meta.test.ts tests/unit/serve-dist.test.ts
+      aube run test -- tests/unit/csp-meta.test.ts tests/unit/serve-dist.test.ts tests/unit/deployment-headers.test.ts
       aube run build:prod
-      aube run test:e2e -- tests/e2e/security.spec.ts tests/e2e/online-relay.spec.ts tests/e2e/receipt-non-persistence.spec.ts
+      aube run test:e2e -- tests/e2e/security.spec.ts tests/e2e/online-relay.spec.ts tests/e2e/receipt-non-persistence.spec.ts tests/e2e/fingerprint-comparison.spec.ts tests/e2e/relay-admission.spec.ts
+      Complete the ci-actions artifact-browser/digest and maintenance-helper
+      verification on the integrated tree; record source identity and exact
+      outcomes separately from the local Noble dependency checks.
     sync: [threat-model, ui-security-copy]
 
   - id: browser-support
@@ -381,6 +446,10 @@ units:
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
+      - src/app/boot/boot-controller.ts # acquireRelaySession lifecycle/admission contract
+      - src/storage/database.ts # exclusive lease, cancellation, and cooperating sensitive writers
+      - tests/ui/boot/relay-session-admission.test.tsx # protected read and pending-read cancellation; integration-owned
+      - tests/e2e/relay-admission.spec.ts # actual Chromium locks/IDB completed-writer handoff; integration-owned
       - src/crypto/pq/wire-bytes.ts # mirrors documented wire layout
       - src/crypto/pq/canonical-cbor.ts # mirrors documented canonical encoding
       - src/lib/limits.ts # artifact ceiling, algorithm-specific sizes, and timeout floor
@@ -436,9 +505,18 @@ units:
       src/features/receipt-cache.ts (no wire change). Diff
       boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
       and wipe coordinator behavior, including the read-only RSA-HYBRID boot
-      exception and clearReceipts in the buffer-drop inventory. Update dated
-      statements to current state.
-    verify: aube run test:pq && aube run test -- tests/ui/boot tests/ui/key-list-page.test.tsx
+      exception and clearReceipts in the buffer-drop inventory. Confirm session
+      admission acquires before reading actual stores and keeps the same lease
+      through teardown, checks lifecycle after each await, and rejects/releases
+      missing callbacks/locks, failed/dirty reads, cancellation, and stale state.
+      Visibility refresh releases the session first; display eligibility alone
+      cannot admit. Reconcile complete identity/key fingerprint comparison with
+      the formatFingerprint contract; wire bytes/golden expectations do not move.
+      Update dated statements to current state.
+    verify: |
+      aube run test:pq
+      aube run test -- tests/ui/boot tests/ui/key-list-page.test.tsx tests/ui/online-relay.test.tsx tests/unit/relay-lease.test.ts
+      aube run test:e2e -- tests/e2e/relay-admission.spec.ts
 
   - id: size-goldens
     category: crypto
@@ -514,6 +592,14 @@ units:
       - src/pages/settings-confirmations.ts # exact destructive ceremony phrases mirrored in both catalogs
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
       - src/components/key-add-dialog.tsx # import ceremony descriptions and dismissal boundary
+      - src/features/presentation.ts # complete lowercase 64-digit fingerprint representation
+      - src/components/fingerprint.tsx # one complete grouped comparison display
+      - src/components/key-detail/identity-details.tsx # authoritative identity / supplemental key fingerprints
+      - src/components/peer-bundle-detail-dialog.tsx # saved peer's complete identity comparison
+      - src/pages/key-list-page.tsx # saved-key confirmation ceremony
+      - tests/unit/presentation.test.ts # every digit, modulo aliases, and suffix comparison
+      - tests/ui/fingerprint-confirmation.test.tsx # EN/JA full identity/symmetric comparison; integration-owned
+      - tests/e2e/fingerprint-comparison.spec.ts # wrapped complete comparison at 320px; integration-owned
       - src/components/key-add/create-key-view.tsx # experimental / not-independently-audited banner
       - src/components/key-add/import-source-view.tsx # camera and paste import guidance
       - src/components/key-add/symmetric-import-view.tsx # symmetric-secret warning and acknowledgement
@@ -540,11 +626,20 @@ units:
       symmetric-import-view,bundle-confirm-view}.tsx, and
       key-detail/{delete-confirm,destroy-superseded-confirm}.tsx against those
       catalogs, including fingerprint trust and destructive-action wording.
+      Verify one complete lowercase 64-digit comparison, grouped in fours,
+      on import, saved-key confirmation, and symmetric import. The composite
+      identity is authoritative; complete KEM/signing hashes are supplementary.
+      Both locales must require comparison with the intended person through
+      an independent channel, without claiming that acknowledgement proves it.
+      Include key-detail/identity-details.tsx, peer-bundle-detail-dialog.tsx,
+      key-list-page.tsx, and the shared fingerprint/presentation surfaces.
       Re-read the landing page's AES-256 /
       ML-KEM / wipe honesty wording against the same docs, and keep
       public/about/index.html and messages.js in step — the English text lives
       only in the HTML, the other locales only in messages.js.
-    verify: aube run test -- tests/unit/i18n.test.ts tests/ui/keys.test.tsx tests/ui/key-add-dialog.test.tsx tests/ui/key-list-page.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
+    verify: |
+      aube run test -- tests/unit/i18n.test.ts tests/unit/presentation.test.ts tests/ui/fingerprint-confirmation.test.tsx tests/ui/keys.test.tsx tests/ui/key-add-dialog.test.tsx tests/ui/key-list-page.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
+      aube run test:e2e -- tests/e2e/fingerprint-comparison.spec.ts
 
   - id: readme
     category: docs

@@ -145,6 +145,13 @@ canonical OCF2 `pq-message` or `sym-message` frames, validates the assembled art
 before playback, and does not authenticate accepted opaque bytes — full allowlist and
 residual: [docs/security/threat-model.md](docs/security/threat-model.md) T19 / T21.
 
+Before confirming an imported or saved public identity, compare **all 64
+hexadecimal digits of the identity fingerprint** with the intended person
+through an independent channel. The display groups digits in fours; the
+separate KEM and signing fingerprints are supplementary. Shared-key import
+also requires comparing all 64 key-fingerprint digits. An acknowledgement
+cannot establish that the comparison happened or that the channel was trusted.
+
 ## Encryption
 
 | Mode | When to use it |

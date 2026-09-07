@@ -224,6 +224,14 @@ rebuild:
    member; it does not replace the pre-extraction path, type,
    duplicate-name, and expansion checks above.
 
+The release browser gate serves extracted archive bytes without a
+rebuild, checks the ZIP digest and every member before/after the full
+suite, and carries that same digest into signing/publication checks.
+A separate broken-JavaScript copy must fail browser boot while the
+healthy checkout build still boots; this is separate from digest refusal.
+These checks certify neither source, toolchain, hardware, nor your
+actual server, and never replace the independent steps above.
+
 The workflow's double build establishes determinism only within the
 same CI environment; environment-independent reproducibility remains
 unverified. A Cosign signature attests provenance (the workflow and
@@ -232,6 +240,9 @@ controls the CI environment can still publish a correctly signed
 backdoor; only an independent rebuild comparison can detect that case.
 
 DEPLOY ON THE OFFLINE DEVICE
+The transfer medium and its custody must meet the threat model. An
+authenticated ZIP or clean filesystem does not authenticate controller
+or firmware behavior. Reject any transfer without adequate assurance.
 1. Use the container-validated, safely extracted {{ROOT_NAME}} directory
    from above as the server document root. Never extract this ZIP with a
    mechanism that skipped those checks.
@@ -241,7 +252,17 @@ DEPLOY ON THE OFFLINE DEVICE
    security headers, correct MIME types, SPA fallback to /index.html,
    and no-store for the reachability sentinel. Avoid collision-prone
    ports such as 8000 or 8080; choose one fixed uncommon high port.
-3. Open the exact http://127.0.0.1:PORT origin chosen for this
+3. Independently check actual GET responses on this server: /,
+   /index.html, SPA navigation, scripts, styles, WASM, /sw.js, and
+   /registerSW.js. Verify the intended security policy, MIME/cache
+   rules, sentinel body and no-store, method restrictions, and path
+   containment with an independently provisioned checker.
+   The app persists a sentinel-response header verdict and refuses to
+   mount on an absent/failing verdict. It cannot validate the other
+   responses or prove browser enforcement; its expected policy comes
+   from the same checkout, not an independent security floor. Release
+   tests on the reference server do not replace this actual-server check.
+   Then open the exact http://127.0.0.1:PORT origin chosen for this
    installation and wait until the PWA reports that offline use is ready.
 4. Stop the local server, remove the transport medium, physically
    disconnect networking, and confirm QR Crypt reports offline before

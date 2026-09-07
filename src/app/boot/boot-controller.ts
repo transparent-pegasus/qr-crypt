@@ -29,12 +29,14 @@ import {
 import { probeNonce } from "@/lib/reachability"
 import { VAULT_KEY_METADATA_KEY } from "@/crypto/vault/vault-key"
 import {
+  acquireRelayLease,
   getDb,
   STORE_APP_METADATA,
   STORE_KEYS,
   STORE_PQ_IDENTITIES,
   STORE_PREFERENCES,
   withSensitiveWritesExcluded,
+  type RelayLease,
 } from "@/storage/database"
 import { PREFERENCES_KEY } from "@/storage/preferences-repository"
 import { setAckPending } from "@/app/offline-ack-marker"
@@ -136,6 +138,7 @@ export function readConnectivityHint(): ConnectivityHint {
 
 export interface BootController {
   acquire(): void
+  acquireRelaySession(signal: AbortSignal): Promise<RelayLease | null>
   addTransientResetHandler(handler: () => void): () => void
   endRelaySession(reason: RelaySessionEndReason): void
   enterQuarantine(): void
@@ -545,6 +548,7 @@ export function createBootController(
   let consumerCount = 0
   let releaseGeneration = 0
   let relayRefreshGeneration = 0
+  let activeRelaySession: AbortController | undefined
   let peerWipeGeneration = 0
   let relaySessionEndHandler: ((reason: RelaySessionEndReason) => void) | undefined
   let networkTransitionHandled = false
@@ -581,6 +585,8 @@ export function createBootController(
   }
 
   const endRelaySession = (reason: RelaySessionEndReason) => {
+    activeRelaySession?.abort()
+    activeRelaySession = undefined
     try {
       relaySessionEndHandler?.(reason)
     } catch {
@@ -874,6 +880,67 @@ export function createBootController(
     if (!isTerminal()) emit({ kind: "unknown" })
   }
 
+  const acquireRelaySession = async (signal: AbortSignal): Promise<RelayLease | null> => {
+    // Replace any earlier admission or retained lease without notifying the UI:
+    // openDialog has already closed it before supplying this new signal.
+    activeRelaySession?.abort()
+    const session = new AbortController()
+    activeRelaySession = session
+    const episode = confirmationEpisode
+    const refreshGeneration = relayRefreshGeneration
+    const current = () =>
+      !signal.aborted &&
+      !session.signal.aborted &&
+      activeRelaySession === session &&
+      episode !== undefined &&
+      confirmationEpisode === episode &&
+      episode.generation === generation &&
+      refreshGeneration === relayRefreshGeneration &&
+      !episode.continuationPending &&
+      !episode.offlineRequested &&
+      !episode.relayInvalidated &&
+      state.kind === "network-confirmed" &&
+      state.relayEligibility === "eligible"
+
+    const abort = () => session.abort()
+    const canceled = new Promise<null>((resolve) => {
+      session.signal.addEventListener(
+        "abort",
+        () => {
+          signal.removeEventListener("abort", abort)
+          if (activeRelaySession === session) activeRelaySession = undefined
+          resolve(null)
+        },
+        { once: true },
+      )
+    })
+    signal.addEventListener("abort", abort, { once: true })
+
+    let admitted = false
+    try {
+      if (!current()) return null
+      const lease = await acquireRelayLease(session.signal)
+      if (lease === null || !current()) return null
+      // This is the session's own exclusive lease. No second lock-taking refresh
+      // runs here, and abort releases the lease even if storage never settles.
+      const decision = await Promise.race([safeDecision(readDecision), canceled])
+      if (decision === null || !current() || episode === undefined) return null
+      if (!relayEligibleFrom(decision, true)) {
+        publishRelayDecision(episode, decision, true)
+        return null
+      }
+      admitted = true
+      return { release: abort }
+    } catch {
+      if (current() && episode !== undefined) {
+        publishRelayDecision(episode, FALLBACK_DECISION, true)
+      }
+      return null
+    } finally {
+      if (!admitted) abort()
+    }
+  }
+
   const refreshRelayEligibility = async (): Promise<boolean> => {
     const episode = confirmationEpisode
     if (
@@ -914,6 +981,7 @@ export function createBootController(
       releaseGeneration += 1
       start()
     },
+    acquireRelaySession,
     addTransientResetHandler(handler) {
       transientResetHandlers.add(handler)
       return () => transientResetHandlers.delete(handler)

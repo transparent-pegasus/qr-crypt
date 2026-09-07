@@ -27,6 +27,12 @@ import type {
   StoredKeyRecord,
 } from "@/schemas/domain"
 import { deferred } from "../helpers/deferred"
+import {
+  IDENTITY_DIGEST,
+  IDENTITY_COMPARISON,
+  KEM_COMPARISON,
+  SIGNING_COMPARISON,
+} from "../fixtures/fingerprints"
 import { fakeFeatures } from "./helpers/fakes/feature-detection"
 import { updatePreferences } from "./helpers/fakes/preferences"
 import {
@@ -205,9 +211,30 @@ describe("key list page", () => {
 
     await user.click(rowFor("自分のPQ ID"))
     let dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    expect(within(dialog).getByText("3".repeat(64))).toBeInTheDocument()
-    expect(within(dialog).getByText("1".repeat(64))).toBeInTheDocument()
-    expect(within(dialog).getByText("2".repeat(64))).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        "3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333",
+        { exact: false },
+      ),
+    ).toBeVisible()
+    const supplementalDisclosure = within(dialog).getByText(
+      "Supplemental KEM and signing fingerprints",
+      { exact: true },
+    )
+    expect(supplementalDisclosure).toBeVisible()
+    await user.click(supplementalDisclosure)
+    expect(
+      within(dialog).getByText(
+        "1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111",
+        { exact: false },
+      ),
+    ).toBeVisible()
+    expect(
+      within(dialog).getByText(
+        "2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222 2222",
+        { exact: false },
+      ),
+    ).toBeVisible()
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
 
     await user.click(kindFilter)
@@ -256,9 +283,24 @@ describe("key list page", () => {
     await user.click(row)
     const dialog = await screen.findByRole("dialog")
     expect(within(dialog).getByText(bundle.identityId)).toBeInTheDocument()
-    expect(within(dialog).getByText(bundle.identityFingerprint)).toBeInTheDocument()
-    expect(within(dialog).getByText(bundle.kem.fingerprint)).toBeInTheDocument()
-    expect(within(dialog).getByText(bundle.signing.fingerprint)).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        "6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666",
+        { exact: false },
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        "4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444",
+        { exact: false },
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        "5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555",
+        { exact: false },
+      ),
+    ).toBeInTheDocument()
     expect(
       within(dialog).getByRole("button", { name: "Disable on this device" }),
     ).toBeInTheDocument()
@@ -281,9 +323,24 @@ describe("key list page", () => {
     await user.click(rowFor("確認済みの相手"))
     const detail = await screen.findByRole("dialog")
     expect(within(detail).getByText("Identity verified")).toBeInTheDocument()
-    expect(within(detail).getByText("4".repeat(64))).toBeInTheDocument()
-    expect(within(detail).getByText("5".repeat(64))).toBeInTheDocument()
-    expect(within(detail).getByText("6".repeat(64))).toBeInTheDocument()
+    expect(
+      within(detail).getByText(
+        "4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444 4444",
+        { exact: false },
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(detail).getByText(
+        "5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555 5555",
+        { exact: false },
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(detail).getByText(
+        "6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666 6666",
+        { exact: false },
+      ),
+    ).toBeInTheDocument()
     expect(
       within(detail).getByRole("button", { name: "Disable on this device" }),
     ).toBeInTheDocument()
@@ -309,7 +366,7 @@ describe("key list page", () => {
         ...fakeBundles[0]!.signing,
         fingerprint: "8".repeat(64),
       },
-      identityFingerprint: "9".repeat(64),
+      identityFingerprint: IDENTITY_DIGEST,
     }
     delete unverifiedBundle.trustConfirmedAt
     fakeBundles.splice(0, fakeBundles.length, unverifiedBundle)
@@ -327,18 +384,39 @@ describe("key list page", () => {
       name: translate("en", "keyList.bundle.confirmTitle"),
     })
     expect(
-      within(dialog).getByText(unverifiedBundle.identityFingerprint),
+      within(dialog).getByText(IDENTITY_COMPARISON, { exact: false }),
     ).toBeInTheDocument()
+    expect(within(dialog).getByText(KEM_COMPARISON, { exact: false })).toBeInTheDocument()
     expect(
-      within(dialog).getByText(unverifiedBundle.kem.fingerprint),
-    ).toBeInTheDocument()
-    expect(
-      within(dialog).getByText(unverifiedBundle.signing.fingerprint),
+      within(dialog).getByText(SIGNING_COMPARISON, { exact: false }),
     ).toBeInTheDocument()
 
     const checkbox = within(dialog).getByRole("checkbox", {
       name: translate("en", "keyList.bundle.confirmCheck"),
     })
+    for (const requirement of [
+      /64/,
+      /all|entire|complete/i,
+      /identity/i,
+      /independent|another|separate/i,
+      /person|intended|contact/i,
+    ]) {
+      expect(checkbox).toHaveAccessibleName(requirement)
+    }
+    const instructions = document.getElementById(dialog.getAttribute("aria-describedby") ?? "")
+    for (const requirement of [/64/, /all|entire|complete/i, /identity/i, /independent|another|separate/i, /person|intended|contact/i]) {
+      expect(instructions).toHaveTextContent(requirement)
+    }
+    const identityComparison = within(dialog).getByText(IDENTITY_COMPARISON, {
+      exact: false,
+    })
+    for (const comparison of [KEM_COMPARISON, SIGNING_COMPARISON]) {
+      expect(
+        identityComparison.compareDocumentPosition(
+          within(dialog).getByText(comparison, { exact: false }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+    }
     const submit = within(dialog).getByRole("button", {
       name: translate("en", "keyList.bundle.confirmSubmit"),
     })
@@ -575,11 +653,8 @@ describe("key list page", () => {
   it("keeps identity fullscreen open while compatibility mode re-splits and restarts at frame one", async () => {
     const timeout = vi.spyOn(window, "setTimeout")
     const defaultSplitIntoFrames = splitIntoFrames.getMockImplementation()!
-    const compatibleSplit =
-      deferred<Awaited<ReturnType<typeof defaultSplitIntoFrames>>>()
-    let compatibleArgs:
-      | Parameters<typeof defaultSplitIntoFrames>[0]
-      | undefined
+    const compatibleSplit = deferred<Awaited<ReturnType<typeof defaultSplitIntoFrames>>>()
+    let compatibleArgs: Parameters<typeof defaultSplitIntoFrames>[0] | undefined
     const user = userEvent.setup()
     await renderKeyList()
 

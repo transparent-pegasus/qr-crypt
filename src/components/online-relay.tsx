@@ -37,7 +37,7 @@ import { reloadApplication } from "@/lib/reload"
 import { startQrScan, type QrScanHandle } from "@/qr/camera-scan"
 import { renderQrDataUrl } from "@/qr/encode"
 import { prepareRelayPlayback } from "@/qr/relay-playback"
-import { acquireRelayLease, type RelayLease } from "@/storage/database"
+import type { RelayLease } from "@/storage/database"
 import {
   acceptRelayCapture,
   EMPTY_RELAY_CAPTURE,
@@ -65,20 +65,10 @@ const PARSE_ERROR_KEYS: Record<RelayParseErrorCode, MessageKey> = {
 }
 
 type DialogMode = "capture" | "image" | "playback" | null
-type LocalEndReason =
-  | RelaySessionEndReason
-  | "camera-error"
-  | "close"
-  | "hidden"
-  | "pagehide"
-  | "pageshow"
-  | "render-error"
-  | "timeout"
-  | "unmount"
-
 export interface OnlineRelayProps {
   eligible: boolean
   onEligibilityRefresh?: () => Promise<boolean>
+  onSessionAcquire?: (signal: AbortSignal) => Promise<RelayLease | null>
   registerRelaySessionEndHandler?: (
     handler: (reason: RelaySessionEndReason) => void,
   ) => () => void
@@ -87,6 +77,7 @@ export interface OnlineRelayProps {
 export function OnlineRelay({
   eligible,
   onEligibilityRefresh,
+  onSessionAcquire,
   registerRelaySessionEndHandler,
 }: OnlineRelayProps) {
   const { language, t } = useI18n()
@@ -127,7 +118,7 @@ export function OnlineRelay({
   const playbackAnimationAbortRef = useRef<AbortController | null>(null)
   const playbackOperationRef = useRef(0)
   const sessionGenerationRef = useRef(0)
-  const pendingOpenGenerationRef = useRef(0)
+  const pendingOpenAbortRef = useRef<AbortController | null>(null)
   const relayLeaseRef = useRef<RelayLease | null>(null)
 
   const detachVideo = useCallback(() => {
@@ -148,14 +139,13 @@ export function OnlineRelay({
   }, [detachVideo])
 
   const endSession = useCallback(
-    (reason: LocalEndReason) => {
+    () => {
       // First, and before the mounted check below returns: an unmounted
       // component still has to give the lock back.
+      pendingOpenAbortRef.current?.abort()
+      pendingOpenAbortRef.current = null
       relayLeaseRef.current?.release()
       relayLeaseRef.current = null
-      if (reason !== "eligibility-loss") {
-        pendingOpenGenerationRef.current += 1
-      }
       playbackOperationRef.current += 1
       sessionGenerationRef.current += 1
       stopCameraOnly()
@@ -190,43 +180,55 @@ export function OnlineRelay({
   const beginLifetime = useCallback(() => {
     if (lifetimeTimeoutRef.current !== null) return
     lifetimeTimeoutRef.current = window.setTimeout(() => {
-      endSession("timeout")
+      endSession()
       if (mountedRef.current) setTerminalNotice("relay.error.timeout")
     }, RELAY_LIFETIME_MS)
   }, [endSession])
 
   useLayoutEffect(() => {
     if (!registerRelaySessionEndHandler) return
-    return registerRelaySessionEndHandler((reason) => endSession(reason))
+    return registerRelaySessionEndHandler(endSession)
   }, [endSession, registerRelaySessionEndHandler])
 
   useLayoutEffect(() => {
-    if (!eligible) endSession("eligibility-loss")
+    if (!eligible) endSession()
   }, [eligible, endSession])
 
   useEffect(() => {
-    const onPageHide = () => endSession("pagehide")
+    const onPageHide = () => endSession()
     const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) endSession("pageshow")
+      if (event.persisted) endSession()
     }
     const onVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        endSession("hidden")
+        endSession()
         return
       }
       if (!eligible || !onEligibilityRefresh) return
+      endSession()
+      const generation = sessionGenerationRef.current
       let refresh: Promise<boolean>
       try {
         refresh = onEligibilityRefresh()
       } catch {
-        endSession("eligibility-loss")
+        endSession()
         return
       }
       void refresh.then(
         (stillEligible) => {
-          if (!stillEligible) endSession("eligibility-loss")
+          if (
+            !stillEligible &&
+            mountedRef.current &&
+            generation === sessionGenerationRef.current
+          ) {
+            endSession()
+          }
         },
-        () => endSession("eligibility-loss"),
+        () => {
+          if (mountedRef.current && generation === sessionGenerationRef.current) {
+            endSession()
+          }
+        },
       )
     }
     window.addEventListener("pagehide", onPageHide)
@@ -245,44 +247,43 @@ export function OnlineRelay({
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      endSession("unmount")
+      endSession()
     }
   }, [endSession])
 
   const openDialog = async (mode: Exclude<DialogMode, null>) => {
-    setTerminalNotice(null)
-    let refresh: Promise<boolean>
-    try {
-      refresh = onEligibilityRefresh ? onEligibilityRefresh() : Promise.resolve(eligible)
-    } catch {
-      endSession("eligibility-loss")
+    endSession()
+    if (
+      !eligible ||
+      !mountedRef.current ||
+      document.visibilityState === "hidden"
+    ) {
       return
     }
-    // The controller synchronously clears an old session before returning its
-    // refresh promise. Capture the attempt only after that boundary action.
-    const openGeneration = pendingOpenGenerationRef.current
-    let stillEligible: boolean
-    try {
-      stillEligible = await refresh
-    } catch {
-      endSession("eligibility-loss")
+    if (!onSessionAcquire) {
+      setTerminalNotice("relay.error.busy")
       return
+    }
+    const cancellation = new AbortController()
+    pendingOpenAbortRef.current = cancellation
+    const generation = sessionGenerationRef.current
+    let lease: RelayLease | null = null
+    try {
+      lease = await onSessionAcquire(cancellation.signal)
+    } catch {
+      // A failed admission has the same closed result as a denied lease.
     }
     if (
-      !stillEligible ||
+      cancellation.signal.aborted ||
       !mountedRef.current ||
-      openGeneration !== pendingOpenGenerationRef.current
+      generation !== sessionGenerationRef.current
     ) {
-      endSession("eligibility-loss")
+      lease?.release()
       return
     }
-    endSession("close")
-    // After the clear above, so its release cannot drop the lease this call is
-    // about to take. A writer already inside the lock denies the session.
-    const lease = await acquireRelayLease()
-    if (lease === null || !mountedRef.current) {
-      lease?.release()
-      if (mountedRef.current) setTerminalNotice("relay.error.busy")
+    pendingOpenAbortRef.current = null
+    if (lease === null) {
+      setTerminalNotice("relay.error.busy")
       return
     }
     relayLeaseRef.current = lease
@@ -359,7 +360,7 @@ export function OnlineRelay({
               ) {
                 return
               }
-              endSession("render-error")
+              endSession()
               setTerminalNotice(errorMessageKey("QR_TOO_LARGE"))
             },
           )
@@ -395,7 +396,7 @@ export function OnlineRelay({
     setCameraActive(true)
     const video = videoRef.current
     if (video === null) {
-      endSession("camera-error")
+      endSession()
       setTerminalNotice(errorMessageKey("CAMERA_NOT_AVAILABLE"))
       return
     }
@@ -404,7 +405,7 @@ export function OnlineRelay({
       if (generation !== sessionGenerationRef.current || abortController.signal.aborted) {
         return
       }
-      endSession("camera-error")
+      endSession()
       if (mountedRef.current) setTerminalNotice(errorMessageKey(error.code))
     }
 
@@ -431,7 +432,7 @@ export function OnlineRelay({
         ) {
           return
         }
-        endSession("camera-error")
+        endSession()
         const appError =
           error instanceof AppError ? error : new AppError("CAMERA_NOT_AVAILABLE")
         if (mountedRef.current) {
@@ -479,7 +480,7 @@ export function OnlineRelay({
     }
     if (!prepared.ok) {
       if (prepared.reason === "render") {
-        endSession("render-error")
+        endSession()
         if (mountedRef.current) {
           setTerminalNotice(errorMessageKey("QR_TOO_LARGE"))
         }
@@ -601,7 +602,7 @@ export function OnlineRelay({
       <Dialog
         open={dialogMode === "capture" || dialogMode === "image"}
         onOpenChange={(open) => {
-          if (!open) endSession("close")
+          if (!open) endSession()
         }}
       >
         <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden p-0 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
@@ -755,7 +756,7 @@ export function OnlineRelay({
       <Dialog
         open={dialogMode === "playback"}
         onOpenChange={(open) => {
-          if (!open) endSession("close")
+          if (!open) endSession()
         }}
       >
         <DialogContent className="grid max-h-dvh grid-rows-[minmax(0,1fr)] overflow-hidden p-0 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-[calc(1.5rem+env(safe-area-inset-bottom))]">

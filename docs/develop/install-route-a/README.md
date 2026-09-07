@@ -269,6 +269,16 @@ The last `diff` must report no difference. It covers every permitted member; it
 is not a substitute for the pre-extraction path, type, duplicate-name, and
 expansion checks in §4.
 
+The release browser gate serves the extracted archive without rebuilding,
+checks its SHA-256 and all member bytes before and after the full suite, and
+passes the tested archive digest to signing and publication for comparison.
+A separate corrupted JavaScript copy must fail browser boot while the healthy
+checkout build still boots; that is distinct from checksum rejection. These
+controls do not certify source, toolchain, hardware, or your actual server,
+and do not replace any independent verification step above. The release-track
+local evidence and pending integrated checks are recorded in
+[deployment.md](../deployment.md).
+
 What the CI gate does **not** prove: the in-CI double build shows same-environment
 determinism only, not environment-independent reproducibility. The Cosign
 signature attests that that workflow published that artifact (workflow and source
@@ -293,7 +303,9 @@ it; treating it as required would disagree with the archive copy.
 
 1. Move the verified archive to the offline device. Whatever you carry it on — a
    USB stick, an SD card — has to be trusted too: anything that can alter the
-   storage can alter the app.
+   storage can alter the app. An authenticated ZIP or clean filesystem does
+   not authenticate the medium's controller or firmware. Record its trust and
+   custody basis; reject the transfer if it cannot meet this threat model.
 2. Use only the container-validated, traversal-safe extraction produced by §4.
    The ZIP creates a single directory; that directory is the document root.
 3. Serve it with an **audited static server that was already preinstalled on the
@@ -314,19 +326,28 @@ it; treating it as required would disagree with the archive copy.
    of silently degrading. That check is misconfiguration detection, not
    independent assurance: it inspects the sentinel response only, so a server
    that applies the headers to the sentinel but not to `/index.html` still
-   passes. An independent checker against the real navigation response is still
-   required. If your server does not apply `_headers` at all, the six non-CSP
+   passes. The policy is derived from the same checkout, so this is not an
+   independent security floor. Perform the separate actual-response check in
+   step 4. If your server does not apply `_headers` at all, the six non-CSP
    security headers are simply absent — only the meta CSP and the
    `<meta name="referrer">` fallback survive; see
    [threat-model.md](../../security/threat-model.md) §2 for exactly what is
    lost. `scripts/serve-dist.mjs` in the source tree is this repository's
-   reference implementation of the required behaviour and is the definition of
-   "`_headers` semantics" your server must reproduce; it parses the file with
+   reference implementation of this repository's required rules, not the entire
+   Cloudflare header language; it parses the file with
    the shared parser exported by `scripts/csp-from-headers.mjs`, so read both. Read it to derive your own
    server's configuration — do **not** carry it onto the offline device as another
    artifact to verify; it is Node tooling, not part of the signed release.
-4. Open the exact `http://127.0.0.1:PORT` origin and wait until the app reports
-   that offline use is ready.
+4. Before accepting the installation, use an independently provisioned
+   checker on the actual server's GET responses for `/`, `/index.html`, SPA
+   navigation, scripts, styles, WASM, `/sw.js`, and `/registerSW.js`. Verify the
+   intended security policy, MIME and cache rules, sentinel body and
+   `no-store`, method restrictions, and path containment. The app's persisted
+   sentinel verdict cannot validate these other responses or prove browser
+   enforcement. Release browser tests on the repository's reference server
+   are separate evidence and do not replace this check. Then open the exact
+   `http://127.0.0.1:PORT` origin and wait until the app reports that offline
+   use is ready.
 5. Stop the server, remove the transport medium, physically disconnect
    networking, and confirm QR Crypt reports offline **before** entering or
    restoring any secret. The install server's own sentinel deliberately makes the

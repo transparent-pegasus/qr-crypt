@@ -25,6 +25,30 @@ describe("App boot gate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
 
+  it("respects the injected controller's refusal when opening the relay", async () => {
+    setTestOnlineStatus(true)
+    const controller = createBootController({
+      fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
+      readDecision: async () => decision(),
+    })
+    const acquireRelaySession = vi.fn<(signal: AbortSignal) => Promise<null>>(
+      async () => null,
+    )
+    const rendered = await renderApp("/encrypt", {
+      bootController: { ...controller, acquireRelaySession },
+    })
+    try {
+      const user = userEvent.setup()
+      await user.click(await screen.findByRole("button", { name: "Relay" }))
+      await user.click(screen.getByRole("button", { name: "Text → QR" }))
+      expect(acquireRelaySession).toHaveBeenCalledWith(expect.any(AbortSignal))
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    } finally {
+      rendered.unmount()
+      controller.stop()
+    }
+  })
+
   it("renders the language field on a boot status screen", async () => {
     setTestOnlineStatus(true)
     const controller = createBootController({
@@ -271,6 +295,7 @@ describe("App boot gate", () => {
     }
     const bootController: BootController = {
       acquire() {},
+      acquireRelaySession: async () => null,
       addTransientResetHandler() {
         return () => undefined
       },

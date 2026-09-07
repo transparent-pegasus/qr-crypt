@@ -277,6 +277,7 @@ export async function createPqIdentity(page: Page, name: string): Promise<void> 
   await expect(dialog).toBeVisible({
     timeout: 45_000,
   })
+  await dialog.locator("summary").click()
   await expect(dialog.getByText("KEM ML-KEM-1024", { exact: true })).toBeVisible()
   await expect(dialog.getByText("Signing ML-DSA-87", { exact: true })).toBeVisible()
   await dialog.getByRole("button", { name: "Close", exact: true }).click()

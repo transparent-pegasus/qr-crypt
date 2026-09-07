@@ -56,8 +56,8 @@ describe("relay lease", () => {
 
   // Releasing is asynchronous — the lock is held until the request callback's
   // promise settles — so the next session becomes possible on a later turn, not
-  // in the same one. Every real re-acquire path awaits an eligibility refresh
-  // first, so this is the honest shape to pin.
+  // in the same one. Yield until the release callback settles before reacquiring;
+  // opening a session must not take a separate eligibility-refresh proof lock.
   it("frees the lock once released, and tolerates a second release", async () => {
     const lease = await acquireRelayLease()
     lease!.release()

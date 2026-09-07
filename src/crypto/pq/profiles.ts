@@ -1,5 +1,5 @@
 // Profile-to-algorithm and size-constant table.
-// Sources: @noble/post-quantum 0.7.0 source and the FIPS 203/204 parameter tables.
+// Sources: @noble/post-quantum 0.7.1 source and the FIPS 203/204 parameter tables.
 // This table is part of the v2 contract; changing it requires a protocol revision.
 import type {
   MlDsaAlgorithm,

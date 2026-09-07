@@ -14,7 +14,7 @@ fail() {
   fail "checkout does not match the triggering commit"
 
 version="$(
-  node -e '
+  aube node -e '
     const fs = require("node:fs");
     const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
     process.stdout.write(String(pkg.version));
@@ -190,7 +190,7 @@ while IFS= read -r -d '' path; do
     fail "unsafe archive path: $relative"
 done < <(find dist -mindepth 1 -print0)
 
-node scripts/release/validate-static-closure.cjs
+aube node scripts/release/validate-static-closure.cjs
 
 cp -a dist/. "$stage_dir/"
 
@@ -199,7 +199,7 @@ cp -a dist/. "$stage_dir/"
 # docs/develop/install-route-a/INSTALL.template.txt is the only copy of
 # this text; never inline a second one here.
 QR_CRYPT_SOURCE_SHA="$SOURCE_SHA" \
-  node scripts/generate-install-txt.mjs > "$stage_dir/INSTALL.txt"
+  aube node scripts/generate-install-txt.mjs > "$stage_dir/INSTALL.txt"
 [[ -s "$stage_dir/INSTALL.txt" ]] ||
   fail "generated INSTALL.txt is empty"
 

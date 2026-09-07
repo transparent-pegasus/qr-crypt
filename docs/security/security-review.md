@@ -83,27 +83,27 @@ Verified 2026-07-30: assembly timeout floor and default match
 [qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6 (dwell-only floors are not
 measured cycle times).
 
-**Long-text export, measured 2026-07-26** on the CI-class Linux desktop
-(mobile-chromium Playwright project, `aube run test:e2e`), 120,000-byte signed
-PQ fixture:
+**Long-text export, measured 2026-09-07** on the Linux desktop host
+(`make e2e`, mobile-chromium Playwright project, eight workers), using the
+120,000-byte signed PQ fixture at source
+`66076e0eb5be608424230c9ec6474fbd7d1e94c4`:
 
 | step | measurement |
 | --- | --- |
-| encryption | 141 ms |
-| split into frames | 247 ms |
-| first frame render | 31 ms |
-| complete 127-frame ZIP export | 7,085 ms |
-| archive size | 9,633,007 B (≈9.6 MB) |
+| encryption | 130 ms |
+| split into frames | 100 ms |
+| first frame render | 14 ms |
+| complete 127-frame ZIP export | 5,886 ms |
+| archive size | 9,633,018 B (≈9.6 MB) |
 | artifact / frames | 126,576 B / 127 frames at 1,000B |
 
-The artifact byte count is corrected to the current fixture; the timings and
-archive size above were not re-measured.
-
-These are desktop numbers. **On-device figures for Android Chrome and iOS Safari
-are not yet measured** — see `docs/develop/browser-matrix.md`. The ZIP path renders
-frames serially, so its peak memory is bounded by roughly one 1024px raster
-rather than by 127 of them, but its ~7s wall clock on desktop implies a
-materially longer wait on a phone.
+These values come from the retained `long-text-metrics.json` attachment of
+one complete passing browser run. They are desktop-emulation measurements,
+not phone measurements. **On-device figures for Android Chrome and iOS Safari
+are not yet measured** — see [browser-matrix.md](../develop/browser-matrix.md).
+The ZIP path renders frames serially, so its raster working set is roughly
+one 1024px frame rather than 127 concurrent frames. This host's 5.9-second
+export does not establish phone latency or total browser memory use.
 
 Numeric generated-display boot readability is append-only; non-exact
 historical pairs canonicalize to the default 1,000B/200ms pair before strict
@@ -116,50 +116,153 @@ confirmation is the documented non-dismissible exception).
 
 ## 1. Facts About the Adopted Libraries
 
-Library-specific checks carry their own review date. Noble advisory status,
-NIST errata, and build-tool advisories were re-checked 2026-09-06. The Noble
-pin-change source review remains dated 2026-08-13 and the zxing facts
-2026-08-02; neither dependency moved in this re-check.
+Library-specific checks carry their own review date. The Noble source, exact
+published packages, advisories, and FIPS errata were assessed on 2026-09-07;
+the selected pin and local validation below belong to that change. The zxing
+facts remain dated 2026-08-02; its pin and device measurements did not change.
 
-### @noble/post-quantum 0.7.0 (exact pin; version ranges forbidden)
+### @noble/post-quantum 0.7.1 (exact pin; version ranges forbidden)
 
-- Released: 2026-08-09. npm publish and SLSA provenance attestations present.
-  **Re-verified 2026-08-13: 0.7.0 is the latest; no advisories in the repo /
-  GHSA / OSV**
-- Re-checked 2026-09-06: `aube audit` and the GitHub Advisory Database report
-  no known findings for the locked version. The
-  [0.7.1 changelog](https://github.com/paulmillr/noble-post-quantum/releases/tag/0.7.1)
-  (released 2026-08-27) was reviewed; that release requires a separate
-  `crypto-noble` evaluation. The exact pin stays `0.7.0`.
-- Dependencies: noble family only (@noble/ciphers / @noble/curves /
-  @noble/hashes ~2.3.0)
-- Implements: FIPS 203 (ML-KEM) / FIPS 204 (ML-DSA) algorithms
-- FIPS errata (§3 step 1, checked 2026-09-06): the NIST
-  [FIPS 203 workbook](https://csrc.nist.gov/files/pubs/fips/203/final/docs/fips-203-potential-updates.xlsx)
-  (planning note 2025-11-17) and
-  [FIPS 204 workbook](https://csrc.nist.gov/files/pubs/fips/204/final/docs/fips-204-potential-updates.xlsx) (updated
-  2026-07-31) state that their prospective corrections introduce no new
-  technical requirements. The FIPS 204 corrections include a documented
-  minimum internal-signing loop limit of 821 rather than 814; none changes
-  the active API or size table
-- The 0.6.1→0.7.0 source diff confirms the two reported hardening changes:
-  ML-DSA obtains and validates signing entropy before secret-key decoding and
-  wipes library-owned entropy, so the RNG-failure path occurs before decoded
-  secret-polynomial copies are created; ML-KEM reduces the `a1*b1` product before the
-  `zeta` multiplication in `BaseCaseMultiply`, keeping the formerly ~2^35
-  intermediate within 32-bit arithmetic. The active adapter API is unchanged;
-  the new prepared-key and prehash surfaces are not used
-- **Not independently audited.** The audit status as of 0.7.0 remains
-  self-audit only (scope: everything). The upstream
-  [0.7.1 security statement](https://github.com/paulmillr/noble-post-quantum/blob/0.7.1/README.md#security)
-  still reports no independent audit (checked 2026-09-06).
-- **Side channels: as a JS implementation, constant-time execution is not guaranteed.** In particular, for the ML-KEM decaps implicit-rejection path, constant-time behavior under JS/JIT is explicitly documented and not guaranteed
-- APIs used by the active policy (verified against the actual 0.7.0 source):
-  `ml_kem1024.keygen(seed64?)` / `.encapsulate(pk)` / `.decapsulate(ct, sk)`,
-  `ml_dsa87.keygen(seed32?)` / `.sign(msg, sk, {context})` /
-  `.verify(sig, msg, pk, {context})`. The library may also ship 768/65
-  entry points; the application never calls them after the single-active
-  vocabulary purge
+- [Released 2026-08-27](https://github.com/paulmillr/noble-post-quantum/releases/tag/0.7.1).
+  The [0.7.0→0.7.1 comparison](https://github.com/paulmillr/noble-post-quantum/compare/0.7.0...0.7.1)
+  was assessed before selecting this exact version. The resulting lock changes
+  only post-quantum `0.7.0` → `0.7.1` and ciphers/curves/hashes `2.3.0` →
+  `2.4.0`; all unrelated pins, integrities, and overrides are preserved.
+- All three Noble runtime requirements are now exact `2.4.0`, including
+  curves' hashes requirement. All four packages require Node `>=20.19.0`,
+  compatible with this repository's pinned Node `26.5.0`.
+- **Not independently audited.** The selected
+  [security statement](https://github.com/paulmillr/noble-post-quantum/blob/0.7.1/README.md#security)
+  names a self-audit of **0.6.1 in April 2026**, not an independent audit of
+  0.7.1. The release's auditor acknowledgement is not an audit report. Older
+  audit statements in the transitive libraries do not establish exact-2.4.0,
+  PQ, or whole-application coverage. Experimental status and the
+  `release-approved` blocker remain.
+- The 2026-09-07 assessment found no matching reviewed GitHub advisories or
+  OSV entries for PQ 0.7.0/0.7.1 or ciphers/curves/hashes 2.3.0/2.4.0.
+  `aube audit --json` on the upgraded lock exits 0 with no advisories and
+  zero vulnerabilities in every severity across 778 dependencies. These are
+  dated known-advisory checks, not evidence that vulnerabilities cannot exist.
+
+**Active-source disposition.** The selected
+[ML-KEM](https://github.com/paulmillr/noble-post-quantum/blob/0.7.1/src/ml-kem.ts),
+[ML-DSA](https://github.com/paulmillr/noble-post-quantum/blob/0.7.1/src/ml-dsa.ts),
+and [utilities](https://github.com/paulmillr/noble-post-quantum/blob/0.7.1/src/utils.ts)
+retain the adapter's API and wire sizes:
+
+| Active change | Application reachability and limit |
+| --- | --- |
+| ML-KEM key-generation cleanup | `try/finally` clears temporary K-PKE secret-key and public-key-hash buffers. The Worker supplies its own seeds and remains responsible for them; library-generated seed cleanup is not the normal application path. |
+| ML-KEM encapsulation cleanup | The application omits optional randomness, so cleanup of the generated 32-byte `m` and randomness half of `kr` applies. `m` is the shared-secret preimage, not application plaintext. The returned shared-secret half survives; caller-supplied vector randomness is unchanged. |
+| ML-KEM decapsulation cleanup | K-PKE now clears `v` after it has become the recovered polynomial `w`. The implicit-rejection selection is not a new constant-time implementation. |
+| ML-DSA signing cleanup | Four rejected-iteration exits clear working buffers before retrying. This reaches randomized ML-DSA-87 signing; it does not add a function-wide exception cleanup guard. |
+| ML-DSA options and byte copies | Public sign/verify validate a frozen, null-prototype snapshot of own options. Plain `{ context }` calls remain valid; the snapshot does not clone referenced byte arrays. `copyBytes` avoids an overridable iterator during KEM public-key validation. No application exploit or protection of a compromised JS realm was demonstrated. |
+
+These changes reduce retained mutable working state. They do **not** establish
+complete exception-path cleanup, constant-time JS/JIT execution, physical
+erasure, or removal of GC/JIT/native copies. In particular, encapsulation's
+new `finally` does not clear the shared-secret half of `kr` if encryption
+throws. The adapter continues to own sensitive returned subarrays and clears
+the old view when it copies them. No new application-specific exploit was
+demonstrated by this assessment, and no exact-stack leakage bound follows.
+
+The published import closure includes PQ `ml-kem`, `ml-dsa`, `_crystals`,
+and `utils`; hashes `sha3`, `_u64`, and `utils`; and curves `utils`,
+`abstract/fft`, and `abstract/modular`. This is source reachability, not a
+measurement of the final tree-shaken bundle.
+
+| Transitive 2.3.0→2.4.0 disposition | Active effect |
+| --- | --- |
+| [hashes](https://github.com/paulmillr/noble-hashes/compare/2.3.0...2.4.0) | SHA3 changes are formatting only and `_u64` is unchanged. Utility option merging uses a fresh null-prototype object, checks plain objects, and rejects own `__proto__`; this reaches SHAKE configuration. |
+| [curves](https://github.com/paulmillr/noble-curves/compare/2.3.0...2.4.0) | Its active `abool`, `FFTCore`/`reverseBits`, and generic modular-helper source files are unchanged. Curves is not wholly unimported. |
+| [ciphers](https://github.com/paulmillr/noble-ciphers/compare/2.3.0...2.4.0) | No module is in the selected import closure. It remains a supply-chain dependency, not the implementation of this application's AES-GCM. |
+
+Falcon, SLH-DSA, hybrid combiners, prehash XOF/OID enforcement, prepared-key
+surfaces, and Noble's new PQ WebCrypto wrapper are unselected. Transitive
+curve-specific, KDF, stream-cipher, and WebCrypto changes are likewise not
+fixes to QR Crypt's active cryptography. Existing browser WebCrypto
+AES-256-GCM/HKDF-SHA-256 composition is unchanged.
+
+**Provenance disposition.** The four exact registry records provide publish
+and SLSA v1 attestations. In the assessment, downloaded tarballs matched
+registry SHA-512 integrity, decoded attestation subjects matched their
+SHA-256 digests, and provenance commits matched registry `gitHead` and
+upstream source heads. Installed package files were compared with those
+assessed tarballs. This is content/metadata consistency, **not** independent
+Sigstore certificate-chain, signature, or transparency-log verification;
+neither that trust-chain check nor an independent source-to-published-JS
+rebuild was performed.
+
+| Exact package | Recorded source/provenance commit |
+| --- | --- |
+| [post-quantum 0.7.1](https://registry.npmjs.org/@noble%2fpost-quantum/0.7.1) | `a23736036d4d5b34dd3a9e0ee312fd43d00154ac` |
+| [hashes 2.4.0](https://registry.npmjs.org/@noble%2fhashes/2.4.0) | `663c2aeeffc308ac0cded59bd32f7c212adacfc2` |
+| [curves 2.4.0](https://registry.npmjs.org/@noble%2fcurves/2.4.0) | `656c4364dffa44c64aa0c49914b8000b278b67a9` |
+| [ciphers 2.4.0](https://registry.npmjs.org/@noble%2fciphers/2.4.0) | `d9e8a6a599e7ed729d9be03854c46a3c73bd9a79` |
+
+**API and size check against 0.7.1.** Selected calls remain
+`ml_kem1024.keygen(seed64?)`, `.encapsulate(pk)`, `.decapsulate(ct, sk)`;
+`ml_dsa87.keygen(seed32?)`, `.sign(msg, sk, { context })`, and
+`.verify(sig, msg, pk, { context })`. Context is at most 255 bytes. Noble's
+`cipherText` result is still mapped to the adapter's `ciphertext`.
+
+| Algorithm | Public key | Secret key | Ciphertext / signature | Shared secret | Seed |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ML-KEM-1024 | 1,568 B | 3,168 B | 1,568 B ciphertext | 32 B | 64 B |
+| ML-DSA-87 | 2,592 B | 4,896 B | 4,627 B signature | — | 32 B |
+
+`KEM_SIZES`, `DSA_SIZES`, and `PQ_PROFILES.maximum` are unchanged; no retired
+algorithm or profile was restored.
+
+**FIPS errata, assessed 2026-09-07.** Both linked workbooks were read in full.
+[FIPS 203](https://csrc.nist.gov/pubs/fips/203/final) retains the 2025-11-17
+planning note; [FIPS 204](https://csrc.nist.gov/pubs/fips/204/final) links the
+2026-07-31 update. Their notices say these prospective corrections introduce
+no new technical requirements. The selected-source dispositions are:
+
+| Workbook rows | Disposition |
+| --- | --- |
+| [203, 16–17](https://csrc.nist.gov/files/pubs/fips/203/final/docs/fips-203-potential-updates.xlsx) | Extra index-zero zeta and Algorithm 15's `v`→`w` comment: indexed powers and transformed-polynomial decoding already agree; no wire change. |
+| [204, 16–23](https://csrc.nist.gov/files/pubs/fips/204/final/docs/fips-204-potential-updates.xlsx) | NTT exposition, internal `M'` naming, editorial fixes, and commitment order `mu || w1`: selected context formatting and signing/verification hash order agree. |
+| 204, 24–26 | The Montgomery appendix routine is not used. Invalid signatures remain rejected; ML-DSA-87 UseHint uses its 16-value range. |
+| 204, 27 | Expected repetitions become 4.36/5.14/3.91 and the optional signing-loop minimum becomes 821 instead of 814. Selected signing has no 814-iteration cap to change. These values are not measured performance. |
+
+No active API or parameter size changes follow. KATs support the exercised
+cases; they do not establish complete FIPS conformance or FIPS 140 validation.
+
+**Local validation, 2026-09-07.** `aube ci`, `aube run typecheck`, and
+`aube run lint` passed (lint: 0 errors, 13 existing Fast Refresh warnings).
+`aube run test:pq` passed 179 tests in 17 files, including the existing
+negative-input, composition, size, and frozen golden coverage;
+`aube run test:pq-vectors` passed all 6 tests. `aube run test` passed 1,101
+tests in 91 files, including existing Worker/integration and security-copy
+coverage; `aube run build:prod` passed. `aube run test:e2e` passed all 33
+existing mobile-chromium scenarios (39.1s), including offline Worker crypto,
+seed re-expansion after reload, CSP, and relay/receipt non-persistence.
+The final install-template/packaging/header checks passed 49 tests in 5 files.
+These checks exercise the upgraded
+dependency on the baseline application; F1–F3 acceptance on the combined
+implementation remains an integration gate.
+
+`aube run bench:pq -- --run` completed on the Linux development host with
+Node 26.5.0, aube 1.32.0, and Vitest 4.1.10. The existing benchmark runs in
+both its `node` and `ui` projects; the latter is a test environment, not a
+phone measurement. Mean milliseconds per operation:
+
+| Operation | Node project | UI project |
+| --- | ---: | ---: |
+| ML-KEM-1024 keygen | 0.7127 | 0.8150 |
+| ML-KEM-1024 encapsulate | 0.9011 | 0.9543 |
+| ML-KEM-1024 decapsulate | 1.2123 | 1.2056 |
+| ML-DSA-87 sign | 11.1772 | 10.3111 |
+| ML-DSA-87 verify | 3.4006 | 3.3656 |
+
+Signing relative margins were ±14.96% and ±16.10%, with 45 and 49 samples.
+These are reference throughput figures, not constant-time or timing/power/EM
+leakage measurements. Device support and Android/iOS browser-matrix cells were
+not remeasured or restamped. The full browser run exercised the long-text
+measurement scenario but retained no new attachment, so its historical table
+above is not refreshed from an unrecorded value.
 
 ### zxing-wasm 3.1.2 (exact pin; camera QR reading, reader-only build)
 
@@ -243,11 +346,13 @@ pin-change source review remains dated 2026-08-13 and the zxing facts
   unchanged. `aube ci` passed and `aube audit` reported no known
   vulnerabilities on 2026-09-06. Independent audit and release approval
   remain unresolved.
-- CI `validate` now runs `aube audit` unconditionally after `aube ci`. It
-  detects known advisories on the next triggered run — every push, or a pull
-  request targeting `main` or `dev`. There is no schedule, so advisories
-  published after a dependency lands surface only on that next run. This gate
-  does not keep this record current; the freshness review does.
+- CI `validate` runs `aube audit` after `aube ci` on every push and pull
+  request targeting `main` or `dev`. The approved 2026-09-07 maintenance
+  contract additionally requires scheduled/manual, read-only external audit
+  and exact-pin/latest-upstream comparison; see
+  [deployment.md](../develop/deployment.md). Local verification is recorded
+  in §1.4; hosted workflow execution is separate evidence. Neither check
+  updates an offline installation or maintains this written record automatically.
 - Supply-chain pins re-verified clean on 2026-07-29: `eslint-config-prettier@10.1.8` and the rollup OMT `aube.overrides` entry. `react-hook-form@7.82.0` was also pinned here until 2026-07-30, when it was removed from the dependency graph entirely: it was never imported by the application, so the pin guarded nothing.
 
 ## 1.1 Findings F-01 / F-02 / F-03 (2026-07-28)
@@ -444,8 +549,11 @@ The owner decisions and merged dispositions were taken as follows:
 - **D4 — approved and taken:** upgrade the exact `@noble/post-quantum` pin to
   0.7.0 through the complete `crypto-noble` unit; its audit, PQ, vector, and
   benchmark gate passed.
-- **D5 — deferred:** add no scheduled audit workflow; revisit this only if the
-  14-day dependency cadence slips.
+- **D5 — superseded 2026-09-07:** the owner approved external
+  scheduled/manual maintenance for advisories and unassessed Noble releases.
+  The required workflow and helper are described in
+  [deployment.md](../develop/deployment.md); local verification is recorded
+  in §1.4. Offline installations still have no updater.
 
 NSS-R8 remains `REPOSITORY_IMPLEMENTABLE` but deliberately deferred. Re-open
 unverified-signer plaintext gating first if operator reports show the current
@@ -468,6 +576,72 @@ independently different component preserves the corresponding property if its
 family fails. Hybridization or diversification would be a versioned-protocol
 redesign requiring independent design review, not a dependency swap. This is a
 concentration record, not evidence of a present break.
+
+## 1.4 F1–F5 follow-up (2026-09-07)
+
+The integrated application, tests, Noble 0.7.1 dependency graph, and release
+controls were verified at `66076e0eb5be608424230c9ec6474fbd7d1e94c4`, based on
+`1ae9cf5c675068b30d8b5e3a8f7fa092106824a5`. Subsequent evidence and freshness
+edits change documentation only. An independently assigned agent source review found no
+remaining Critical or Important implementation findings. These local results
+are not a production-release approval or evidence of hosted signing/publication.
+
+The assessment assumes persistent targeting of a few installations across
+provisioning, use, captured ciphertext, and retirement. Supply-chain influence,
+unsupervised custody, nearby observation, and browser/OS/firmware compromise
+remain relevant; device access, observation duration, and attack cost remain
+uncertain. No demonstrated mathematical break or unlimited adversary is
+assumed. Honest Web Locks/IndexedDB and cooperating sensitive writers bound
+the relay control; an independently trusted comparison channel bounds
+person-binding. See [environment-threat-catalog.md](environment-threat-catalog.md).
+
+| Item | Review severity | Control class | Implemented behavior |
+| --- | --- | --- | --- |
+| F1 — abbreviated fingerprint authentication | HIGH when short codes are the authentication check | `REPOSITORY_IMPLEMENTABLE` | `formatFingerprint` and `Fingerprint` display all 64 lowercase hexadecimal digits. The composite identity is authoritative at import and saved-key confirmation; complete KEM/signing hashes are supplementary. EN/JA instructions require the intended person's full digest through an independent channel. Symmetric import also requires full comparison. |
+| F2 — stale relay admission | MODERATE | `REPOSITORY_IMPLEMENTABLE` | `BootController.acquireRelaySession(signal)` acquires the exclusive lease before reading actual key/PQ-identity/Vault stores, validates lifecycle, and retains that lease through teardown. Missing callback/locks, cancellation, failed or dirty reads, and stale lifecycle reject and release. `refreshRelayEligibility` supplies display state only. |
+| F3 — packaged-browser verification gap | MODERATE | `REPOSITORY_IMPLEMENTABLE` | `E2E_ARTIFACT_ROOT` runs the full browser suite from the extracted ZIP without rebuilding. Complete member and archive checks run before and after; the exported tested digest is checked at signing and publication. A package-only damaged-JavaScript regression requires a real browser failure and healthy controls. |
+| F4 — crypto dependency assessment | LOW | `REPOSITORY_IMPLEMENTABLE` | Exact Noble 0.7.1 follows the active/transitive assessment and selected-version checks in §1. A daily/manual read-only maintenance workflow audits the lock and compares the exact pin with the official latest release, failing on an unassessed version or fetch error. |
+| F5 — header documentation mismatch | LOW | `REPOSITORY_IMPLEMENTABLE` | Threat model, Route A EN/JA instructions, environment references, and archive template agree: an absent/failing persisted sentinel-response verdict blocks boot. This checks the sentinel, not actual navigation or arbitrary asset responses. Actual-server validation remains `DEPLOYMENT_ENFORCED`. |
+
+Verification on 2026-09-07:
+
+- Frozen `aube ci` and `make check` passed on the verified revision:
+  **96 files / 1,305 tests**, typecheck, and lint with zero errors and 13
+  existing Fast Refresh warnings. Production build passed; `aube audit`
+  reported no known advisories. The selected Noble graph also passed
+  **179 PQ tests** and **6 independent vector tests**; §1 records their scope.
+- The complete ordinary browser suite passed **40/40**, with no retries.
+  Independent fingerprint regressions cover every digest position, former
+  modulo aliases, suffix differences, EN/JA acknowledgements, trust gating,
+  and the 320px comparison layout. Relay regressions complete real sensitive
+  writes in a second context before admission and cover lease retention,
+  pending-read cancellation, delayed acquisition, and lifecycle rejection.
+- The complete extracted-archive browser suite passed **40/40**, with no
+  rebuild or retries. ZIP SHA-256 was
+  `5f6ee82a14a142889beba28f4ad31cf3866c8a2c8be4abb963e6a7a2a3f336e0`;
+  all **19 members** and the ZIP digest matched before and after testing,
+  and the exported tested digest matched. Both browser suites observed
+  `QR_CRYPT_DAMAGED_ARTIFACT_EXECUTED` from the damaged asset while the
+  healthy control booted and the original tree remained unchanged.
+- Release helper regressions, all four workflows, release shell scripts and
+  promotion inline shell blocks passed their tests/lints. Action tag pins
+  matched, and the live upstream comparison passed for Noble 0.7.1.
+  [deployment.md](../develop/deployment.md) records the archive contract and
+  limits of these local checks.
+
+The eight freshness invariants passed unchanged; only the nine affected
+units were reviewed and stamped. Unrelated due `toolchain` and
+`browser-support` units were not refreshed. The recorded host measurements
+above do not fill the real-device browser matrix.
+
+These severities describe the original findings' consequences within their
+stated scope, not five demonstrated exploits. No key recovery, application
+exfiltration, or exact-stack side-channel resistance was established.
+E8/T21 valid-egress risk (QR, clipboard, PNG, ZIP, removable media), retained
+old decryption keys, bounded window-memory replay detection, best-effort wipe,
+and export/media residue remain. Independent audit, exact-device leakage
+assessment, authenticated tooling, independent rebuild, actual deployment
+checks, custody, and procedure effectiveness remain external work.
 
 ## 2. Prohibited Claims (UI / README / CI)
 

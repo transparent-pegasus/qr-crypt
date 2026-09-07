@@ -436,7 +436,15 @@ identity = UTF8("QR-CRYPT-FP-ID-V2") || 0x00
 ```
 
 The identity fingerprint excludes the unauthenticated, mutable `name`,
-while including `identityId` and `createdAt`.
+while including `identityId` and `createdAt`. It is the authoritative
+person-binding comparison: `formatFingerprint` retains all 64 lowercase
+hexadecimal digits, grouped in fours in one display. Compare every digit
+with the intended person through an independent channel at import and at
+saved-bundle confirmation. Complete KEM/signing hashes are supplementary;
+matching either alone does not confirm the composite identity. The UI
+acknowledgement records a decision, not proof that this procedure occurred.
+Symmetric import likewise requires comparing the complete 64-digit key
+fingerprint, without adding persisted person-binding state (T23).
 
 ## 8. Golden fixtures (frozen hex)
 

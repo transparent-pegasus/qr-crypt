@@ -13,7 +13,11 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { resetDefaultBootControllerForTesting } from "@/app/boot/boot-controller"
-import { formatFingerprint } from "@/features/presentation"
+import {
+  KEM_COMPARISON,
+  SIGNING_COMPARISON,
+  SYMMETRIC_COMPARISON,
+} from "../fixtures/fingerprints"
 import { translate } from "@/i18n/messages"
 import { buildV2Payload } from "@/qr/wire-codec"
 import type {
@@ -196,7 +200,12 @@ describe("keys page", () => {
     await waitFor(() => expect(createIdentity).toHaveBeenCalledOnce())
     expect(fakeIdentities).toHaveLength(identityCount + 1)
     dialog = await screen.findByRole("dialog", { name: "新しいPQ ID" })
-    expect(within(dialog).getByText("3".repeat(64))).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        "3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333 3333",
+        { exact: false },
+      ),
+    ).toBeVisible()
     await user.click(within(dialog).getByRole("button", { name: "Close" }))
     expect(screen.queryByText(/Create a maximum ID/)).not.toBeInTheDocument()
   })
@@ -305,9 +314,20 @@ describe("keys page", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Compare the fingerprint through another channel",
     })
-    expect(within(dialog).getByText("9".repeat(64))).toBeInTheDocument()
-    expect(within(dialog).getByText("7".repeat(64))).toBeInTheDocument()
-    expect(within(dialog).getByText("8".repeat(64))).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        "9999 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999 9999",
+        { exact: false },
+      ),
+    ).toBeInTheDocument()
+    expect(within(dialog).getByText(KEM_COMPARISON, { exact: false })).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(SIGNING_COMPARISON, { exact: false }),
+    ).toBeInTheDocument()
+    const instructions = document.getElementById(dialog.getAttribute("aria-describedby") ?? "")
+    for (const requirement of [/64/, /all|entire|complete/i, /identity/i, /independent|another|separate/i, /person|intended|contact/i]) {
+      expect(instructions).toHaveTextContent(requirement)
+    }
     expect(within(dialog).getByRole("button", { name: "Verify and save" })).toBeDisabled()
     expect(
       within(dialog).queryByRole("button", { name: "Close" }),
@@ -377,7 +397,7 @@ describe("keys page", () => {
     })
     await user.click(
       within(dialog).getByRole("checkbox", {
-        name: "I confirmed a match through another channel",
+        name: /64.*identity|identity.*64/i,
       }),
     )
     await user.click(within(dialog).getByRole("button", { name: "Verify and save" }))
@@ -475,9 +495,8 @@ describe("keys page", () => {
     )
 
     dialog = await screen.findByRole("dialog", { name: "Import a shared key" })
-    expect(within(dialog).getByText(source.fingerprint)).toBeInTheDocument()
     expect(
-      within(dialog).getByText(formatFingerprint(source.fingerprint), {
+      within(dialog).getByText(SYMMETRIC_COMPARISON, {
         exact: false,
       }),
     ).toBeInTheDocument()
@@ -487,7 +506,7 @@ describe("keys page", () => {
     expect(save).toBeDisabled()
     await user.click(
       within(dialog).getByRole("checkbox", {
-        name: /fingerprint matches/i,
+        name: /64/,
       }),
     )
     expect(save).toBeEnabled()
@@ -518,9 +537,8 @@ describe("keys page", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Import a shared key",
     })
-    expect(within(dialog).getByText(source.fingerprint)).toBeInTheDocument()
     expect(
-      within(dialog).getByText(formatFingerprint(source.fingerprint), {
+      within(dialog).getByText(SYMMETRIC_COMPARISON, {
         exact: false,
       }),
     ).toBeInTheDocument()
@@ -530,7 +548,7 @@ describe("keys page", () => {
     expect(save).toBeDisabled()
     await user.click(
       within(dialog).getByRole("checkbox", {
-        name: /fingerprint matches/i,
+        name: /64/,
       }),
     )
     expect(save).toBeEnabled()

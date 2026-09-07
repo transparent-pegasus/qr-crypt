@@ -38,288 +38,270 @@ QR Cryptと信頼性のある関係を持つ**物理的およびオペレーシ�
 
 ## 最新性
 
-- カタログ作成 2026-08-03；同日付でエントリをレビュー。
-- 2026-08-08の統合された国家レベル脅威レビューとともに再レビューした。
-  新しい環境技法は見つからず、`T`行への昇格が妥当なエントリもなかった。
-- 2026-08-14にE1〜E12のフルfreshnessスイープを実施し、名称付きのすべての
-  外部出典とリポジトリ内記録、日付、証拠ラベル、関係性、位置づけ、
-  `Touches`参照を再検査した。置き換えられた引用出典はなく、追加の技法や
-  `T`行への昇格も妥当ではなかった。
-- NSR-05は、対称リレーパスのチャンク長分割チャネルを除去した。一方、
-  E8/T21の主要な能力と深刻度は変わらない。正当な1回の対称転送には、
-  256ビット鍵全体を漏洩させるのに十分な277ビットの送信者制御可能な容量が
-  引き続き存在する。
-- E5にGuo、Nabokov、JohanssonによるUSENIX Security 2026の復号失敗オラクルの
-  結果を追加した。この研究は実験室・ネイティブ環境のML-KEM-768級標的に対する
-  攻撃を実証したもので、このJavaScript/ブラウザスタックに対するものではない。
-  ブラウザサンドボックスの制約は明示的にスコープ外である。したがって本スタックの
-  ラベルは`Speculation`のままとし、暗黙の昇格は行わない。
-- `.claude/skills/freshness/targets.yaml`に登録（ユニット
-  `environment-threats`）。スイープは日付付き出典を再検証し、
-  信頼できる関係性を獲得した技法を追加し、変更内容を記録する。
-- 引用する外部出典には日付を付す。置き換えられた出典は蓄積せず置換する。
+- 2026-09-07にE1〜E12の出典と適用可能性を評価し、2026-08-14のレビューを更新した。
+  特定の配備やデバイスの安全性を認証するものではない。
+- E5はUSENIX 2026の最終論文に基づく記述へ置換した。ML-KEM-768の結果は
+  シミュレーションであり、ネイティブ実験はML-KEM-512を使用する。どちらも
+  QR CryptのJS ML-KEM-1024スタックに対する攻撃計測ではない。
+- E1は汎用リポジトリへの旧リダイレクトに代えて著者公開論文を使用する。
+  E3のvan Eck原論文は今回取得できず、Kuhnの論文が機構の根拠となる。
+  E4の2004年論文は一次資料の要旨を読み、全文は取得していない。
+  E7の特定できない「2013年の開示」という主張は削除した。
+- E8には個別の一次実証例を記載し、E9ではHTTPへの干渉と認証済みHTTPSを区別した。
+  E10には2026-07-16のサニタイズFAQを追加した。E11は完全なアイデンティティ比較と
+  実際の信頼判断を記録し、E12はセンチネル限定の境界とRoute A §7の手順4を示す。
+- この評価から新しい技法の追加や`T`行への昇格は正当化されない。
+  E8/T21の正当な対称転送に残る送信者制御可能な277ビットの下限は変わらない。
+  出典取得と実機計測の不足は下記に残す。あらゆる攻撃を網羅した探索ではない。
+- `.claude/skills/freshness/targets.yaml`の`environment-threats`に登録済み。
+  アプリとリリースの統合検証は未了であり、ユニット全体が合格するまで以前の
+  `last_checked`を維持する。実機および手順の有効性は未計測である。
 
 ---
 
 ## E1 — 表示されたQRの光学的キャプチャ
 
-**Relationship（関係性）。** QR表示こそが転送メカニズムそのものである。
-すべての鍵QR（`OCK2`）、公開バンドル（`OCI2`）、および暗号文フレームは、
-操作者から見えない角度を含め、レンズを持つあらゆるものが読み取れる画面上に
-レンダリングされる。これは本システムに対する最も直接的な環境技法であり、
-ソフトウェアの侵害を必要とせず、デバイス上に痕跡を残さない。
+**Relationship（関係性）。** 鍵QR（`OCK2`）、公開バンドル（`OCI2`）、暗号文フレームは
+光学転送のために表示される。十分な視線と解像度を持つカメラは、操作者の視野外の
+角度からも、ソフトウェア侵害やアプリから見える痕跡なしに取得できる場合がある。
 
-**Evidence（証拠）。** 直接撮影については`Observed` — レンダリングされたQRは
-レンズを持つあらゆるものが読み取れる。それこそが転送メカニズムたる所以である。
-間接的な光路については`Evidence`：Backes, Dürmuth, Unruh, *Compromising Reflections — or How to Read
-LCD Monitors Around the Corner*, IEEE S&P 2008; Backes et al., *Tempest in a
-Teapot: Compromising Reflections Revisited*, IEEE S&P 2009
-（眼鏡、ティーポット、および目の反射からの離れた距離での復元）。
+**Evidence（証拠）。** 読み取れる画面の直接撮影は`Observed`。
+間接光路については`Evidence`：Backes, Dürmuth, Unruh,
+[*Compromising Reflections*（2008）](https://kodu.ut.ee/~unruh/publications/reflections.pdf)、
+Backes et al.,
+[*Tempest in a Teapot*（2009）](https://www.mia.uni-saarland.de/Publications/backes-sp09.pdf)。
+反射からの復元を扱うが、このスマートフォン・画面での距離や解像度の限界は未計測。
 
-**Position（位置づけ）。** ディスプレイ自体については`ARCHITECTURAL_RESIDUAL`；
-部屋（視線、窓の覆い、カメラなし）については`DEPLOYMENT_ENFORCED`。
-アプリケーションが寄与するのは、機密表示の警告と
-エクスポート前の強確認ゲートのみ。
+**Position（位置づけ）。** 表示は`ARCHITECTURAL_RESIDUAL`、視線・窓の遮蔽・カメラの
+排除は`DEPLOYMENT_ENFORCED`。アプリが寄与するのは機密表示の警告と出力確認のみ。
 
 **Touches（関連項目）。** threat-model T3, T19, 非目標6。
 
 ## E2 — アプリケーション自身のカメラによる環境キャプチャ
 
-**Relationship（関係性）。** スキャンはユーザー起動であるが、実行中カメラは
-QRの背後にあるもの——机上の書類、他の画面、部屋にいる人——すべてを捉える。
-デバイスは自身の視野を狭めることができず、操作者はコードを見ており
-フレーム端を見ていない。
+**Relationship（関係性）。** ユーザー起動のスキャン中、QR周囲の書類、画面、人が
+撮影され得る。QR CryptはQRだけが取得されるというプライバシー境界を提供しない。
 
-**Evidence（証拠）。** `Observed` — カメラは目の前のフレームを返し、
-`getUserMedia`は視野の制限手段を公開していない。研究成果ではなく定義的であり、
-引用すべきものも計測すべきものも存在しない。
+**Evidence（証拠）。** カメラフレームに周囲の画素が含まれることは`Observed`。
+[W3C Media Capture and Streams草案（2025-10-09）](https://www.w3.org/TR/2025/CRD-mediacapture-streams-20251009/)
+には切り抜き・拡縮の制約があるが、センサーやプラットフォームが周囲を一度も取得
+しなかった証明にはならない。カメラ停止はアプリの制御であり、実機での停止時間と
+部屋の保護効果は別々の未計測事項である。
 
-**Position（位置づけ）。** `DEPLOYMENT_ENFORCED`（スキャンを行う場所）に加え、
-カメラが稼動する*時間*を制限するアプリ内のティアダウン。
+**Position（位置づけ）。** スキャン場所は`DEPLOYMENT_ENFORCED`、撮影時間を制限する
+ティアダウンは`REPOSITORY_IMPLEMENTABLE`。
 
-**Touches（関連項目）。** threat-model T12, T19, 非目標 2/3。
+**Touches（関連項目）。** threat-model T12, T19, 非目標2/3。
 
 ## E3 — 画面の電磁放射（TEMPEST / ファンエック放射）
 
-**Relationship（関係性）。** QRは高コントラストで誤り訂正付きの
-自己区切り画像であり、部分的な画面復元にとって最良の標的となる。
-誤り訂正がまさにそのチャネルが生じる劣化を修復するためである。
-この方法で復元された対称鍵QRは、デバイスへの近接なしに完全な鍵漏洩となる。
+**Relationship（関係性）。** 表示された対称鍵QRが復元されれば鍵が漏洩する。
+コントラストと誤り訂正は復号に役立ち得るが、受信機の実現可能性、距離、
+スマートフォンの放射特性を示すものではない。
 
-**Evidence（証拠）。** メカニズムについてはEvidence：van Eck,
-*Electromagnetic Radiation from Video Display Units*, Computers & Security,
-1985; Kuhn, *Electromagnetic Eavesdropping Risks of Flat-Panel Displays*,
-PETS 2004（ノートPCのLCDを含むデジタルフラットパネルが離れた距離から
-読み取り可能であること）。本スタックについてはSpeculation：
-最新のスマートフォンOLEDからの所定距離でのQR復元に関する計測は存在せず、
-スマートフォンのパネルはこれらの論文が特性評価したディスプレイとは異なる。
+**Evidence（証拠）。** 一般的な機構は`Evidence`：van Eck,
+*Electromagnetic Radiation from Video Display Units*（1985）、Kuhn,
+[*Electromagnetic Eavesdropping Risks of Flat-Panel Displays*（2004）](https://www.cl.cam.ac.uk/~mgk25/pet2004-fpd.pdf)。
+2026-09-07にはvan Eckの原論文を再取得できず、Kuhnが調べた画面・ケーブルの
+機構を根拠とする。現代のスマートフォンOLEDから所定距離でQRを復元することは
+`Speculation`であり、ここに計測はなく、研究対象の画面とも異なる。
 
-**Position（位置づけ）。** `EXTERNAL_ASSURANCE`（シールド、距離、施設の選択）。
-アプリケーションはこれを軽減できない——QRのレンダリングこそが機能である。
+**Position（位置づけ）。** 遮蔽、距離、施設選択は`EXTERNAL_ASSURANCE`。
+引用された実証からアプリの耐性は導けない。
 
-**Touches（関連項目）。** threat-model 非目標 1/5 の境界；
-`T`行は耐性を主張しておらず、計測なしに追加してはならない。
+**Touches（関連項目）。** threat-model 非目標1/5。耐性を主張する`T`行はない。
 
 ## E4 — 平文入力時の音響および機械的放射
 
-**Relationship（関係性）。** 平文は暗号化前にオフラインデバイス上で入力される。
-音響チャネルはメッセージがメッセージになる前にそれを捕捉するため、
-すべての暗号制御を迂回する。
+**Relationship（関係性）。** 平文入力は暗号化に先行するため、入力の観測は
+メッセージの暗号を迂回し得る。
 
-**Evidence（証拠）。** Evidence: Asonov & Agrawal, *Keyboard Acoustic
-Emanations*, IEEE S&P 2004; Zhuang, Zhou, Tygar, *Keyboard Acoustic Emanations
-Revisited*, CCS 2005; Harrison, Toreini, Mehrnezhad,
-*A Practical Deep Learning-Based Acoustic Side Channel Attack on Keyboards*,
-EuroS&PW 2023（スマートフォンのマイクおよびビデオ通話録音によるノートPC
-キーボードの解析）。本スタックについてはSpeculation：
-タッチスクリーンのソフトキーボード入力がここで想定される入力方式であり、
-機械式キーボードに比べ音響標的としてはより弱い。同じアイデアの
-モーションセンサー変種は存在するが、本システムでは未計測。
+**Evidence（証拠）。** 物理キーボードについては`Evidence`：Asonov & Agrawal,
+[*Keyboard Acoustic Emanations*（一次要旨、2004-08-16）](https://research.ibm.com/publications/keyboard-acoustic-emanations)、
+Zhuang, Zhou, Tygar,
+[*Keyboard Acoustic Emanations Revisited*（2005）](https://www.cs.cornell.edu/~shmat/courses/cs6431/zhuang.pdf)、
+Harrison, Toreini, Mehrnezhad,
+[*A Practical Deep Learning-Based Acoustic Side Channel Attack on Keyboards*（投稿2023-08-02）](https://arxiv.org/abs/2308.01074)。
+2023年の研究はスマートフォン・Zoom録音からノートPCのキーを分類し、スマートフォンの
+タッチ入力を扱わない。ここで想定するタッチ入力は`Speculation`であり、相対的な弱さや
+モーションセンサー変種は未計測。2004年の全文は今回取得していない。
 
-**Position（位置づけ）。** `DEPLOYMENT_ENFORCED`（オフラインデバイスの近くに、
-操作者自身のスマートフォンを含め、録音機器を置かない）。
+**Position（位置づけ）。** 操作者のオンライン端末を含む録音機器を平文入力場所から
+排除することは`DEPLOYMENT_ENFORCED`。
 
-**Touches（関連項目）。** threat-model 非目標 2；資産行「平文」。
+**Touches（関連項目）。** threat-model 非目標2、資産行「平文」。
 
 ## E5 — 暗号実装に対する物理的サイドチャネル
 
-**Relationship（関係性）。** ML-KEMの脱カプセル化とML-DSAの署名は、
-消費者向けデバイス上のJavaScriptで実行される。`@noble/post-quantum`は
-JS/JITの下では定数時間実行が保証されないことを文書化しており、
-ML-KEMの暗黙棄却パスが明示的に名指しされている。タイミング、電力、
-およびEMチャネルは、これを鍵回復に転じる古典的な手段である。
+**Relationship（関係性）。** ML-KEM-1024の脱カプセル化とML-DSA-87の署名は
+JavaScriptで実行される。採用した
+[Noble 0.7.1のセキュリティ記述](https://github.com/paulmillr/noble-post-quantum/blob/0.7.1/README.md#security)
+は、暗黙棄却を含めJS/JITでの定数時間実行を保証しない。
+[security-review.md](../../../security/security-review.md) §1のバッファ消去改善は、
+タイミング・電力・EM漏洩やGC・ネイティブコピーを制限する保証ではない。
 
-**Evidence（証拠）。** CCA安全な格子KEM実装に対する一般的なクラスについて
-`Evidence`：Ravi, Roy, Chattopadhyay, Bhasin, *Generic Side-channel attacks
-on CCA-secure lattice-based PKE and KEMs*, IACR TCHES 2020(3)。より鋭い
-復号失敗オラクルクラスについては`Evidence`：Qian Guo, Denis Nabokov,
-Thomas Johansson, *Unlocking the True Potential of Decryption Failure Oracles:
-A Hybrid Adaptive-LDPC Attack on ML-KEM Using Imperfect Oracles*, USENIX
-Security 2026。この研究は実験室・ネイティブ環境のML-KEM-768級攻撃を実証し、
-ブラウザサンドボックスの制約を明示的にスコープ外とする。このJavaScript/
-ブラウザスタックでは実証していない。実装上の注意事項自体については
-リポジトリ内の記録として`Evidence`
-（`@noble/post-quantum`ドキュメント、
-[security-review.md](../../../security/security-review.md) §1に記録）。
-本システムについては`Speculation`：このJSスタックでこのハードウェア上での
-鍵回復攻撃は実証されておらず、ここでは試行もされていない。
+**Evidence（証拠）。** 格子KEM実装への一般的な攻撃は`Evidence`：Ravi et al.,
+[*Generic Side-channel attacks on CCA-secure lattice-based PKE and KEMs*（2020-06-19）](https://tches.iacr.org/index.php/TCHES/article/view/8592)。
+Guo, Nabokov, Johanssonの
+[USENIX Security 2026論文](https://www.usenix.org/conference/usenixsecurity26/presentation/guo-qian)
+（[最終PDF](https://www.usenix.org/system/files/usenixsecurity26-guo-qian.pdf)）は、
+**ML-KEM-768のシミュレーション**でオラクル精度95%、2,950クエリの結果を報告する。
+**ネイティブGoFetch実験はML-KEM-512**、Apple M1/macOS 13.5を使用し、別アドレス
+空間の非特権コードとネイティブの高精度時計を前提とする。100回中73回で回復鍵の
+ハミング距離が4以下となり、これを論文の成功定義とする。ブラウザサンドボックスの
+制約は明示的に対象外。QR Cryptについては`Speculation`であり、そのML-KEM-1024
+JavaScript・ブラウザ・実機構成への攻撃計測は提示も試行もされていない。
 
-**Position（位置づけ）。** `EXTERNAL_ASSURANCE` — 独立監査がこれを制限する
-メカニズムとなる。`release-approved`ブロッカーを参照。
+**Position（位置づけ）。** `EXTERNAL_ASSURANCE`。対象を定めたレビューとタイミング・
+電力・EM計測では、ハードウェア、ファームウェア、OS・ブラウザ、ビルド、処理内容、
+攻撃者のアクセス、統計的限界を記録する必要がある。一般的な監査や処理速度の
+ベンチマークだけでは実際のスタックの漏洩限界を示せず、独立レビューの未了は残る。
 
-**Touches（関連項目）。** security-review.md §1 サイドチャネル記述；
-threat-model T14 残留リスク。禁止主張ルールにより、
-絶対的なサイドチャネル主張はすでに禁じられている。
+**Touches（関連項目）。** security-review §1、threat-model T14、サイドチャネルの禁止主張。
 
 ## E6 — セッション間のオフラインデバイスの管理
 
-**Relationship（関係性）。** 運用モデルは再接続しない専用デバイスであり、
-つまりその稼働時間の大部分は無人のまま鍵を保持している。
-これはまさにevil-maidやインプラント技法が必要とする条件であり、
-ネットワーク接続された標的と異なり、デバイス上には変更を監視するものがない。
+**Relationship（関係性）。** 常時オフラインのデバイスは、監視されない時間にも鍵を
+保持し得る。短い物理アクセスでもブートやファームウェアが標的となる。QR Cryptは
+その層を認証できず、侵害を修復できない。
 
-**Evidence（証拠）。** クラスとしては`Evidence`：Rutkowska, *Evil Maid goes
-after TrueCrypt!*, Invisible Things Lab, 2009年10月（暗号化ノートPCに対する
-無人でのブートパス改ざん）；ESET, *LoJax: First UEFI rootkit found in the
-wild*, 2018年9月（ディスク交換後も残存するファームウェアレベルの永続化）。
-特定の個人設置への蔓延については`Speculation` — その種の攻撃者が
-1台のデバイスに到達する確率を制限する計測はここに存在しない。
+**Evidence（証拠）。** 研究対象のシステムについては`Evidence`：Rutkowska,
+[*Evil Maid goes after TrueCrypt!*（2009-10-15）](https://blog.invisiblethings.org/2009/10/15/evil-maid-goes-after-truecrypt.html)、ESET,
+[*LoJax*（2018-09-27、Secure Boot訂正2018-10-09）](https://www.welivesecurity.com/2018/09/27/lojax-first-uefi-rootkit-found-wild-courtesy-sednit-group/)。
+ブート改ざんとファームウェアの永続化を裏付けるが、あらゆるスマートフォンへの攻撃や
+プラットフォーム監視の不在を意味しない。特定の配備へのアクセス確率は`Speculation`で
+あり、ここにその確率を制限する計測はない。
 
-**Position（位置づけ）。** `DEPLOYMENT_ENFORCED`（管理、改ざん証跡、保管）——
-アプリケーションのワイプおよびブートゲートは、その下のプラットフォームが
-侵害された場合には耐えられない。
+**Position（位置づけ）。** 管理、改ざん証跡、保管は`DEPLOYMENT_ENFORCED`。
+アプリのブート・ワイプゲートは侵害された下位層の信頼を回復しない。
 
-**Touches（関連項目）。** threat-model 非目標 1 および 5；T17 残留リスク
-（「事前に実行されたコードに対しては防御できない」）。
+**Touches（関連項目）。** threat-model 非目標1/5、T17。
 
 ## E7 — 公認された越境手段としてのリムーバブルメディア
 
-**Relationship（関係性）。** ルートAは、ネットワーク接続してはならない
-デバイスへZIPを物理メディアで運ぶことを要求し、
-[threat-model.md](../../../security/threat-model.md) T11のダウンロード制御によりファイルが
-同じ方法で外に出ることを許す。したがってメディアは双方向のブリッジであり、
-そのコントローラ（ファイルシステムではなくファームウェア）は
-両端から信頼されている。
+**Relationship（関係性）。** Route Aはアーカイブをオフライン端末へ運び、明示的な
+T11出力もメディアで持ち出せる。この橋渡しには、見えるファイルだけでなく
+コントローラ・ファームウェアの挙動も含まれる。
 
-**Evidence（証拠）。** Evidence: Nohl & Lell, *BadUSB — On Accessories that
-Turn Evil*, Black Hat USA 2014（再プログラム可能なUSBコントローラ
-ファームウェア；ファイルシステムスキャンでは検出不可能）。
-出荷ハードウェアの妨害が国家的手法であることについてもEvidence
-（2013年の開示）。
+**Evidence（証拠）。** `Evidence`：SRLabs,
+[*BadUSB / USB peripherals that turn evil*（2014-07-31）](https://srlabs.de/blog/usb-peripherals-turn)
+は、ファイルシステム検査の外にある再プログラム可能なコントローラを説明する。
+特定できない「2013年の開示」は検証済み根拠として残さない。
 
-**Position（位置づけ）。** `DEPLOYMENT_ENFORCED`。ルートA §7はすでに、
-アーカイブを運ぶものは信頼できなければならないと述べている。
-本カタログは、クリーンに見えるファイルシステムがその保証にならない*理由*を記録する。
+**Position（位置づけ）。** `DEPLOYMENT_ENFORCED`。認証済みZIPや正常なファイル
+システムはコントローラを認証しない。Route A §7では信頼できる転送と管理を要求し、
+**この脅威モデルを満たせないメディアや転送は拒否する**。本カタログは特定の媒体を
+承認するものではない。
 
-**Touches（関連項目）。** install-route-a/README.md §7；threat-model T11, 非目標 4。
+**Touches（関連項目）。** install-route-a/README.md §7、threat-model T11、非目標4。
 
 ## E8 — 侵害済みオフラインデバイスからのエアギャップ秘密チャネル
 
-**Relationship（関係性）。** T21は、侵害されたオフラインエンドポイントが
-ユーザーが運ぶQRパスを通じて情報を漏洩できることを確立している。
-本エントリは、QRパスが唯一の出口ではないことを記録する。
-同じ侵害されたエンドポイントは画面の輝度、LED、スピーカー、ファン、
-および無線機を制御する。したがって、QRチャネルを閉じたり狭めたりしても
-全体の漏洩量を制限することにはならない——この議論は脅威モデルが
-決してしてはならないものである。
+**Relationship（関係性）。** プラットフォーム侵害後、T21の正規QR出力だけが出口では
+ない。他の放射源へのアクセスは機器と権限次第であり、QR構文を狭めても総漏洩量を
+制限できない。
 
-**Evidence（証拠）。** 多数の実証済み技法についてEvidence
-（Guriらはエアギャップされたホストに対する光学的、音響的、熱的、
-磁気的、およびRF変種を2014年以降公表している）。
-本スタックについてはSpeculation：これらの実証はホスト上のネイティブコードを
-前提としており、ブラウザサンドボックス内のPWAはこれらのエミッタへの
-到達範囲がはるかに小さく、ここでは計測が存在しない。
+**Evidence（証拠）。** 異なるネイティブホストでの実証は`Evidence`：
+[AirHopper（2014-11-02）](https://arxiv.org/abs/1411.0237)、
+[BitWhisper（2015-03-26）](https://arxiv.org/abs/1503.07919)、
+[LED-it-GO（2017-02-22）](https://arxiv.org/abs/1702.06715)、
+[MAGNETO（2018-02-07）](https://arxiv.org/abs/1802.02317)、
+[MOSQUITO（2018-03-09）](https://arxiv.org/abs/1803.03422)。
+無線、熱、LED、磁気、音声の経路はそれぞれ異なる能力と受信機を必要とする。
+このPWAから各放射源へのアクセスは`Speculation`であり実機計測はない。
+あらゆる電話が制御可能なファン、無線機、HDDのLEDを備えるわけではない。
 
-**Position（位置づけ）。** `ARCHITECTURAL_RESIDUAL` — プラットフォームまたは
-インストールが侵害された場合、アプリケーションの制御外（非目標 1 および 4）。
+**Position（位置づけ）。** `ARCHITECTURAL_RESIDUAL`。QR、クリップボード、PNG、ZIP、
+リムーバブルメディア経由の正規出力による漏洩とT21の277ビット下限は残る。
+メディアで運ぶ出力はリレーパーサーを全く通らない。
 
-**Touches（関連項目）。** threat-model T21, T17；install-route-a/README.md §1
-（ルートAが保証を決定する理由）。
+**Touches（関連項目）。** threat-model T21, T17、install-route-a/README.md §1。
 
 ## E9 — オンラインリレー使用場所での敵対的ネットワーク
 
-**Relationship（関係性）。** リレーデバイスは意図的にオンラインであり、
-ワイプ判定は同一オリジンのセンチネルボディの一致に依存する。
-応答を書き換えたりリプレイしたりするネットワーク——キャプティブポータル、
-敵対的アクセスポイント——はコードの属性ではなく、
-*リレーデバイスが使用される場所*の環境属性である。
+**Relationship（関係性）。** リレーは意図的にオンラインであり、破壊的な到達性判定は
+同一オリジンのセンチネル本文一致に依存する。敵対的なネットワークは配送を妨害できるが、
+通常のアクセスポイント支配だけで認証済みHTTPSを書き換えることはできず、追加の信頼・
+プラットフォーム侵害が必要となる。
 
-**Evidence（証拠）。** Evidence: T18はすでにキャプティブポータル通過の
-ケースを到達可能と同等として記録している。HTTPレスポンスを変更する
-キャプティブポータルは通常の観測される動作である。
+**Evidence（証拠）。** `Evidence`：リポジトリ内のT18はセンチネル通過を到達可能と扱う。
+[RFC 8952（2020-11）](https://www.rfc-editor.org/rfc/rfc8952)はキャプティブポータルの
+構成と認証済みTLSの扱いを記述する。HTTPの傍受と認証済みHTTPSは別のケースであり、
+本文一致は物理的エアギャップや応答ヘッダー適合の証明ではない。
 
-**Position（位置づけ）。** `DEPLOYMENT_ENFORCED`（ネットワークの選択）、
-表示プローブと破壊的プローブの分離をアプリ内の制限制御とする。
+**Position（位置づけ）。** ネットワーク選択は`DEPLOYMENT_ENFORCED`、表示用と
+破壊的プローブの分離は`REPOSITORY_IMPLEMENTABLE`。
 
 **Touches（関連項目）。** threat-model T18, T19。
 
 ## E10 — メディアのサニタイゼーションと廃棄
 
-**Relationship（関係性）。** ワイプパスは明示的にベストエフォートの
-論理削除とVaultキー破棄である。フラッシュ変換レイヤー、ウェアレベリング、
-およびオーバープロビジョニングされたブロックにより、物理メディアは
-アプリケーションが削除したと信じるものを保持し得る。
-これはデバイスの退役時および`wipe-on-online`イベント後に問題となる。
+**Relationship（関係性）。** ワイプは論理削除とVault鍵の破棄を試みる。
+フラッシュ変換、ウェアレベリング、予備ブロックには旧データが残り得るため、
+退役とオンライン時ワイプには別途媒体の保証が必要となる。
 
-**Evidence（証拠）。** Evidence: NIST SP 800-88 Rev. 2,
-*Guidelines for Media Sanitization*（2025-09-26公開。Rev. 1を置き換えた
-サニタイズプログラムおよび技法の指針）。
-[threat-model.md](../../../security/threat-model.md) §5ですでに引用済み。
+**Evidence（証拠）。** `Evidence`：
+[NIST SP 800-88 Rev. 2（2025-09-26）](https://csrc.nist.gov/pubs/sp/800/88/r2/final)
+はRev. 1を置換し、
+[FAQ（2026-07-16）](https://csrc.nist.gov/files/pubs/sp/800/88/r2/final/docs/sp800-88r2-faq.pdf)
+はサニタイズプログラムの指針と個別技法の規格を区別する。ブラウザ削除とVault鍵破棄の
+試行はNISTの暗号学的消去を実証しない。過去の平文、全鍵コピー、実装、媒体特性、
+および検証が重要である。
 
-**Position（位置づけ）。** `EXTERNAL_ASSURANCE`（メディアに適切な
-サニタイゼーションまたは物理的破壊）。
+**Position（位置づけ）。** 媒体に応じたサニタイズと検証済み廃棄は`EXTERNAL_ASSURANCE`。
+引用だけで特定の物理破壊法を承認することはできない。
 
-**Touches（関連項目）。** threat-model §5「更新パスなし」、T17 残留リスク。
+**Touches（関連項目）。** threat-model §5「更新パスなし」、T17。
 
 ## E11 — 操作者の状態
 
-**Relationship（関係性）。** セキュリティ上重要なステップは手動であり、
-デバイスによる検証が不可能である：帯域外のフィンガープリント比較
-（システム内で唯一の人物紐付け）、ルートAのリビルドと比較、
-および表示された警告を受け入れる判断。疲労、時間的圧力、強要、
-および攻撃者が提供する「比較チャネル」は、コードの一バイトにも
-触れることなくこれらを無効化する。
+**Relationship（関係性）。** 人物の紐付けは、独立したチャネルを介した意図した相手との
+手動比較に依存する。Route Aのリビルドや警告の受け入れも操作者次第である。
+疲労、強要、時間的圧力、攻撃者が支配する比較チャネルはこれらの手順を破り得る。
 
-**Evidence（証拠）。** 本リポジトリ内のEvidence：脅威モデルは、
-アプリケーションが公開バンドルと対称鍵のどちらのインポートにおいても、
-ユーザーが意図した相手と比較したことを確認できないとすでに述べている（T6、T23）。
-また、不可視文字スキャンは明示的に
-検出補助であり、その価値はアラートが読まれる程度に稀であることに依存する（T21）。
+**Evidence（証拠）。** 2026-09-07のアプリ実装記録
+（[security-review.md](../../../security/security-review.md) §1.4）による`Evidence`：
+`formatFingerprint`は小文字16進数の64桁すべてを4桁ずつ、一つの表示に出す。
+インポートと保存済み鍵の確認では、複合アイデンティティの完全なダイジェストが
+正式な比較対象であり、完全なKEM・署名鍵ハッシュは補足である。確認済みとして
+保存するには、独立したチャネルで意図した相手と全桁を比較した旨の確認が必要。
+**未確認のまま保存**は別の選択肢であり、未確認バンドルは暗号化の宛先にできない。
+その保存鍵に対する署名は、人物の紐付けを主張せず検証できる。対称鍵インポートも
+全桁比較を要求するが信頼状態は保存しない。統合ツリー上の独立した回帰検証は未了。
 
-**Position（位置づけ）。** 手順については`EXTERNAL_ASSURANCE`；
-インターフェース変更により負荷を軽減できる場合のみ
-`REPOSITORY_IMPLEMENTABLE` —— 例えば、まさにこの理由で存在する
-意図的に非解除型のフィンガープリント確認。
+**Position（位置づけ）。** 表示と信頼状態ゲートは`REPOSITORY_IMPLEMENTABLE`、比較手順は
+`EXTERNAL_ASSURANCE`。チェックボックスや閉じられないダイアログは、比較が行われた
+証明にも、疲労・強要・チャネルの信頼性に対する限界の保証にもならない。
 
-**Touches（関連項目）。** threat-model T6, T15, T21, T22, T23；
-install-route-a/README.md §5–§6。
+**Touches（関連項目）。** threat-model T6, T15, T21, T22, T23、
+install-route-a/README.md §§2–5/7。
 
-## E12 — Route A ローカルサーバーの配信設定
+## E12 — Route Aローカルサーバーの配信設定
 
-**関係。** Route A では、監査済みの静的サーバーを操作者自身が用意する。セキュリティ
-ヘッダー、MIME タイプ、SPA フォールバック、センチネルの `no-store` 規則は、いずれも
-署名済みバンドルではなく*そのサーバーの設定*の性質である。ほとんどの静的サーバーは
-`_headers` を全く解釈しないため、正しいリリースが CSP 以外の6つのセキュリティ
-ヘッダーを欠いたまま配信されうる。
+**Relationship（関係性）。** ヘッダー、MIME、SPAフォールバック、センチネルのキャッシュは
+実際のローカルサーバーの属性である。署名済みアーカイブは、そのサーバーが`_headers`を
+解釈し、意図したポリシーを送ることを保証しない。
 
-**根拠。** `public/_headers` は一部のサーバーしか解釈しない Cloudflare 形式の
-ファイルであり、`docs/develop/install-route-a/README.md` §3 が要件を記録し、
-`scripts/serve-dist.mjs` をリファレンス動作として挙げている。
+**Evidence（証拠）。** 2026-09-07のソースレビューによる`Evidence`：
+[Cloudflareのヘッダー形式](https://developers.cloudflare.com/pages/configuration/headers/)
+はホスト依存であり、[CSPのmeta配信](https://w3c.github.io/webappsec-csp/#meta-element)
+では全応答ヘッダー制御を配信できない。参照サーバーと共有パーサーが実装するのは
+本リポジトリの規則であり、Cloudflare言語全体ではない。
 
-**位置づけ。** `DEPLOYMENT_ENFORCED`。境界を定めるアプリ内統制は deployment
-verdict である。Service Worker から除外された唯一の経路である reachability
-センチネル応答に対し、`/*` の7ヘッダー、センチネル自身の `Cache-Control: no-store`、
-content type、ステータス、リダイレクト状態、応答 URL を検査し、判定を永続化して、
-不合格または不在なら Router のマウントを拒否する。
+**Position（位置づけ）。** `DEPLOYMENT_ENFORCED`。アプリはセンチネル応答について
+`/*`の7ヘッダー値、`Cache-Control: no-store`、MIME、ステータス、リダイレクト、URLを
+検査し、判定を永続化して、不合格または不在ならRouterのマウントを拒否する。
+これは既存の制御であり、新しいナビゲーション検証ではない。
 
-**残余。** 検査対象はセンチネル応答のみである。トップレベルのナビゲーション応答が
-同じヘッダーを持つことは証明しないため、経路ごとの設定ミスや敵対的サーバーは通過
-しうる。これは設定ミスの検出であって独立した保証ではない。実際のナビゲーション応答、
-MIME タイプ、SPA フォールバック、`/sw.js` と `/registerSW.js` のキャッシュヘッダー、
-メソッド制限、パス境界を対象とする、独立に導入されたチェッカーが依然として必要である。
+**Residual（残余）。** 期待ポリシーは同じチェックアウトの`public/_headers`から導出され、
+独立に導入されたセキュリティ下限ではない。センチネル合格は、実際のナビゲーションや
+任意のスクリプト・スタイル・WASM・Service Worker応答、ブラウザでの強制を証明しない。
+Route Aでは、選んだサーバーでこれらの実応答、キャッシュ・MIME規則、SPA処理、
+メソッド制限、パス封じ込めを別のチェッカーで確認する必要がある。
+参照サーバーでのリリーステストは別の証拠であり、その義務を免除しない。
 
-**Touches（関連項目）。** threat-model T18、boot-and-reset-v2.md §2.2、
-install-route-a/README.md §3。
+**Touches（関連項目）。** threat-model §2, T18、boot-and-reset-v2.md §2.2、
+[install-route-a/README.md](../develop/install-route-a/README.md) §7、手順4。
 
 ---
 
