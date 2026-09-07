@@ -30,15 +30,9 @@ export function formatSuggestedDate(timestamp: number): string {
   return parts.join("")
 }
 
-export function formatFingerprint(fingerprintHex: string): string {
-  const normalized = fingerprintHex.replaceAll(/[^0-9a-f]/gi, "")
-  if (normalized.length < 16) return fingerprintHex
-  const groups: string[] = []
-  for (let offset = 0; offset < 16; offset += 4) {
-    const value = Number.parseInt(normalized.slice(offset, offset + 4), 16)
-    groups.push(String(value % 10_000).padStart(4, "0"))
-  }
-  return groups.join(" ")
+export function formatFingerprint(value: string): string {
+  const normalized = value.replaceAll(/[^0-9a-f]/gi, "").toLowerCase()
+  return normalized.match(/.{1,4}/g)?.join(" ") ?? ""
 }
 
 export function formatFramePositions(

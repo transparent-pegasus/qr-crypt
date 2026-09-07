@@ -66,21 +66,26 @@ export function PeerBundleDetailDialog({
             </div>
 
             <Fingerprint
-              label={t("keyList.bundle.fingerprintKem", {
-                algorithm: bundle.kem.algorithm,
-              })}
-              value={bundle.kem.fingerprint}
-            />
-            <Fingerprint
-              label={t("keyList.bundle.fingerprintSigning", {
-                algorithm: bundle.signing.algorithm,
-              })}
-              value={bundle.signing.fingerprint}
-            />
-            <Fingerprint
               label={t("common.identityFingerprint")}
               value={bundle.identityFingerprint}
             />
+            <details className="min-w-0 space-y-3 rounded-lg border p-3 text-muted-foreground">
+              <summary className="cursor-pointer text-xs">
+                {t("common.supplementalFingerprints")}
+              </summary>
+              <Fingerprint
+                label={t("keyList.bundle.fingerprintKem", {
+                  algorithm: bundle.kem.algorithm,
+                })}
+                value={bundle.kem.fingerprint}
+              />
+              <Fingerprint
+                label={t("keyList.bundle.fingerprintSigning", {
+                  algorithm: bundle.signing.algorithm,
+                })}
+                value={bundle.signing.fingerprint}
+              />
+            </details>
 
             {!supported && (
               <p className="text-sm text-destructive">

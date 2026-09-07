@@ -4,7 +4,7 @@
 // public/_headers. It does NOT prove the top-level navigation response carries
 // the same headers — a per-path misconfiguration, or a hostile server, can
 // serve the sentinel correctly and index.html incorrectly. An independent,
-// pre-provisioned deployment checker remains required; see NS-08 in
+// pre-provisioned deployment checker remains required; see §2 in
 // docs/security/threat-model.md.
 //
 // The sentinel is the only route excluded from the service worker

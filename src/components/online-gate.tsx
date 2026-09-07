@@ -62,6 +62,7 @@ export function OnlineGate({ children }: { children: ReactNode }) {
 interface OnlineInstallScreenProps {
   relayEligible?: boolean
   onRelayEligibilityRefresh?: OnlineRelayProps["onEligibilityRefresh"]
+  onRelaySessionAcquire?: OnlineRelayProps["onSessionAcquire"]
   registerRelaySessionEndHandler?: OnlineRelayProps["registerRelaySessionEndHandler"]
 }
 
@@ -86,6 +87,7 @@ function readStoredOnlineTab(): OnlineTab {
 export function OnlineInstallScreen({
   relayEligible = false,
   onRelayEligibilityRefresh,
+  onRelaySessionAcquire,
   registerRelaySessionEndHandler,
 }: OnlineInstallScreenProps = {}) {
   const { t } = useI18n()
@@ -265,6 +267,9 @@ export function OnlineInstallScreen({
             eligible={relayEligible}
             {...(onRelayEligibilityRefresh
               ? { onEligibilityRefresh: onRelayEligibilityRefresh }
+              : {})}
+            {...(onRelaySessionAcquire
+              ? { onSessionAcquire: onRelaySessionAcquire }
               : {})}
             {...(registerRelaySessionEndHandler
               ? { registerRelaySessionEndHandler }

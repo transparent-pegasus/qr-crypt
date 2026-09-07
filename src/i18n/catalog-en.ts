@@ -19,6 +19,7 @@ export const en = {
   "common.deleteAriaLabel": "Delete {name}",
   "common.created": "Created: {datetime}",
   "common.identityFingerprint": "Identity fingerprint",
+  "common.supplementalFingerprints": "Supplemental KEM and signing fingerprints",
   "common.fingerprintCompare": "Comparison display: {value}",
   "common.loading": "Loading",
   "common.openKeysPage": "Open the keys page",
@@ -340,9 +341,9 @@ export const en = {
   "keyList.bundle.confirmOpen": "Compare and confirm the fingerprint",
   "keyList.bundle.confirmTitle": "Confirm this identity's fingerprint",
   "keyList.bundle.confirmBody":
-    "Compare every group below with the value shown on the other party's own device, through another channel such as a call or in person. Confirming records that you did so and makes this identity selectable as an encryption recipient; the app cannot check the comparison for you.",
+    "Compare all 64 hexadecimal digits of the identity fingerprint with the intended person's own device through an independent channel, such as a call or in person. KEM and signing fingerprints are supplemental details. Confirming records that you did so and makes this identity selectable as an encryption recipient; the app cannot check the comparison for you.",
   "keyList.bundle.confirmCheck":
-    "I compared the fingerprint through another channel and it matched",
+    "I compared all 64 hexadecimal digits of the identity fingerprint with the intended person through an independent channel and they all matched",
   "keyList.bundle.confirmSubmit": "Confirm",
   "keyList.toast.bundleConfirmed": "The fingerprint was confirmed",
 
@@ -363,10 +364,11 @@ export const en = {
   "keys.import.readButton": "Read the key",
   "keys.bundle.dialogTitle": "Compare the fingerprint through another channel",
   "keys.bundle.dialogDesc":
-    "Before completing the import, compare the full hex with the other party through another channel, such as a call or in person. A self-signature alone does not prove a person's identity. If you save without verification, this identity cannot be selected for encryption until you confirm it later under Saved keys.",
+    "Before completing the import, compare all 64 hexadecimal digits of the identity fingerprint with the intended person through an independent channel, such as a call or in person. KEM and signing fingerprints are supplemental details. A self-signature alone does not prove a person's identity. If you save without verification, this identity cannot be selected for encryption until you confirm it later under Saved keys.",
   "keys.bundle.fingerprintKem": "ML-KEM fingerprint",
   "keys.bundle.fingerprintSigning": "ML-DSA fingerprint",
-  "keys.bundle.confirmLabel": "I confirmed a match through another channel",
+  "keys.bundle.confirmLabel":
+    "I compared all 64 hexadecimal digits of the identity fingerprint with the intended person through an independent channel and they all matched",
   "keys.bundle.saveUnverified": "Save without verification",
   "keys.bundle.saveConfirmed": "Verify and save",
   "keys.symmetricImport.dialogTitle": "Import a shared key",
@@ -377,9 +379,9 @@ export const en = {
     "If a third party has the same key, they may be able to decrypt the ciphertext.",
   "keys.symmetricImport.nameLabel": "Key name",
   "keys.symmetricImport.fingerprintHint":
-    "Compare this fingerprint with the sender through an independent channel",
+    "Compare all 64 hexadecimal digits of this shared-key fingerprint with the intended sender through an independent channel",
   "keys.symmetricImport.ackLabel":
-    "The fingerprint matches what the sender reads out through an independent channel",
+    "I compared all 64 hexadecimal digits of this shared-key fingerprint with the intended sender through an independent channel and they all matched",
   "keys.symmetricImport.saveButton": "Save the shared key",
   "keys.demo.hint":
     "Ask the other party to increase their screen brightness, hold the camera about 15–20 cm away, and keep it still until the image is in focus.",
