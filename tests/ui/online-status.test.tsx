@@ -94,24 +94,100 @@ describe("active reachability detection", () => {
     expect(result.current).toBe(true)
   })
 
+  it.each([
+    "online",
+    "indeterminate",
+    "non-boolean",
+    "missing navigator",
+    "throwing",
+  ] as const)(
+    "keeps confirmed online status across failed polls when the hint is %s",
+    async (hint) => {
+      vi.useFakeTimers()
+      setTestOnlineStatus(true)
+      const { result } = renderHook(() => useOnlineStatus())
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+      expect(result.current).toBe(true)
+
+      if (hint === "missing navigator") vi.stubGlobal("navigator", undefined)
+      else
+        Object.defineProperty(navigator, "onLine", {
+          configurable: true,
+          get() {
+            if (hint === "throwing") throw new Error("hint unavailable")
+            if (hint === "non-boolean") return 0
+            return hint === "online" ? true : undefined
+          },
+        })
+      const failedFetch = stubReachabilityFetch(false)
+
+      try {
+        for (let poll = 1; poll <= 3; poll += 1) {
+          await act(async () => vi.advanceTimersByTimeAsync(4_000))
+          expect(failedFetch).toHaveBeenCalledTimes(poll)
+          expect(result.current).toBe(true)
+        }
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    },
+  )
+
+  it("keeps confirmed online status when a later display probe times out", async () => {
+    vi.useFakeTimers()
+    setTestOnlineStatus(true)
+    const { result } = renderHook(() => useOnlineStatus())
+    await act(async () => vi.advanceTimersByTimeAsync(0))
+    expect(result.current).toBe(true)
+
+    let signal: AbortSignal | null | undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>((_input, init) => {
+        signal = init?.signal
+        return new Promise<Response>(() => undefined)
+      }),
+    )
+    await act(async () => vi.advanceTimersByTimeAsync(4_000))
+    expect(signal?.aborted).toBe(false)
+    await act(async () => vi.advanceTimersByTimeAsync(3_000))
+
+    expect(signal?.aborted).toBe(true)
+    expect(navigator.onLine).toBe(true)
+    expect(result.current).toBe(true)
+  })
+
   it("handles the offline event immediately without starting another probe", async () => {
+    vi.useFakeTimers()
     setTestOnlineStatus(true)
     let signal: AbortSignal | null | undefined
-    const fetchMock = vi.fn<typeof fetch>((input, init) => {
-      void input
-      signal = init?.signal
-      return new Promise<Response>(() => undefined)
-    })
+    let finishProbe: ((response: Response) => void) | undefined
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce({ status: 204 } as Response)
+      .mockImplementation((_input, init) => {
+        signal = init?.signal
+        return new Promise<Response>((resolve) => {
+          finishProbe = resolve
+        })
+      })
     vi.stubGlobal("fetch", fetchMock)
     const { result } = renderHook(() => useOnlineStatus())
-    await flushProbe()
+    await act(async () => vi.advanceTimersByTimeAsync(0))
+    expect(result.current).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    await act(async () => vi.advanceTimersByTimeAsync(4_000))
+    expect(signal?.aborted).toBe(false)
 
-    act(() => setTestOnlineStatus(false, { emit: true }))
+    // The explicit event is authoritative even if the hint has not caught up.
+    act(() => window.dispatchEvent(new Event("offline")))
 
     expect(result.current).toBe(false)
     expect(signal?.aborted).toBe(true)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await act(async () => finishProbe?.({ status: 204 } as Response))
+    expect(result.current).toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it("switches from the online interval to the offline interval and back", async () => {
@@ -131,12 +207,15 @@ describe("active reachability detection", () => {
 
     await act(async () => vi.advanceTimersByTimeAsync(3_999))
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    // No event: a failed poll must still observe an explicit offline hint.
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false })
     await act(async () => vi.advanceTimersByTimeAsync(1))
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(result.current).toBe(false)
 
     await act(async () => vi.advanceTimersByTimeAsync(14_999))
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true })
     await act(async () => vi.advanceTimersByTimeAsync(1))
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(result.current).toBe(true)

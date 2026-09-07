@@ -24,10 +24,16 @@ Types and constants are frozen in `src/app/boot/boot-contract.ts`.
   the install server is stopped. The app therefore cannot observe a later
   network reconnection from its own origin, and `navigator.onLine` is the only
   remaining signal. That signal locks; it never wipes. See §2.1.
-- While the display probe sits in a false-negative window, the InstallScreen is
-  not guaranteed to keep blocking. The connectivity gate in §2.1 is what stops
-  that window from opening the Router; the next time the display re-commits
-  online, the symmetric reconciliation re-runs the sentinel check.
+- A successful display probe establishes display-online. Once established, a
+  failed or timed-out display probe retains that state unless
+  `navigator.onLine === false`. Missing, non-boolean, or throwing hints do not
+  establish display-offline. Polling continues, so a temporary request failure
+  leaves the online Home and relay usable without opening the Router.
+- An explicit `offline` event still commits display-offline immediately and
+  aborts any pending display probe. A failed poll with an explicit offline hint
+  also commits display-offline when no event arrives. Cold-start probe failure
+  never establishes online from the hint alone. All offline candidates still
+  pass §2.1; a later display-online recommit re-runs the sentinel check.
 
 ## 2. Boot State Machine (Ahead of the Router)
 
@@ -59,11 +65,11 @@ blocked → (nothing; reload only)
 
 `offline-confirmed` has four possible publication paths — the sentinel-failure
 branch, the post-commit continuation, the display-offline nudge, and an
-`offline` event delivered while probing. All four go through one gate. Gating
-only the sentinel branch would leave the display-offline nudge as a live bypass:
-stopping the install server while the network stays up makes the display probe
-fail, and the nudge would otherwise publish `offline-confirmed` without ever
-re-consulting the sentinel.
+`offline` event delivered while probing. All four go through one gate. Retaining
+confirmed display-online across uncorroborated probe failures prevents a false
+nudge from that path, but an explicit `offline` event can still contradict the
+browser hint. No offline candidate may bypass the hint and deployment checks
+just because the display has committed offline.
 
 The gate publishes `offline-confirmed` only when both hold:
 

@@ -2,7 +2,7 @@ import "./helpers/module-mocks/feature-detection"
 import "./helpers/module-mocks/pwa"
 import "./helpers/module-mocks/preferences"
 import "./helpers/module-mocks/qr-scanner"
-import { act, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
@@ -10,20 +10,131 @@ import {
   type BootController,
   type BootDecisionSnapshot,
 } from "@/app/boot/boot-controller"
+import { createAppRouter } from "@/app/router"
 import { translate } from "@/i18n/messages"
 import type { BestEffortResetReport } from "@/storage/best-effort-reset"
 import { decision, response } from "../helpers/boot-fixtures"
 import { getPreferences } from "./helpers/fakes/preferences"
-import {
-  expectLanguageField,
-  renderApp,
-  resetUi,
-} from "./helpers/render-app"
+import { expectLanguageField, renderApp, resetUi } from "./helpers/render-app"
 import { setTestOnlineStatus } from "./helpers/network"
 
 describe("App boot gate", () => {
   beforeEach(resetUi)
   afterEach(resetUi)
+
+  it.each(["Home", "Relay"] as const)(
+    "keeps the online %s usable across failed display polls after admission",
+    async (tab) => {
+      // Keep IndexedDB and user interaction callbacks on their native timers.
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] })
+      setTestOnlineStatus(true)
+      const user = userEvent.setup()
+      const openDatabase = vi.spyOn(indexedDB, "open")
+      const routerFactory = vi.fn(createAppRouter)
+      const reloadPage = vi.fn()
+      const quarantine = vi.fn(async () => undefined)
+      const performWipe = vi.fn(async () => ({ ok: true, failedSteps: [] }))
+      let failDisplayProbes = false
+      let failedProbes = 0
+      const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+        const url = new URL(String(input), window.location.href)
+        if (
+          failDisplayProbes &&
+          init?.method === "HEAD" &&
+          url.pathname === "/manifest.webmanifest" &&
+          url.searchParams.has("reach")
+        ) {
+          failedProbes += 1
+          throw new TypeError("display probe unavailable")
+        }
+        return response("QR-CRYPT-REACHABLE")
+      })
+      vi.stubGlobal("fetch", fetchImpl)
+      const controller = createBootController({
+        fetchImpl,
+        readDecision: async () => decision(),
+        quarantine,
+        performWipe,
+      })
+      const endRelaySession = vi.spyOn(controller, "endRelaySession")
+      const rendered = await renderApp("/encrypt", {
+        bootController: controller,
+        reloadPage,
+        routerFactory,
+      })
+      try {
+        const navigation = await screen.findByRole("navigation", {
+          name: "Online navigation",
+        })
+        const home = screen.getByRole("heading", { name: "Install the PWA" })
+        expect(home).toBeVisible()
+        expect(navigation).toBeVisible()
+        expect(controller.getState()).toMatchObject({
+          kind: "network-confirmed",
+          relayEligibility: "eligible",
+        })
+        if (tab === "Relay") {
+          await user.click(screen.getByRole("button", { name: "Relay" }))
+          await user.click(screen.getByRole("button", { name: "Text → QR" }))
+          expect(
+            screen.getByRole("dialog", { name: "Turn relay text into QR" }),
+          ).toBeVisible()
+          fireEvent.change(screen.getByLabelText("Relay text"), {
+            target: { value: "relay-session-draft" },
+          })
+        }
+        const activeView =
+          tab === "Home"
+            ? home
+            : screen.getByRole("dialog", { name: "Turn relay text into QR" })
+
+        failDisplayProbes = true
+        // Include even the offline cadence so BASE reaches the UI assertions
+        // after multiple actual failures, rather than failing on a poll count.
+        for (let poll = 1; poll <= 3; poll += 1) {
+          await act(async () => vi.advanceTimersByTimeAsync(15_000))
+          expect(failedProbes).toBeGreaterThanOrEqual(poll)
+        }
+
+        expect(navigator.onLine).toBe(true)
+        expect
+          .soft(screen.queryByText("Network connection detected"))
+          .not.toBeInTheDocument()
+        expect
+          .soft(screen.queryByRole("navigation", { name: "Main navigation" }))
+          .not.toBeInTheDocument()
+        expect.soft(routerFactory).not.toHaveBeenCalled()
+        expect.soft(getPreferences).not.toHaveBeenCalled()
+        expect
+          .soft(openDatabase.mock.calls.map(([name]) => name))
+          .not.toContain("qr-crypt")
+        expect.soft(quarantine).not.toHaveBeenCalled()
+        expect.soft(performWipe).not.toHaveBeenCalled()
+        expect.soft(reloadPage).not.toHaveBeenCalled()
+        expect.soft(endRelaySession).not.toHaveBeenCalledWith("display-offline")
+        expect.soft(controller.getState()).toMatchObject({
+          kind: "network-confirmed",
+          relayEligibility: "eligible",
+        })
+        expect.soft(navigation).toBeVisible()
+        expect(activeView).toBeVisible()
+        if (tab === "Home") {
+          await user.click(screen.getByRole("button", { name: "Relay" }))
+          expect(screen.getByRole("button", { name: "Text → QR" })).toBeEnabled()
+        } else {
+          expect(screen.getByLabelText("Relay text")).toHaveValue("relay-session-draft")
+          await user.click(screen.getByRole("button", { name: "Close" }))
+          await user.click(screen.getByRole("button", { name: "Top" }))
+          expect(home).toBeVisible()
+        }
+      } finally {
+        rendered.unmount()
+        controller.stop()
+        openDatabase.mockRestore()
+        vi.useRealTimers()
+      }
+    },
+  )
 
   it("respects the injected controller's refusal when opening the relay", async () => {
     setTestOnlineStatus(true)
@@ -53,9 +164,7 @@ describe("App boot gate", () => {
     setTestOnlineStatus(true)
     const controller = createBootController({
       fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
-      performWipe: vi.fn(
-        () => new Promise<BestEffortResetReport>(() => undefined),
-      ),
+      performWipe: vi.fn(() => new Promise<BestEffortResetReport>(() => undefined)),
       readDecision: async () => decision({ sensitiveDataExists: true }),
     })
     await renderApp("/encrypt", { bootController: controller })
@@ -120,16 +229,12 @@ describe("App boot gate", () => {
     })
     await renderApp("/encrypt", { bootController: controller })
 
-    expect(
-      await screen.findByText(translate("en", "gate.heading")),
-    ).toBeVisible()
+    expect(await screen.findByText(translate("en", "gate.heading"))).toBeVisible()
     expect(
       await screen.findByRole("navigation", { name: "Online navigation" }),
     ).toBeVisible()
     await user.click(screen.getByRole("button", { name: "Relay" }))
-    expect(
-      await screen.findByText(translate("en", "relay.card.title")),
-    ).toBeVisible()
+    expect(await screen.findByText(translate("en", "relay.card.title"))).toBeVisible()
     expect(performWipe).not.toHaveBeenCalled()
     controller.stop()
   })
@@ -152,12 +257,8 @@ describe("App boot gate", () => {
       screen.queryByText(translate("en", "relay.card.title")),
     ).not.toBeInTheDocument()
     resolveDecision?.(decision())
-    await user.click(
-      await screen.findByRole("button", { name: "Relay" }),
-    )
-    expect(
-      await screen.findByText(translate("en", "relay.card.title")),
-    ).toBeVisible()
+    await user.click(await screen.findByRole("button", { name: "Relay" }))
+    expect(await screen.findByText(translate("en", "relay.card.title"))).toBeVisible()
     controller.stop()
   })
 
