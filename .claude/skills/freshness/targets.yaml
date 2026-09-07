@@ -456,6 +456,8 @@ units:
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
+      - src/hooks/use-online-status.ts
+      - src/lib/reachability.ts
       - src/app/boot/boot-controller.ts # acquireRelaySession lifecycle/admission contract
       - src/storage/database.ts # exclusive lease, cancellation, and cooperating sensitive writers
       - tests/ui/boot/relay-session-admission.test.tsx # protected read and pending-read cancellation; integration-owned
@@ -522,11 +524,16 @@ units:
       Visibility refresh releases the session first; display eligibility alone
       cannot admit. Reconcile complete identity/key fingerprint comparison with
       the formatFingerprint contract; wire bytes/golden expectations do not move.
+      Reconcile display-online retention with use-online-status.ts and the raw
+      probe in reachability.ts: a successful probe establishes online; a later
+      failed probe retains it unless the browser explicitly reports offline.
+      Offline events still commit immediately, and boot's offline-publication
+      gate remains authoritative for every offline candidate.
       Update dated statements to current state.
     verify: |
       aube run test:pq
-      aube run test -- tests/ui/boot tests/ui/key-list-page.test.tsx tests/ui/online-relay.test.tsx tests/unit/relay-lease.test.ts
-      aube run test:e2e -- tests/e2e/relay-admission.spec.ts
+      aube run test -- tests/ui/boot tests/ui/boot-app.test.tsx tests/ui/online-status.test.tsx tests/ui/offline-ack.test.tsx tests/ui/key-list-page.test.tsx tests/ui/online-relay.test.tsx tests/unit/relay-lease.test.ts
+      aube run test:e2e -- tests/e2e/relay-admission.spec.ts tests/e2e/online-reachability.spec.ts
 
   - id: size-goldens
     category: crypto

@@ -104,8 +104,8 @@ for (const tab of ["Home", "Relay"] as const) {
     await expect
       .soft(page.getByText("Network connection detected", { exact: true }))
       .toHaveCount(0)
-    await expect.soft(navigation).toBeVisible()
     if (tab === "Home") {
+      await expect.soft(navigation).toBeVisible()
       await expect(
         page.getByRole("heading", { name: "Install the PWA", exact: true }),
       ).toBeVisible()
@@ -122,6 +122,7 @@ for (const tab of ["Home", "Relay"] as const) {
       playback.getByText("Relay input rejected", { exact: true }),
     ).toBeVisible()
     await playback.getByRole("button", { name: "Close", exact: true }).click()
+    await expect(navigation).toBeVisible()
     await page.getByRole("button", { name: "Top", exact: true }).click()
     await expect(
       page.getByRole("heading", { name: "Install the PWA", exact: true }),
