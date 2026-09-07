@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import type { QrFrameV2 } from "@/schemas/domain"
+import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { encodeCanonicalCbor } from "@/crypto/pq/canonical-cbor"
 import { toBase64Url } from "@/lib/base64url"
 import {
@@ -329,14 +329,14 @@ describe("splitIntoFrames, continued", () => {
     }
   })
 
-  it("rejects generation of the reserved seed-backup artifact", async () => {
+  it("rejects generation with a runtime invalid artifact kind", async () => {
     await expect(
       splitIntoFrames({
-        artifactType: "encrypted-seed-backup",
+        artifactType: "encrypted-seed-backup" as V2ArtifactType,
         artifactBytes: pseudoArtifact(10, "encrypted-seed-backup"),
         frameBytes: FRAME_BYTES_MAX,
       }),
-    ).rejects.toMatchObject({ code: "UNSUPPORTED_ALGORITHM" })
+    ).rejects.toMatchObject({ code: "INVALID_QR_PAYLOAD" })
   })
 })
 
@@ -628,7 +628,7 @@ describe("TransferAssembler", () => {
     })
   })
 
-  it("rejects a restored encrypted-seed-backup type", async () => {
+  it("rejects a restored removed artifact type as invalid payload", async () => {
     const artifactBytes = pseudoArtifact(100, "encrypted-seed-backup")
     const frames = await splitIntoFrames({
       artifactType: "pq-message",
@@ -640,7 +640,7 @@ describe("TransferAssembler", () => {
     })
     expect(await addFrames(assembler, frames)).toEqual({
       kind: "error",
-      code: "UNSUPPORTED_ALGORITHM",
+      code: "INVALID_QR_PAYLOAD",
     })
   })
 })
