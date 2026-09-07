@@ -3,7 +3,7 @@ import { stringify } from "yaml"
 import { parseReleaseWorkflow, releaseWorkflowSource } from "../fixtures/workflow"
 
 function dependencies(value: string | string[] | undefined): string[] {
-  return value === undefined ? [] : typeof value === "string" ? [value] : value
+  return value === undefined ? [] : typeof value === "string" ? [value] : [...value].sort()
 }
 
 // Exercise the same assertions after formatting-only changes to the real
