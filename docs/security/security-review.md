@@ -642,6 +642,54 @@ and export/media residue remain. Independent audit, exact-device leakage
 assessment, authenticated tooling, independent rebuild, actual deployment
 checks, custody, and procedure effectiveness remain external work.
 
+## 1.5 Correctness follow-up (2026-09-07)
+
+The integrated correctness fixes and current-format cleanup passed the required
+local checks at `e66ab694f9ba499190318698200293d31226ac25`, unchanged before
+and after verification. Exact commands, outputs, and artifacts are retained in
+`.tmp/final-verification.md` and its command logs.
+
+- `make check` passed **97 files / 1,368 tests**, including UI/boot, PQ,
+  ACVP KAT, multipart, publication, parser, and size-golden coverage, with no
+  skips reported. Typecheck passed; lint reported zero errors and 13 existing
+  Fast Refresh warnings. `aube audit` found no known vulnerabilities.
+- `aube run bench:pq -- --run` completed five operations in each of Node and
+  jsdom (10 local measurements). Actionlint 1.7.12 and ShellCheck 0.11.0
+  passed all **4 workflows, 4 shell scripts, and 2 parsed promotion run
+  blocks**. The official Noble release comparison passed for 0.7.1; all
+  **8 freshness invariants** passed unchanged.
+- The ordinary and extracted-archive browser suites each passed **40/40**,
+  with zero skipped, unexpected, or flaky results and no retries. The ordinary
+  production build passed; the archive suite served extracted bytes without
+  rebuilding. Both suites observed `QR_CRYPT_DAMAGED_ARTIFACT_EXECUTED` from
+  the damaged JavaScript while healthy controls and unchanged originals
+  booted. The ordinary evidence run repeated an earlier 40/40 pass after a
+  verifier-only JSON filename collision; no source changed.
+- The ZIP digest and all **19 extracted members**, including `INSTALL.txt`
+  and `SHA256SUMS.files`, matched before and after the archive suite. All
+  **17 application payload files** matched the ordinary tested build. The
+  actual ZIP SHA-256, `SHA256SUMS`, and exported `tested_archive_sha256` agreed:
+  `13b980fb6a05915b06bcf74782b5a53e13f2388f81e18568601ce155ca00d948`.
+
+The unimplemented `OCB2` prefix, backup-type branches, and synthetic backup
+sizing were removed; unknown inputs remain rejected. The longest current
+1,000B frame (`pq-public-identity`) measures **1,525 characters**. The raw
+1,100B case measures **1,659 characters**, fitting EC-Q's 1,663-character
+capacity but rejected by the unchanged 1,000B chunk limit. Active artifact
+bytes and frame-count goldens remain unchanged.
+
+Publication regressions execute the actual inline publisher with stubbed
+GitHub and Docker/Cosign boundaries. Live signing/publication was not performed;
+hosted CI and final independent review remain separate gates. The assurance
+limits and `release-approved` blocker above remain unchanged.
+
+`size-goldens` was stamped 2026-09-07 after its tests passed in the complete
+suite; other unit dates and all invariants were retained. The capacity documentation
+review and Linux Chromium Pixel 7 emulation do not supply Android Chrome or
+iOS Safari device measurements: `browser-support` remains incomplete with
+`last_checked: null`, and [browser-matrix.md](../develop/browser-matrix.md)
+is unchanged. The unrelated due `toolchain` update was not performed.
+
 ## 2. Prohibited Claims (UI / README / CI)
 
 None of the following may be used in UI, README, or CI displays.

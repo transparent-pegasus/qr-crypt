@@ -531,7 +531,7 @@ units:
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-08-08
+    last_checked: 2026-09-07
     files:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
       - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
