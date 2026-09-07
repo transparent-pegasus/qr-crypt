@@ -144,6 +144,10 @@ units:
       - tests/unit/serve-dist.test.ts # executable containment and server startup contract
       - tests/unit/release-tag-read.test.ts # extracts assert_canonical_tag and read_canonical_tag from github-release.yml; breaks if either helper is renamed or reshaped
       - tests/unit/release-audit-gate.test.ts # pins the release build audit ordering and build -> sign -> publish needs chain
+      - tests/unit/release-publication.test.ts # executes the inline publisher across absent, draft, published, and create-race states
+      - tests/fixtures/release-publication.ts # real archive/checksum inputs and isolated publication-script execution
+      - tests/fixtures/release-publication-command.py # offline GitHub release metadata, asset state, and mutation observations
+      - tests/fixtures/workflow.ts # parses the actual workflow for structural checks and inline shell extraction
       - tests/unit/workflow-action-pins.test.ts # fails when any workflow references an external action by tag instead of a commit
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
@@ -195,6 +199,11 @@ units:
       Review release-packaged-pwa.test.ts, release-tested-archive.test.ts, and
       crypto-release-check.test.ts with their registered fixtures. Their controlled
       child results cover orchestration and rejection, not real browser execution.
+      Review release-publication.test.ts with its publication and workflow fixtures:
+      execute the actual inline publisher against absent, draft, published, and
+      create-race states; retain authoritative draft ownership/metadata checks and
+      verification-only behavior for already-published releases. Structural audit
+      assertions consume parsed YAML rather than a separate indentation parser.
       Confirm release-artifact.spec.ts uses artifact-browser.ts to exercise healthy
       and damaged copies through the existing app-boot.spec.ts, requires the damaged
       asset's pageError and URL, and preserves original byte/boot controls. It must
@@ -221,6 +230,7 @@ units:
       bash scripts/check-crypto-release.sh
       aube run test -- tests/unit/release-tag-read.test.ts
       aube run test -- tests/unit/release-audit-gate.test.ts
+      aube run test -- tests/unit/release-publication.test.ts
       aube run test -- tests/unit/generate-install-txt.test.ts
       aube run test -- tests/unit/release-build-determinism.test.ts
       aube run test -- tests/unit/release-static-closure.test.ts
