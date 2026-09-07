@@ -171,7 +171,7 @@ export function IdentityDetails({
                         : t("keyDetail.badge.legacyProfile")}
                     </Badge>
                   </div>
-                  <p className="font-mono text-sm">
+                  <p className="font-mono text-sm [overflow-wrap:anywhere]">
                     {t("common.fingerprintCompare", {
                       value: formatFingerprint(generation.identityFingerprint),
                     })}
