@@ -59,9 +59,6 @@ function artifactTypeFromBytes(artifactBytes: Uint8Array): V2ArtifactType {
   ) {
     throw new AppError("INVALID_QR_PAYLOAD")
   }
-  if (type === "encrypted-seed-backup") {
-    throw new AppError("UNSUPPORTED_ALGORITHM")
-  }
   return type as V2ArtifactType
 }
 
@@ -93,10 +90,6 @@ export class TransferAssembler {
       frame = validateQrFrameV2(decodeFramePayload(frameText))
     } catch (error) {
       return this.#fail(error instanceof AppError ? error.code : "INVALID_QR_PAYLOAD")
-    }
-
-    if (frame.artifactType === "encrypted-seed-backup") {
-      return this.#fail("UNSUPPORTED_ALGORITHM")
     }
 
     if (this.#active === undefined) {

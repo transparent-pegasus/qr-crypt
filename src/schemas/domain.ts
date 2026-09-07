@@ -256,12 +256,11 @@ export const V2_ARTIFACT_TYPES = [
   "sym-message",
   "symmetric-key",
   "pq-public-identity",
-  "encrypted-seed-backup",
 ] as const
 export type V2ArtifactType = (typeof V2_ARTIFACT_TYPES)[number]
 export type StorableArtifactKind = Exclude<
   V2ArtifactType,
-  "pq-message" | "sym-message" | "encrypted-seed-backup"
+  "pq-message" | "sym-message"
 >
 
 // Symmetric artifacts are single-frame by owner decision (docs/develop/deviations.md).

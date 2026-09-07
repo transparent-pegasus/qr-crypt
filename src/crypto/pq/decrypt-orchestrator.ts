@@ -25,7 +25,7 @@ import type {
 } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
-import { assertActiveSuite, suiteComponents } from "@/crypto/pq/suites"
+import { suiteComponents } from "@/crypto/pq/suites"
 import { zeroize } from "@/crypto/pq/zeroize"
 
 interface ResolvedSigningKey {
@@ -52,7 +52,6 @@ export async function decryptPqMessage(
   args: DecryptPqMessageArgs,
 ): Promise<PqDecryptResult> {
   const components = suiteComponents(args.envelope.suite)
-  assertActiveSuite(args.envelope.suite)
   if (
     args.recipient.kem.algorithm !== components.kem ||
     args.recipient.kem.keyId !== args.envelope.recipientKemKeyId ||

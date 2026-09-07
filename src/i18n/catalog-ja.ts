@@ -55,8 +55,6 @@ export const ja = {
   "errors.INVALID_QR_PREFIX": "このQRコードは本アプリの形式ではありません。",
   "errors.INVALID_QR_PAYLOAD":
     "QRコードの内容を読み取れませんでした。形式が不正か、破損しています。",
-  "errors.UNSUPPORTED_PROTOCOL_VERSION":
-    "新しいバージョンのアプリで作成されたQRコードです。このインストールでは読み取れません。",
   "errors.UNSUPPORTED_ALGORITHM": "対応していない暗号方式です。",
   "errors.KEY_NOT_FOUND": "対応する鍵が見つかりません。",
   "errors.KEY_TYPE_MISMATCH": "選択した鍵はこの操作に使用できません。",

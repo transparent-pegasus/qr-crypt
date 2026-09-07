@@ -53,8 +53,6 @@ export const en = {
   "errors.INVALID_QR_PREFIX": "This QR code is not in this app's format.",
   "errors.INVALID_QR_PAYLOAD":
     "The QR code contents could not be read. The format is invalid or the data is damaged.",
-  "errors.UNSUPPORTED_PROTOCOL_VERSION":
-    "This QR code was created by a newer version of the app. This installation cannot read it.",
   "errors.UNSUPPORTED_ALGORITHM": "This cryptographic algorithm is not supported.",
   "errors.KEY_NOT_FOUND": "The matching key could not be found.",
   "errors.KEY_TYPE_MISMATCH": "The selected key cannot be used for this operation.",
