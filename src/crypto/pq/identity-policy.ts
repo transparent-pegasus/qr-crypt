@@ -1,9 +1,9 @@
-import { assertActiveProfile, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
+import { assertActiveProfile, resolveSuite } from "@/crypto/pq/suites"
 import type { PostQuantumIdentity, PqPublicBundleRecord } from "@/schemas/domain"
 
 export function assertUsableIdentity(identity: PostQuantumIdentity): void {
   assertActiveProfile(identity.profile)
-  assertActiveSuite(resolveSuite(identity.kem.algorithm, identity.signing.algorithm))
+  resolveSuite(identity.kem.algorithm, identity.signing.algorithm)
 }
 
 export function isUsableIdentity(identity: PostQuantumIdentity): boolean {
@@ -17,7 +17,7 @@ export function isUsableIdentity(identity: PostQuantumIdentity): boolean {
 
 export function isUsableBundle(record: PqPublicBundleRecord): boolean {
   try {
-    assertActiveSuite(resolveSuite(record.kem.algorithm, record.signing.algorithm))
+    resolveSuite(record.kem.algorithm, record.signing.algorithm)
     return true
   } catch {
     return false

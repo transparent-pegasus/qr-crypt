@@ -30,7 +30,6 @@ import {
   encodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import { buildPublicBundle, rotateIdentity } from "@/crypto/pq/identity"
-import { assertUsableIdentity } from "@/crypto/pq/identity-policy"
 import { zeroize } from "@/crypto/pq/zeroize"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { useCompatibilityMode } from "@/hooks/use-compatibility-mode"
@@ -261,7 +260,6 @@ export function KeyDetailContent({
     setBusy(true)
     setError(null)
     try {
-      assertUsableIdentity(target)
       const artifactType: StorableArtifactKind = "pq-public-identity"
       const artifactBytes = encodePublicIdentityBundleV2(buildPublicBundle(target))
       const minimumFrameBytes = minimumFrameBytesForArtifact(artifactBytes.byteLength)

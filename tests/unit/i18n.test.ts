@@ -57,6 +57,11 @@ describe("i18n catalog", () => {
       "keyDetail.symmetricQr.secretTitle",
       "keyDetail.symmetricQr.secretBody",
       "common.riskUnderstood",
+      "keyDetail.badge.legacyProfile",
+      "keyDetail.identity.legacyNote",
+      "keyList.bundle.legacyNote",
+      "decrypt.pqUnsupported.body",
+      "errors.UNSUPPORTED_PROTOCOL_VERSION",
     ]) {
       expect(messages.en).not.toHaveProperty(removedKey)
       expect(messages.ja).not.toHaveProperty(removedKey)

@@ -27,9 +27,6 @@ interface SplitIntoFramesArgs {
 
 export async function splitIntoFrames(args: SplitIntoFramesArgs): Promise<QrFrameV2[]> {
   const { artifactType, artifactBytes, frameBytes } = args
-  if (artifactType === "encrypted-seed-backup") {
-    throw new AppError("UNSUPPORTED_ALGORITHM")
-  }
   if (!(artifactBytes instanceof Uint8Array) || artifactBytes.byteLength === 0) {
     throw new AppError("INVALID_QR_PAYLOAD")
   }

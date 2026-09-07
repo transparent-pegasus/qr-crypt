@@ -7,8 +7,6 @@
 //     (paste/file import) and the logical type.
 //   - Display always uses OCF2 (frameCount≥1). Frame chunks split raw artifact-CBOR
 //     bytes directly; re-encoding an inner string as base64url is prohibited.
-//   - OCB2 is reserved only: unconditionally rejected everywhere (never generate,
-//     never accept).
 import type { QrFrameV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { decodeQrFrameV2, encodeQrFrameV2 } from "@/crypto/pq/canonical-cbor"
@@ -17,6 +15,7 @@ import {
   MAX_ARTIFACT_BYTES_ABSOLUTE,
   MAX_FRAME_PAYLOAD_CHARS,
 } from "@/lib/limits"
+import { V2_ARTIFACT_TYPES } from "@/schemas/domain"
 
 // artifactType ↔ prefix mapping; reusing v1 prefixes is prohibited.
 export const QR_PREFIX_V2 = {
@@ -24,7 +23,6 @@ export const QR_PREFIX_V2 = {
   "sym-message": "OCA2:",
   "symmetric-key": "OCK2:",
   "pq-public-identity": "OCI2:",
-  "encrypted-seed-backup": "OCB2:",
   frame: "OCF2:",
 } as const
 
@@ -53,10 +51,8 @@ export function classifyV2Payload(text: string): ClassifiedV2Payload | null {
   return null
 }
 
-// OCB2 is reserved and rejected by every decoder; the display side must not call it valid.
 export function isQrCryptPayload(payload: string): boolean {
-  const classified = classifyV2Payload(payload)
-  return classified !== null && classified.kind !== "encrypted-seed-backup"
+  return classifyV2Payload(payload) !== null
 }
 
 // Single payload (bare OC?2) → raw artifact bytes. The caller performs typed validation
@@ -65,10 +61,6 @@ export function splitV2Payload(text: string): { kind: V2ArtifactType; bytes: Uin
   const classified = classifyV2Payload(text)
   if (classified === null) throw new AppError("INVALID_QR_PREFIX")
   if (classified.kind === "frame") throw new AppError("INVALID_QR_PAYLOAD")
-  if (classified.kind === "encrypted-seed-backup") {
-    // Reserved prefix: unconditionally rejected.
-    throw new AppError("UNSUPPORTED_ALGORITHM")
-  }
   if (text.length > MAX_V2_PAYLOAD_CHARS) throw new AppError("INVALID_QR_PAYLOAD")
   const body = text.slice(classified.prefix.length)
   if (body.length === 0) throw new AppError("INVALID_QR_PAYLOAD")
@@ -85,7 +77,7 @@ export function splitV2Payload(text: string): { kind: V2ArtifactType; bytes: Uin
 
 // Raw artifact bytes → single payload string (bare OC?2).
 export function buildV2Payload(kind: V2ArtifactType, bytes: Uint8Array): string {
-  if (kind === "encrypted-seed-backup") throw new AppError("UNSUPPORTED_ALGORITHM")
+  if (!V2_ARTIFACT_TYPES.includes(kind)) throw new AppError("INVALID_QR_PAYLOAD")
   return `${QR_PREFIX_V2[kind]}${toBase64Url(bytes)}`
 }
 

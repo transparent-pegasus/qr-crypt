@@ -22,7 +22,7 @@ import {
 import { payloadFits, renderQrSvgString } from "@/qr/encode"
 import { TransferAssembler } from "@/qr/multipart/assemble"
 import { splitIntoFrames } from "@/qr/multipart/split"
-import { encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/wire-codec"
+import { decodeFramePayload, encodeFrameToPayload, QR_PREFIX_V2 } from "@/qr/wire-codec"
 import {
   type QrFrameV2,
   SINGLE_FRAME_ARTIFACT_TYPES,
@@ -96,36 +96,6 @@ function publicIdentityArtifact(name: string): Uint8Array {
 }
 
 function artifactFixtures(): ArtifactFixture[] {
-  // OCB2 is reserved and does not yet have a wire schema. Pin this as a capacity fixture
-  // for the maximum public keys + encrypted seeds currently stored, not as a contract
-  // for future enablement.
-  const encryptedSeedBackup = encodeCanonicalCbor({
-    version: 2,
-    type: "encrypted-seed-backup",
-    identityId: KEY_ID,
-    name: "テスト",
-    profile: "maximum",
-    kem: {
-      algorithm: "ML-KEM-1024",
-      keyId: KEY_ID,
-      publicKey: new Uint8Array(1568).fill(0x88),
-      encryptedSeed: {
-        iv: new Uint8Array(12).fill(0xaa),
-        ciphertext: new Uint8Array(80).fill(0xbb),
-      },
-    },
-    signing: {
-      algorithm: "ML-DSA-87",
-      keyId: KEY_ID,
-      publicKey: new Uint8Array(2592).fill(0x99),
-      encryptedSeed: {
-        iv: new Uint8Array(12).fill(0xcc),
-        ciphertext: new Uint8Array(48).fill(0xdd),
-      },
-    },
-    createdAt: CREATED_AT,
-  })
-
   return [
     {
       label: "signed / empty plaintext",
@@ -181,24 +151,6 @@ function artifactFixtures(): ArtifactFixture[] {
         1_000: 5,
       },
     },
-    {
-      label: "OCB2 encrypted-seed-backup reserved fixture",
-      artifactType: "encrypted-seed-backup",
-      bytes: encryptedSeedBackup,
-      expectedBytes: 4637,
-      expectedFrames: {
-        100: 47,
-        200: 24,
-        300: 16,
-        400: 12,
-        500: 10,
-        600: 8,
-        700: 7,
-        800: 6,
-        900: 6,
-        1_000: 5,
-      },
-    },
   ]
 }
 
@@ -222,23 +174,6 @@ function worstMetadataFrame(
   }
 }
 
-async function reservedBackupFrames(
-  artifactBytes: Uint8Array,
-  frameBytes: number,
-): Promise<QrFrameV2[]> {
-  const frameCount = Math.ceil(artifactBytes.byteLength / frameBytes)
-  return Array.from({ length: frameCount }, (_, frameIndex) => ({
-    version: 2,
-    type: "qr-frame",
-    transferId: new Uint8Array(16).fill(0xee),
-    artifactType: "encrypted-seed-backup",
-    frameIndex,
-    frameCount,
-    totalByteLength: artifactBytes.byteLength,
-    chunk: artifactBytes.slice(frameIndex * frameBytes, (frameIndex + 1) * frameBytes),
-  }))
-}
-
 describe("maximum canonical CBOR artifact sizing", () => {
   it("pins the complete active density grid", () => {
     expect(FRAME_BYTES_VALUES).toEqual(FRAME_BYTES)
@@ -249,10 +184,7 @@ describe("maximum canonical CBOR artifact sizing", () => {
       expect(fixture.bytes.byteLength).toBe(fixture.expectedBytes)
       for (const frameBytes of FRAME_BYTES) {
         const expectedFrames = fixture.expectedFrames[frameBytes]
-        if (
-          fixture.artifactType !== "encrypted-seed-backup" &&
-          expectedFrames > env.qrMaxFrames
-        ) {
+        if (expectedFrames > env.qrMaxFrames) {
           await expect(
             splitIntoFrames({
               artifactType: fixture.artifactType,
@@ -262,14 +194,11 @@ describe("maximum canonical CBOR artifact sizing", () => {
           ).rejects.toMatchObject({ code: "QR_TOO_LARGE" })
           continue
         }
-        const frames =
-          fixture.artifactType === "encrypted-seed-backup"
-            ? await reservedBackupFrames(fixture.bytes, frameBytes)
-            : await splitIntoFrames({
-                artifactType: fixture.artifactType,
-                artifactBytes: fixture.bytes,
-                frameBytes,
-              })
+        const frames = await splitIntoFrames({
+          artifactType: fixture.artifactType,
+          artifactBytes: fixture.bytes,
+          frameBytes,
+        })
         expect(frames).toHaveLength(expectedFrames)
         for (const frame of frames) {
           const payload = encodeFrameToPayload(frame)
@@ -308,23 +237,26 @@ describe("maximum canonical CBOR artifact sizing", () => {
     const longest = payloadLengths.reduce((current, candidate) =>
       candidate.payloadLength > current.payloadLength ? candidate : current,
     )
-    expect(longest).toEqual({
-      artifactType: "encrypted-seed-backup",
-      payloadLength: 1_529,
+    expect(longest, JSON.stringify(payloadLengths)).toEqual({
+      artifactType: "pq-public-identity",
+      payloadLength: 1_525,
     })
   }, 60_000)
 
-  it("pins the forbidden 1100B density exactly at the EC-Q capacity", () => {
+  it("rejects a 1100B chunk even though its raw frame fits EC-Q", () => {
     const rawFrame = worstMetadataFrame(
-      "encrypted-seed-backup",
+      "pq-public-identity",
       FRAME_BYTES_MAX + FRAME_BYTES_STEP,
     )
     expect(rawFrame.chunk).toHaveLength(1_100)
     const rawFrameBytes = encodeCanonicalCbor({ ...rawFrame })
     const payload = `${QR_PREFIX_V2.frame}${toBase64Url(rawFrameBytes)}`
 
-    expect(payload).toHaveLength(1_663)
+    expect(payload).toHaveLength(1_659)
     expect(payloadFits(payload, "Q")).toBe(true)
+    expect(() => decodeFramePayload(payload)).toThrowError(
+      expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+    )
   })
 
   it("signed sizing formula stays exact across canonical byte-string header boundaries", () => {

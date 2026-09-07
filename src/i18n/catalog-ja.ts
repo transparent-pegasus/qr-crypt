@@ -55,8 +55,6 @@ export const ja = {
   "errors.INVALID_QR_PREFIX": "このQRコードは本アプリの形式ではありません。",
   "errors.INVALID_QR_PAYLOAD":
     "QRコードの内容を読み取れませんでした。形式が不正か、破損しています。",
-  "errors.UNSUPPORTED_PROTOCOL_VERSION":
-    "新しいバージョンのアプリで作成されたQRコードです。このインストールでは読み取れません。",
   "errors.UNSUPPORTED_ALGORITHM": "対応していない暗号方式です。",
   "errors.KEY_NOT_FOUND": "対応する鍵が見つかりません。",
   "errors.KEY_TYPE_MISMATCH": "選択した鍵はこの操作に使用できません。",
@@ -112,7 +110,7 @@ export const ja = {
   "boot.wiped.body": "論理削除を試行しました。物理消去は保証されません。",
   "boot.wiped.backOnline": "オンラインページへ戻る",
   "boot.partialFailure.retryHint":
-    "このタブを閉じてください。再び利用するには、端末を完全フォーマットしてからアプリを導入し直してください。",
+    "このタブを閉じてください。アプリの初期化や通常のフォーマットでは物理消去は保証されません。再び利用するには、記憶媒体に適したサニタイズ手順に従うか端末を交換してから、新規インストールしてください。",
 
   "gate.install.error":
     "インストールを開始できませんでした。ブラウザーのメニューから操作してください。",
@@ -287,9 +285,6 @@ export const ja = {
   "keyDetail.destroy.body":
     "作成日時: {dates}。このアプリがこれらの世代のために開いたままにしている復号経路を閉じます。これらの鍵宛に送られ、まだ復号していないメッセージは、ここでは開けなくなります。論理削除のため記録媒体からバイト列が消える保証はなく、既に別タブへ読み込まれた複製はこの操作の対象外です。",
   "keyDetail.destroy.confirm": "破棄する",
-  "keyDetail.badge.legacyProfile": "非対応（旧プロファイル）",
-  "keyDetail.identity.legacyNote":
-    "非対応（旧プロファイル）: 暗号処理とQR再出力はできません。",
   "keyDetail.identity.oldNote": "旧世代: 復号/検証専用",
   "keyDetail.identity.activeNote": "暗号化・署名に使用可能",
   "keyDetail.identity.kemFingerprintLabel": "暗号化用公開鍵 {algorithm}",
@@ -332,8 +327,6 @@ export const ja = {
   "keyList.bundle.badge.unverified": "未確認",
   "keyList.bundle.fingerprintKem": "受信公開鍵 {algorithm}",
   "keyList.bundle.fingerprintSigning": "署名公開鍵 {algorithm}",
-  "keyList.bundle.legacyNote":
-    "非対応（旧プロファイル）のため、削除以外の操作はできません。",
   "keyList.bundle.revoke": "利用停止",
   "keyList.bundle.revokeTitle": "この公開鍵セットを利用停止にしますか?",
   "keyList.bundle.revokeBody":
@@ -412,8 +405,6 @@ export const ja = {
     "対応するOCA2/OCM2暗号文を入力してください。",
   "decrypt.button.busy": "復号中…",
   "decrypt.button.idle": "復号する",
-  "decrypt.pqUnsupported.body":
-    "この暗号文は現在利用できない旧ポスト量子プロファイルです。",
   "decrypt.signingKeyId": " 鍵ID: {id}",
   "decrypt.importSigningKey": "署名鍵を取り込む",
   "decrypt.result.modalTitle": "復号が完了しました",
@@ -596,7 +587,7 @@ export const ja = {
   "settings.sw.unavailable":
     "この機能は利用できません: Service Worker。オフライン起動を利用できません。",
   "settings.pwa.noUpdatePolicy":
-    "アプリの更新は行わない方針です。新しいバージョンの利用には端末の完全フォーマット後の再インストールが必要です。",
+    "既存のインストールをそのまま更新する方法はサポートしていません。新しいバージョンを使うには、記憶媒体に適したサニタイズ手順に従うか端末を交換してから、新規インストールしてください。アプリの初期化や通常のフォーマットでは物理消去は保証されません。",
   "settings.info.version": "バージョン",
   "settings.info.build": "ビルド",
   "settings.pwa.offlineReadyNote":

@@ -11,8 +11,14 @@ import "./helpers/module-mocks/pq-records"
 import "./helpers/module-mocks/browser-effects"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { resetDefaultBootControllerForTesting } from "@/app/boot/boot-controller"
+import {
+  decodePublicIdentityBundleV2,
+  encodeCanonicalCbor,
+} from "@/crypto/pq/canonical-cbor"
+import { toBase64Url } from "@/lib/base64url"
+import { decodePayload as decodeWirePayload } from "@/qr/decode-artifact"
 import {
   KEM_COMPARISON,
   SIGNING_COMPARISON,
@@ -20,10 +26,7 @@ import {
 } from "../fixtures/fingerprints"
 import { translate } from "@/i18n/messages"
 import { buildV2Payload } from "@/qr/wire-codec"
-import type {
-  PublicIdentityBundleV2,
-  StoredKeyRecord,
-} from "@/schemas/domain"
+import type { StoredKeyRecord } from "@/schemas/domain"
 import { deferred } from "../helpers/deferred"
 import {
   buildSymmetricKeyEnvelopeV2,
@@ -33,11 +36,12 @@ import {
 import {
   buildPublicBundle,
   createIdentity,
+  pqIdentityFingerprint,
+  pqKeyFingerprint,
 } from "./helpers/fakes/pq-crypto"
 import {
   decodePayload,
   decodeSymmetricKeyEnvelopeV2,
-  encodePublicIdentityBundleV2,
   encodeSymmetricKeyEnvelopeV2,
   multipartPayload,
   renderQrDataUrl,
@@ -406,39 +410,60 @@ describe("keys page", () => {
   })
 
   it("rejects a balanced OCI2 bundle before the fingerprint/import flow", async () => {
-    const legacyBundle = {
+    const bytes = encodeCanonicalCbor({
       version: 2,
       type: "pq-public-identity",
-      identityId: "B".repeat(22),
+      identityId: toBase64Url(new Uint8Array(16).fill(1)),
       kem: {
         algorithm: "ML-KEM-768",
-        keyId: "K".repeat(22),
+        keyId: toBase64Url(new Uint8Array(16).fill(2)),
         publicKey: new Uint8Array(1184),
       },
       signing: {
         algorithm: "ML-DSA-65",
-        keyId: "S".repeat(22),
+        keyId: toBase64Url(new Uint8Array(16).fill(3)),
         publicKey: new Uint8Array(1952),
       },
       createdAt: 1_700_000_000_000,
-    } as unknown as PublicIdentityBundleV2
-    encodePublicIdentityBundleV2(legacyBundle)
-    const user = userEvent.setup()
-    await renderApp("/keys")
-    await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
-    await user.click(screen.getByRole("button", { name: "Scan a key QR" }))
-    await user.type(screen.getByLabelText("Key payload"), "OCI2:legacy-balanced")
-    await user.click(screen.getByRole("button", { name: "Read the key" }))
+    })
+    const [parser, cbor] = await Promise.all([
+      vi.importActual<typeof import("@/qr/decode-artifact")>("@/qr/decode-artifact"),
+      vi.importActual<typeof import("@/crypto/pq/canonical-cbor")>(
+        "@/crypto/pq/canonical-cbor",
+      ),
+    ])
+    // Both layers are mocked by the shared UI fixtures; scope the real parsers
+    // to this raw-wire rejection case.
+    await vi.mocked(decodePublicIdentityBundleV2).withImplementation(
+      cbor.decodePublicIdentityBundleV2,
+      async () => {
+        await vi.mocked(decodeWirePayload).withImplementation(parser.decodePayload, async () => {
+          const originalCount = fakeBundles.length
+          const user = userEvent.setup()
+          await renderApp("/keys")
+          await user.click(await screen.findByRole("tab", { name: "Other parties' keys" }))
+          await user.click(screen.getByRole("button", { name: "Scan a key QR" }))
+          fireEvent.change(screen.getByLabelText("Key payload"), {
+            target: { value: buildV2Payload("pq-public-identity", bytes) },
+          })
+          await user.click(screen.getByRole("button", { name: "Read the key" }))
 
-    expect(
-      await screen.findByText("This cryptographic algorithm is not supported."),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole("dialog", {
-        name: "Compare the fingerprint through another channel",
-      }),
-    ).not.toBeInTheDocument()
-    expect(saveBundle).not.toHaveBeenCalled()
+          expect(
+            await screen.findByText(en("errors.INVALID_QR_PAYLOAD")),
+          ).toBeInTheDocument()
+          expect(
+            screen.queryByRole("dialog", {
+              name: "Compare the fingerprint through another channel",
+            }),
+          ).not.toBeInTheDocument()
+          expect(pqKeyFingerprint).not.toHaveBeenCalled()
+          expect(pqIdentityFingerprint).not.toHaveBeenCalled()
+          expect(confirmBundleFingerprint).not.toHaveBeenCalled()
+          expect(saveBundle).not.toHaveBeenCalled()
+          expect(fakeBundles).toHaveLength(originalCount)
+        })
+      },
+    )
   })
 
   it("rejects retired OCP2 and OCS2 single-key prefixes on paste", async () => {

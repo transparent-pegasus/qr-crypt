@@ -302,7 +302,7 @@ describe("relay frame-set parser", () => {
     ["retired OCP2", "OCP2:AA"],
     ["retired OCS2", "OCS2:AA"],
     ["bare OCI2", "OCI2:AA"],
-    ["reserved OCB2", "OCB2:AA"],
+    ["removed OCB2", "OCB2:AA"],
     ["foreign", "https://example.invalid/"],
   ])("rejects %s as a foreign prefix without changing state", (_label, input) => {
     const initial = parseRelayFrameSet([pqPayload(0)])
@@ -316,11 +316,11 @@ describe("relay frame-set parser", () => {
   })
 
   it.each([
-    "symmetric-key",
-    "pq-public-identity",
-    "encrypted-seed-backup",
-  ] satisfies V2ArtifactType[])('rejects wrong outer type "%s"', (artifactType) => {
-    const original = encodeFrameToPayload({
+    ["symmetric-key", "outer-type"],
+    ["pq-public-identity", "outer-type"],
+    ["encrypted-seed-backup", "invalid-frame"],
+  ] as const)('rejects wrong outer type "%s"', (artifactType, code) => {
+    const bytes = encodeCanonicalCbor({
       version: 2,
       type: "qr-frame",
       transferId: Uint8Array.from(TRANSFER_ID),
@@ -330,10 +330,20 @@ describe("relay frame-set parser", () => {
       totalByteLength: 1,
       chunk: Uint8Array.of(1),
     })
+    const original = `${QR_PREFIX_V2.frame}${toBase64Url(bytes)}`
     expect(parseRelayFrameSet([original])).toEqual({
       ok: false,
-      code: "outer-type",
+      code,
     })
+    const initial = parseRelayFrameSet([pqPayload(0)])
+    expect(initial.ok).toBe(true)
+    if (!initial.ok) return
+    const before = structuredClone(initial.set)
+    expect(parseRelayFrameSet([original], initial.set)).toEqual({
+      ok: false,
+      code,
+    })
+    expect(initial.set).toEqual(before)
   })
 
   it("reports pq-message and sym-message frames in one session as a mismatch", () => {

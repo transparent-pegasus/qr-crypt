@@ -12,8 +12,7 @@ import {
 import { toast } from "sonner"
 import { AppError, toAppError } from "@/crypto/errors"
 import { groupLineages } from "@/features/key-lineage"
-import { isUsableBundle, isUsableIdentity } from "@/crypto/pq/identity-policy"
-import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
+import { ACTIVE_PROFILE } from "@/crypto/pq/suites"
 import { generateArtifactId, shortId } from "@/crypto/random"
 import { useTransientClear } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
@@ -66,8 +65,8 @@ import { type UiAlgorithm } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import { qrNameSchema } from "@/schemas/key-schema"
 
-// The generation is the page's own: it distinguishes the result currently on screen
-// from one a later encryption superseded while an export was still running.
+// Each encryption owns a generation, retired by clear or the next encryption.
+// Results keep it so frame rendering and exports follow the same lifetime.
 type EncryptionResult = EncryptedMessage & { generation: number }
 
 const EMPTY_ARTIFACT_BYTES = new Uint8Array()
@@ -169,7 +168,6 @@ export function EncryptPage() {
       bundles.filter(
         (record) =>
           record.revokedAt === undefined &&
-          isUsableBundle(record) &&
           // An in-band check the sender can forge is not an identity proof. Only a
           // fingerprint compared out of band may authorise encryption to this key.
           record.trust === "fingerprint-confirmed",
@@ -180,21 +178,8 @@ export function EncryptPage() {
     (record) => record.recordId === recipientRecordId,
   )
   const signingIdentities = useMemo(
-    () =>
-      identities.filter((identity) => {
-        if (identity.status !== "active") return false
-        if (!isUsableIdentity(identity)) return false
-        if (!selectedRecipient) return identity.profile === ACTIVE_PROFILE
-        try {
-          assertActiveSuite(
-            resolveSuite(selectedRecipient.kem.algorithm, identity.signing.algorithm),
-          )
-          return true
-        } catch {
-          return false
-        }
-      }),
-    [identities, selectedRecipient],
+    () => identities.filter((identity) => identity.status === "active"),
+    [identities],
   )
   const selectedSender = signingIdentities.find(
     (identity) => identity.id === senderIdentityId,
@@ -213,6 +198,7 @@ export function EncryptPage() {
 
   useEffect(
     () => () => {
+      resultGenerationRef.current += 1
       resultAbortRef.current?.abort()
       resultAbortRef.current = null
       resetCompatibilityMode()
@@ -221,6 +207,8 @@ export function EncryptPage() {
   )
 
   const clearTransient = useCallback(() => {
+    resultGenerationRef.current += 1
+    setBusy(false)
     resultAbortRef.current?.abort()
     resultAbortRef.current = null
     resetCompatibilityMode()
@@ -242,6 +230,7 @@ export function EncryptPage() {
 
   const handleEncrypt = async () => {
     if (!canEncrypt) return
+    const generation = ++resultGenerationRef.current
     resultAbortRef.current?.abort()
     resultAbortRef.current = null
     resetCompatibilityMode()
@@ -268,11 +257,11 @@ export function EncryptPage() {
       }
       if (request !== null) {
         const message = await encryptMessage(request)
-        resultGenerationRef.current += 1
+        if (generation !== resultGenerationRef.current) return
         setOutputName(
           t("encrypt.output.suggestedName", { date: formatSuggestedDate(now) }),
         )
-        setResult({ ...message, generation: resultGenerationRef.current })
+        setResult({ ...message, generation })
       }
       if (preferences.autoClearPlaintextAfterEncrypt) {
         setPlaintext("")
@@ -280,9 +269,11 @@ export function EncryptPage() {
       }
       await refreshPq()
     } catch (caught) {
-      setError(toAppError(caught, "ENCRYPTION_FAILED").code)
+      if (generation === resultGenerationRef.current) {
+        setError(toAppError(caught, "ENCRYPTION_FAILED").code)
+      }
     } finally {
-      setBusy(false)
+      if (generation === resultGenerationRef.current) setBusy(false)
     }
   }
 

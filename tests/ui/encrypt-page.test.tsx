@@ -11,6 +11,7 @@ import "./helpers/module-mocks/pq-records"
 import "./helpers/module-mocks/browser-effects"
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { toast } from "sonner"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
 import {
@@ -47,6 +48,50 @@ import { qrPngBlob } from "./helpers/fakes/browser-effects"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 const defaultQrMaxFrames = env.qrMaxFrames
+const defaultAutoClearSeconds = env.autoClearSeconds
+
+function setVisibility(value: DocumentVisibilityState): void {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value,
+  })
+}
+
+function clearInBackground(): void {
+  env.autoClearSeconds = 0
+  act(() => {
+    setVisibility("hidden")
+    document.dispatchEvent(new Event("visibilitychange"))
+  })
+  act(() => {
+    setVisibility("visible")
+    document.dispatchEvent(new Event("visibilitychange"))
+  })
+}
+
+async function settleEncryption(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+}
+
+function deferEncryption(kind: "symmetric" | "pq") {
+  const pending = deferred<void>()
+  if (kind === "symmetric") {
+    const seal = sealSymMessage.getMockImplementation()!
+    sealSymMessage.mockImplementationOnce(async (args) => {
+      await pending.promise
+      return seal(args)
+    })
+  } else {
+    const encrypt = encryptPq.getMockImplementation()!
+    encryptPq.mockImplementationOnce(async (args) => {
+      await pending.promise
+      return encrypt(args)
+    })
+  }
+  return pending
+}
 
 async function chooseSelectOption(
   user: ReturnType<typeof userEvent.setup>,
@@ -68,9 +113,106 @@ describe("encrypt page v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
     env.qrMaxFrames = defaultQrMaxFrames
+    env.autoClearSeconds = defaultAutoClearSeconds
+    setVisibility("visible")
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     resetUi()
+  })
+
+  describe.each(["symmetric", "pq"] as const)("%s background clear", (kind) => {
+    async function startEncryption(
+      user: ReturnType<typeof userEvent.setup>,
+    ): Promise<HTMLElement> {
+      await renderApp("/encrypt")
+      if (kind === "symmetric") {
+        await chooseSelectOption(user, "Key", "共通鍵A")
+      } else {
+        await chooseSelectOption(user, "Cryptographic algorithm", /ML-DSA-87/)
+        await choosePqRecipient(user)
+      }
+      await user.type(screen.getByLabelText("Plaintext"), "abandoned plaintext")
+      await user.click(screen.getByRole("button", { name: "Encrypt" }))
+      await waitFor(() =>
+        expect(kind === "symmetric" ? sealSymMessage : encryptPq).toHaveBeenCalledOnce(),
+      )
+      const button = screen.getByRole("button", { name: "Encrypting…" })
+      expect(button).toBeDisabled()
+      return button
+    }
+
+    it.each(["success", "rejection"] as const)(
+      "keeps the page cleared after abandoned encryption %s",
+      async (outcome) => {
+        const pending = deferEncryption(kind)
+        const notifications = vi.spyOn(toast, "info")
+        const user = userEvent.setup()
+        const encryptButton = await startEncryption(user)
+
+        clearInBackground()
+        expect(screen.getByLabelText("Plaintext")).toHaveValue("")
+        expect(notifications).toHaveBeenCalledWith(
+          translate("en", "encrypt.toast.autoCleared"),
+        )
+        const notificationsAfterClear = notifications.mock.calls.length
+
+        if (outcome === "success") pending.resolve()
+        else pending.reject(new AppError("ENCRYPTION_FAILED"))
+        await settleEncryption()
+
+        expect.soft(
+          screen.queryByRole("dialog", { name: "Encryption complete" }),
+        ).not.toBeInTheDocument()
+        expect.soft(screen.queryByRole("alert")).not.toBeInTheDocument()
+        expect.soft(notifications).toHaveBeenCalledTimes(notificationsAfterClear)
+        const plaintext = screen.getByLabelText("Plaintext")
+        expect(plaintext).toHaveValue("")
+        expect(plaintext).toBeEnabled()
+        expect(plaintext.closest("section")).toHaveAttribute("aria-busy", "false")
+        expect(encryptButton).toHaveTextContent(/^Encrypt$/)
+        expect(encryptButton).toBeDisabled()
+      },
+    )
+
+    it.each(["success", "rejection"] as const)(
+      "keeps a newer encryption busy after abandoned %s",
+      async (outcome) => {
+        const previous = deferEncryption(kind)
+        const notifications = vi.spyOn(toast, "info")
+        const user = userEvent.setup()
+        await startEncryption(user)
+
+        clearInBackground()
+        const plaintext = screen.getByLabelText("Plaintext")
+        expect(plaintext).toBeEnabled()
+        const current = deferEncryption(kind)
+        await user.type(plaintext, "current plaintext")
+        await user.click(screen.getByRole("button", { name: "Encrypt" }))
+        await waitFor(() =>
+          expect(kind === "symmetric" ? sealSymMessage : encryptPq).toHaveBeenCalledTimes(2),
+        )
+        const notificationsAfterClear = notifications.mock.calls.length
+
+        if (outcome === "success") previous.resolve()
+        else previous.reject(new AppError("ENCRYPTION_FAILED"))
+        await settleEncryption()
+
+        expect(
+          screen.queryByRole("dialog", { name: "Encryption complete" }),
+        ).not.toBeInTheDocument()
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+        expect(notifications).toHaveBeenCalledTimes(notificationsAfterClear)
+        expect(plaintext).toHaveValue("current plaintext")
+        expect(plaintext).toBeDisabled()
+        expect(plaintext.closest("section")).toHaveAttribute("aria-busy", "true")
+        expect(screen.getByRole("button", { name: "Encrypting…" })).toBeDisabled()
+
+        current.resolve()
+        expect(
+          await screen.findByRole("dialog", { name: "Encryption complete" }),
+        ).toBeInTheDocument()
+      },
+    )
   })
 
   it("offers the two active algorithms and never exposes RSA", async () => {

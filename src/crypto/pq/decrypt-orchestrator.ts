@@ -2,11 +2,11 @@
 //
 // Flow (frozen):
 //   openPqEnvelope (Worker: Decaps → HKDF → successful GCM authentication
-//   → inner-schema validation)
+//   → inner-schema validation; copies unverified plaintext-bearing CBOR to main)
 //   → resolveSigningKey by the inner senderSigningKeyId (repository lookup)
 //     → unknown key: {kind:"signed-key-unknown", senderSigningKeyId}
-//       (do not construct plaintext; zeroize in the Worker; continue to the signing-key
-//       import path)
+//       (withhold plaintext from UI; finally zeroizes the main-thread CBOR copy;
+//       continue to the signing-key import path)
 //     → known key: verifySignedMessage → return plaintext plus messageId / createdAt from
 //       the verified signed body only, never from the pre-verification open
 //       failure: AppError("SIGNATURE_INVALID") (do not display plaintext)
@@ -25,7 +25,7 @@ import type {
 } from "@/schemas/domain"
 import { AppError } from "@/crypto/errors"
 import { DSA_SIZES, KEM_SIZES } from "@/crypto/pq/profiles"
-import { assertActiveSuite, suiteComponents } from "@/crypto/pq/suites"
+import { suiteComponents } from "@/crypto/pq/suites"
 import { zeroize } from "@/crypto/pq/zeroize"
 
 interface ResolvedSigningKey {
@@ -52,7 +52,6 @@ export async function decryptPqMessage(
   args: DecryptPqMessageArgs,
 ): Promise<PqDecryptResult> {
   const components = suiteComponents(args.envelope.suite)
-  assertActiveSuite(args.envelope.suite)
   if (
     args.recipient.kem.algorithm !== components.kem ||
     args.recipient.kem.keyId !== args.envelope.recipientKemKeyId ||
