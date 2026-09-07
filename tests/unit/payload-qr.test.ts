@@ -15,7 +15,9 @@ import {
 } from "@/qr/encode"
 import { buildExportFileName, qrSvgBlob, sanitizeQrFileName } from "@/qr/export-image"
 import { decodePayload, payloadSha256Hex } from "@/qr/decode-artifact"
-import { isQrCryptPayload, QR_PREFIX_V2 } from "@/qr/wire-codec"
+import { encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
+import type { MlKemMessageEnvelopeV2 } from "@/schemas/domain"
+import { buildV2Payload, isQrCryptPayload, QR_PREFIX_V2 } from "@/qr/wire-codec"
 import {
   OCK1_SYMMETRIC_KEY,
   OCM1_MESSAGE_33,
@@ -72,6 +74,21 @@ async function decodePng(payload: string): Promise<string> {
 }
 
 describe("v2-only payload decoding", () => {
+  it("accepts the active signed PQ suite through the OCM2 payload parser", () => {
+    const envelope: MlKemMessageEnvelopeV2 = {
+      version: 2,
+      type: "pq-message",
+      suite: "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM",
+      recipientKemKeyId: KEY_ID,
+      kemCiphertext: new Uint8Array(1_568).fill(0x11),
+      iv: new Uint8Array(12).fill(0x22),
+      ciphertext: new Uint8Array(16).fill(0x33),
+    }
+    const payload = buildV2Payload("pq-message", encodeMlKemEnvelopeV2(envelope))
+
+    expect(decodePayload(payload)).toEqual({ kind: "pq-message", envelope })
+  })
+
   it.each([
     ["OCM1 message", OCM1_MESSAGE_33],
     ["OCK1 symmetric key", OCK1_SYMMETRIC_KEY],

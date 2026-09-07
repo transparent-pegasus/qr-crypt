@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { encodeSignedMessageV2 } from "@/crypto/pq/canonical-cbor"
 import { signBody } from "@/crypto/pq/ml-dsa-signature"
 import { createNobleDsa87, createNobleKem1024 } from "@/crypto/pq/provider-noble"
+import { resolveProviders } from "@/crypto/pq/provider"
 import type {
   EncryptPqMessageRequest,
   VerifySignedMessageRequest,
@@ -15,6 +16,13 @@ import {
   handlePqWorkerRequest,
   wipeNonTransferred,
 } from "@/workers/pq-crypto.worker"
+
+vi.mock("@/crypto/pq/provider", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/crypto/pq/provider")>()
+  const actual = original.resolveProviders("noble")
+  const providers = { kem1024: { ...actual.kem1024 }, dsa87: { ...actual.dsa87 } }
+  return { ...original, resolveProviders: () => providers }
+})
 
 const IDENTITY_ID = toBase64Url(new Uint8Array(16).fill(0x11))
 const KEM_KEY_ID = toBase64Url(new Uint8Array(16).fill(0x22))
@@ -122,6 +130,53 @@ function buildVerifySignedMessageRequest(): VerifySignedMessageRequest {
 }
 
 describe("PQ worker hygiene", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("zeroes the acquired KEM secret and both seeds when DSA key generation throws", async () => {
+    const providers = resolveProviders("noble")
+    const keygen = providers.kem1024.keygen.bind(providers.kem1024)
+    let kemSeed: Uint8Array | undefined
+    let dsaSeed: Uint8Array | undefined
+    let kemSecret: Uint8Array | undefined
+    vi.spyOn(providers.kem1024, "keygen").mockImplementationOnce((seed) => {
+      kemSeed = seed
+      const keys = keygen(seed)
+      kemSecret = keys.secretKey
+      return keys
+    })
+    vi.spyOn(providers.dsa87, "keygen").mockImplementationOnce((seed) => {
+      dsaSeed = seed
+      throw new Error("DSA key generation failed")
+    })
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+
+    const response = await handlePqWorkerRequest({
+      id: "keygen-failure",
+      operation: "generateIdentityKeys",
+      payload: {
+        profile: "maximum",
+        vaultKey: await fixedVaultKey(),
+        identityId: IDENTITY_ID,
+        kemKeyId: KEM_KEY_ID,
+        signingKeyId: SIGNING_KEY_ID,
+      },
+    })
+
+    expect(response).toEqual({
+      id: "keygen-failure",
+      ok: false,
+      code: "ENCRYPTION_FAILED",
+    })
+    expect(kemSeed).toHaveLength(64)
+    expect(dsaSeed).toHaveLength(32)
+    expect(kemSecret).toHaveLength(3_168)
+    expect({
+      kemSeedWiped: kemSeed!.every((byte) => byte === 0),
+      dsaSeedWiped: dsaSeed!.every((byte) => byte === 0),
+      kemSecretWiped: kemSecret!.every((byte) => byte === 0),
+    }).toEqual({ kemSeedWiped: true, dsaSeedWiped: true, kemSecretWiped: true })
+  })
+
   it("zeroes the encrypt request plaintext after a successful call", async () => {
     const request = await buildEncryptRequest()
     const plaintext = request.plaintext
