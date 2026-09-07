@@ -283,9 +283,6 @@ export const en = {
   "keyDetail.destroy.body":
     "Created {dates}. This closes the decryption route this app keeps open for those generations: messages sent to them that have not been decrypted yet can no longer be opened here. It is a logical delete, so it does not assure the bytes leave the storage medium, and a copy already loaded in another open tab is outside this action.",
   "keyDetail.destroy.confirm": "Discard",
-  "keyDetail.badge.legacyProfile": "Unsupported (legacy profile)",
-  "keyDetail.identity.legacyNote":
-    "Unsupported (legacy profile): cryptographic operations and QR re-export are unavailable.",
   "keyDetail.identity.oldNote": "Previous generation: decryption/verification only",
   "keyDetail.identity.activeNote": "Available for encryption and signing",
   "keyDetail.identity.kemFingerprintLabel": "KEM {algorithm}",
@@ -331,8 +328,6 @@ export const en = {
   "keyList.bundle.badge.unverified": "Unverified",
   "keyList.bundle.fingerprintKem": "Recipient public key {algorithm}",
   "keyList.bundle.fingerprintSigning": "Signing public key {algorithm}",
-  "keyList.bundle.legacyNote":
-    "This legacy profile is unsupported, so only deletion is available.",
   "keyList.bundle.revoke": "Disable on this device",
   "keyList.bundle.revokeTitle": "Disable this public-key bundle?",
   "keyList.bundle.revokeBody":

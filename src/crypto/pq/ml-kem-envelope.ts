@@ -10,7 +10,7 @@ import type {
 } from "@/schemas/domain"
 import { AppError, toAppError } from "@/crypto/errors"
 import { randomBytes } from "@/crypto/random"
-import { assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
+import { resolveSuite } from "@/crypto/pq/suites"
 import { MAX_PLAINTEXT_BYTES, MESSAGE_ID_BYTES } from "@/lib/limits"
 
 interface EncryptPqArgs {
@@ -53,7 +53,6 @@ export async function encryptPq(args: EncryptPqArgs): Promise<MlKemMessageEnvelo
       args.recipient.kem.algorithm,
       args.sign.identity.signing.algorithm,
     )
-    assertActiveSuite(suite)
     const sign = {
       senderSigningKeyId: args.sign.identity.signing.keyId,
       algorithm: args.sign.identity.signing.algorithm,

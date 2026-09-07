@@ -31,7 +31,7 @@ import {
   decodeSymmetricKeyEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import { createIdentity } from "@/crypto/pq/identity"
-import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
+import { ACTIVE_PROFILE } from "@/crypto/pq/suites"
 import { validateSymmetricKeyEnvelopeV2 } from "@/crypto/pq/validation"
 import { pqIdentityFingerprint, pqKeyFingerprint } from "@/crypto/pq/wire-bytes"
 import { getOrCreateVaultKey } from "@/crypto/vault/vault-key"
@@ -78,10 +78,6 @@ interface KeyAddDialogProps {
   onOpenChange: (open: boolean) => void
   onCreated: (selection: KeySelection) => Promise<void>
   onImported: () => Promise<void>
-}
-
-function assertUsableBundle(bundle: PublicIdentityBundleV2 | PqPublicBundleRecord): void {
-  assertActiveSuite(resolveSuite(bundle.kem.algorithm, bundle.signing.algorithm))
 }
 
 export function KeyAddDialog({
@@ -283,7 +279,6 @@ export function KeyAddDialog({
   const prepareBundleImport = async (
     bundle: PublicIdentityBundleV2,
   ): Promise<AddView> => {
-    assertUsableBundle(bundle)
     const importedAt = Date.now()
     const [kemFingerprint, signingFingerprint, identityFingerprint] = await Promise.all([
       pqKeyFingerprint("kem", bundle.kem.algorithm, bundle.kem.publicKey),

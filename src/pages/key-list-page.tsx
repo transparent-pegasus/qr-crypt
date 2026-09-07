@@ -1,10 +1,6 @@
 import { useMemo, useState } from "react"
 import { LoaderCircle, Plus, ScanLine } from "lucide-react"
 import { toast } from "sonner"
-import {
-  isUsableBundle,
-  isUsableIdentity,
-} from "@/crypto/pq/identity-policy"
 import { KeyAddDialog, type KeyAddMode } from "@/components/key-add-dialog"
 import {
   KeyDetailDialog,
@@ -309,7 +305,6 @@ export function KeyListPage() {
           {filteredOwnKeyItems.map((item) => {
             if (item.kind === "identity") {
               const { head, previous } = item.group
-              const supported = isUsableIdentity(head)
               return (
                 <button
                   key={head.id}
@@ -328,15 +323,9 @@ export function KeyListPage() {
                     </div>
                     <div className="max-w-[45%] shrink-0 text-right">
                       <Badge
-                        variant={
-                          head.status === "active" && supported
-                            ? "default"
-                            : "secondary"
-                        }
+                        variant={head.status === "active" ? "default" : "secondary"}
                       >
-                        {supported
-                          ? t(`keyStatus.${head.status}`)
-                          : t("keyDetail.badge.legacyProfile")}
+                        {t(`keyStatus.${head.status}`)}
                       </Badge>
                       {previous.length > 0 && (
                         <p className="mt-1 text-xs font-medium text-destructive">
@@ -447,7 +436,6 @@ export function KeyListPage() {
 
       <PeerBundleDetailDialog
         bundle={bundleDetail}
-        supported={bundleDetail === null ? false : isUsableBundle(bundleDetail)}
         busy={bundleBusy}
         onOpenChange={(open) => {
           if (!open) setBundleDetailId(null)
@@ -588,7 +576,6 @@ function BundleList({
   return (
     <>
       {bundles.map((record) => {
-        const supported = isUsableBundle(record)
         const confirmed = record.trust === "fingerprint-confirmed"
         return (
           <button
@@ -611,12 +598,10 @@ function BundleList({
                 </p>
               </div>
               <div className="max-w-[45%] shrink-0 text-right">
-                <Badge variant={supported && confirmed ? "default" : "secondary"}>
-                  {supported
-                    ? confirmed
-                      ? t("keyList.bundle.badge.confirmed")
-                      : t("keyList.bundle.badge.unverified")
-                    : t("keyDetail.badge.legacyProfile")}
+                <Badge variant={confirmed ? "default" : "secondary"}>
+                  {confirmed
+                    ? t("keyList.bundle.badge.confirmed")
+                    : t("keyList.bundle.badge.unverified")}
                 </Badge>
               </div>
             </div>

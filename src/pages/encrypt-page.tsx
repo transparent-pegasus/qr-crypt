@@ -12,8 +12,7 @@ import {
 import { toast } from "sonner"
 import { AppError, toAppError } from "@/crypto/errors"
 import { groupLineages } from "@/features/key-lineage"
-import { isUsableBundle, isUsableIdentity } from "@/crypto/pq/identity-policy"
-import { ACTIVE_PROFILE, assertActiveSuite, resolveSuite } from "@/crypto/pq/suites"
+import { ACTIVE_PROFILE } from "@/crypto/pq/suites"
 import { generateArtifactId, shortId } from "@/crypto/random"
 import { useTransientClear } from "@/app/providers"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
@@ -169,7 +168,6 @@ export function EncryptPage() {
       bundles.filter(
         (record) =>
           record.revokedAt === undefined &&
-          isUsableBundle(record) &&
           // An in-band check the sender can forge is not an identity proof. Only a
           // fingerprint compared out of band may authorise encryption to this key.
           record.trust === "fingerprint-confirmed",
@@ -180,21 +178,8 @@ export function EncryptPage() {
     (record) => record.recordId === recipientRecordId,
   )
   const signingIdentities = useMemo(
-    () =>
-      identities.filter((identity) => {
-        if (identity.status !== "active") return false
-        if (!isUsableIdentity(identity)) return false
-        if (!selectedRecipient) return identity.profile === ACTIVE_PROFILE
-        try {
-          assertActiveSuite(
-            resolveSuite(selectedRecipient.kem.algorithm, identity.signing.algorithm),
-          )
-          return true
-        } catch {
-          return false
-        }
-      }),
-    [identities, selectedRecipient],
+    () => identities.filter((identity) => identity.status === "active"),
+    [identities],
   )
   const selectedSender = signingIdentities.find(
     (identity) => identity.id === senderIdentityId,

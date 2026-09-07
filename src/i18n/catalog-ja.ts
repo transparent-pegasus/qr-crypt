@@ -287,9 +287,6 @@ export const ja = {
   "keyDetail.destroy.body":
     "作成日時: {dates}。このアプリがこれらの世代のために開いたままにしている復号経路を閉じます。これらの鍵宛に送られ、まだ復号していないメッセージは、ここでは開けなくなります。論理削除のため記録媒体からバイト列が消える保証はなく、既に別タブへ読み込まれた複製はこの操作の対象外です。",
   "keyDetail.destroy.confirm": "破棄する",
-  "keyDetail.badge.legacyProfile": "非対応（旧プロファイル）",
-  "keyDetail.identity.legacyNote":
-    "非対応（旧プロファイル）: 暗号処理とQR再出力はできません。",
   "keyDetail.identity.oldNote": "旧世代: 復号/検証専用",
   "keyDetail.identity.activeNote": "暗号化・署名に使用可能",
   "keyDetail.identity.kemFingerprintLabel": "暗号化用公開鍵 {algorithm}",
@@ -332,8 +329,6 @@ export const ja = {
   "keyList.bundle.badge.unverified": "未確認",
   "keyList.bundle.fingerprintKem": "受信公開鍵 {algorithm}",
   "keyList.bundle.fingerprintSigning": "署名公開鍵 {algorithm}",
-  "keyList.bundle.legacyNote":
-    "非対応（旧プロファイル）のため、削除以外の操作はできません。",
   "keyList.bundle.revoke": "利用停止",
   "keyList.bundle.revokeTitle": "この公開鍵セットを利用停止にしますか?",
   "keyList.bundle.revokeBody":

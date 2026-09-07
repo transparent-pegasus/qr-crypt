@@ -9,7 +9,6 @@ import {
   encodeMlKemEnvelopeV2,
   encodeSymMessageEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
-import { isUsableIdentity } from "@/crypto/pq/identity-policy"
 import { validateSymMessageEnvelopeV2 } from "@/crypto/pq/validation"
 import {
   useFeatureSupport,
@@ -97,8 +96,7 @@ export function DecryptPage() {
     parsedDecrypt?.kind === "pq-message"
       ? identities.find(
           (identity) =>
-            identity.kem.keyId === parsedDecrypt.envelope.recipientKemKeyId &&
-            isUsableIdentity(identity),
+            identity.kem.keyId === parsedDecrypt.envelope.recipientKemKeyId,
         )
       : undefined
   const decryptKeyMissing =
@@ -164,8 +162,7 @@ export function DecryptPage() {
       parsed.kind === "pq-message"
         ? identities.find(
             (candidate) =>
-              candidate.kem.keyId === parsed.envelope.recipientKemKeyId &&
-              isUsableIdentity(candidate),
+              candidate.kem.keyId === parsed.envelope.recipientKemKeyId,
           )
         : undefined
     if (
