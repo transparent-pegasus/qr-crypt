@@ -24,10 +24,16 @@ Types and constants are frozen in `src/app/boot/boot-contract.ts`.
   the install server is stopped. The app therefore cannot observe a later
   network reconnection from its own origin, and `navigator.onLine` is the only
   remaining signal. That signal locks; it never wipes. See §2.1.
-- While the display probe sits in a false-negative window, the InstallScreen is
-  not guaranteed to keep blocking. The connectivity gate in §2.1 is what stops
-  that window from opening the Router; the next time the display re-commits
-  online, the symmetric reconciliation re-runs the sentinel check.
+- A successful display probe establishes display-online. Once established, a
+  failed or timed-out display probe retains that state unless
+  `navigator.onLine === false`. Missing, non-boolean, or throwing hints do not
+  establish display-offline. Polling continues, so a temporary request failure
+  leaves the online Home and relay usable without opening the Router.
+- An explicit `offline` event still commits display-offline immediately and
+  aborts any pending display probe. A failed poll with an explicit offline hint
+  also commits display-offline when no event arrives. Cold-start probe failure
+  never establishes online from the hint alone. All offline candidates still
+  pass §2.1; a later display-online recommit re-runs the sentinel check.
 
 ## 2. Boot State Machine (Ahead of the Router)
 
@@ -59,11 +65,11 @@ blocked → (nothing; reload only)
 
 `offline-confirmed` has four possible publication paths — the sentinel-failure
 branch, the post-commit continuation, the display-offline nudge, and an
-`offline` event delivered while probing. All four go through one gate. Gating
-only the sentinel branch would leave the display-offline nudge as a live bypass:
-stopping the install server while the network stays up makes the display probe
-fail, and the nudge would otherwise publish `offline-confirmed` without ever
-re-consulting the sentinel.
+`offline` event delivered while probing. All four go through one gate. Retaining
+confirmed display-online across uncorroborated probe failures prevents a false
+nudge from that path, but an explicit `offline` event can still contradict the
+browser hint. No offline candidate may bypass the hint and deployment checks
+just because the display has committed offline.
 
 The gate publishes `offline-confirmed` only when both hold:
 
@@ -335,7 +341,7 @@ redundant re-acknowledgement is allowed but skipping acknowledgement is not.
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | no wipe                     | The Router is mounted only after the per-generation acknowledgement                                                                                                                      | Deletion attempted on acknowledgement                                                                                                                                              |
 | `wiped` (`online-detected`) | While the display is offline the result and the acknowledgement are shown in the same full-screen shell, and the "reload to continue" action performs a full reload. While it is online the status screen carries the result and a "return to the online page" control that performs the same full reload: the controller stays pinned in this destructive terminal state, so a new JS lifetime is the only route back to the install screen. The Router is not mounted in the current JS lifetime. A successful reset also removes the app-metadata store holding the deployment verdict, so the next boot finds no verdict for this origin. If the install server is no longer reachable — the normal state of an air-gapped device — the offline-publication gate refuses and the controller latches `blocked(deployment-unverified)`. Reload reproduces it. That state is itself non-destructive: it reads nothing and deletes nothing. Recovering a wiped installation therefore means serving the origin again so the app can re-verify; the cost of the lock is availability. | §4 step 6 |
-| `partial-failure`           | Shows only `RESET_FAILED` plus guidance to close the tab / fully format the device; no resume path is provided                                                                           | Kept re-set as evidence of online contact                                                                                                                                          |
+| `partial-failure`           | Shows only `RESET_FAILED` plus guidance to close the tab; before reuse, follow the media-appropriate sanitization guidance in §5 or replace the device. No resume path is provided | Kept re-set as evidence of online contact |
 | `user-requested`            | Settings runs the §4 sequence. On success the app performs a full reload; on partial failure it shows a terminal `RESET_FAILED` state with the failed steps and no resume path | Not re-set (§4 step 6) |
 
 `src/storage/best-effort-reset.ts` supplies the successful-reset database-removal

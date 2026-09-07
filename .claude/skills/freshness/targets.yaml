@@ -144,6 +144,10 @@ units:
       - tests/unit/serve-dist.test.ts # executable containment and server startup contract
       - tests/unit/release-tag-read.test.ts # extracts assert_canonical_tag and read_canonical_tag from github-release.yml; breaks if either helper is renamed or reshaped
       - tests/unit/release-audit-gate.test.ts # pins the release build audit ordering and build -> sign -> publish needs chain
+      - tests/unit/release-publication.test.ts # executes the inline publisher across absent, draft, published, and create-race states
+      - tests/fixtures/release-publication.ts # real archive/checksum inputs and isolated publication-script execution
+      - tests/fixtures/release-publication-command.py # offline GitHub release metadata, asset state, and mutation observations
+      - tests/fixtures/workflow.ts # parses the actual workflow for structural checks and inline shell extraction
       - tests/unit/workflow-action-pins.test.ts # fails when any workflow references an external action by tag instead of a commit
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
@@ -195,6 +199,11 @@ units:
       Review release-packaged-pwa.test.ts, release-tested-archive.test.ts, and
       crypto-release-check.test.ts with their registered fixtures. Their controlled
       child results cover orchestration and rejection, not real browser execution.
+      Review release-publication.test.ts with its publication and workflow fixtures:
+      execute the actual inline publisher against absent, draft, published, and
+      create-race states; retain authoritative draft ownership/metadata checks and
+      verification-only behavior for already-published releases. Structural audit
+      assertions consume parsed YAML rather than a separate indentation parser.
       Confirm release-artifact.spec.ts uses artifact-browser.ts to exercise healthy
       and damaged copies through the existing app-boot.spec.ts, requires the damaged
       asset's pageError and URL, and preserves original byte/boot controls. It must
@@ -221,6 +230,7 @@ units:
       bash scripts/check-crypto-release.sh
       aube run test -- tests/unit/release-tag-read.test.ts
       aube run test -- tests/unit/release-audit-gate.test.ts
+      aube run test -- tests/unit/release-publication.test.ts
       aube run test -- tests/unit/generate-install-txt.test.ts
       aube run test -- tests/unit/release-build-determinism.test.ts
       aube run test -- tests/unit/release-static-closure.test.ts
@@ -446,6 +456,8 @@ units:
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
+      - src/hooks/use-online-status.ts
+      - src/lib/reachability.ts
       - src/app/boot/boot-controller.ts # acquireRelaySession lifecycle/admission contract
       - src/storage/database.ts # exclusive lease, cancellation, and cooperating sensitive writers
       - tests/ui/boot/relay-session-admission.test.tsx # protected read and pending-read cancellation; integration-owned
@@ -512,16 +524,21 @@ units:
       Visibility refresh releases the session first; display eligibility alone
       cannot admit. Reconcile complete identity/key fingerprint comparison with
       the formatFingerprint contract; wire bytes/golden expectations do not move.
+      Reconcile display-online retention with use-online-status.ts and the raw
+      probe in reachability.ts: a successful probe establishes online; a later
+      failed probe retains it unless the browser explicitly reports offline.
+      Offline events still commit immediately, and boot's offline-publication
+      gate remains authoritative for every offline candidate.
       Update dated statements to current state.
     verify: |
       aube run test:pq
-      aube run test -- tests/ui/boot tests/ui/key-list-page.test.tsx tests/ui/online-relay.test.tsx tests/unit/relay-lease.test.ts
-      aube run test:e2e -- tests/e2e/relay-admission.spec.ts
+      aube run test -- tests/ui/boot tests/ui/boot-app.test.tsx tests/ui/online-status.test.tsx tests/ui/offline-ack.test.tsx tests/ui/key-list-page.test.tsx tests/ui/online-relay.test.tsx tests/unit/relay-lease.test.ts
+      aube run test:e2e -- tests/e2e/relay-admission.spec.ts tests/e2e/online-reachability.spec.ts
 
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-08-08
+    last_checked: 2026-09-07
     files:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
       - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
@@ -547,7 +564,7 @@ units:
       per-artifact effective density clamp, including that it is never
       persisted and that compatible dwell remains 2000ms at the 1000B density
       floor; the frames × chunk 128,000B absolute artifact ceiling; the 1,000B
-      per-chunk ceiling; and the 1,529-character worst-metadata payload against
+      per-chunk ceiling; and the 1,525-character worst-metadata payload against
       EC-Q v40 capacity 1,663.
       Confirm the append-only boot-readable range still accepts every
       historical density integer 100–900 and every historical interval integer

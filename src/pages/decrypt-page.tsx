@@ -9,8 +9,6 @@ import {
   encodeMlKemEnvelopeV2,
   encodeSymMessageEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
-import { isUsableIdentity } from "@/crypto/pq/identity-policy"
-import { assertActiveSuite } from "@/crypto/pq/suites"
 import { validateSymMessageEnvelopeV2 } from "@/crypto/pq/validation"
 import {
   useFeatureSupport,
@@ -40,16 +38,6 @@ import { useI18n, useLocalizedMessage, type LocalizedMessage } from "@/i18n"
 import { countUnicodeFormatCharacters } from "@/lib/bytes"
 import { decodePayload } from "@/qr/decode-artifact"
 import { buildV2Payload } from "@/qr/wire-codec"
-import type { WireSuite } from "@/schemas/domain"
-
-function isActiveWireSuite(suite: WireSuite): boolean {
-  try {
-    assertActiveSuite(suite)
-    return true
-  } catch {
-    return false
-  }
-}
 
 export function DecryptPage() {
   const { language, t } = useI18n()
@@ -100,9 +88,6 @@ export function DecryptPage() {
     }
   }, [decryptInput])
   const decryptInputInvalid = decryptInput.trim().length > 0 && parsedDecrypt === null
-  const parsedPqUnsupported =
-    parsedDecrypt?.kind === "pq-message" &&
-    !isActiveWireSuite(parsedDecrypt.envelope.suite)
   const decryptSymmetricKey =
     parsedDecrypt?.kind === "sym-message"
       ? symmetricKeys.find((key) => key.id === parsedDecrypt.envelope.keyId)
@@ -111,20 +96,17 @@ export function DecryptPage() {
     parsedDecrypt?.kind === "pq-message"
       ? identities.find(
           (identity) =>
-            identity.kem.keyId === parsedDecrypt.envelope.recipientKemKeyId &&
-            isUsableIdentity(identity),
+            identity.kem.keyId === parsedDecrypt.envelope.recipientKemKeyId,
         )
       : undefined
   const decryptKeyMissing =
     parsedDecrypt !== null &&
-    !parsedPqUnsupported &&
     (parsedDecrypt.kind === "pq-message"
       ? decryptIdentity === undefined
       : decryptSymmetricKey === undefined)
   const canDecrypt =
     !busy &&
     parsedDecrypt !== null &&
-    !parsedPqUnsupported &&
     (parsedDecrypt.kind === "pq-message"
       ? decryptIdentity !== undefined
       : decryptSymmetricKey !== undefined)
@@ -171,7 +153,6 @@ export function DecryptPage() {
       parsed = null
     }
     if (parsed === null) return
-    if (parsed.kind === "pq-message" && !isActiveWireSuite(parsed.envelope.suite)) return
 
     const symmetricKey =
       parsed.kind === "sym-message"
@@ -181,8 +162,7 @@ export function DecryptPage() {
       parsed.kind === "pq-message"
         ? identities.find(
             (candidate) =>
-              candidate.kem.keyId === parsed.envelope.recipientKemKeyId &&
-              isUsableIdentity(candidate),
+              candidate.kem.keyId === parsed.envelope.recipientKemKeyId,
           )
         : undefined
     if (
@@ -342,18 +322,6 @@ export function DecryptPage() {
                 mono
               />
             </div>
-          )}
-          {parsedPqUnsupported && (
-            <Alert
-              variant="destructive"
-              role="alert"
-              aria-labelledby="decrypt-pq-unsupported-title"
-            >
-              <AlertTitle id="decrypt-pq-unsupported-title">
-                {t("keyDetail.badge.legacyProfile")}
-              </AlertTitle>
-              <AlertDescription>{t("decrypt.pqUnsupported.body")}</AlertDescription>
-            </Alert>
           )}
           {decryptKeyMissing && (
             <Alert

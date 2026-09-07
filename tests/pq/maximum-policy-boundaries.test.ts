@@ -29,6 +29,8 @@ import {
 } from "@/crypto/pq/validation"
 import type { PqCryptoClient, PqWorkerOperation } from "@/crypto/pq/worker-client"
 import { toBase64Url } from "@/lib/base64url"
+import { decodePayload } from "@/qr/decode-artifact"
+import { buildV2Payload } from "@/qr/wire-codec"
 import {
   ML_DSA_ALGORITHMS,
   ML_KEM_ALGORITHMS,
@@ -406,6 +408,16 @@ describe("single active post-quantum vocabulary", () => {
         removedSuiteEnvelope(removedSuite) as never,
       )
       expect(() => decodeMlKemEnvelopeV2(encoded)).toThrowError(
+        expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
+      )
+    },
+  )
+
+  it.each(REMOVED_WIRE_SUITES)(
+    "rejects removed suite $suite through the OCM2 payload parser",
+    (removedSuite) => {
+      const bytes = encodeCanonicalCbor(removedSuiteEnvelope(removedSuite))
+      expect(() => decodePayload(buildV2Payload("pq-message", bytes))).toThrowError(
         expect.objectContaining({ code: "INVALID_QR_PAYLOAD" }),
       )
     },

@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react"
-import {
-  probeReachability,
-  type AbortableReachabilityProbe,
-} from "@/lib/reachability"
+import { probeReachability, type AbortableReachabilityProbe } from "@/lib/reachability"
 
 const ONLINE_PROBE_INTERVAL_MS = 4000
 const OFFLINE_PROBE_INTERVAL_MS = 15_000
+
+function browserExplicitlyOffline(): boolean {
+  try {
+    return typeof navigator !== "undefined" && navigator.onLine === false
+  } catch {
+    return false
+  }
+}
 
 export function useOnlineStatus(): boolean {
   // navigator.onLine is only a startup hint. Expose `true` after the
@@ -34,12 +39,11 @@ export function useOnlineStatus(): boolean {
       scheduleInterval()
     }
 
-    function finishProbe(
-      probe: AbortableReachabilityProbe,
-      reachable: boolean,
-    ): void {
+    function finishProbe(probe: AbortableReachabilityProbe, reachable: boolean): void {
       if (!active || activeProbe !== probe) return
       activeProbe = null
+      // A failed display probe alone cannot confirm an offline transition.
+      if (!reachable && currentOnline && !browserExplicitlyOffline()) return
       commitStatus(reachable)
     }
 

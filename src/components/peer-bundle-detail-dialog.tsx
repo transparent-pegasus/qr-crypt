@@ -13,8 +13,6 @@ import type { PqPublicBundleRecord } from "@/schemas/domain"
 
 interface PeerBundleDetailDialogProps {
   bundle: PqPublicBundleRecord | null
-  // Computed by the page: a component must not import a page module.
-  supported: boolean
   busy: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: (record: PqPublicBundleRecord) => void
@@ -24,7 +22,6 @@ interface PeerBundleDetailDialogProps {
 
 export function PeerBundleDetailDialog({
   bundle,
-  supported,
   busy,
   onOpenChange,
   onConfirm,
@@ -56,12 +53,10 @@ export function PeerBundleDetailDialog({
             </DialogHeader>
 
             <div>
-              <Badge variant={supported && confirmed ? "default" : "secondary"}>
-                {supported
-                  ? confirmed
-                    ? t("keyList.bundle.badge.confirmed")
-                    : t("keyList.bundle.badge.unverified")
-                  : t("keyDetail.badge.legacyProfile")}
+              <Badge variant={confirmed ? "default" : "secondary"}>
+                {confirmed
+                  ? t("keyList.bundle.badge.confirmed")
+                  : t("keyList.bundle.badge.unverified")}
               </Badge>
             </div>
 
@@ -87,12 +82,6 @@ export function PeerBundleDetailDialog({
               />
             </details>
 
-            {!supported && (
-              <p className="text-sm text-destructive">
-                {t("keyList.bundle.legacyNote")}
-              </p>
-            )}
-
             {!confirmed && (
               <Button
                 type="button"
@@ -105,22 +94,16 @@ export function PeerBundleDetailDialog({
               </Button>
             )}
 
-            <div
-              className={`grid gap-2 ${
-                supported ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"
-              }`}
-            >
-              {supported && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-auto min-h-11 cursor-pointer whitespace-normal"
-                  disabled={busy}
-                  onClick={() => onRevoke(bundle.recordId)}
-                >
-                  {t("keyList.bundle.revoke")}
-                </Button>
-              )}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-auto min-h-11 cursor-pointer whitespace-normal"
+                disabled={busy}
+                onClick={() => onRevoke(bundle.recordId)}
+              >
+                {t("keyList.bundle.revoke")}
+              </Button>
               <Button
                 type="button"
                 variant="destructive"

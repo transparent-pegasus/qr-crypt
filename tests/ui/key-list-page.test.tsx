@@ -1244,30 +1244,6 @@ describe("key list page", () => {
     expect(screen.getByText("自分のPQ ID")).toBeInTheDocument()
   })
 
-  it("labels unsupported profiles and restricts them to deletion", async () => {
-    const user = userEvent.setup()
-    fakeIdentities[0] = { ...fakeIdentities[0]!, profile: "balanced" as never }
-    await renderKeyList()
-    expect(await screen.findByText("Unsupported (legacy profile)")).toBeInTheDocument()
-    await user.click(rowFor("自分のPQ ID"))
-    const dialog = await screen.findByRole("dialog", { name: "自分のPQ ID" })
-    expect(
-      within(dialog).getByText(
-        /cryptographic operations and QR re-export are unavailable/,
-      ),
-    ).toBeInTheDocument()
-    expect(
-      within(dialog).queryByRole("button", { name: "Show public-key QR" }),
-    ).toBeNull()
-    expect(within(dialog).queryByRole("button", { name: "Rotate" })).toBeNull()
-    expect(
-      within(dialog).queryByRole("button", { name: "Revoke on this device" }),
-    ).toBeNull()
-    expect(
-      within(dialog).getByRole("button", { name: "Delete 自分のPQ ID" }),
-    ).toBeInTheDocument()
-  })
-
   it("renames a symmetric key from the detail dialog", async () => {
     const user = userEvent.setup()
     await renderApp("/keys")

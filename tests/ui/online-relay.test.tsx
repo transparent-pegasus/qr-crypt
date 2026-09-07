@@ -65,7 +65,6 @@ import type {
   MlKemMessageEnvelopeV2,
   QrFrameV2,
   SymMessageEnvelopeV2,
-  V2ArtifactType,
 } from "@/schemas/domain"
 import { env } from "@/schemas/env-schema"
 import {
@@ -174,8 +173,8 @@ function invalidMessagePayloads(artifactType: "pq-message" | "sym-message"): str
   }).map(encodeFrameToPayload)
 }
 
-function wrongOuterPayload(artifactType: V2ArtifactType): string {
-  return encodeFrameToPayload({
+function wrongOuterPayload(artifactType: string): string {
+  const bytes = encodeCanonicalCbor({
     version: 2,
     type: "qr-frame",
     transferId: new Uint8Array(16).fill(0x61),
@@ -185,6 +184,7 @@ function wrongOuterPayload(artifactType: V2ArtifactType): string {
     totalByteLength: 1,
     chunk: Uint8Array.of(1),
   })
+  return `${QR_PREFIX_V2.frame}${toBase64Url(bytes)}`
 }
 
 async function startCapture(user: ReturnType<typeof userEvent.setup>) {
@@ -751,12 +751,12 @@ describe("online relay UI", () => {
   )
 
   it.each([
-    "symmetric-key",
-    "pq-public-identity",
-    "encrypted-seed-backup",
-  ] satisfies V2ArtifactType[])(
+    ["symmetric-key", "relay.error.outerType"],
+    ["pq-public-identity", "relay.error.outerType"],
+    ["encrypted-seed-backup", "relay.error.invalidFrame"],
+  ] as const)(
     "refuses outer type %s at playback and renders nothing",
-    async (artifactType) => {
+    async (artifactType, errorKey) => {
       const user = userEvent.setup()
       renderRelay()
       await user.click(
@@ -776,7 +776,7 @@ describe("online relay UI", () => {
       )
 
       expect(
-        await screen.findByText(translate("en", "relay.error.outerType")),
+        await screen.findByText(translate("en", errorKey)),
       ).toBeInTheDocument()
       expect(renderQr).not.toHaveBeenCalled()
       expect(screen.queryByRole("img")).toBeNull()
@@ -980,7 +980,7 @@ describe("online relay UI", () => {
     [
       "encrypted-seed-backup",
       wrongOuterPayload("encrypted-seed-backup"),
-      translate("en", "relay.error.outerType"),
+      translate("en", "relay.error.invalidFrame"),
     ],
   ])(
     "shows a fixed %s rejection without changing accepted capture progress",
@@ -995,6 +995,15 @@ describe("online relay UI", () => {
       expect(screen.getByText(expectedError)).toBeInTheDocument()
       expect(screen.getByText("1 / 2 frames collected")).toBeInTheDocument()
       expect(scanStop).not.toHaveBeenCalled()
+      expect(
+        screen.queryByLabelText(translate("en", "relay.capture.output.label")),
+      ).toBeNull()
+      expect(copyText).not.toHaveBeenCalled()
+
+      act(() => scanText?.(payload(1)))
+      expect(
+        await screen.findByLabelText(translate("en", "relay.capture.output.label")),
+      ).toHaveValue(`${payload(0)}\n${payload(1)}`)
     },
   )
 

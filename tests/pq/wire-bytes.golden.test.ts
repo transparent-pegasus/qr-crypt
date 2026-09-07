@@ -1,8 +1,9 @@
 // Golden fixtures for v2 byte conventions.
 // Hex values must match docs/spec/qr-protocol-v2.md §8.
 import { describe, expect, it } from "vitest"
-import type { PublicIdentityBundleV2 } from "@/schemas/domain"
+import type { PublicIdentityBundleV2, V2ArtifactType } from "@/schemas/domain"
 import { AppError, type ErrorCode } from "@/crypto/errors"
+import { encodeCanonicalCbor } from "@/crypto/pq/canonical-cbor"
 import {
   buildVaultAadV2,
   hkdfInfoV2,
@@ -11,7 +12,17 @@ import {
   pqIdentityFingerprint,
   pqKeyFingerprint,
 } from "@/crypto/pq/wire-bytes"
-import { encodeFrameToPayload, decodeFramePayload, QR_PREFIX_V2, classifyV2Payload, splitV2Payload } from "@/qr/wire-codec"
+import {
+  buildV2Payload,
+  classifyV2Payload,
+  decodeFramePayload,
+  encodeFrameToPayload,
+  isQrCryptPayload,
+  QR_PREFIX_V2,
+  splitV2Payload,
+} from "@/qr/wire-codec"
+import { decodePayload } from "@/qr/decode-artifact"
+import { toBase64Url } from "@/lib/base64url"
 import { bytesToHex } from "@/lib/bytes"
 import {
   FRAME_CHUNK_MAX_BYTES,
@@ -164,13 +175,43 @@ describe("wire-codec frame codec", () => {
     expect(classifyV2Payload("plain")).toBeNull()
   })
 
-  it("rejects both generation and acceptance of reserved OCB2", () => {
-    expectCode(() => splitV2Payload("OCB2:AAAA"), "UNSUPPORTED_ALGORITHM")
-    expectCode(
-      () => splitV2Payload("OCB2:"),
-      "UNSUPPORTED_ALGORITHM",
-    )
+  it("rejects removed OCB2 as an unrecognized prefix", () => {
+    for (const payload of ["OCB2:AAAA", "OCB2:"]) {
+      expectCode(() => splitV2Payload(payload), "INVALID_QR_PREFIX")
+      expectCode(() => decodePayload(payload), "INVALID_QR_PREFIX")
+      expect(classifyV2Payload(payload)).toBeNull()
+      expect(isQrCryptPayload(payload)).toBe(false)
+    }
   })
+
+  it.each(["encrypted-seed-backup", "unknown-artifact", "frame"])(
+    "rejects runtime invalid bare-artifact kind %s",
+    (kind) => {
+      expectCode(
+        () => buildV2Payload(kind as V2ArtifactType, Uint8Array.of(1)),
+        "INVALID_QR_PAYLOAD",
+      )
+    },
+  )
+
+  it.each(["encrypted-seed-backup", "unknown-artifact"])(
+    "rejects raw OCF2 with unknown artifact type %s",
+    (artifactType) => {
+      const bytes = encodeCanonicalCbor({
+        version: 2,
+        type: "qr-frame",
+        transferId: new Uint8Array(16).fill(1),
+        artifactType,
+        frameIndex: 0,
+        frameCount: 1,
+        totalByteLength: 1,
+        chunk: Uint8Array.of(1),
+      })
+      const payload = `OCF2:${toBase64Url(bytes)}`
+      expectCode(() => decodeFramePayload(payload), "INVALID_QR_PAYLOAD")
+      expectCode(() => decodePayload(payload), "INVALID_QR_PAYLOAD")
+    },
+  )
 
   it("rejects non-frame input passed to decodeFramePayload", () => {
     expectCode(() => decodeFramePayload("OCM2:AAAA"), "INVALID_QR_PREFIX")

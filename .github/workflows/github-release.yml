@@ -360,6 +360,14 @@ jobs:
             fail "published immutable release did not become observable"
           }
 
+          load_release_by_id() {
+            local id="$1"
+            [[ "$id" =~ ^[1-9][0-9]*$ ]] ||
+              fail "release ID is invalid"
+            gh api "repos/$GITHUB_REPOSITORY/releases/$id" \
+              > "$release_json"
+          }
+
           assert_exact_draft() {
             [[ "$(jq -r '.tag_name' "$release_json")" == "$RELEASE_TAG" ]] ||
               fail "draft tag metadata mismatch"
@@ -528,20 +536,27 @@ jobs:
             fail "could not determine whether the canonical tag exists"
           fi
 
-          release_exists=false
+          release_state=absent
           if gh release view "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --json assets,body,isDraft,isImmutable,isPrerelease,name,tagName \
+            --json assets,body,databaseId,isDraft,isImmutable,isPrerelease,name,tagName \
             > "$release_json" 2> "$release_error"; then
-            release_exists=true
+            case "$(jq -r '.isDraft' "$release_json")" in
+              true) release_state=draft ;;
+              false) release_state=published ;;
+              *) fail "release draft state is invalid" ;;
+            esac
           elif ! grep -Eqi 'release not found|HTTP 404' "$release_error"; then
             cat "$release_error" >&2
             fail "could not determine whether the release exists"
           fi
 
-          if [[ "$release_exists" == "true" ]]; then
+          if [[ "$release_state" != "absent" ]]; then
             [[ "$tag_exists" == "true" ]] ||
               fail "release exists without its canonical tag"
+          fi
+
+          if [[ "$release_state" == "published" ]]; then
             assert_exact_published_release
             verify_published_assets
             printf '%s\n' \
@@ -577,7 +592,10 @@ jobs:
               make_latest: "false"
             }' > "$create_payload"
 
-          if gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+          if [[ "$release_state" == "draft" ]]; then
+            # Draft validation needs REST author and asset-state metadata.
+            load_release_by_id "$(jq -r '.databaseId' "$release_json")"
+          elif gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
             --input "$create_payload" \
             > "$release_json" 2> "$create_error"; then
             :
@@ -600,7 +618,7 @@ jobs:
             fi
             [[ "$match_count" -eq 1 ]] ||
               fail "multiple releases unexpectedly use the canonical tag"
-            jq '.[0]' "$release_matches" > "$release_json"
+            load_release_by_id "$(jq -r '.[0].id' "$release_matches")"
 
             if [[ "$(jq -r '.draft' "$release_json")" == "false" ]]; then
               load_published_release_after_publication
@@ -623,8 +641,7 @@ jobs:
             "$archive_path#Static offline deployment bundle" \
             "$checksum_path#SHA-256 checksum" \
             "$bundle_path#Sigstore verification bundle"
-          gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-            > "$release_json"
+          load_release_by_id "$release_id"
           assert_exact_draft_assets
 
           # Close the mutable-draft tag race immediately before publication.

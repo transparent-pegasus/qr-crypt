@@ -1,12 +1,13 @@
 // PQ Worker RPC client.
 //
 // Secret boundary (frozen):
-//   - Never return seeds, expanded secret keys, shared secrets, or derived key bytes
+//   - Never return raw seeds, expanded secret keys, shared secrets, or derived key bytes
 //     outside the Worker.
-//   - Only public keys, KEM ciphertexts, signatures, and final encrypted results leave
-//     the Worker.
-//   - Do not transfer secret buffers (U3). Transfers are limited to public artifacts in
-//     exact-length owned ArrayBuffers; extra backing storage from subarrays is prohibited.
+//   - Replies include public/encrypted artifacts, unverified plaintext-bearing inner
+//     CBOR, and verified plaintext/receipt fields. Only verified plaintext reaches UI.
+//   - Secret-bearing replies use structured cloning; the Worker wipes its copies after
+//     posting. ArrayBuffer transfers (U3) are limited to public artifacts in exact-length
+//     owned buffers; extra backing storage from subarrays is prohibited.
 //   - RPC implements correlation IDs, pre-send input-length checks, Worker termination
 //     on timeout, ignoring late responses, and sanitized errors.
 //   - If the Worker is unavailable, fails to start, or crashes in a browser, fail closed
@@ -83,8 +84,9 @@ export interface EncryptPqMessageRequest {
   }
 }
 
-// Decryption phase 1 returns canonical bytes of the inner SignedMessageV2, not
-// plaintext or receipt fields. Those remain private until verification succeeds.
+// Decryption phase 1 returns canonical inner SignedMessageV2 bytes containing
+// unverified plaintext and receipt fields to the main thread for signer lookup.
+// The caller withholds them from UI until phase 2 verifies the signature.
 export interface OpenPqEnvelopeRequest {
   envelope: MlKemMessageEnvelopeV2
   recipient: {
@@ -104,9 +106,9 @@ export interface OpenedPqEnvelope {
   signatureAlgorithm: MlDsaAlgorithm
 }
 
-// Decryption phase 2: construct and return plaintext plus authenticated messageId / createdAt
-// only after signature verification succeeds. On failure, zeroize inside the Worker and do
-// not create any of those properties.
+// Decryption phase 2 returns plaintext plus authenticated messageId / createdAt only
+// after signature verification succeeds. On failure, zeroize inside the Worker and
+// omit those response properties.
 export interface VerifySignedMessageRequest {
   signedMessageBytes: Uint8Array
   senderPublicKey: Uint8Array

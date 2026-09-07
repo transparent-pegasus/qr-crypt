@@ -23,7 +23,7 @@ import { decision, response } from "../helpers/boot-fixtures"
 import { fakeFeatures } from "./helpers/fakes/feature-detection"
 import { useFakeRegisterSW } from "./helpers/fakes/pwa"
 import { getPreferences } from "./helpers/fakes/preferences"
-import { setTestOnlineStatus, stubReachabilityFetch } from "./helpers/network"
+import { setTestOnlineStatus } from "./helpers/network"
 import {
   expectLanguageField,
   memoryLocalStorage,
@@ -36,10 +36,7 @@ const ACK_TITLE = "Confirm before continuing"
 const JA_ACK_TITLE = "続行前の確認"
 const INSTALL_TITLE = translate("en", "gate.heading")
 
-async function renderWipedOnline(
-  initialLanguage: "en" | "ja",
-  reloadPage: () => void,
-) {
+async function renderWipedOnline(initialLanguage: "en" | "ja", reloadPage: () => void) {
   setTestOnlineStatus(true)
   const controller = createBootController({
     fetchImpl: vi.fn(async () => response("QR-CRYPT-REACHABLE")),
@@ -373,7 +370,9 @@ describe("offline acknowledgement shell", () => {
     })
 
     await renderApp("/encrypt", { bootController: controller, reloadPage })
-    await screen.findByText("Local data was reset after an online connection was detected")
+    await screen.findByText(
+      "Local data was reset after an online connection was detected",
+    )
     await flushDisplayProbe()
     act(() => setTestOnlineStatus(false, { emit: true }))
 
@@ -417,9 +416,7 @@ describe("offline acknowledgement shell", () => {
     act(() => setTestOnlineStatus(false, { emit: true }))
 
     expect(await screen.findByText("RESET_FAILED")).toBeInTheDocument()
-    expect(
-      screen.getByText(/Close this tab.*fully format the device/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/Close this tab\./)).toBeInTheDocument()
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
     expect(
       screen.queryByRole("button", {
@@ -459,15 +456,17 @@ describe("offline acknowledgement shell", () => {
     expect(sentinelFetch).toHaveBeenCalledTimes(1)
 
     // Display probes only: no Window online/offline event is emitted.
-    stubReachabilityFetch(false)
+    setTestOnlineStatus(false)
     act(() => document.dispatchEvent(new Event("visibilitychange")))
     expect(await screen.findByRole("heading", { name: ACK_TITLE })).toBeInTheDocument()
     expect(sentinelFetch).toHaveBeenCalledTimes(1)
     expect(performWipe).not.toHaveBeenCalled()
 
-    stubReachabilityFetch(true)
+    setTestOnlineStatus(true)
     act(() => document.dispatchEvent(new Event("visibilitychange")))
-    await screen.findByText("Local data was reset after an online connection was detected")
+    await screen.findByText(
+      "Local data was reset after an online connection was detected",
+    )
     expect(sentinelFetch).toHaveBeenCalledTimes(2)
     expect(consumeMaintenanceToken).toHaveBeenCalledTimes(1)
     expect(performWipe).toHaveBeenCalledTimes(1)
@@ -536,7 +535,7 @@ describe("offline acknowledgement shell", () => {
       )
       const controller = createBootController({
         fetchImpl: vi.fn(async () => response("not-the-sentinel")),
-      readConnectivityHint: () => "offline",
+        readConnectivityHint: () => "offline",
         readDecision: async () => decision(),
       })
 
@@ -603,7 +602,7 @@ describe("offline acknowledgement shell", () => {
     await renderApp("/encrypt", { bootController: controller })
     expect(await screen.findByText(INSTALL_TITLE)).toBeInTheDocument()
 
-    stubReachabilityFetch(false)
+    setTestOnlineStatus(false)
     act(() => document.dispatchEvent(new Event("visibilitychange")))
     expect(await screen.findByRole("heading", { name: ACK_TITLE })).toBeInTheDocument()
     expect(screen.queryByRole("navigation")).not.toBeInTheDocument()

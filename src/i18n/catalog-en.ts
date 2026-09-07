@@ -53,8 +53,6 @@ export const en = {
   "errors.INVALID_QR_PREFIX": "This QR code is not in this app's format.",
   "errors.INVALID_QR_PAYLOAD":
     "The QR code contents could not be read. The format is invalid or the data is damaged.",
-  "errors.UNSUPPORTED_PROTOCOL_VERSION":
-    "This QR code was created by a newer version of the app. This installation cannot read it.",
   "errors.UNSUPPORTED_ALGORITHM": "This cryptographic algorithm is not supported.",
   "errors.KEY_NOT_FOUND": "The matching key could not be found.",
   "errors.KEY_TYPE_MISMATCH": "The selected key cannot be used for this operation.",
@@ -110,7 +108,7 @@ export const en = {
     "Best-effort logical deletion was attempted. Physical erasure is not guaranteed.",
   "boot.wiped.backOnline": "Return to the online page",
   "boot.partialFailure.retryHint":
-    "Close this tab. To use the app again, fully format the device, then reinstall the app.",
+    "Close this tab. App reset and ordinary formatting do not guarantee physical erasure. Before using the app again, follow media-appropriate sanitization guidance or use a replacement device, then install afresh.",
 
   "gate.install.error":
     "Installation could not be started. Use the browser menu instead.",
@@ -283,9 +281,6 @@ export const en = {
   "keyDetail.destroy.body":
     "Created {dates}. This closes the decryption route this app keeps open for those generations: messages sent to them that have not been decrypted yet can no longer be opened here. It is a logical delete, so it does not assure the bytes leave the storage medium, and a copy already loaded in another open tab is outside this action.",
   "keyDetail.destroy.confirm": "Discard",
-  "keyDetail.badge.legacyProfile": "Unsupported (legacy profile)",
-  "keyDetail.identity.legacyNote":
-    "Unsupported (legacy profile): cryptographic operations and QR re-export are unavailable.",
   "keyDetail.identity.oldNote": "Previous generation: decryption/verification only",
   "keyDetail.identity.activeNote": "Available for encryption and signing",
   "keyDetail.identity.kemFingerprintLabel": "KEM {algorithm}",
@@ -331,8 +326,6 @@ export const en = {
   "keyList.bundle.badge.unverified": "Unverified",
   "keyList.bundle.fingerprintKem": "Recipient public key {algorithm}",
   "keyList.bundle.fingerprintSigning": "Signing public key {algorithm}",
-  "keyList.bundle.legacyNote":
-    "This legacy profile is unsupported, so only deletion is available.",
   "keyList.bundle.revoke": "Disable on this device",
   "keyList.bundle.revokeTitle": "Disable this public-key bundle?",
   "keyList.bundle.revokeBody":
@@ -409,8 +402,6 @@ export const en = {
   "decrypt.invalidBody": "Enter a supported OCA2 or OCM2 ciphertext.",
   "decrypt.button.busy": "Decrypting…",
   "decrypt.button.idle": "Decrypt",
-  "decrypt.pqUnsupported.body":
-    "This ciphertext uses a legacy post-quantum profile that is no longer available.",
   "decrypt.signingKeyId": " Key ID: {id}",
   "decrypt.importSigningKey": "Import a signing key",
   "decrypt.result.modalTitle": "Decryption complete",
@@ -592,7 +583,7 @@ export const en = {
   "settings.sw.unavailable":
     "This feature is unavailable: Service Worker. Offline startup is unavailable.",
   "settings.pwa.noUpdatePolicy":
-    "The app does not update in place. To use a new version, fully format the device and reinstall the app.",
+    "In-place upgrades are not supported. To install a new version, follow media-appropriate sanitization guidance or use a replacement device. App reset and ordinary formatting do not guarantee physical erasure.",
   "settings.info.version": "Version",
   "settings.info.build": "Build",
   "settings.pwa.offlineReadyNote":

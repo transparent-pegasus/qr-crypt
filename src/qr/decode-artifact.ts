@@ -35,9 +35,6 @@ function decodeV2Payload(text: string): DecodedPayload {
   if (classified === null) throw new AppError("INVALID_QR_PREFIX")
   if (classified.kind === "frame") {
     const frame = validateQrFrameV2(decodeFramePayload(text))
-    if (frame.artifactType === "encrypted-seed-backup") {
-      throw new AppError("UNSUPPORTED_ALGORITHM")
-    }
     return { kind: "frame", envelope: frame }
   }
 
@@ -69,8 +66,6 @@ function decodeV2Payload(text: string): DecodedPayload {
           decodePublicIdentityBundleV2(artifact.bytes),
         ),
       }
-    case "encrypted-seed-backup":
-      throw new AppError("UNSUPPORTED_ALGORITHM")
   }
 }
 

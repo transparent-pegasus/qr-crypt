@@ -14,9 +14,11 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppError, messageFor } from "@/crypto/errors"
+import { decodeMlKemEnvelopeV2, encodeCanonicalCbor } from "@/crypto/pq/canonical-cbor"
 import { formatDateTime } from "@/features/presentation"
 import { translate } from "@/i18n/messages"
 import { buildV2Payload } from "@/qr/wire-codec"
+import { decodePayload } from "@/qr/decode-artifact"
 import type {
   MlKemMessageEnvelopeV2,
   PqPublicBundleRecord,
@@ -142,6 +144,23 @@ async function preparePqPayload(): Promise<MlKemMessageEnvelopeV2> {
   return envelope
 }
 
+async function withRealPqParser(run: () => Promise<void>): Promise<void> {
+  const [parser, cbor] = await Promise.all([
+    vi.importActual<typeof import("@/qr/decode-artifact")>("@/qr/decode-artifact"),
+    vi.importActual<typeof import("@/crypto/pq/canonical-cbor")>(
+      "@/crypto/pq/canonical-cbor",
+    ),
+  ])
+  // The shared UI fixtures replace both layers, so restoring only decodePayload
+  // would still accept whatever envelope the fake CBOR decoder returned.
+  await vi.mocked(decodeMlKemEnvelopeV2).withImplementation(
+    cbor.decodeMlKemEnvelopeV2,
+    async () => {
+      await vi.mocked(decodePayload).withImplementation(parser.decodePayload, run)
+    },
+  )
+}
+
 describe("decrypt page v2", () => {
   beforeEach(resetUi)
   afterEach(() => {
@@ -153,6 +172,69 @@ describe("decrypt page v2", () => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     resetUi()
+  })
+
+  it.each([
+    { suite: "ML-KEM-1024+HKDF-SHA256+A256GCM", kemBytes: 1_568 },
+    { suite: "ML-KEM-768+HKDF-SHA256+A256GCM", kemBytes: 1_088 },
+    { suite: "ML-KEM-768+ML-DSA-65+HKDF-SHA256+A256GCM", kemBytes: 1_088 },
+  ])(
+    "shows removed suite $suite as invalid input through the real parser",
+    async ({ suite, kemBytes }) => {
+      const bytes = encodeCanonicalCbor({
+        version: 2,
+        type: "pq-message",
+        suite,
+        recipientKemKeyId: fakeIdentities[0]!.kem.keyId,
+        kemCiphertext: new Uint8Array(kemBytes),
+        iv: new Uint8Array(12),
+        ciphertext: new Uint8Array(16),
+      })
+      await withRealPqParser(async () => {
+        await renderApp("/decrypt")
+        fireEvent.change(await screen.findByLabelText("Ciphertext payload"), {
+          target: { value: buildV2Payload("pq-message", bytes) },
+        })
+
+        expect(
+          await screen.findByRole("alert", {
+            name: translate("en", "decrypt.invalidTitle"),
+          }),
+        ).toBeInTheDocument()
+        expect(screen.getAllByRole("alert")).toHaveLength(1)
+        expect(screen.getByRole("button", { name: "Decrypt" })).toBeDisabled()
+        expect(screen.queryByText(suite)).not.toBeInTheDocument()
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+        expect(decryptPqMessage).not.toHaveBeenCalled()
+      })
+    },
+  )
+
+  it("shows the active suite and recipient with an enabled Decrypt control for real accepted input", async () => {
+    const suite = "ML-KEM-1024+ML-DSA-87+HKDF-SHA256+A256GCM"
+    const recipientKemKeyId = fakeIdentities[0]!.kem.keyId
+    const bytes = encodeCanonicalCbor({
+      version: 2,
+      type: "pq-message",
+      suite,
+      recipientKemKeyId,
+      kemCiphertext: new Uint8Array(1_568),
+      iv: new Uint8Array(12),
+      ciphertext: new Uint8Array(16),
+    })
+    await withRealPqParser(async () => {
+      await renderApp("/decrypt")
+      fireEvent.change(await screen.findByLabelText("Ciphertext payload"), {
+        target: { value: buildV2Payload("pq-message", bytes) },
+      })
+
+      expect(await screen.findByText(suite)).toBeInTheDocument()
+      expect(screen.getByText(recipientKemKeyId)).toBeInTheDocument()
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "Decrypt" })).toBeEnabled(),
+      )
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    })
   })
 
   it("decrypts a pasted OCA2 payload with its stored key and gates the repeated payload as a replay", async () => {

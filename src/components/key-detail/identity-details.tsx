@@ -1,5 +1,4 @@
 import { ChevronDown, QrCode, RefreshCw, Trash2 } from "lucide-react"
-import { isUsableIdentity } from "@/crypto/pq/identity-policy"
 import { Fingerprint } from "@/components/fingerprint"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -32,24 +31,19 @@ export function IdentityDetails({
   onDelete: (identity: PostQuantumIdentity) => void
 }) {
   const { language, t } = useI18n()
-  const supported = isUsableIdentity(identity)
   const old = identity.status !== "active"
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <p className="font-mono text-xs text-muted-foreground">{identity.id}</p>
-        <Badge variant={old || !supported ? "secondary" : "default"}>
-          {supported
-            ? t(`keyStatus.${identity.status}`)
-            : t("keyDetail.badge.legacyProfile")}
+        <Badge variant={old ? "secondary" : "default"}>
+          {t(`keyStatus.${identity.status}`)}
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground">
-        {!supported
-          ? t("keyDetail.identity.legacyNote")
-          : old
-            ? t("keyDetail.identity.oldNote")
-            : t("keyDetail.identity.activeNote")}
+        {old
+          ? t("keyDetail.identity.oldNote")
+          : t("keyDetail.identity.activeNote")}
       </p>
       <Fingerprint
         label={t("common.identityFingerprint")}
@@ -78,7 +72,7 @@ export function IdentityDetails({
         })}
       </p>
       <div className="grid grid-cols-1 gap-2">
-        {supported && !old && (
+        {!old && (
           <Button
             type="button"
             variant="outline"
@@ -90,7 +84,7 @@ export function IdentityDetails({
             {t("keyDetail.button.showPublicKeyQr")}
           </Button>
         )}
-        {supported && identity.status === "active" && (
+        {identity.status === "active" && (
           <>
             <Button
               type="button"
@@ -156,7 +150,6 @@ export function IdentityDetails({
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-2 pt-2">
             {previous.map((generation) => {
-              const generationSupported = isUsableIdentity(generation)
               return (
                 <div key={generation.id} className="space-y-2 rounded-md border p-3">
                   <div className="flex items-center justify-between gap-3">
@@ -166,9 +159,7 @@ export function IdentityDetails({
                       })}
                     </p>
                     <Badge variant="secondary">
-                      {generationSupported
-                        ? t(`keyStatus.${generation.status}`)
-                        : t("keyDetail.badge.legacyProfile")}
+                      {t(`keyStatus.${generation.status}`)}
                     </Badge>
                   </div>
                   <p className="font-mono text-sm [overflow-wrap:anywhere]">

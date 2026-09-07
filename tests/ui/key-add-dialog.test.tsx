@@ -11,16 +11,28 @@ import "./helpers/module-mocks/pq-records"
 import { type ReactNode } from "react"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent, { type UserEvent } from "@testing-library/user-event"
+import { toast } from "sonner"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppProviders } from "@/app/providers"
 import { KeyAddDialog } from "@/components/key-add-dialog"
 import { LanguageProvider } from "@/i18n"
+import { buildV2Payload } from "@/qr/wire-codec"
 import { deferred } from "../helpers/deferred"
 import { fakeFeatures } from "./helpers/fakes/feature-detection"
-import { createSymmetricKeyRecord } from "./helpers/fakes/symmetric-crypto"
-import { createIdentity } from "./helpers/fakes/pq-crypto"
-import { saveKeyRecord } from "./helpers/fakes/key-records"
-import { saveIdentity } from "./helpers/fakes/pq-records"
+import {
+  buildSymmetricKeyEnvelopeV2,
+  createSymmetricKeyRecord,
+  importSymmetricKeyRecordV2,
+} from "./helpers/fakes/symmetric-crypto"
+import { createIdentity, pqKeyFingerprint } from "./helpers/fakes/pq-crypto"
+import { fakeKeys, saveKeyRecord } from "./helpers/fakes/key-records"
+import { saveBundle, saveIdentity } from "./helpers/fakes/pq-records"
+import {
+  encodeSymmetricKeyEnvelopeV2,
+  multipartPayload,
+  setNextMultipartArtifactBytes,
+} from "./helpers/fakes/qr-codec"
+import { emitScannedPayload, startQrScan } from "./helpers/fakes/qr-scanner"
 import { renderApp, resetUi } from "./helpers/render-app"
 
 // resetFakes leaves defaultAlgorithm at A256GCM, so the create view opens on the
@@ -200,7 +212,140 @@ describe("KeyAddDialog abandonment", () => {
 
 describe("KeyAddDialog parent-controlled sessions", () => {
   beforeEach(resetUi)
-  afterEach(resetUi)
+  afterEach(() => {
+    vi.restoreAllMocks()
+    resetUi()
+  })
+
+  describe.each(["paste", "scan"] as const)("%s import preparation", (source) => {
+    it.each([
+      { kind: "symmetric", outcome: "success" },
+      { kind: "symmetric", outcome: "rejection" },
+      { kind: "pq", outcome: "success" },
+      { kind: "pq", outcome: "rejection" },
+    ] as const)(
+      "keeps a reopened import unchanged after abandoned $kind $outcome",
+      async ({ kind, outcome }) => {
+        const preparation = deferred<void>()
+        const notifications = vi.spyOn(toast, "success")
+        if (kind === "symmetric") {
+          const prepare = importSymmetricKeyRecordV2.getMockImplementation()!
+          importSymmetricKeyRecordV2.mockImplementationOnce(async (...args) => {
+            await preparation.promise
+            return prepare(...args)
+          })
+        } else {
+          const fingerprint = pqKeyFingerprint.getMockImplementation()!
+          pqKeyFingerprint.mockImplementationOnce(async (...args) => {
+            await preparation.promise
+            return fingerprint(...args)
+          })
+        }
+        const callbacks = {
+          onOpenChange: vi.fn(),
+          onCreated: vi.fn(async () => undefined),
+          onImported: vi.fn(async () => undefined),
+        }
+        const rendered = render(
+          <KeyAddDialog mode="import" detail={null} {...callbacks} />,
+          { wrapper: DialogProviders },
+        )
+        const user = userEvent.setup()
+        let payload = "OCI2:previous-opening"
+        if (kind === "symmetric") {
+          const bytes = encodeSymmetricKeyEnvelopeV2(
+            await buildSymmetricKeyEnvelopeV2({ ...fakeKeys[0]!, id: "B".repeat(22) }),
+          )
+          payload = buildV2Payload("symmetric-key", bytes)
+          setNextMultipartArtifactBytes(bytes)
+        }
+        if (source === "paste") {
+          await user.type(screen.getByLabelText("Key payload"), payload)
+          await user.click(screen.getByRole("button", { name: "Read the key" }))
+        } else {
+          await user.click(screen.getByRole("button", { name: "Scan a key QR code" }))
+          await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+          act(() => {
+            emitScannedPayload(
+              multipartPayload(
+                "previous-opening",
+                0,
+                1,
+                kind === "symmetric" ? "symmetric-key" : "pq-public-identity",
+              ),
+            )
+          })
+        }
+        await waitFor(() => {
+          if (kind === "symmetric") {
+            expect(importSymmetricKeyRecordV2).toHaveBeenCalledOnce()
+          } else {
+            expect(pqKeyFingerprint).toHaveBeenCalledTimes(2)
+          }
+        })
+
+        rendered.rerender(<KeyAddDialog mode={null} detail={null} {...callbacks} />)
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+        rendered.rerender(<KeyAddDialog mode="import" detail={null} {...callbacks} />)
+        await user.type(screen.getByLabelText("Key payload"), "current opening")
+        const notificationsBeforeSettlement = notifications.mock.calls.length
+
+        if (outcome === "success") preparation.resolve()
+        else preparation.reject(new Error("abandoned import failed"))
+        await settle()
+
+        expect(screen.queryByRole("dialog", { name: "Import" })).toBeInTheDocument()
+        expect(screen.getByLabelText("Key payload")).toHaveValue("current opening")
+        expect(screen.getByRole("button", { name: "Read the key" })).toBeEnabled()
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+        expect(notifications).toHaveBeenCalledTimes(notificationsBeforeSettlement)
+        expect(saveKeyRecord).not.toHaveBeenCalled()
+        expect(saveBundle).not.toHaveBeenCalled()
+        expect(callbacks.onImported).not.toHaveBeenCalled()
+        expect(callbacks.onOpenChange).not.toHaveBeenCalled()
+      },
+    )
+  })
+
+  it("preserves collected frames in a reopened scan when abandoned preparation rejects", async () => {
+    const preparation = deferred<string>()
+    pqKeyFingerprint.mockReturnValueOnce(preparation.promise)
+    const callbacks = {
+      onOpenChange: vi.fn(),
+      onCreated: vi.fn(async () => undefined),
+      onImported: vi.fn(async () => undefined),
+    }
+    const rendered = render(
+      <KeyAddDialog mode="import" detail={null} {...callbacks} />,
+      { wrapper: DialogProviders },
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("button", { name: "Scan a key QR code" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
+    act(() => emitScannedPayload(multipartPayload("previous-scan", 0, 1)))
+    await waitFor(() => expect(pqKeyFingerprint).toHaveBeenCalledTimes(2))
+
+    rendered.rerender(<KeyAddDialog mode={null} detail={null} {...callbacks} />)
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    rendered.rerender(<KeyAddDialog mode="import" detail={null} {...callbacks} />)
+    await user.click(screen.getByRole("button", { name: "Scan a key QR code" }))
+    await waitFor(() => expect(startQrScan).toHaveBeenCalledTimes(2))
+    await act(async () => emitScannedPayload(multipartPayload("current-scan", 0, 2)))
+    expect(await screen.findByText("Received 1 / 2")).toBeInTheDocument()
+
+    preparation.reject(new Error("abandoned fingerprint failed"))
+    await settle()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    await act(async () => emitScannedPayload(multipartPayload("current-scan", 1, 2)))
+
+    expect(
+      await screen.findByRole("dialog", {
+        name: "Compare the fingerprint through another channel",
+      }),
+    ).toBeInTheDocument()
+    expect(saveBundle).not.toHaveBeenCalled()
+    expect(callbacks.onImported).not.toHaveBeenCalled()
+  })
 
   it.each([
     { mode: "create", field: "Shared-key name", submit: "Create a shared key" },
