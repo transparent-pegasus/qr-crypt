@@ -194,6 +194,26 @@ pins, and overrides. `aube ci` passed and `aube audit` reported no known
 vulnerabilities on 2026-09-06. `aube outdated` was reviewed; broader upgrades
 were outside this bounded remediation.
 
+### External-security advisory re-check (2026-09-12)
+
+| Affected locked path | Resolution | Build / test / deploy reachability |
+| --- | --- | --- |
+| `wrangler@4.114.0` → `miniflare@4.20260722.0` → `sharp@0.35.2` | **RESOLVED** [GHSA-rgj7-g3m4-5g8c](https://github.com/advisories/GHSA-rgj7-g3m4-5g8c); affected `<0.35.4`, exact override `sharp@0.35.4` | Native image code was installed with development/deploy tooling. The application does not import `sharp`, and no repository workflow was found that gives it untrusted HEIF/AVIF; this is not deployed-browser exposure. |
+| direct `vitest@4.1.10` → exact `@vitest/mocker@4.1.10` | **RESOLVED** [GHSA-82fw-gwwq-j7x9](https://github.com/advisories/GHSA-82fw-gwwq-j7x9); affected `>=2.1.0 <4.1.11`, Vitest family updated to `4.1.11` | Test-host exposure only. The repository uses Node/jsdom projects, with no browser-mode project or public host binding found; the affected redirect-mock path is not part of the deployed application. |
+| `browserslist@4.28.7` → `baseline-browser-mapping@2.10.44` | **RESOLVED** [GHSA-w5vr-8v7q-w6rv](https://github.com/advisories/GHSA-w5vr-8v7q-w6rv); affected `>=2.0.0 <2.11.0`, exact override `baseline-browser-mapping@2.11.0` | Invalid/conflicting inputs could terminate build/test tooling, whose inputs are repository-controlled. This availability finding does not change browser support or runtime behavior. |
+
+The targeted transaction retained Wrangler, Miniflare, workerd, the exact
+`@noble/post-quantum@0.7.1` pin, and the other recorded security pins. It
+changes no application protocol, cryptographic suite, runtime network policy,
+or user workflow. These are T7 supply-chain remediations, not evidence that the
+development environment or dependency ecosystem is benign.
+
+At source commit `118f2172822040ac9c9db5dfc2eb8d82cc7d96a1`, the frozen
+install resolved 662 packages and `aube audit --json` exited 0 with
+`advisories: {}`, zero findings at every severity, and 779 total dependencies.
+This is a dated known-advisory result, not proof that the dependencies are
+benign or that unpublished vulnerabilities do not exist.
+
 **2026-09-07 Noble decision.** The exact post-quantum pin is `0.7.1`, with
 exact ciphers/curves/hashes `2.4.0`. Active cleanup, option handling,
 transitive reachability, provenance limits, errata, and local verification
