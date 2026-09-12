@@ -46,9 +46,9 @@ retained four-suite wire/codec contract. Boot alone keeps a read-only
 Self-investigation and self-authored documents (including this one) are no
 substitute for independent review and do not close the blocker.
 
-Maximum fixture re-verified 2026-09-06 by
-`tests/pq/maximum-artifact-size.golden.test.ts` (`maxPlaintext=120,000B`,
-`name="テスト"` — the literal fixture string):
+Maximum fixture re-verified 2026-09-12 within the passing 17-file / 187-test
+`aube run test:pq` result by `tests/pq/maximum-artifact-size.golden.test.ts`
+(`maxPlaintext=120,000B`, `name="テスト"` — the literal fixture string):
 
 | artifact | canonical CBOR (bytes) | compatible-preference frames | default-preference frames |
 |---|---:|---:|---:|
@@ -345,6 +345,14 @@ above is not refreshed from an unrecorded value.
   unchanged. `aube ci` passed and `aube audit` reported no known
   vulnerabilities on 2026-09-06. Independent audit and release approval
   remain unresolved.
+- **RESOLVED (build/test/deploy chain, 2026-09-12)**: exact overrides moved
+  `sharp` `0.35.2` → `0.35.4` and `baseline-browser-mapping` `2.10.44` →
+  `2.11.0`; Vitest and its locked sibling family moved `4.1.10` → `4.1.11`.
+  Wrangler `4.114.0`, Miniflare `4.20260722.0`, workerd `1.20260722.1`, and
+  every cryptographic pin remained unchanged. The affected paths and bounded
+  reachability are recorded in [threat-model.md](threat-model.md) §5.1. None
+  is imported by the deployed application, and this remediation changes no
+  protocol, cryptographic suite, runtime network policy, or user workflow.
 - CI `validate` runs `aube audit` after `aube ci` on every push and pull
   request targeting `main` or `dev`. The approved 2026-09-07 maintenance
   contract additionally requires scheduled/manual, read-only external audit
@@ -353,6 +361,38 @@ above is not refreshed from an unrecorded value.
   in §1.4; hosted workflow execution is separate evidence. Neither check
   updates an offline installation or maintains this written record automatically.
 - Supply-chain pins re-verified clean on 2026-07-29: `eslint-config-prettier@10.1.8` and the rollup OMT `aube.overrides` entry. `react-hook-form@7.82.0` was also pinned here until 2026-07-30, when it was removed from the dependency graph entirely: it was never imported by the application, so the pin guarded nothing.
+
+The 2026-09-12 freshness re-check retained the exact
+`@noble/post-quantum@0.7.1` pin. It remained the latest official release, its
+tagged security policy continued to support `>=0.7.1`, and its tagged README
+continued to state that the library has not been independently audited. The
+current FIPS 203/204 potential-updates workbooks contained nothing newer than
+the substantive 2026-09-07 assessment above, so that source assessment and its
+benchmark measurements keep their original date. This re-check does not
+establish independent audit, constant-time JavaScript, physical erasure, FIPS
+conformance, or release approval.
+
+**External-security remediation validation, 2026-09-12.** Source commit
+`118f2172822040ac9c9db5dfc2eb8d82cc7d96a1` and tree
+`602cc0513aa1aaeeda7478a0c967bc7001de8e5e` passed the frozen install and
+zero-known-advisory gate (662 packages; 779 dependencies; zero findings at
+every severity). `make check` passed typecheck, lint with zero errors and 13
+pre-existing warnings, and 97/97 files with 1,376/1,376 tests. The production
+build transformed 2,180 modules and generated 18 precache entries; the
+ordinary browser suite passed 42/42 tests.
+
+The registered Noble checks passed 17/17 files and 187/187 PQ tests, 1/1 file
+and 6/6 upstream-vector tests, and both Node and UI benchmark groups for all
+five ML-KEM-1024/ML-DSA-87 operations; the release helper confirmed official
+`0.7.1` equals the exact pin. A build carrying that full source commit produced
+a 19-member static archive with SHA-256
+`04c8421f6d96dd1235dff76906f55bcdf70e43f2b8cd344834d962fdc7125d71`.
+The standalone damaged-artifact check passed 1/1 with no skips or retries; the
+extracted-archive gate passed 42/42 browser tests with no failures, skips, or
+retry classifications and verified the same archive digest and all members
+before and after. Hosted external-security workflow `34627963314` also passed
+on this commit. These checks establish the tested source/artifact identity,
+not deployment, independent audit, or release approval.
 
 ## 1.1 Findings F-01 / F-02 / F-03 (2026-07-28)
 
