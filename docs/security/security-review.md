@@ -327,8 +327,8 @@ above is not refreshed from an unrecorded value.
   written.
 - **RESOLVED (build/test/deploy chain, 2026-08-08)**: `brace-expansion` was
   forced to `5.0.9` (now `5.0.12`, after the 2026-10-12 remediation) for both
-  the `@5` and `@2` selectors; `2.1.4` is also
-  patched, and choosing `5.0.9` for both is a deliberate one-version-in-the-graph
+  the `@5` and `@2` selectors; `2.1.4` is also patched, and using one 5.x
+  version for both selectors is a deliberate one-version-in-the-graph
   decision. Additional overrides then forced `fast-uri@3.1.5`,
   `nanoid` (now `3.3.18`, after the 2026-08-14 remediation), and
   `undici@7.29.0`. These packages are build, test, or deploy tooling and none is
@@ -357,10 +357,10 @@ above is not refreshed from an unrecorded value.
 - **RESOLVED (build/test/deploy chain, 2026-10-12)**: exact overrides moved
   `brace-expansion` `5.0.9` → `5.0.12` (both selectors), `fast-uri` `3.1.6` →
   `3.1.8`, `undici` `7.29.0` → `7.29.1`, and `sharp` `0.35.4` → `0.35.5`; a new
-  exact override pins `source-map-js@1.2.2`. These close the eighteen findings
-  the scheduled external-security workflow reported from 2026-09-29. Wrangler,
-  Miniflare, workerd, and every cryptographic pin remained unchanged. The
-  affected paths, each advisory, and bounded reachability are recorded in
+  exact override pins `source-map-js@1.2.2`. These close the findings the
+  scheduled external-security workflow reported from 2026-09-29 (three) through
+  2026-10-11 (eighteen). Wrangler, Miniflare, workerd, and every cryptographic
+  pin remained unchanged. The affected paths, each advisory, and bounded reachability are recorded in
   [threat-model.md](threat-model.md) §5.1. None is imported by the deployed
   application, and this remediation changes no protocol, cryptographic suite,
   runtime network policy, or user workflow.
