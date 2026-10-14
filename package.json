@@ -83,14 +83,15 @@
   "aube": {
     "overrides": {
       "@trickfilm400/rollup-plugin-off-main-thread": "npm:@surma/rollup-plugin-off-main-thread@2.2.3",
-      "brace-expansion@5": "5.0.9",
-      "brace-expansion@2": "5.0.9",
-      "fast-uri": "3.1.6",
+      "brace-expansion@5": "5.0.12",
+      "brace-expansion@2": "5.0.12",
+      "fast-uri": "3.1.8",
       "browserslist": "4.28.7",
       "nanoid": "3.3.18",
-      "undici": "7.29.0",
-      "sharp": "0.35.4",
-      "baseline-browser-mapping": "2.11.0"
+      "undici": "7.29.1",
+      "sharp": "0.35.5",
+      "baseline-browser-mapping": "2.11.0",
+      "source-map-js": "1.2.2"
     }
   }
 }

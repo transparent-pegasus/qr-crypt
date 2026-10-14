@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-09-12 # last revision of this registry itself
+updated: 2026-10-12 # last revision of this registry itself
 
 units:
   - id: deps
@@ -52,10 +52,10 @@ units:
           MAL-2026-2853 but never imported by the application.)
       Re-vet advisory override versions whenever new advisories apply. Remove
       an override only when its parent graph is safe without it:
-        - sharp 0.35.4 — GHSA-rgj7-g3m4-5g8c; Miniflare 4.20260722.0 exactly
-          requires vulnerable sharp 0.35.2. Remove only when the selected
-          Wrangler/Miniflare graph resolves sharp 0.35.4 or later without this
-          override.
+        - sharp 0.35.5 — GHSA-rgj7-g3m4-5g8c, GHSA-wq5f-xc86-pv6w; Miniflare
+          4.20260722.0 exactly requires vulnerable sharp 0.35.2. Remove only when
+          the selected Wrangler/Miniflare graph resolves sharp 0.35.5 or later
+          without this override.
         - baseline-browser-mapping 2.11.0 — GHSA-w5vr-8v7q-w6rv; browserslist
           4.28.7 previously resolved the vulnerable 2.10.44 child. Remove only
           when its parent graph resolves 2.11.0 or later without this override.
