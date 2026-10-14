@@ -214,6 +214,43 @@ install resolved 662 packages and `aube audit --json` exited 0 with
 This is a dated known-advisory result, not proof that the dependencies are
 benign or that unpublished vulnerabilities do not exist.
 
+### External-security advisory re-check (2026-10-12)
+
+| Affected locked path | Resolution | Build / test / deploy reachability |
+| --- | --- | --- |
+| `vite-plugin-pwa@1.3.0` → `workbox-build@7.4.1` → `@trickfilm400/rollup-plugin-off-main-thread` (aliased to `@surma/rollup-plugin-off-main-thread@2.2.3`) → `ejs` → `jake` → `filelist@1.0.6` → `minimatch@5.1.9`, and `minimatch@10.2.5` (eslint toolchain, `typescript-eslint`, and `workbox-build` → `glob@11.1.0`) → `brace-expansion@5.0.9` | **RESOLVED** [GHSA-6j4f-fj2g-mc7p](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p) (`>=4.0.0 <5.0.10`, first patched `5.0.10`; 2.x `<2.1.5`), [GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7) (`>=4.0.0 <5.0.11`, first patched `5.0.11`; 2.x `<2.1.6`), [GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr) (`>=4.0.0 <5.0.12`, first patched `5.0.12`; 2.x `<2.1.7`); exact override `brace-expansion@5.0.12` for both the `@5` and `@2` selectors, keeping the one-version-in-the-graph decision | Build and lint tooling. `aube why` lists `workbox-build@7.4.1` under the importer's `dependencies`: `autoInstallPeers` installs it as a peer of the devDependency `vite-plugin-pwa`, and `package.json` does not declare it. The `devDependencies` roots are `vite-plugin-pwa` and the lint toolchain. No import in `src/`. |
+| `workbox-build@7.4.1` → `ajv@8.20.0`, directly and via `@apideck/better-ajv-errors@0.3.7` → `fast-uri@3.1.6` | **RESOLVED** [GHSA-qw65-cvwx-89v3](https://github.com/advisories/GHSA-qw65-cvwx-89v3) (`>=3.0.0 <3.1.7`, first patched `3.1.7`), [GHSA-58mr-gqgx-xq4g](https://github.com/advisories/GHSA-58mr-gqgx-xq4g) (`=3.1.6`, first patched `3.1.7`), [GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) (`>=3.0.0 <3.1.8`, first patched `3.1.8`); exact override `fast-uri@3.1.8` | Build tooling: `workbox-build` runs under `vite-plugin-pwa` during `vite build`, with the same `aube why` split as the row above. No import in `src/`; the URI-parser findings do not establish application exposure in this offline PWA. |
+| `wrangler@4.114.0` → `miniflare@4.20260722.0` → `sharp@0.35.4` | **RESOLVED** [GHSA-wq5f-xc86-pv6w](https://github.com/advisories/GHSA-wq5f-xc86-pv6w) (`<0.35.5`, first patched `0.35.5`): a librsvg flaw reached when sharp decodes SVG can lead to remote code execution on glibc Linux; exact override `sharp@0.35.5`, which ships librsvg 2.63.2 | Development tooling only: `aube why` lists only the devDependency `wrangler`. No repository script invokes Wrangler, and the deploy job downloads `dist` and installs no project dependencies. The application does not import `sharp`. |
+| `vite@8.2.1` → `postcss@8.5.25`, `@tailwindcss/vite@4.3.3` → `@tailwindcss/node@4.3.3`, and `jsdom@29.1.1` → `css-tree@3.2.1`, each → `source-map-js@1.2.1` | **RESOLVED** [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q) (`>=1.0.0 <1.2.2`, first patched `1.2.2`); new exact override `source-map-js@1.2.2`. The parents' `^1.2.1` already admitted it, but aube refreshes direct dependencies only | Build and test tooling: PostCSS and Tailwind in `vite build`, css-tree inside the jsdom test environment. `aube why` lists only devDependency roots. No import in `src/`. |
+| `jsdom@29.1.1` (direct devDependency, also via `vitest`) and `wrangler@4.114.0` → `miniflare@4.20260722.0` → `undici@7.29.0` | **RESOLVED** [GHSA-rfgv-xxqx-mfg5](https://github.com/advisories/GHSA-rfgv-xxqx-mfg5) (`>=7.0.0 <7.29.1`), [GHSA-w293-vg96-wgc3](https://github.com/advisories/GHSA-w293-vg96-wgc3) (`>=7.24.1 <7.29.1`), [GHSA-rx4f-c7p8-82vq](https://github.com/advisories/GHSA-rx4f-c7p8-82vq) (`>=7.0.0 <7.29.1`), [GHSA-pmjh-fq2x-6v4x](https://github.com/advisories/GHSA-pmjh-fq2x-6v4x) (`>=7.11.0 <7.29.1`), [GHSA-3xpg-4rpp-hhhm](https://github.com/advisories/GHSA-3xpg-4rpp-hhhm) (`>=7.15.0 <7.29.1`), [GHSA-3wwx-pv8p-q78v](https://github.com/advisories/GHSA-3wwx-pv8p-q78v) (`>=7.28.0 <7.29.1`), [GHSA-2jfj-6hjv-fm6j](https://github.com/advisories/GHSA-2jfj-6hjv-fm6j) (`>=7.0.0 <7.29.1`), [GHSA-8436-99hf-9mmv](https://github.com/advisories/GHSA-8436-99hf-9mmv) (`>=7.0.0 <7.29.1`), [GHSA-r53p-7pc4-xj5r](https://github.com/advisories/GHSA-r53p-7pc4-xj5r) (`>=7.0.0 <7.29.1`), [GHSA-2gqq-gqf2-x968](https://github.com/advisories/GHSA-2gqq-gqf2-x968) (`>=7.1.0 <7.29.1`), each first patched in `7.29.1`; exact override `undici@7.29.1` | Test and development tooling: jsdom is the Vitest UI environment, and nothing in the repository starts Miniflare. `aube why` lists only devDependency roots. No import in `src/`. |
+
+Scheduled external-security maintenance first failed on 2026-09-29 with three
+findings and reported eighteen by 2026-10-11 (8 high, 7 moderate, 3 low); the
+2026-09-28 run had passed. The workflow produced its failure signal as
+designed. That says nothing about remediation timeliness or about
+installations already operating offline.
+
+The transaction retained Wrangler, Miniflare, workerd, the exact
+`@noble/post-quantum@0.7.1` pin, and every other pin and override. The lock
+replaced 31 package records: the five packages above, 16 `@img/sharp-*`
+platform packages (`0.35.4` → `0.35.5`), and 10 `@img/sharp-libvips-*`
+packages (`1.3.3` → `1.3.4`). The other 748 records stayed byte-identical,
+integrity included. Every replaced version kept its npm provenance status,
+publisher, and maintainers, and its lock integrity matches the registry. The
+new Linux binaries declare `libc`, so a glibc host no longer installs the two
+musl-only packages: a frozen install now resolves 660 packages instead of 662.
+Loaded through the `wrangler` → `miniflare` resolution, sharp `0.35.5` reports
+libvips 8.18.7 and librsvg 2.63.2. No application protocol, cryptographic
+suite, runtime network policy, or user workflow changed. This is a targeted T7
+remediation, not a full `deps` sweep, and not evidence that the dependency
+ecosystem is benign.
+
+At source commit `7f18508e48817f7664303ada52435b4681877441`, the frozen
+install resolved 660 packages and `aube audit --json` exited 0 with
+`advisories: {}`, zero findings at every severity, and 779 total dependencies.
+This is a dated known-advisory result, not proof that the dependencies are
+benign or that unpublished vulnerabilities do not exist.
+
 **2026-09-07 Noble decision.** The exact post-quantum pin is `0.7.1`, with
 exact ciphers/curves/hashes `2.4.0`. Active cleanup, option handling,
 transitive reachability, provenance limits, errata, and local verification
