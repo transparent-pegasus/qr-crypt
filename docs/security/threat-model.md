@@ -251,6 +251,49 @@ install resolved 660 packages and `aube audit --json` exited 0 with
 This is a dated known-advisory result, not proof that the dependencies are
 benign or that unpublished vulnerabilities do not exist.
 
+### External-security advisory re-check (2026-10-25)
+
+The 2026-10-24 scheduled [maintenance run](https://github.com/transparent-pegasus/qr-crypt/actions/runs/40089131460)
+at `c7c2e5c8f0dc23b112c11c86296518ced5a6ff91` reported 17 findings
+(3 high, 10 moderate, 4 low). The same frozen graph reproduced all 17 locally.
+This is a targeted, `REPOSITORY_IMPLEMENTABLE` T7 remediation; unlike the
+tooling-only 2026-10-12 update, it also changes the application's Zod validator.
+
+| Affected locked path | Resolution | Reachability |
+| --- | --- | --- |
+| Direct `zod@4.4.3`, also under `eslint-plugin-react-hooks@7.1.1` and its `zod-validation-error` peer | [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5), affected `<4.6.6`, first patched `4.6.6`; direct range raised to `^4.6.6` and exact override `4.6.6` also replaces the lint copy | Runtime environment, key, and envelope schemas import Zod. The advisory concerns oversized constrained arrays, sets, and maps; these schemas use objects and byte-length refinements, with separate wire/CBOR allocation guards. No exact-stack exploit is established; the vulnerable library is replaced regardless. |
+| Direct `vite@8.2.1`, also used by the React/Tailwind/PWA plugins and Vitest | [GHSA-587h-7wmj-h5pm](https://github.com/advisories/GHSA-587h-7wmj-h5pm), [GHSA-rq7h-c2jc-7f22](https://github.com/advisories/GHSA-rq7h-c2jc-7f22), [GHSA-vfpm-58rq-9qcg](https://github.com/advisories/GHSA-vfpm-58rq-9qcg), [GHSA-r825-w8mm-5pxw](https://github.com/advisories/GHSA-r825-w8mm-5pxw), [GHSA-698v-4r3x-3vcv](https://github.com/advisories/GHSA-698v-4r3x-3vcv), [GHSA-9jrq-w75r-8gcw](https://github.com/advisories/GHSA-9jrq-w75r-8gcw); each affects `>=8.2.0 <=8.2.3`, first patched `8.2.4`; direct range raised to `^8.2.4`, locked `8.2.4` | Development/test server and build host. The findings include filesystem-boundary bypasses, editor-launch handling, and middleware script execution. Vite's server is not shipped in the static PWA. |
+| Direct `vitest@4.1.11` -> exact `@vitest/mocker@4.1.11` | [GHSA-qxg6-89mg-rqv8](https://github.com/advisories/GHSA-qxg6-89mg-rqv8) (`>=2.1.0-beta.7 <4.1.12`) and [GHSA-xp26-3454-mjgp](https://github.com/advisories/GHSA-xp26-3454-mjgp) (`>=4.1.11 <4.1.12`), first patched `4.1.12`; direct range raised to `^4.1.12`, sibling family locked together at `4.1.12` | Test-host mock registration/redirect handling. This repository configures Node/jsdom projects, not Vitest browser mode; these packages are not deployed application imports. |
+| `workbox-build@7.4.1` -> `ajv@8.20.0`, directly and via `@apideck/better-ajv-errors` -> `fast-uri@3.1.8` | [GHSA-w74x-v6f9-j3xg](https://github.com/advisories/GHSA-w74x-v6f9-j3xg) (`>=3.0.0 <3.1.9`), [GHSA-wjr9-j795-jxcr](https://github.com/advisories/GHSA-wjr9-j795-jxcr) (`>=3.1.3 <3.1.9`), [GHSA-xhq7-xmqj-769h](https://github.com/advisories/GHSA-xhq7-xmqj-769h) and [GHSA-333x-w4r6-6crp](https://github.com/advisories/GHSA-333x-w4r6-6crp) (both `>=3.0.0 <3.1.9`); each first patched `3.1.9`; exact override `3.1.9` | URI parsing/normalization in build tooling. Workbox is an auto-installed peer of the devDependency `vite-plugin-pwa`; no `fast-uri` import in `src/`. |
+| `jsdom@29.1.1` and `wrangler@4.114.0` -> `miniflare@4.20260722.0` -> `undici@7.29.1` | [GHSA-xjj6-f33q-929c](https://github.com/advisories/GHSA-xjj6-f33q-929c) (`>=7.18.0 <7.30.1`), [GHSA-4qv8-2p9j-2685](https://github.com/advisories/GHSA-4qv8-2p9j-2685) (`>=7.0.0 <7.30.1`), [GHSA-f72v-6w45-q472](https://github.com/advisories/GHSA-f72v-6w45-q472) (`>=7.15.0 <7.30.1`); each first patched `7.30.1`; exact override `7.30.1` | Test/development HTTP client: content-decoding and EventSource resource exhaustion, and integrity-token handling. No application import; nothing in the repository starts Miniflare. |
+| `workbox-build@7.4.1` -> `@rollup/plugin-terser@1.0.0` -> `serialize-javascript@7.0.7` | [GHSA-m5mm-p8h7-m29v](https://github.com/advisories/GHSA-m5mm-p8h7-m29v), affected `<7.1.3`, first patched `7.1.3`; new exact override `7.1.3` | Build-time serialization used by the minifier. The advisory concerns embedding serialized functions in HTML; no application import or demonstrated deployed-browser exploit. |
+
+Vite `8.2.4` also raises its PostCSS/Rolldown dependency floors. Its selected
+graph resolves PostCSS `8.5.31`, Rolldown `1.2.15`, matching native bindings,
+and `@oxc-project/types@0.155.0`; obsolete Rolldown WASI helpers disappear.
+The cryptographic, QR-reader, Wrangler/Miniflare, and remaining override pins
+are retained. All 787 package records shared with the old graph remain
+byte-identical, including integrity; the 31 new records' integrity values
+match the npm registry. Registry metadata advertises no provenance downgrade;
+`fast-uri` changes to trusted publishing with provenance, as recorded in its
+[official security release](https://github.com/fastify/fast-uri/releases/tag/v3.1.9).
+
+The [Zod `v4.6.6` release](https://github.com/colinhacks/zod/releases/tag/v4.6.6)
+reports that six malicious commits pushed with a compromised git credential
+were reverted and never published to npm. Its npm provenance statement names
+`284243fb0d6532665afdc9239188773bb624f73c`; GitHub reports the same tree
+`67baa8ff8a4500af08caea054afafcdbc26266b3` for that commit and the retained
+`9c219833c3a3764fa1f1ea9c5ecec8254a63c0b1`, matching the release's
+history-rewrite explanation. This checks published metadata and source-tree
+identity, not the attestation signatures or independent source-to-package
+reproduction; it does not prove benign source or an uncompromised publisher.
+
+The updated frozen graph passes `aube ci`; `aube audit --json` reports
+`advisories: {}`, zero findings at every severity, and 774 total dependencies
+on 2026-10-25. This targeted remediation does not update offline installations,
+change the physical/operational environment catalog, or complete a full
+freshness sweep or independent security review.
+
 **2026-09-07 Noble decision.** The exact post-quantum pin is `0.7.1`, with
 exact ciphers/curves/hashes `2.4.0`. Active cleanup, option handling,
 transitive reachability, provenance limits, errata, and local verification
