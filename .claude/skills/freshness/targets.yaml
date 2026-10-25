@@ -163,6 +163,7 @@ units:
       - tests/unit/crypto-release-check.test.ts # exact-pin equality, invalid API/pin data, and request failures
       - tests/fixtures/crypto-release-gh.py # offline official-release responses and real jq extraction
       - playwright.config.ts # no-build artifact root, isolated port, and server lifecycle contract
+      - playwright.relay.config.ts # isolated relay port, header-less server, and mobile browser project
       - tests/e2e/release-artifact.spec.ts # real healthy/damaged artifact boot, trace pageError, and unchanged original control
       - tests/fixtures/artifact-browser.ts # isolated child ports, bounded processes, tree digests, and trace evidence
       - scripts/release/check-packaged-responses.mjs # archived JS/CSS/WASM and sentinel/CSP/MIME responses; integration-owned
@@ -203,6 +204,7 @@ units:
       rebuild procedure while the README publishes only a summary plus a link.
     method: |
       Review all four workflows, scripts/check-crypto-release.sh, playwright.config.ts,
+      playwright.relay.config.ts,
       and the scripts/release programs they invoke.
       Check each action repository for newer majors and security advisories.
       Keep release-workflow actions pinned to full SHAs;
@@ -265,6 +267,7 @@ units:
       aube run test -- tests/unit/release-packaged-pwa.test.ts tests/unit/release-tested-archive.test.ts tests/unit/crypto-release-check.test.ts
       aube run test:e2e -- tests/e2e/release-artifact.spec.ts --workers=1 --retries=0
       aube run test:e2e
+      aube run test:e2e:relay
       After packaging the integrated tree with package-static-pwa.sh, set
       RUNNER_TEMP to its absolute staging directory, ARCHIVE_NAME to its ZIP
       basename, and GITHUB_OUTPUT to the gate output file, then run:

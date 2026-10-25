@@ -28,6 +28,7 @@
     "vite.config.ts",
     "vite.relay.config.ts",
     "vitest.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "playwright.relay.config.ts"
   ]
 }

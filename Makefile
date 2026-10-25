@@ -18,6 +18,7 @@ check:
 test-all:
 	aube run test
 	aube run test:e2e
+	aube run test:e2e:relay
 
 # TARGETED_TEST_COMMAND: make test-one FILE=tests/ui/keys.test.tsx
 .PHONY: test-one
@@ -33,6 +34,7 @@ check-ui: check e2e
 .PHONY: e2e
 e2e: # UI changes
 	aube run test:e2e
+	aube run test:e2e:relay
 
 .PHONY: build
 build: # vite / env changes

@@ -102,10 +102,36 @@ jobs:
       - name: E2E tests
         run: aube run test:e2e
 
+  e2e-relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up mise and project tools
+        uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: true
+
+      - name: Install dependencies
+        run: aube ci
+
+      - name: Install Playwright Chromium
+        run: aube exec playwright install --with-deps chromium
+
+      - name: Relay E2E tests
+        run: aube run test:e2e:relay
+
   deploy:
     needs:
       - validate
       - e2e
+      - e2e-relay
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     timeout-minutes: 10
