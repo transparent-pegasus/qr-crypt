@@ -34,9 +34,10 @@ jobs:
           aube exec vite build --config spike/native/probe/vite.config.mjs --mode prod 2>&1 | tee spike/native/out/build-probe/build.log
           python3 - <<'PY'
           import hashlib, json, os
+          from html import unescape
           from pathlib import Path
           root = Path('spike/native/dist')
-          html = (root / 'index.html').read_text()
+          html = unescape((root / 'index.html').read_text())
           assert 'Content-Security-Policy' in html and "'wasm-unsafe-eval'" in html
           files = {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob('*')) if p.is_file()}
           result = {'kind': 'build', 'commit': os.environ['GITHUB_SHA'], 'mode': 'prod', 'ok': True, 'sha256': files}
