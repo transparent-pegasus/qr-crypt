@@ -9,7 +9,8 @@ export default defineConfig({
   retries: 0,
   outputDir: "../out/browser-traces",
   reporter: "list",
-  use: { baseURL: "http://localhost:4179", trace: "retain-on-failure" },
+  // Tracing grants user activation and changes the automatic clipboard result.
+  use: { baseURL: "http://localhost:4179", trace: "off" },
   projects: [
     { name: "chromium", use: { browserName: "chromium" } },
     { name: "webkit", use: { browserName: "webkit" } },

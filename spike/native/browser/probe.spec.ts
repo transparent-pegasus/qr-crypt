@@ -38,7 +38,7 @@ test("record relay probe without treating feature failures as harness failures",
       () =>
         (
           window as unknown as {
-            __g0rResult: { checks: { name: string; ok: boolean }[] }
+            __g0rResult: { checks: { name: string; ok: boolean; detail: unknown }[] }
           }
         ).__g0rResult,
     )
@@ -46,6 +46,14 @@ test("record relay probe without treating feature failures as harness failures",
     expect(errors, "Uncaught probe errors").toEqual([])
     expect(external, "All assets must load from the app origin").toEqual([])
     expect(result.checks.some((check) => check.name === "harness")).toBe(false)
+    expect(
+      result.checks
+        .filter((check) => check.name.startsWith("clipboard.auto."))
+        .map((check) =>
+          (check.detail as { activation: { isActive: boolean } }).activation.isActive,
+        ),
+      "Automatic writes must run without user activation",
+    ).toEqual([false, false])
     expect(result.checks.map((check) => check.name)).toEqual([
       "secureContext",
       "webLocks",
