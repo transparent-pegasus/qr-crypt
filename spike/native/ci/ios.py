@@ -27,7 +27,6 @@ simctl("install", udid, str(ROOT / "capacitor/ios/build/Build/Products/Debug-iph
 with (OUT / "console.log").open("wb") as log:
     process = subprocess.Popen(["xcrun", "simctl", "launch", "--console-pty", udid, APP_ID], stdout=log, stderr=subprocess.STDOUT)
     try:
-        # shortcut: no inexpensive simulator tap route, owner verifies a real tap on iOS hardware later.
         result = wait_for(lambda: extract(read_log(OUT / "console.log")))
         (OUT / "result.json").write_text(json.dumps(result, indent=2))
         print(json.dumps(result, indent=2))
@@ -36,6 +35,9 @@ with (OUT / "console.log").open("wb") as log:
                 clipboard.write(("simctl " + command + " booted\n").encode())
                 clipboard.flush()
                 subprocess.run(["xcrun", "simctl", command, "booted"], stdout=clipboard, stderr=subprocess.STDOUT, timeout=15)
+        console = read_log(OUT / "console.log")
+        assert "G0R_EVAL capacitor-eval after auto-done" in console, "Native evaluateJavaScript was not attempted after auto-done"
+        assert result["gestureMethod"] == "capacitor-eval" or "G0R_EVAL_ERROR " in console, "Native eval did not call the existing gesture function or report an error"
     finally:
         subprocess.run(["xcrun", "simctl", "io", udid, "screenshot", str(OUT / "screenshot.png")], timeout=15)
         subprocess.run(["xcrun", "simctl", "terminate", udid, APP_ID], timeout=15)
