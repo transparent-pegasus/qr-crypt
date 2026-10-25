@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { FeatureSupportProvider } from "@/app/feature-support"
+import { OnlineRelay } from "@/components/online-relay"
 import { LanguageProvider, type Language } from "@/i18n"
 import { acquireLocalRelaySession } from "@/relay/local-session"
 import { RelayApp } from "@/relay/relay-app"
@@ -97,10 +98,57 @@ describe("relay-only app", () => {
         .map((p) => p.textContent),
     ).toEqual([
       "QR Crypt の鍵、識別子、平文を持つ端末や、過去に持っていた端末には、このアプリを入れたり使ったりしないでください。QR Crypt のオフラインアプリを入れたブラウザーがある端末も含みます。別のオンライン端末を使ってください。",
-      "カメラは QR コードだけでなく、写る範囲のすべてを映します。",
+      "カメラはQRコードだけでなく、写る範囲のすべてを映します。",
       "このアプリは、独立した第三者による監査を受けていません。",
     ])
   })
+
+  it.each([
+    {
+      language: "en",
+      nativeDescription:
+        "Pass encrypted messages between a messenger and an offline device using QR codes and text. This app contains no key, decryption, or storage code: nothing is decrypted and no keys are used.",
+      scanClaim: "scan finds no keys, PQ identities, or Vault on this device",
+      webDescription:
+        "Pass encrypted messages between a messenger and an offline device using QR codes and text. This works only while a scan finds no keys, PQ identities, or Vault on this device; nothing is decrypted and no keys are used.",
+    },
+    {
+      language: "ja",
+      nativeDescription:
+        "QRコードとテキストで、メッセンジャーとオフライン端末の間で暗号化済みメッセージを受け渡します。このアプリには鍵・復号・保存のコードが無く、復号は行わず、鍵も使いません。",
+      scanClaim: "走査で鍵・PQ identity・Vaultが無いと確認できた端末でのみ使え",
+      webDescription:
+        "QRコードとテキストで、メッセンジャーとオフライン端末の間で暗号化済みメッセージを受け渡します。走査で鍵・PQ identity・Vaultが無いと確認できた端末でのみ使え、復号は行わず、鍵も使いません。",
+    },
+  ] as const)(
+    "uses the $language native description while preserving the web default",
+    ({ language, nativeDescription, scanClaim, webDescription }) => {
+      const app = renderRelayApp(language)
+
+      expect.soft(screen.queryByText(nativeDescription)).toBeVisible()
+      expect
+        .soft(screen.queryByText(scanClaim, { exact: false }))
+        .not.toBeInTheDocument()
+
+      app.unmount()
+      render(
+        <LanguageProvider initialLanguage={language}>
+          <FeatureSupportProvider
+            features={{
+              webCrypto: true,
+              indexedDb: true,
+              camera: true,
+              serviceWorker: true,
+            }}
+          >
+            <OnlineRelay eligible />
+          </FeatureSupportProvider>
+        </LanguageProvider>,
+      )
+
+      expect(screen.getByText(webDescription)).toBeVisible()
+    },
+  )
 
   it.each(RELAY_DIALOGS)(
     "opens capture, image and playback dialogs instead of reporting busy ($mode)",
