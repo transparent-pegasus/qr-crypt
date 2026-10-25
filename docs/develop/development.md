@@ -73,6 +73,7 @@ E2E:
 ```bash
 aube exec playwright install chromium
 aube test:e2e
+aube test:e2e:relay    # relay-only bundle (dist-relay), served without _headers
 ```
 
 On CI, `aube exec playwright install --with-deps chromium` is used. The
@@ -83,9 +84,16 @@ authoritative `validate` job step list and gate behavior are maintained in
 
 ```bash
 aube build:prod
+aube build:relay
 ```
 
 `--mode prod` loads `.env.prod`.
+
+`aube build:relay` builds the relay-only bundle into `dist-relay/` for the
+native relay shells. The build fails when any module, worker, output file or
+URL origin falls outside the lists in `scripts/relay-bundle-allowlist.mjs`;
+re-measure those lists when dependencies change. `dist-relay/` is never
+deployed to the web origin.
 
 ## Environment variables
 

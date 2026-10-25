@@ -26,8 +26,10 @@ request targeting `main` or `dev`:
 
 * The `validate` job installs the frozen dependency graph (`aube ci`), audits
   it (`aube audit`), then runs type checking, lint, unit tests, post-quantum
-  known-answer and integration tests, multipart QR tests, and the production
-  build. The audit step has no `continue-on-error`: an open known npm advisory
+  known-answer and integration tests, multipart QR tests, the production
+  build, and the relay-only build (`aube run build:relay`). The relay-only
+  build fails when any module, worker, output file or URL origin falls outside
+  `scripts/relay-bundle-allowlist.mjs`. The audit step has no `continue-on-error`: an open known npm advisory
   fails the job on the next triggered run. Scheduled/manual external
   maintenance is also required by the approved 2026-09-07 contract below;
   neither gate replaces the freshness review of the written advisory record.
@@ -35,7 +37,11 @@ request targeting `main` or `dev`:
   `aube run build:prod` and serves `dist/` with `aube run serve:dist`, so the
   browser receives the `_headers` response policy rather than running against
   Vite preview without those headers
-* The `deploy` job requires **both** to pass, and only runs on a `push`:
+* The `e2e-relay` job builds `dist-relay/` and serves it with
+  `SERVE_DIST_HEADERS=none`, because the native relay shells receive no
+  response headers. `dist-relay/` is never uploaded or deployed; only `dist/`
+  reaches Cloudflare Pages and the release archive
+* The `deploy` job requires `validate`, `e2e` and `e2e-relay` to pass, and only runs on a `push`:
   `main` deploys to `CLOUDFLARE_PAGES_PROJECT`, `dev` deploys to
   `CLOUDFLARE_PAGES_PROJECT_DEV`. It publishes the artifact `validate` built
   rather than rebuilding, so the deployed bytes are the validated ones
