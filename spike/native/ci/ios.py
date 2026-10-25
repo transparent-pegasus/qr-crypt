@@ -34,13 +34,13 @@ with (OUT / "console.log").open("wb") as log:
             for command in ["pbinfo", "pbpaste"]:
                 clipboard.write(("simctl " + command + " booted\n").encode())
                 clipboard.flush()
-                subprocess.run(["xcrun", "simctl", command, "booted"], stdout=clipboard, stderr=subprocess.STDOUT, timeout=15)
+                subprocess.run(["xcrun", "simctl", command, "booted"], stdout=clipboard, stderr=subprocess.STDOUT, timeout=120)
         console = read_log(OUT / "console.log")
         assert "G0R_EVAL capacitor-eval after auto-done" in console, "Native evaluateJavaScript was not attempted after auto-done"
         assert result["gestureMethod"] == "capacitor-eval" or "G0R_EVAL_ERROR " in console, "Native eval did not call the existing gesture function or report an error"
     finally:
-        subprocess.run(["xcrun", "simctl", "io", udid, "screenshot", str(OUT / "screenshot.png")], timeout=15)
-        subprocess.run(["xcrun", "simctl", "terminate", udid, APP_ID], timeout=15)
+        subprocess.run(["xcrun", "simctl", "io", udid, "screenshot", str(OUT / "screenshot.png")], timeout=120)
+        subprocess.run(["xcrun", "simctl", "terminate", udid, APP_ID], timeout=120)
         process.terminate()
         try:
             process.wait(timeout=10)
