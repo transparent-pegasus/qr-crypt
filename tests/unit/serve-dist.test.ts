@@ -24,6 +24,129 @@ const reservePort = async (): Promise<number> => {
 }
 
 describe("serve-dist", () => {
+  it.each([
+    { name: "unset mode without _headers", mode: undefined, headers: false },
+    { name: "required mode without _headers", mode: "required", headers: false },
+    { name: "bogus mode with valid _headers", mode: "bogus", headers: true },
+    { name: "empty mode with valid _headers", mode: "", headers: true },
+  ])(
+    "rejects startup for $name",
+    async ({ mode, headers }) => {
+      const temporary = await mkdtemp(path.join(tmpdir(), "qrypt-serve-dist-"))
+      const root = path.join(temporary, "dist")
+      const port = await reservePort()
+      let server: ReturnType<typeof spawn> | undefined
+
+      try {
+        await mkdir(root)
+        await writeFile(
+          path.join(root, "index.html"),
+          "<!doctype html><title>Test</title>",
+        )
+        if (headers) {
+          await writeFile(
+            path.join(root, "_headers"),
+            "/*\n  Content-Security-Policy: default-src 'none'\n",
+          )
+        }
+        const env: NodeJS.ProcessEnv = {
+          ...process.env,
+          SERVE_DIST_PORT: String(port),
+          SERVE_DIST_ROOT: root,
+        }
+        delete env.SERVE_DIST_HEADERS
+        if (mode !== undefined) env.SERVE_DIST_HEADERS = mode
+
+        let stderr = ""
+        server = spawn("aube", ["run", "serve:dist"], {
+          cwd: process.cwd(),
+          env,
+          stdio: ["ignore", "ignore", "pipe"],
+          timeout: 10_000,
+        })
+        server.stderr?.setEncoding("utf8")
+        server.stderr?.on("data", (chunk: string) => {
+          stderr += chunk
+        })
+        const exitCode = await new Promise<number | null>((resolve, reject) => {
+          server?.once("error", reject)
+          server?.once("exit", (code) => resolve(code))
+        })
+
+        expect(exitCode).toBe(1)
+        expect(stderr).toContain("SERVE_DIST_START_FAILED")
+      } finally {
+        if (
+          server !== undefined &&
+          server.exitCode === null &&
+          server.signalCode === null
+        ) {
+          const exited = new Promise<void>((resolve) =>
+            server?.once("exit", () => resolve()),
+          )
+          server.kill("SIGTERM")
+          await exited
+        }
+        await rm(temporary, { force: true, recursive: true })
+      }
+    },
+    15_000,
+  )
+
+  it("serves index.html without _headers or a CSP response header in none mode", async () => {
+    const temporary = await mkdtemp(path.join(tmpdir(), "qrypt-serve-dist-"))
+    const root = path.join(temporary, "dist")
+    const index = "<!doctype html><title>Header-less relay</title>"
+    const port = await reservePort()
+    let server: ReturnType<typeof spawn> | undefined
+
+    try {
+      await mkdir(root)
+      await writeFile(path.join(root, "index.html"), index)
+      server = spawn("aube", ["run", "serve:dist"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          SERVE_DIST_PORT: String(port),
+          SERVE_DIST_ROOT: root,
+          SERVE_DIST_HEADERS: "none",
+        },
+        stdio: "ignore",
+      })
+      const baseUrl = `http://127.0.0.1:${port}`
+      const deadline = Date.now() + 10_000
+      let response: Response | undefined
+      while (Date.now() < deadline) {
+        if (server.exitCode !== null || server.signalCode !== null) break
+        try {
+          response = await fetch(`${baseUrl}/`)
+          break
+        } catch {
+          // The child process may still be binding its socket.
+        }
+        await delay(25)
+      }
+
+      expect(response, "none mode must start without _headers").toBeDefined()
+      expect(response!.status).toBe(200)
+      expect(await response!.text()).toBe(index)
+      expect(response!.headers.get("Content-Security-Policy")).toBeNull()
+    } finally {
+      if (
+        server !== undefined &&
+        server.exitCode === null &&
+        server.signalCode === null
+      ) {
+        const exited = new Promise<void>((resolve) =>
+          server?.once("exit", () => resolve()),
+        )
+        server.kill("SIGTERM")
+        await exited
+      }
+      await rm(temporary, { force: true, recursive: true })
+    }
+  }, 15_000)
+
   it("rejects malformed headers during startup", async () => {
     const temporary = await mkdtemp(path.join(tmpdir(), "qrypt-serve-dist-"))
     const root = path.join(temporary, "dist")
