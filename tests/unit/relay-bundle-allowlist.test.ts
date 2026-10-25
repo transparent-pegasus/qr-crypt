@@ -7,6 +7,7 @@ import {
   RELAY_ALLOWED_QUERY_IMPORTS,
   RELAY_ALLOWED_SOURCES,
   RELAY_ALLOWED_URL_ORIGINS,
+  RELAY_ALLOWED_URL_TEMPLATES,
   RELAY_ALLOWED_VIRTUAL_IDS,
 } from "../../scripts/relay-bundle-allowlist.mjs"
 
@@ -40,6 +41,9 @@ describe("relay allowlist exports", () => {
     expectTypeOf(RELAY_ALLOWED_URL_ORIGINS).toEqualTypeOf<
       Readonly<typeof RELAY_ALLOWED_URL_ORIGINS>
     >()
+    expectTypeOf(RELAY_ALLOWED_URL_TEMPLATES).toEqualTypeOf<
+      readonly { template: string; reason: string }[]
+    >()
     expectTypeOf(findRelayBundleViolations).toEqualTypeOf<
       (moduleIds: Iterable<string>, repoRoot: string) => string[]
     >()
@@ -54,6 +58,7 @@ describe("relay allowlist exports", () => {
       RELAY_ALLOWED_QUERY_IMPORTS,
       RELAY_ALLOWED_OUTPUT,
       RELAY_ALLOWED_URL_ORIGINS,
+      RELAY_ALLOWED_URL_TEMPLATES,
     ]) {
       expect(Array.isArray(list)).toBe(true)
     }
@@ -71,8 +76,20 @@ describe("relay allowlist exports", () => {
 
   it("allows only the specified wasm query pair", () => {
     expect(RELAY_ALLOWED_QUERY_IMPORTS).toEqual([
-      { path: "zxing-wasm/reader/zxing_reader.wasm", query: "url" },
+      { path: "zxing-wasm/dist/reader/zxing_reader.wasm", query: "url" },
     ])
+  })
+
+  it("lists the inert IPv6 validation template with its reason", () => {
+    expect(RELAY_ALLOWED_URL_TEMPLATES).toEqual(
+      expect.arrayContaining([
+        {
+          template: "http://[${}]",
+          reason:
+            "zod's IPv6 validation builds this string to test a host; it is never fetched, and the CSP blocks any external connection",
+        },
+      ]),
+    )
   })
 
   it("does not treat aube storage encodings as package names", () => {
@@ -143,9 +160,11 @@ describe("relay allowlist exports", () => {
     )
   })
 
-  it("gives every URL origin an explanation", () => {
+  it("contains only real URL origins with hostnames and explanations", () => {
     for (const { origin, reason } of RELAY_ALLOWED_URL_ORIGINS) {
-      expect(origin).toBe(new URL(origin).origin)
+      const url = new URL(origin)
+      expect(url.hostname).not.toBe("")
+      expect(origin).toBe(url.origin)
       expect(reason.trim().length).toBeGreaterThan(0)
     }
   })
@@ -157,8 +176,8 @@ describe("findRelayBundleViolations", () => {
     `${ROOT}/src/styles/globals.css`,
     `${ROOT}/node_modules/.aube/react@19.2.8/node_modules/react/index.js`,
     `${ROOT}/node_modules/.aube/@radix-ui+react-dialog@x/node_modules/@radix-ui/react-dialog/dist/index.mjs`,
-    `${ROOT}/node_modules/zxing-wasm/reader/zxing_reader.wasm?url`,
-    `${ROOT}/node_modules/.aube/zxing-wasm@x/node_modules/zxing-wasm/reader/zxing_reader.wasm?url`,
+    `${ROOT}/node_modules/zxing-wasm/dist/reader/zxing_reader.wasm?url`,
+    `${ROOT}/node_modules/.aube/zxing-wasm@x/node_modules/zxing-wasm/dist/reader/zxing_reader.wasm?url`,
     "\0rolldown/runtime.js",
     "\0vite/preload-helper.js",
   ])("accepts %s", (id) => {
@@ -210,15 +229,17 @@ describe("findRelayBundleViolations", () => {
 
   it.each([
     `${ROOT}/src/workers/pq-crypto.worker.ts?worker`,
-    `${ROOT}/node_modules/zxing-wasm/reader/zxing_reader.wasm?worker`,
-    `${ROOT}/node_modules/zxing-wasm/reader/zxing_reader.wasm?sharedworker`,
-    `${ROOT}/node_modules/zxing-wasm/reader/zxing_reader.wasm?raw`,
-    `${ROOT}/node_modules/zxing-wasm/reader/zxing_reader.wasm?inline`,
-    `${ROOT}/node_modules/zxing-wasm/reader/zxing_reader.wasm?worker&url`,
-    `${ROOT}/node_modules/zxing-wasm/reader/zxing_reader.wasm?url&worker`,
-    `${ROOT}/node_modules/zxing-wasm/reader/other.wasm?url`,
+    `${ROOT}/node_modules/zxing-wasm/reader/zxing_reader.wasm?url`,
+    `${ROOT}/node_modules/.aube/zxing-wasm@x/node_modules/zxing-wasm/reader/zxing_reader.wasm?url`,
+    `${ROOT}/node_modules/zxing-wasm/dist/reader/zxing_reader.wasm?worker`,
+    `${ROOT}/node_modules/zxing-wasm/dist/reader/zxing_reader.wasm?sharedworker`,
+    `${ROOT}/node_modules/zxing-wasm/dist/reader/zxing_reader.wasm?raw`,
+    `${ROOT}/node_modules/zxing-wasm/dist/reader/zxing_reader.wasm?inline`,
+    `${ROOT}/node_modules/zxing-wasm/dist/reader/zxing_reader.wasm?worker&url`,
+    `${ROOT}/node_modules/zxing-wasm/dist/reader/zxing_reader.wasm?url&worker`,
+    `${ROOT}/node_modules/zxing-wasm/dist/reader/other.wasm?url`,
     `${ROOT}/node_modules/react/zxing_reader.wasm?url`,
-    `${ROOT}/zxing-wasm/reader/zxing_reader.wasm?url`,
+    `${ROOT}/zxing-wasm/dist/reader/zxing_reader.wasm?url`,
   ])("rejects a query outside the exact package-relative pair: %s", (id) => {
     expect(findRelayBundleViolations([id], ROOT)).toEqual([id])
   })
@@ -231,7 +252,7 @@ describe("findRelayBundleViolations", () => {
     `${ROOT}-other/src/components/online-relay.tsx`,
     "src/components/online-relay.tsx",
     "react",
-    "zxing-wasm/reader/zxing_reader.wasm?url",
+    "zxing-wasm/dist/reader/zxing_reader.wasm?url",
   ])("rejects an unknown source or an id outside the repo: %s", (id) => {
     expect(findRelayBundleViolations([id], ROOT)).toEqual([id])
   })
@@ -258,7 +279,7 @@ describe("findRelayBundleViolations", () => {
     String.raw`C:\work\qr\src\components\online-relay.tsx`,
     String.raw`C:\work\qr\node_modules\.aube\react@19.2.8\node_modules\react\index.js`,
     String.raw`C:\work\qr\node_modules\.aube\@radix-ui+react-dialog@x\node_modules\@radix-ui\react-dialog\dist\index.mjs`,
-    String.raw`C:\work\qr\node_modules\zxing-wasm\reader\zxing_reader.wasm?url`,
+    String.raw`C:\work\qr\node_modules\zxing-wasm\dist\reader\zxing_reader.wasm?url`,
     String.raw`c:\WORK\QR\src\components\online-relay.tsx`,
     "C:/work/qr/src/components/online-relay.tsx",
   ])("accepts normalized Windows paths within the case-insensitive root: %s", (id) => {
@@ -315,6 +336,28 @@ describe("findRelayOutputViolations", () => {
     ).join("\n")
     expect(findRelayOutputViolations([{ fileName: "assets/relay.js", text }])).toEqual([])
   })
+
+  it.each(['"http://[${e}]"', '"http://[${host}]"'])(
+    "accepts a listed URL template after normalizing substitutions: %s",
+    (text) => {
+      expect(findRelayOutputViolations([{ fileName: "assets/relay.js", text }])).toEqual(
+        [],
+      )
+    },
+  )
+
+  it.each([
+    ['"https://${host}/x"', "url:https://${}/x in assets/relay.js"],
+    ['"https://${host}/${path}"', "url:https://${}/${} in assets/relay.js"],
+    ['"http://[${e}]/x"', "url:http://[${}]/x in assets/relay.js"],
+  ])(
+    "reports an unlisted URL template with normalized substitutions: %s",
+    (text, violation) => {
+      expect(findRelayOutputViolations([{ fileName: "assets/relay.js", text }])).toEqual([
+        violation,
+      ])
+    },
+  )
 
   it("reports both violations when a forbidden filename also contains a URL", () => {
     expect(
