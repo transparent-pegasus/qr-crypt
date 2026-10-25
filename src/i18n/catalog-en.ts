@@ -135,6 +135,12 @@ export const en = {
     "To use encryption features, take this device offline — for example with airplane mode — then accept the risk acknowledgement that appears. Going offline does not make a compromised device safe.",
   "gate.about.link": "What this app does",
 
+  "relay.native.notice.title": "Before you use this relay",
+  "relay.native.notice.keys":
+    "Never install or use this app on a device that holds, or has ever held, QR Crypt keys, identities, or plaintext — including a device with a browser where the QR Crypt offline app is installed. Use a separate online device.",
+  "relay.native.notice.camera":
+    "The camera sees everything in its view, not only the QR code.",
+  "relay.native.notice.audit": "This app has not been independently audited.",
   "relay.card.title": "Message relay",
   "relay.card.description":
     "Pass encrypted messages between a messenger and an offline device using QR codes and text. This works only while a scan finds no keys, PQ identities, or Vault on this device; nothing is decrypted and no keys are used.",
