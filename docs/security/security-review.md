@@ -364,6 +364,28 @@ above is not refreshed from an unrecorded value.
   [threat-model.md](threat-model.md) §5.1. None is imported by the deployed
   application, and this remediation changes no protocol, cryptographic suite,
   runtime network policy, or user workflow.
+- **RESOLVED (runtime and build/test/deploy chain, 2026-10-25)**: Zod moved
+  `4.4.3` -> `4.6.6`, including the lint toolchain's copy through a new exact
+  override; Vite moved `8.2.1` -> `8.2.4` and the Vitest family `4.1.11` ->
+  `4.1.12`. Exact overrides moved `fast-uri` `3.1.8` -> `3.1.9` and `undici`
+  `7.29.1` -> `7.30.1`; a new exact override pins `serialize-javascript@7.1.3`.
+  These close all 17 findings from scheduled maintenance run `40089131460`
+  (2026-10-24), reproduced locally before the change. Unlike the previous
+  tooling-only remediation, Zod is imported by application validation. Each
+  advisory, patched floor, affected path, and the Zod release's
+  compromised-source/history-rewrite provenance check are recorded in
+  [threat-model.md](threat-model.md) §5.1. Every cryptographic and QR-reader pin
+  remains unchanged. No protocol, persisted-preference contract, network
+  policy, or offline updater changes.
+  Validation on 2026-10-25: frozen install and audit passed (zero findings,
+  774 total dependencies); `make check` passed 97 files / 1,376 tests, with
+  zero lint errors and the same 13 existing warnings. The production build
+  retained 18 precache entries; the full mobile-Chromium suite passed 42/42
+  tests with retries disabled, including offline crypto, CSP/non-persistence,
+  and the damaged-artifact browser check. The release helper confirmed the
+  exact Noble `0.7.1` pin still matches the official release. This is targeted
+  remediation evidence, not a complete §3 review or independent audit; full
+  freshness-unit dates remain unchanged.
 - CI `validate` runs `aube audit` after `aube ci` on every push and pull
   request targeting `main` or `dev`. The approved 2026-09-07 maintenance
   contract additionally requires scheduled/manual, read-only external audit
