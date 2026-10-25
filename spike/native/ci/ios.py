@@ -10,7 +10,7 @@ APP_ID = "org.qrcrypt.g0r.spike"
 
 
 def simctl(*args, **kwargs):
-    return subprocess.run(["xcrun", "simctl", *args], check=True, timeout=120, **kwargs)
+    return subprocess.run(["xcrun", "simctl", *args], check=True, timeout=300, **kwargs)
 
 
 devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "--json"]))
