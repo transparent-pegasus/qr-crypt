@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
+import { join, relative, resolve, sep } from "node:path"
 import { fileURLToPath, URL } from "node:url"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
@@ -39,26 +40,53 @@ function metaCsp(): Plugin {
 }
 
 export function relayAllowlistPlugin(): Plugin {
+  let outDir: string
+  let outputWritten = false
   return {
     name: "relay-allowlist",
     enforce: "post",
-    generateBundle(_, bundle) {
-      const files = Object.values(bundle).map((entry) => ({
-        fileName: entry.fileName,
-        text:
-          entry.type === "chunk"
-            ? entry.code
-            : typeof entry.source === "string"
-              ? entry.source
-              : "",
-      }))
-      const violations = [
-        ...findRelayBundleViolations([...this.getModuleIds()], repoRoot),
-        ...findRelayOutputViolations(files),
-      ]
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir)
+    },
+    generateBundle() {
+      const violations = findRelayBundleViolations([...this.getModuleIds()], repoRoot)
       if (violations.length > 0) {
         this.error("relay bundle allowlist violations:\n" + violations.join("\n"))
       }
+    },
+    writeBundle() {
+      outputWritten = true
+    },
+    closeBundle: {
+      order: "post",
+      sequential: true,
+      handler() {
+        if (!outputWritten) return
+        const files = []
+        const violations = []
+        const decoder = new TextDecoder("utf-8", { fatal: true })
+        for (const entry of readdirSync(outDir, {
+          recursive: true,
+          withFileTypes: true,
+        })) {
+          if (!entry.isFile()) continue
+          const filePath = join(entry.parentPath, entry.name)
+          const fileName = relative(outDir, filePath).split(sep).join("/")
+          let text = ""
+          if (/\.(?:js|mjs|css|html|json|txt|svg|map|webmanifest)$/i.test(fileName)) {
+            try {
+              text = decoder.decode(readFileSync(filePath))
+            } catch {
+              violations.push("non-UTF-8 text file: " + fileName)
+            }
+          }
+          files.push({ fileName, text })
+        }
+        violations.push(...findRelayOutputViolations(files))
+        if (violations.length > 0) {
+          this.error("relay bundle allowlist violations:\n" + violations.join("\n"))
+        }
+      },
     },
   }
 }

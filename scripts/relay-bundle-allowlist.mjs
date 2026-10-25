@@ -144,11 +144,6 @@ export const RELAY_ALLOWED_URL_ORIGINS = Object.freeze([
       "React and icons use XML, SVG and MathML namespace identifiers, which do not load resources.",
   }),
   Object.freeze({
-    origin: "https://fastly.jsdelivr.net",
-    reason:
-      "ZXing's default WASM locator is replaced by reader-module.ts with the bundled same-origin asset before preparation or decoding; failures are latched without fallback.",
-  }),
-  Object.freeze({
     origin: "https://json-schema.org",
     reason: "Zod's JSON Schema draft identifier is metadata, never fetched.",
   }),
@@ -168,6 +163,11 @@ export const RELAY_ALLOWED_URL_TEMPLATES = Object.freeze([
     template: "http://[${}]",
     reason:
       "zod's IPv6 validation builds this string to test a host; it is never fetched, and the CSP blocks any external connection",
+  }),
+  Object.freeze({
+    template: "https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${}/${}",
+    reason:
+      "ZXing's default WASM locator is replaced by reader-module.ts with the bundled same-origin asset before preparation or decoding; the ready gate prevents use after failure, and the CSP's connect-src 'self' blocks external connections.",
   }),
 ])
 
@@ -243,24 +243,28 @@ export function findRelayOutputViolations(files) {
       })
     if (!allowed) violations.add(fileName)
 
+    // Only contiguous http(s):// literals: no concatenation, escaped slashes,
+    // protocol-relative URLs or ws(s):. The module allowlist and CSP are primary gates.
     for (const match of (text ?? "").matchAll(
       /https?:\/\/(?:\$\{[^}]*\}|[^\s"'`()<>\\])+/gi,
     )) {
-      const template = match[0].replace(/\$\{[^}]*\}/g, "${}")
+      if (match[0].includes("${")) {
+        const template = match[0].replace(/\$\{[^}]*\}/g, "${}")
+        if (!RELAY_ALLOWED_URL_TEMPLATES.some((entry) => entry.template === template)) {
+          violations.add("url:" + template + " in " + fileName)
+        }
+        continue
+      }
       try {
         const { hostname, origin } = new URL(match[0])
         if (
           !hostname ||
           !RELAY_ALLOWED_URL_ORIGINS.some((entry) => entry.origin === origin)
         ) {
-          violations.add(
-            "url:" + (template.includes("${") ? template : origin) + " in " + fileName,
-          )
+          violations.add("url:" + origin + " in " + fileName)
         }
       } catch {
-        if (!RELAY_ALLOWED_URL_TEMPLATES.some((entry) => entry.template === template)) {
-          violations.add("url:" + template + " in " + fileName)
-        }
+        violations.add("url:" + match[0] + " in " + fileName)
       }
     }
   }

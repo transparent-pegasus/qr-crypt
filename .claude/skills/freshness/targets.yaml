@@ -73,7 +73,7 @@ units:
       After bumping vite-plugin-pwa / workbox, re-review the VitePWA options in
       vite.config.ts (globPatterns, cleanupOutdatedCaches, sentinel NetworkOnly).
     verify: aube ci && aube run typecheck && aube run lint && aube run test && aube run build:prod
-    sync: [threat-model, security-review]
+    sync: [threat-model, security-review, relay-bundle]
 
   - id: relay-bundle
     category: build-policy
@@ -84,6 +84,7 @@ units:
       - scripts/relay-bundle-allowlist.mjs # exact module, query, output, inert-origin, and URL-template inventory
       - scripts/relay-bundle-allowlist.d.mts # declaration companion for the checker
       - tests/unit/relay-bundle-allowlist.test.ts # positive inventory and rejection boundaries
+      - tests/integration/relay-bundle-build.test.ts # final output and injected-plugin rejection builds
     why: >
       The relay's measured source, package, virtual-module, query-import,
       output, inert URL-origin, and URL-template inventories drift when dependencies or
@@ -92,12 +93,13 @@ units:
       Re-measure the standalone relay build's module graph and emitted files.
       Review every inventory change against the relay's storage, boot, worker,
       feature, and crypto exclusions. Permit a URL origin only with a reason
-      showing why its literals can never be loaded as resources. Permit an
-      unparseable URL only through an exact normalized-template entry with a reason.
+      showing why its literals can never be loaded as resources. Permit a
+      URL template only through an exact normalized-template entry with a reason.
       Keep the checker implementation and declarations in step. Do not stamp a seed
       inventory that has not yet been measured against the relay build.
     verify: |
       make test-one FILE=tests/unit/relay-bundle-allowlist.test.ts
+      make test-one FILE=tests/integration/relay-bundle-build.test.ts
       aube run typecheck
       aube run lint
       aube run build:relay

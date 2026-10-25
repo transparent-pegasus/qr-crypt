@@ -142,7 +142,7 @@ export const en = {
     "The camera sees everything in its view, not only the QR code.",
   "relay.native.notice.audit": "This app has not been independently audited.",
   "relay.native.card.description":
-    "Pass encrypted messages between a messenger and an offline device using QR codes and text. This app contains no key, decryption, or storage code: nothing is decrypted and no keys are used.",
+    "Pass encrypted messages between a messenger and an offline device using QR codes and text. This app contains no key generation, key storage, or decryption code, and it does not keep message frames; it remembers only your language choice.",
   "relay.card.title": "Message relay",
   "relay.card.description":
     "Pass encrypted messages between a messenger and an offline device using QR codes and text. This works only while a scan finds no keys, PQ identities, or Vault on this device; nothing is decrypted and no keys are used.",
