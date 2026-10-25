@@ -29,7 +29,11 @@ export function RelayApp(): JSX.Element {
           <p>{t("relay.native.notice.camera")}</p>
           <p>{t("relay.native.notice.audit")}</p>
         </section>
-        <OnlineRelay eligible onSessionAcquire={acquireLocalRelaySession} />
+        <OnlineRelay
+          eligible
+          descriptionKey="relay.native.card.description"
+          onSessionAcquire={acquireLocalRelaySession}
+        />
       </div>
     </main>
   )

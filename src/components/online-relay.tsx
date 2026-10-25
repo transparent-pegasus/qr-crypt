@@ -67,6 +67,7 @@ const PARSE_ERROR_KEYS: Record<RelayParseErrorCode, MessageKey> = {
 type DialogMode = "capture" | "image" | "playback" | null
 export interface OnlineRelayProps {
   eligible: boolean
+  descriptionKey?: MessageKey
   onEligibilityRefresh?: () => Promise<boolean>
   onSessionAcquire?: (signal: AbortSignal) => Promise<RelayLease | null>
   registerRelaySessionEndHandler?: (
@@ -76,6 +77,7 @@ export interface OnlineRelayProps {
 
 export function OnlineRelay({
   eligible,
+  descriptionKey = "relay.card.description",
   onEligibilityRefresh,
   onSessionAcquire,
   registerRelaySessionEndHandler,
@@ -521,7 +523,7 @@ export function OnlineRelay({
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            {t("relay.card.description")}
+            {t(descriptionKey)}
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
             <Button
