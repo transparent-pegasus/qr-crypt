@@ -243,17 +243,21 @@ export function findRelayOutputViolations(files) {
       })
     if (!allowed) violations.add(fileName)
 
-    for (const match of (text ?? "").matchAll(/https?:\/\/[^\s"'`<>\\]+/gi)) {
+    for (const match of (text ?? "").matchAll(
+      /https?:\/\/(?:\$\{[^}]*\}|[^\s"'`()<>\\])+/gi,
+    )) {
+      const template = match[0].replace(/\$\{[^}]*\}/g, "${}")
       try {
         const { hostname, origin } = new URL(match[0])
         if (
           !hostname ||
           !RELAY_ALLOWED_URL_ORIGINS.some((entry) => entry.origin === origin)
         ) {
-          violations.add("url:" + origin + " in " + fileName)
+          violations.add(
+            "url:" + (template.includes("${") ? template : origin) + " in " + fileName,
+          )
         }
       } catch {
-        const template = match[0].replace(/\$\{[^}]*\}/g, "${}")
         if (!RELAY_ALLOWED_URL_TEMPLATES.some((entry) => entry.template === template)) {
           violations.add("url:" + template + " in " + fileName)
         }
