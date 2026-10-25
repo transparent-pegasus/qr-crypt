@@ -9,6 +9,7 @@ export default tseslint.config(
   {
     ignores: [
       "dist",
+      "dist-relay",
       "dev-dist",
       "coverage",
       "playwright-report",
@@ -65,8 +66,10 @@ export default tseslint.config(
     files: [
       "scripts/**/*.mjs",
       "vite.config.ts",
+      "vite.relay.config.ts",
       "vitest.config.ts",
       "playwright.config.ts",
+      "playwright.relay.config.ts",
     ],
     languageOptions: { globals: { ...globals.node } },
   },

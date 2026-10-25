@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:prod": "vite build --mode prod",
+    "build:relay": "vite build --config vite.relay.config.ts --mode prod",
     "preview": "vite preview",
     "serve:dist": "node scripts/serve-dist.mjs",
     "typecheck": "tsc --noEmit",

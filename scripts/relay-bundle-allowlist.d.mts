@@ -10,6 +10,10 @@ export declare const RELAY_ALLOWED_URL_ORIGINS: readonly {
   readonly origin: string
   readonly reason: string
 }[]
+export declare const RELAY_ALLOWED_URL_TEMPLATES: readonly {
+  readonly template: string
+  readonly reason: string
+}[]
 
 export declare function findRelayBundleViolations(
   moduleIds: Iterable<string>,

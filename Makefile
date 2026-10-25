@@ -37,6 +37,11 @@ e2e: # UI changes
 .PHONY: build
 build: # vite / env changes
 	aube run build
+	aube run build:relay
+
+.PHONY: build-relay
+build-relay:
+	aube run build:relay
 
 .PHONY: build-prod
 build-prod: # .env.prod changes

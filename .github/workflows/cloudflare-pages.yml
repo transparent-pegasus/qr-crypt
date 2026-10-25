@@ -63,6 +63,9 @@ jobs:
         env:
           VITE_BUILD_SHA: ${{ github.sha }}
 
+      - name: Build relay-only bundle
+        run: aube run build:relay
+
       # The deploy job publishes exactly these bytes, so a deployment can never
       # diverge from the artifact the checks above ran against.
       - name: Upload the built site
