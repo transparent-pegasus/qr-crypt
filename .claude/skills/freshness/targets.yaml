@@ -78,7 +78,7 @@ units:
   - id: relay-bundle
     category: build-policy
     cadence_days: 14 # also triggered by dependency or relay build-graph changes
-    last_checked: null
+    last_checked: 2026-10-26
     files:
       - vite.relay.config.ts # standalone build, CSP derivation, and fail-closed inventory/worker plugins
       - scripts/relay-bundle-allowlist.mjs # exact module, query, output, inert-origin, and URL-template inventory
