@@ -3,7 +3,7 @@ import { tmpdir } from "node:os"
 import { join, matchesGlob, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
 import { build } from "vite"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { relayViteConfig } from "../../vite.relay.config"
 import { parseDocument } from "../../scripts/build-about-locales.mjs"
 import { metaCspFromHeaders } from "../../scripts/csp-from-headers.mjs"
@@ -23,12 +23,17 @@ async function buildRelay(fixture?: string): Promise<string> {
       }
     : { outDir }
 
-  await build({
-    ...relayViteConfig(options),
-    configFile: false,
-    mode: "prod",
-    logLevel: "silent",
-  })
+  vi.stubEnv("NODE_ENV", "production")
+  try {
+    await build({
+      ...relayViteConfig(options),
+      configFile: false,
+      mode: "prod",
+      logLevel: "silent",
+    })
+  } finally {
+    vi.unstubAllEnvs()
+  }
   return outDir
 }
 
