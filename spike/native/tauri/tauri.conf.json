@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "G0r Spike",
+  "version": "0.1.0",
+  "identifier": "org.qrcrypt.g0r.spike",
+  "build": { "frontendDist": "../dist" },
+  "app": {
+    "windows": [],
+    "security": { "csp": null, "capabilities": [] }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.png", "icons/icon.ico"]
+  }
+}

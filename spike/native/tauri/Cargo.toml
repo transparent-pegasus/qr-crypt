@@ -1,0 +1,15 @@
+[package]
+name = "g0r-spike"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = "=2.7.2"
+
+[dependencies]
+tauri = "=2.12.3"
+percent-encoding = "2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

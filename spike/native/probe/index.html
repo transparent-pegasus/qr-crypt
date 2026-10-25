@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>G0r native relay probe</title>
+  </head>
+  <body>
+    <h1>G0r native relay probe</h1>
+    <p id="status" role="status">
+      Running automatic checks. Camera starts only on a tap.
+    </p>
+    <button id="gesture" hidden>Tap once to test text and PNG clipboard writes</button>
+    <div class="qrs">
+      <figure>
+        <img id="sym" alt="Single-frame symmetric test envelope" />
+        <figcaption>Sym test QR</figcaption>
+      </figure>
+      <figure>
+        <img id="pq" alt="Animated two-frame PQ test envelope" />
+        <figcaption id="playback">PQ playback</figcaption>
+      </figure>
+    </div>
+    <button id="start-camera">Start camera</button>
+    <button id="stop-camera" disabled>Stop camera</button>
+    <button id="reset-camera">Reset capture</button>
+    <p id="camera-status" role="status">Camera not started</p>
+    <video id="video" muted playsinline></video>
+    <pre id="checks"></pre>
+    <h2>Final report</h2>
+    <pre id="report">Waiting for automatic checks and clipboard gesture</pre>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+dist/
+out/
+tauri/target/
+capacitor/android/
+capacitor/ios/
+__pycache__/

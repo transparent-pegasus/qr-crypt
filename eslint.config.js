@@ -16,6 +16,7 @@ export default tseslint.config(
       "node_modules",
       ".worktrees",
       ".tmp",
+      "spike",
     ],
   },
   js.configs.recommended,

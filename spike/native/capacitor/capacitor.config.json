@@ -1,0 +1,6 @@
+{
+  "appId": "org.qrcrypt.g0r.spike",
+  "appName": "G0r Spike",
+  "webDir": "../dist",
+  "loggingBehavior": "debug"
+}

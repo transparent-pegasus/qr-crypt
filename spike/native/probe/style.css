@@ -1,0 +1,47 @@
+body {
+  margin: 1rem;
+  font:
+    16px system-ui,
+    sans-serif;
+  color: #111;
+  background: white;
+}
+button {
+  padding: 1rem;
+  margin: 0.3rem;
+  font: inherit;
+}
+#gesture {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  z-index: 10;
+  background: #e7efff;
+  color: #111;
+  font-size: 1.5rem;
+}
+[hidden] {
+  display: none !important;
+}
+.qrs {
+  display: flex;
+  flex-wrap: wrap;
+}
+figure {
+  margin: 0.5rem;
+}
+img {
+  width: min(40vw, 400px);
+  height: auto;
+  image-rendering: pixelated;
+}
+video {
+  display: block;
+  width: min(100%, 640px);
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

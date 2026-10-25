@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "noUncheckedIndexedAccess": false },
+  "include": ["probe/main.ts", "browser/*.ts", "../../src/vite-env.d.ts"]
+}

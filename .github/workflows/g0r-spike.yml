@@ -1,0 +1,246 @@
+name: G0r spike
+
+on:
+  push:
+    branches: [spike/native-relay-g0r]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g0r-spike
+  cancel-in-progress: true
+
+jobs:
+  build-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: true
+      - run: aube ci
+      - name: Verify harness and build the shared production-mode probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p spike/native/out/build-probe
+          python3 -m unittest discover -s spike/native/ci -p 'test_*.py'
+          aube exec tsc --project spike/native/tsconfig.json
+          aube exec vite build --config spike/native/probe/vite.config.mjs --mode prod 2>&1 | tee spike/native/out/build-probe/build.log
+        env:
+          VITE_BUILD_SHA: ${{ github.sha }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: g0r-probe-dist
+          path: spike/native/dist
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: g0r-build-probe
+          path: spike/native/out
+
+  tauri-linux:
+    needs: build-probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: g0r-probe-dist
+          path: spike/native/dist
+      - name: Install WebKitGTK and desktop drivers
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev xvfb xdotool xclip imagemagick
+      - name: Build and probe WebKitGTK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p spike/native/out/tauri-linux
+          cargo build --locked --manifest-path spike/native/tauri/Cargo.toml 2>&1 | tee spike/native/out/tauri-linux/build.log
+          xvfb-run -a -s '-screen 0 1280x1024x24' python3 spike/native/ci/tauri.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: g0r-tauri-linux
+          path: spike/native/out
+
+  tauri-windows:
+    needs: build-probe
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: g0r-probe-dist
+          path: spike/native/dist
+      - name: Build the embedded executable and print its SHA-256
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force spike/native/out/tauri-windows | Out-Null
+          cargo build --locked --manifest-path spike/native/tauri/Cargo.toml 2>&1 | Tee-Object spike/native/out/tauri-windows/build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item spike/native/tauri/target/debug/g0r-spike.exe spike/native/out/tauri-windows/
+          python spike/native/ci/hash_artifacts.py spike/native/out/tauri-windows/g0r-spike.exe
+      - name: Probe WebView2 with a real mouse event
+        run: python spike/native/ci/tauri.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: g0r-tauri-windows
+          path: spike/native/out
+
+  tauri-macos:
+    needs: build-probe
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: g0r-probe-dist
+          path: spike/native/dist
+      - name: Build and probe WKWebView using the shell eval route
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p spike/native/out/tauri-darwin
+          cargo build --locked --manifest-path spike/native/tauri/Cargo.toml 2>&1 | tee spike/native/out/tauri-darwin/build.log
+          python3 spike/native/ci/tauri.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: g0r-tauri-macos
+          path: spike/native/out
+
+  capacitor-android:
+    needs: build-probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: g0r-probe-dist
+          path: spike/native/dist
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Generate and build the debug APK
+        working-directory: spike/native/capacitor
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../out/capacitor-android
+          aube ci
+          aube exec cap add android
+          python3 patch-native.py android
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug 2>&1 | tee ../../out/capacitor-android/build.log
+          cp app/build/outputs/apk/debug/app-debug.apk ../../out/capacitor-android/g0r-spike.apk
+          cd ../../../..
+          python3 spike/native/ci/hash_artifacts.py spike/native/out/capacitor-android/g0r-spike.apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-g0r-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Probe Android WebView with an adb tap
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          script: python3 spike/native/ci/android.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: g0r-capacitor-android
+          path: spike/native/out
+
+  capacitor-ios:
+    needs: build-probe
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: g0r-probe-dist
+          path: spike/native/dist
+      - name: Generate and build the unsigned simulator app
+        working-directory: spike/native/capacitor
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../out/capacitor-ios
+          xcodebuild -version | tee ../out/capacitor-ios/xcode.txt
+          aube ci
+          aube exec cap add ios --packagemanager SPM
+          python3 patch-native.py ios
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build CODE_SIGNING_ALLOWED=NO build 2>&1 | tee ../out/capacitor-ios/build.log
+      - name: Probe iOS WKWebView and capture simulator clipboard evidence
+        run: python3 spike/native/ci/ios.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: g0r-capacitor-ios
+          path: spike/native/out
+
+  browser-baseline:
+    needs: build-probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: g0r-probe-dist
+          path: spike/native/dist
+      - run: aube ci
+      - run: aube exec playwright install --with-deps chromium webkit
+      - name: Probe both browser engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p spike/native/out/browser
+          aube exec playwright test --config spike/native/browser/playwright.config.ts 2>&1 | tee spike/native/out/browser/test.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: g0r-browser-baseline
+          path: spike/native/out
