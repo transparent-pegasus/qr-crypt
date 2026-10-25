@@ -42,7 +42,7 @@ describe("relay allowlist exports", () => {
       Readonly<typeof RELAY_ALLOWED_URL_ORIGINS>
     >()
     expectTypeOf(RELAY_ALLOWED_URL_TEMPLATES).toEqualTypeOf<
-      readonly { template: string; reason: string }[]
+      readonly { readonly template: string; readonly reason: string }[]
     >()
     expectTypeOf(findRelayBundleViolations).toEqualTypeOf<
       (moduleIds: Iterable<string>, repoRoot: string) => string[]
