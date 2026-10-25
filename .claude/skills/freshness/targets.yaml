@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-10-25 # last revision of this registry itself
+updated: 2026-10-26 # last revision of this registry itself
 
 units:
   - id: deps
@@ -74,6 +74,30 @@ units:
       vite.config.ts (globPatterns, cleanupOutdatedCaches, sentinel NetworkOnly).
     verify: aube ci && aube run typecheck && aube run lint && aube run test && aube run build:prod
     sync: [threat-model, security-review]
+
+  - id: relay-bundle
+    category: build-policy
+    cadence_days: 14 # also triggered by dependency or relay build-graph changes
+    last_checked: null
+    files:
+      - scripts/relay-bundle-allowlist.mjs # exact module, query, output, and inert-origin inventory
+      - scripts/relay-bundle-allowlist.d.mts # declaration companion for the checker
+      - tests/unit/relay-bundle-allowlist.test.ts # positive inventory and rejection boundaries
+    why: >
+      The relay's measured source, package, virtual-module, query-import,
+      output, and inert URL-origin inventories drift when dependencies or
+      build tooling change.
+    method: |
+      Re-measure the standalone relay build's module graph and emitted files.
+      Review every inventory change against the relay's storage, boot, worker,
+      feature, and crypto exclusions. Permit a URL origin only with a reason
+      showing why its literals can never be loaded as resources. Keep the
+      checker implementation and declarations in step. Do not stamp a seed
+      inventory that has not yet been measured against the relay build.
+    verify: |
+      make test-one FILE=tests/unit/relay-bundle-allowlist.test.ts
+      aube run typecheck
+      aube run lint
 
   - id: crypto-noble
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
