@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, matchesGlob, relative, sep } from "node:path"
 import { fileURLToPath } from "node:url"
-import { build } from "vite"
+import { build, type Plugin, type UserConfig } from "vite"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { relayViteConfig } from "../../vite.relay.config"
 import { parseDocument } from "../../scripts/build-about-locales.mjs"
@@ -11,7 +11,10 @@ import { RELAY_ALLOWED_OUTPUT } from "../../scripts/relay-bundle-allowlist.mjs"
 
 const outputDirectories: string[] = []
 
-async function buildRelay(fixture?: string): Promise<string> {
+async function buildRelay(
+  fixture?: string,
+  overrides: Pick<UserConfig, "plugins" | "build"> = {},
+): Promise<string> {
   const outDir = await mkdtemp(join(tmpdir(), "qr-crypt-relay-bundle-"))
   outputDirectories.push(outDir)
   const options = fixture
@@ -25,8 +28,11 @@ async function buildRelay(fixture?: string): Promise<string> {
 
   vi.stubEnv("NODE_ENV", "production")
   try {
+    const config = relayViteConfig(options)
     await build({
-      ...relayViteConfig(options),
+      ...config,
+      plugins: [...(config.plugins ?? []), ...(overrides.plugins ?? [])],
+      build: { ...config.build, ...overrides.build },
       configFile: false,
       mode: "prod",
       logLevel: "silent",
@@ -97,6 +103,63 @@ describe("relay bundle build", () => {
   it("fails on a ?worker import", async () => {
     await expect(buildRelay("worker-import")).rejects.toThrow(
       /relay bundle must not build workers|src\/workers\/pq-crypto\.worker\.ts\?worker/,
+    )
+  }, 60_000)
+
+  it("rejects sw.js emitted by an appended plugin", async () => {
+    const plugin: Plugin = {
+      name: "test-forbidden-service-worker",
+      generateBundle() {
+        this.emitFile({ type: "asset", fileName: "sw.js", source: "self.skipWaiting()" })
+      },
+    }
+
+    await expect(buildRelay(undefined, { plugins: [plugin] })).rejects.toThrow("sw.js")
+  }, 60_000)
+
+  it.each([
+    { representation: "string", source: 'fetch("https://unreviewed.example/x")' },
+    {
+      representation: "Uint8Array",
+      source: new TextEncoder().encode('fetch("https://unreviewed.example/x")'),
+    },
+  ])(
+    "rejects an unlisted URL in a $representation asset source",
+    async ({ source }) => {
+      const plugin: Plugin = {
+        name: "test-unreviewed-url",
+        generateBundle() {
+          this.emitFile({ type: "asset", fileName: "assets/extra.js", source })
+        },
+      }
+
+      const result = buildRelay(undefined, { plugins: [plugin] })
+      await expect(result).rejects.toThrow("https://unreviewed.example")
+      await expect(result).rejects.toThrow("assets/extra.js")
+    },
+    60_000,
+  )
+
+  it("rejects .vite/manifest.json when build.manifest is enabled", async () => {
+    await expect(
+      buildRelay(undefined, { build: { manifest: true } }),
+    ).rejects.toThrow(".vite/manifest.json")
+  }, 60_000)
+
+  it("rejects forbidden.txt emitted by a post-order generateBundle hook", async () => {
+    const plugin: Plugin = {
+      name: "test-late-forbidden-output",
+      enforce: "post",
+      generateBundle: {
+        order: "post",
+        handler() {
+          this.emitFile({ type: "asset", fileName: "forbidden.txt", source: "late" })
+        },
+      },
+    }
+
+    await expect(buildRelay(undefined, { plugins: [plugin] })).rejects.toThrow(
+      "forbidden.txt",
     )
   }, 60_000)
 

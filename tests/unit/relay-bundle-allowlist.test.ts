@@ -92,6 +92,18 @@ describe("relay allowlist exports", () => {
     )
   })
 
+  it("does not allow the entire ZXing CDN origin", () => {
+    expect(RELAY_ALLOWED_URL_ORIGINS.map(({ origin }) => origin)).not.toContain(
+      "https://fastly.jsdelivr.net",
+    )
+  })
+
+  it("lists the measured ZXing CDN URL as an exact normalized template", () => {
+    expect(RELAY_ALLOWED_URL_TEMPLATES.map(({ template }) => template)).toContain(
+      "https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${}/${}",
+    )
+  })
+
   it("does not treat aube storage encodings as package names", () => {
     for (const name of [".aube", "react@19.2.8", "@radix-ui+react-dialog@x"]) {
       expect(RELAY_ALLOWED_PACKAGES).not.toContain(name)
@@ -336,6 +348,43 @@ describe("findRelayOutputViolations", () => {
     ).join("\n")
     expect(findRelayOutputViolations([{ fileName: "assets/relay.js", text }])).toEqual([])
   })
+
+  it("rejects an unlisted template path even on an allowed literal origin", () => {
+    expect(
+      findRelayOutputViolations([
+        { fileName: "assets/relay.js", text: '`https://react.dev/${page}`' },
+      ]),
+    ).toEqual(["url:https://react.dev/${} in assets/relay.js"])
+  })
+
+  it.each([
+    '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${n[1]}/${e}`',
+    '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${directory}/${file}`',
+  ])("accepts the measured ZXing CDN template after normalization: %s", (text) => {
+    expect(findRelayOutputViolations([{ fileName: "assets/relay.js", text }])).toEqual([])
+  })
+
+  it.each([
+    [
+      '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/other/${directory}/${file}`',
+      "url:https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/other/${}/${} in assets/relay.js",
+    ],
+    [
+      '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.1/dist/${directory}/${file}`',
+      "url:https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.1/dist/${}/${} in assets/relay.js",
+    ],
+    [
+      '"https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/reader/zxing_reader.wasm"',
+      "url:https://fastly.jsdelivr.net in assets/relay.js",
+    ],
+  ])(
+    "rejects a URL outside the exact measured ZXing CDN template: %s",
+    (text, violation) => {
+      expect(findRelayOutputViolations([{ fileName: "assets/relay.js", text }])).toEqual([
+        violation,
+      ])
+    },
+  )
 
   it.each(['"http://[${e}]"', '"http://[${host}]"'])(
     "accepts a listed URL template after normalizing substitutions: %s",

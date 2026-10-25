@@ -6,6 +6,7 @@ import { OnlineRelay } from "@/components/online-relay"
 import { LanguageProvider, type Language } from "@/i18n"
 import { acquireLocalRelaySession } from "@/relay/local-session"
 import { RelayApp } from "@/relay/relay-app"
+import { followSystemTheme } from "@/relay/system-theme"
 import { env } from "@/schemas/env-schema"
 
 const readerModuleState = vi.hoisted(() => vi.fn<() => "idle" | "ready">())
@@ -107,7 +108,7 @@ describe("relay-only app", () => {
     {
       language: "en",
       nativeDescription:
-        "Pass encrypted messages between a messenger and an offline device using QR codes and text. This app contains no key, decryption, or storage code: nothing is decrypted and no keys are used.",
+        "Pass encrypted messages between a messenger and an offline device using QR codes and text. This app contains no key generation, key storage, or decryption code, and it does not keep message frames; it remembers only your language choice.",
       scanClaim: "scan finds no keys, PQ identities, or Vault on this device",
       webDescription:
         "Pass encrypted messages between a messenger and an offline device using QR codes and text. This works only while a scan finds no keys, PQ identities, or Vault on this device; nothing is decrypted and no keys are used.",
@@ -115,7 +116,7 @@ describe("relay-only app", () => {
     {
       language: "ja",
       nativeDescription:
-        "QRコードとテキストで、メッセンジャーとオフライン端末の間で暗号化済みメッセージを受け渡します。このアプリには鍵・復号・保存のコードが無く、復号は行わず、鍵も使いません。",
+        "QRコードとテキストで、メッセンジャーとオフライン端末の間で暗号化済みメッセージを受け渡します。このアプリには鍵の生成・保存と復号のコードが無く、メッセージのフレームも保存しません。保存するのは言語の設定だけです。",
       scanClaim: "走査で鍵・PQ identity・Vaultが無いと確認できた端末でのみ使え",
       webDescription:
         "QRコードとテキストで、メッセンジャーとオフライン端末の間で暗号化済みメッセージを受け渡します。走査で鍵・PQ identity・Vaultが無いと確認できた端末でのみ使え、復号は行わず、鍵も使いません。",
@@ -192,6 +193,42 @@ describe("relay-only app", () => {
 
     expect(screen.getByRole("note")).toBeVisible()
     expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  it("follows system theme changes until the returned cleanup runs", () => {
+    const media = Object.assign(new EventTarget(), {
+      matches: false,
+      media: "(prefers-color-scheme: dark)",
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+    })
+    vi.spyOn(window, "matchMedia").mockReturnValue(media)
+    const root = document.documentElement
+    const wasDark = root.classList.contains("dark")
+    root.classList.add("dark")
+
+    const stopFollowing = followSystemTheme()
+    try {
+      expect(window.matchMedia).toHaveBeenCalledWith("(prefers-color-scheme: dark)")
+      expect(root).not.toHaveClass("dark")
+
+      media.matches = true
+      media.dispatchEvent(new Event("change"))
+      expect(root).toHaveClass("dark")
+
+      media.matches = false
+      media.dispatchEvent(new Event("change"))
+      expect(root).not.toHaveClass("dark")
+
+      stopFollowing()
+      media.matches = true
+      media.dispatchEvent(new Event("change"))
+      expect(root).not.toHaveClass("dark")
+    } finally {
+      stopFollowing()
+      root.classList.toggle("dark", wasDark)
+    }
   })
 
   it("acquireLocalRelaySession returns null for an aborted signal and a lease otherwise", async () => {
