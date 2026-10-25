@@ -1,6 +1,6 @@
 import { cleanup, render, screen, act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
+import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/lib/local-storage-events"
 import { THEME_STORAGE_KEY, ThemeProvider, useTheme } from "@/app/providers"
 import { memoryLocalStorage } from "./helpers/render-app"
 

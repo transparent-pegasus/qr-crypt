@@ -10,7 +10,7 @@ import {
   type BootDecisionSnapshot,
 } from "@/app/boot/boot-controller"
 import { REACHABILITY_SENTINEL_BODY } from "@/app/boot/boot-contract"
-import { FeatureSupportProvider } from "@/app/providers"
+import { FeatureSupportProvider } from "@/app/feature-support"
 import { OnlineRelay } from "@/components/online-relay"
 import { dropVaultKeyCache, getOrCreateVaultKey } from "@/crypto/vault/vault-key"
 import { LanguageProvider } from "@/i18n"

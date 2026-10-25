@@ -16,8 +16,8 @@ import {
   getDefaultBootController,
 } from "@/app/boot/boot-controller"
 import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
+import { useFeatureSupport } from "@/app/feature-support"
 import {
-  useFeatureSupport,
   useTheme,
   useTransientClear,
   type Theme,

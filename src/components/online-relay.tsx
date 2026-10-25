@@ -11,7 +11,7 @@ import {
   ScanLine,
 } from "lucide-react"
 import type { RelaySessionEndReason } from "@/app/boot/boot-controller"
-import { useFeatureSupport } from "@/app/providers"
+import { useFeatureSupport } from "@/app/feature-support"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
