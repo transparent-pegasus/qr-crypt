@@ -13,7 +13,7 @@ import {
   renderQrDataUrl,
   renderQrSvgString,
 } from "@/qr/encode"
-import { buildExportFileName, qrSvgBlob, sanitizeQrFileName } from "@/qr/export-image"
+import { buildExportFileName, sanitizeQrFileName } from "@/qr/export-image"
 import { decodePayload, payloadSha256Hex } from "@/qr/decode-artifact"
 import { encodeMlKemEnvelopeV2 } from "@/crypto/pq/canonical-cbor"
 import type { MlKemMessageEnvelopeV2 } from "@/schemas/domain"
@@ -149,9 +149,6 @@ describe("QR sizing, rendering, and production decoder round-trips", () => {
     expect(svg).toMatch(/#FFFFFF/iu)
     expect(svg).toMatch(/#000000/iu)
     expect(svg.trim()).toMatch(/<\/svg>$/u)
-    const svgBlob = await qrSvgBlob(FRAME_PAYLOAD, { ecLevel: "H" })
-    expect(svgBlob.type).toContain("image/svg+xml")
-    expect((await svgBlob.text()).trim()).toBe(svg.trim())
     expect(await renderQrDataUrl(FRAME_PAYLOAD, { ecLevel: "H", size: 512 })).toMatch(
       /^data:image\/png;base64,/u,
     )
@@ -166,8 +163,8 @@ describe("QR export file names", () => {
     expect(sanitizeQrFileName('  bad/\\:*?"<>|name\u0007  ')).toBe("badname")
     expect(sanitizeQrFileName("   ")).toBe("qr")
     expect(Array.from(sanitizeQrFileName("名".repeat(90)))).toHaveLength(80)
-    expect(buildExportFileName(" 公開鍵 ", KEY_ID, "txt")).toBe(
-      `公開鍵-${KEY_ID.slice(0, 8)}.txt`,
+    expect(buildExportFileName(" 公開鍵 ", KEY_ID, "png")).toBe(
+      `公開鍵-${KEY_ID.slice(0, 8)}.png`,
     )
   })
 })

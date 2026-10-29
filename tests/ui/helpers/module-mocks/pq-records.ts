@@ -23,5 +23,4 @@ vi.mock("@/storage/pq-bundle-repository", () => ({
   deleteBundle: fakes.deleteBundle,
   markBundleUsed: fakes.markBundleUsed,
   findBundleBySigningKeyId: fakes.findBundleBySigningKeyId,
-  findBundleByKemKeyId: fakes.findBundleByKemKeyId,
 }))

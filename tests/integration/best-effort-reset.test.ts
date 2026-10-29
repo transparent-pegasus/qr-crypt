@@ -313,7 +313,7 @@ describe("performUserRequestedReset", () => {
     expect(report).toEqual({ ok: true, failedSteps: [] })
   })
 
-  it("supports retry after a partially failed reset (no cross-call latch)", async () => {
+  it("uses separate coordinators for separate reset helper calls", async () => {
     const bestEffortReset: ResetSpy = vi
       .fn<(args: BestEffortResetArgs) => Promise<BestEffortResetReport>>()
       .mockResolvedValueOnce({ ok: false, failedSteps: ["database"] })

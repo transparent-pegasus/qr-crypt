@@ -7,8 +7,8 @@ import type { PqPublicBundleRecord } from "@/schemas/domain"
 import { closeDb, deleteEntireDatabase } from "@/storage/database"
 import {
   confirmBundleFingerprint,
-  findBundleByKemKeyId,
   findBundleBySigningKeyId,
+  getBundle,
   listBundles,
   revokeBundle,
   saveBundle,
@@ -157,7 +157,7 @@ describe("PQ public bundle key uniqueness", () => {
     expect(error).toMatchObject({ code: "KEY_ID_CONFLICT" })
   }, 30_000)
 
-  it("does not resolve a revoked record by either key ID", async () => {
+  it("omits revoked bundles from recipient selection and signing-key resolution", async () => {
     const stored = await makeRecord("revoked bundle", NOW)
     await saveBundle(stored)
     await revokeBundle(stored.recordId, NOW + 2)
@@ -165,6 +165,7 @@ describe("PQ public bundle key uniqueness", () => {
     await expect(
       findBundleBySigningKeyId(stored.signing.keyId),
     ).resolves.toBeUndefined()
-    await expect(findBundleByKemKeyId(stored.kem.keyId)).resolves.toBeUndefined()
+    expect(await listBundles()).toEqual([])
+    expect(await getBundle(stored.recordId)).toMatchObject({ revokedAt: NOW + 2 })
   }, 30_000)
 })

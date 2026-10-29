@@ -4,7 +4,7 @@ import type { QrEcLevel } from "@/schemas/domain"
 import * as QRCode from "qrcode"
 import { AppError, toAppError } from "@/crypto/errors"
 import { shortId } from "@/crypto/random"
-import { QR_RENDER_STYLE, renderQrSvgString } from "@/qr/encode"
+import { QR_RENDER_STYLE } from "@/qr/encode"
 
 export interface QrExportOptions {
   ecLevel: QrEcLevel
@@ -33,18 +33,6 @@ export async function qrPngBlob(
   }
 }
 
-export async function qrSvgBlob(
-  payload: string,
-  options: Pick<QrExportOptions, "ecLevel">,
-): Promise<Blob> {
-  try {
-    const svg = await renderQrSvgString(payload, options)
-    return new Blob([svg], { type: "image/svg+xml;charset=utf-8" })
-  } catch (error) {
-    throw toAppError(error, "QR_TOO_LARGE")
-  }
-}
-
 // Remove control characters and / \ : * ? " < > |, trim, use "qr" if empty,
 // and truncate to 80 characters.
 export function sanitizeQrFileName(name: string): string {
@@ -66,7 +54,7 @@ export function sanitizeQrFileName(name: string): string {
 export function buildExportFileName(
   name: string,
   id: string,
-  ext: "png" | "svg" | "txt",
+  ext: "png",
 ): string {
   return `${sanitizeQrFileName(name)}-${shortId(id)}.${ext}`
 }
