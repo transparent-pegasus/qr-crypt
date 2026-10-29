@@ -647,6 +647,11 @@ T14 residual as they stood at the time.
   packages and would never have detected this Cosign advisory. The independent
   rebuild remains mandatory: this change removes an identity-policy bypass, not
   the source-to-binary gap.
+- **Bootstrap follow-up, 2026-10-30:** the earlier signer/image correction did
+  not patch the installer's embedded v3.0.6 verifier. The merged upstream
+  installer commit and vetted bootstrap digest are recorded in §1.6; the
+  latest tagged installer v4.1.2 remains affected. Recipient-side independent
+  verifier provisioning remains required.
 
 ### Recorded, not implemented
 
@@ -832,6 +837,47 @@ review and Linux Chromium Pixel 7 emulation do not supply Android Chrome or
 iOS Safari device measurements: `browser-support` remains incomplete with
 `last_checked: null`, and [browser-matrix.md](../develop/browser-matrix.md)
 is unchanged. The unrelated due `toolchain` update was not performed.
+
+## 1.6 Integrated repository verification (2026-10-30)
+
+The verified application source is
+`4861fd9680539d57ff5d41b8d1c4b7f2aaa07f10`. Recorded local checks passed:
+`make check` (**102 files / 1,577 tests**, typecheck and lint with zero errors
+and 13 existing warnings), production build, and deterministic rebuild with
+identical file sets and SHA-256 hashes. The complete ordinary and extracted-ZIP
+Chromium suites each passed **43/43**, with no retries. Both execute damaged-JS
+failure/healthy controls and the actual timer/128-frame relay regression.
+
+The **2,184,610-byte** ZIP and all **19 members** matched before/after browser
+execution. Original packaged, tested and actual ZIP SHA-256 agreed:
+`da48a34b4256f0f419034336c90d479f896165175846c972c1b3a699a9c0da25`.
+The five-case Node-only reference benchmark passed; mean milliseconds were
+0.5548/0.6938/0.8158 for ML-KEM keygen/encapsulate/decapsulate and
+9.6414/2.2986 for ML-DSA sign/verify. These are throughput references, not
+physical-device, constant-time or leakage measurements; older tables retain
+their original dates and scope.
+
+The separately reviewed CI follow-up `686b6b2df2ef7e957e599820415b285ddabbd262`
+(integrated as `f61f79bae352cebde5aa4069d4546cc087c527d5`) selects merged
+[installer PR #252](https://github.com/sigstore/cosign-installer/pull/252), commit
+`af595e623eec1ede52d6322f53b635d5def0a95a`. Its embedded and requested Cosign
+are 3.1.3; the Linux amd64 hardcoded SHA-256 is
+`4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71`,
+checked before execution. Latest tagged installer v4.1.2 remains affected;
+this is an upstream-commit exception, not a new release tag. Artifact upload
+v7.0.2/download v8.0.2 use exact SHAs; Wrangler action v4.0.0 and binary
+4.155.0 remain selected. Static upstream/source/digest checks support this
+bootstrap correction, separately from the application runs above.
+
+Unfiltered audit still reports the one low deepmerge advisory (§5.1 of the
+threat model). No passing deps/crypto-noble/security-review stamp or hosted-CI
+pass follows. ci-actions awaits matching green hosted CI. Initial packaging
+without COSIGN_VERSION stopped before ZIP creation; the corrected workflow
+environment passed. A multiline metadata harness check was corrected to an
+HTMLParser; all nine static checks passed. These diagnostics changed no product
+code. Evidence is development-process self-review on desktop Chromium, not
+signing/publication, independent source rebuild, third-party audit, actual-server
+assurance or Android/iOS device measurement. `release-approved` is not reached.
 
 ## 2. Prohibited Claims (UI / README / CI)
 

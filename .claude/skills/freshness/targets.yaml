@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-10-29 # last revision of this registry itself
+updated: 2026-10-30 # last revision of this registry itself
 
 units:
   - id: deps
@@ -183,15 +183,23 @@ units:
       and the scripts/release programs they invoke.
       Check each action repository for newer majors and security advisories.
       Keep release-workflow actions pinned to full SHAs;
-      verify each SHA still matches the documented tag. Review the pinned
+      verify tag-backed SHAs against their exact documented releases, peeling
+      annotated tags. The Cosign installer is an explicit merged-upstream-commit
+      exception: af595e623eec1ede52d6322f53b635d5def0a95a from upstream PR #252,
+      not a fictional release tag. Re-check its immutable action source,
+      embedded/requested Cosign 3.1.3 equality and the vetted hardcoded Linux
+      amd64 digest against official release metadata/checksums. The hash check
+      must precede execution, without the old affected bootstrap bundle parser;
+      latest tagged installer v4.1.2 remains affected. Review the pinned
       Cosign release, verifier image digest, and verification contract. Keep
       both Pages action wranglerVersion inputs exactly equal. Assess that
       action-installed Wrangler graph independently of root aube.overrides;
       no unused root Wrangler dependency or exclusive sharp override remains.
       mise-action reading mise.toml and VITE_BUILD_SHA sourced from
       ${{ github.sha }}. For dev-to-main-pr.yml, review the full-history checkout
-      used to compute the main/dev merge base and the merged-PR manifest, the
-      title/author lookups, content-versus-meta grouping, its contents: read and
+      used to compute the main/dev merge base and the best-effort merge-commit PR
+      manifest (failed title/author lookups and squash/rebase merges are omitted),
+      content-versus-meta grouping, its contents: read and
       pull-requests: write scopes, the workflow_dispatch ref guard, and the
       ahead_by plus commit-tree-SHA promotion guards. Review the existing-PR
       PATCH, the JSON-file POST through gh api --input, and the already-exists
@@ -290,8 +298,10 @@ units:
         github:koalaman/shellcheck@v0.11.0 -- \
         shellcheck -s bash -
       rg -n 'uses:|cosign-release:' .github/workflows/*.yml, then
-      git ls-remote --exit-code <action repo> <tag> for every referenced tag
-      and confirm pinned release-workflow SHAs match.
+      git ls-remote --exit-code <action repo> <tag> for every tag-backed reference
+      and confirm pinned SHAs match the exact release, peeling annotated tags.
+      Verify the explicit Cosign-installer merged-commit/bootstrap exception
+      by the immutable upstream source and digest procedure in method above.
       # Relative links in the Route A install document and deployment prose must
       # resolve (README is summary + link; this document is the authority).
       for f in docs/develop/install-route-a/README.md docs/locales/ja/develop/install-route-a/README.md docs/develop/deployment.md; do
@@ -307,7 +317,7 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-09-12
+    last_checked: 2026-10-30
     files:
       - docs/security/threat-model.md
       - src/app/boot/boot-controller.ts # T19 protected admission versus display-only eligibility
@@ -366,7 +376,7 @@ units:
   - id: environment-threats
     category: security-knowledge
     cadence_days: 90 # same rhythm as threat-model; a review reads both together
-    last_checked: 2026-09-07
+    last_checked: 2026-10-30
     files:
       - docs/security/environment-threat-catalog.md
       - docs/locales/ja/security/environment-threat-catalog.md # Japanese mirror; entries, labels, and sources must not diverge
@@ -503,7 +513,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-09-07
+    last_checked: 2026-10-30
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
@@ -602,7 +612,7 @@ units:
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-09-07
+    last_checked: 2026-10-30
     files:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
       - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
@@ -666,7 +676,7 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-09-12
+    last_checked: 2026-10-30
     files:
       - src/i18n/catalog-en.ts # canonical disclosure copy, en (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/i18n/catalog-ja.ts # the same disclosure copy, ja; both locales move together
@@ -682,7 +692,9 @@ units:
       - src/pages/key-list-page.tsx # saved-key confirmation ceremony
       - tests/unit/presentation.test.ts # every digit, modulo aliases, and suffix comparison
       - tests/ui/fingerprint-confirmation.test.tsx # EN/JA full identity/symmetric comparison; integration-owned
-      - tests/ui/sensitive-inputs.test.tsx # browser text hints on sensitive plaintext/import/decrypt/relay fields
+      - tests/ui/sensitive-inputs.test.tsx # browser text hints on plaintext/decrypt/import fields
+      - tests/ui/online-relay.test.tsx # both relay textarea DOM hint assertions and relay lifecycle/copy coverage
+      - src/app/router.tsx # shared sticky-header armed/unknown token disclosures
       - tests/e2e/fingerprint-comparison.spec.ts # wrapped complete comparison at 320px; integration-owned
       - src/components/key-add/create-key-view.tsx # experimental / not-independently-audited banner
       - src/components/key-add/import-source-view.tsx # camera and paste import guidance
@@ -721,18 +733,21 @@ units:
       timestamp, size, and frame-count disclosures in both locales with protocol
       §§3/3.1/6 and the READMEs. Browser text hints must not claim OS/IME control;
       armed-token copy must preserve owner D1 and offer explicit disarm.
+      The sticky header shows the notice; Settings supplies explicit disarm.
+      sensitive-inputs.test.tsx covers plaintext/decrypt/import DOM hints;
+      online-relay.test.tsx covers both relay textareas.
       Re-read the landing page's AES-256 /
       ML-KEM / wipe honesty wording against the same docs, and keep
       public/about/index.html and messages.js in step — the English text lives
       only in the HTML, the other locales only in messages.js.
     verify: |
-      aube run test -- tests/unit/i18n.test.ts tests/unit/presentation.test.ts tests/ui/fingerprint-confirmation.test.tsx tests/ui/sensitive-inputs.test.tsx tests/ui/keys.test.tsx tests/ui/key-add-dialog.test.tsx tests/ui/key-list-page.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
+      aube run test -- tests/unit/i18n.test.ts tests/unit/presentation.test.ts tests/ui/fingerprint-confirmation.test.tsx tests/ui/sensitive-inputs.test.tsx tests/ui/online-relay.test.tsx tests/ui/keys.test.tsx tests/ui/key-add-dialog.test.tsx tests/ui/key-list-page.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
       aube run test:e2e -- tests/e2e/fingerprint-comparison.spec.ts
 
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-09-12
+    last_checked: 2026-10-30
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together

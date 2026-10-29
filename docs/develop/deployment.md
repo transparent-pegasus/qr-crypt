@@ -9,6 +9,19 @@ and its exclusive Miniflare/workerd/sharp subtree are removed. The action's
 tool installation does not inherit project `aube.overrides`, so its graph is
 assessed separately.
 
+CI pin reconciliation on 2026-10-30 retains Wrangler action v4.0.0 at
+`ebbaa1584979971c8614a24965b4405ff95890e0`; the binary remains 4.155.0.
+Artifact upload/download use v7.0.2 at
+`cf430e030ddbb5b0abf93d22962f4752f3646cd9` and v8.0.2 at
+`9000827ccba6bdab643e8b6fd33ac0654aef8333` respectively. Cosign's installer
+uses merged upstream [PR #252](https://github.com/sigstore/cosign-installer/pull/252),
+commit `af595e623eec1ede52d6322f53b635d5def0a95a`, which embeds the requested
+Cosign 3.1.3 and checks its vetted hardcoded digest before execution. This is
+an explicit upstream-commit pin: the latest tagged installer v4.1.2 still has
+the affected bootstrap. [Security review §1.6](../security/security-review.md)
+records the hash, tested source and assurance limits; no hosted CI pass follows
+from this static pin correction.
+
 ## Prerequisites
 
 1. Create the Pages project on the Cloudflare side using the assessed Wrangler version:
@@ -64,14 +77,17 @@ request targeting `main` or `dev`:
   archive digest. Local verification is recorded below.
 
 `.github/workflows/dev-to-main-pr.yml` checks out full history on a `dev` push,
-or on an intentional `workflow_dispatch`, and builds a manifest from merge
-commits since the `main`/`dev` merge base. It fetches each pull request's title
+or on an intentional `workflow_dispatch`, and builds a best-effort manifest from merge
+commits since the `main`/`dev` merge base. It fetches available pull-request titles
 and author, separates product changes from CI/docs/chore entries, and updates
 the body of a matching open promotion PR. If none exists, `dev` has commits
 ahead of `main`, and `main` does not already have `dev`'s commit tree, it opens
 the pull request titled `release: promote dev to production`. It never merges
 or pushes. The title says release rather than merge because merging it is what
 deploys production and publishes the signed release.
+
+Failed title/author API lookups are omitted, and squash/rebase merges are not
+listed. The promotion body therefore does not provide a complete change inventory.
 
 * Closing this PR without merging is a pause, not a permanent veto: the next push to `dev` opens a new one because a new dev commit is new information; `workflow_dispatch` also opens one as a deliberate human action, so it cannot conflict with a human veto
 * This is a real production gate only while `main`'s ruleset requires `validate` and `e2e` with strict up-to-date status checks. If those required checks are removed, even a red dev push becomes an openly mergeable production promotion

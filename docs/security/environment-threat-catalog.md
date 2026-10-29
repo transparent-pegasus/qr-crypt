@@ -61,9 +61,17 @@ where consequence and feasibility are recorded separately.
   browser suites each passed 40/40. This was agent self-review and desktop
   browser emulation, not an independent third-party audit or physical-device
   measurement; comparison-procedure effectiveness remains unmeasured.
-- Registered in `.claude/skills/freshness/targets.yaml` as
-  `environment-threats`. This scoped reconciliation does not re-date the
-  E1–E12 source assessment or stamp the complete freshness unit.
+- The 2026-10-30 bounded review reconciled all 24 linked primary sources
+  retrieved on 2026-10-29 with the integrated application and its recorded
+  ordinary/extracted browser passes (43/43 each; security-review.md §1.6).
+  Source applicability, labels, related threats and EN/JA references were
+  checked; no new technique or application-addressable entry was identified.
+  The original substantive assessment date and its van Eck/full-paper gaps
+  above remain. This is source/applicability reconciliation, not new device,
+  facility or operator research.
+- Registered as `environment-threats` in
+  `.claude/skills/freshness/targets.yaml`; its 2026-10-30 review date covers
+  that bounded method and consistency verification only.
 
 ---
 
