@@ -213,8 +213,8 @@ units:
       browser suite against extracted archive bytes, on the same server used by
       check-packaged-responses.mjs. Artifact-producing jobs must disable reusable
       mise tool caches and install browser tooling before packaging. Record
-      packaged_archive_sha256 immediately after ZIP creation, then verify that
-      digest and complete member identity before/after browser execution,
+      packaged_archive_sha256 immediately after ZIP creation. Independently
+      verify the tested ZIP digest and complete member identity before/after browser execution,
       including INSTALL.txt and SHA256SUMS.files. Follow both original packaged
       and tested digests into sign/publish comparisons with the actual ZIP.
       Preserve the separate corrupted-JavaScript browser regression and healthy

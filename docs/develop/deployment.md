@@ -133,9 +133,9 @@ reserved origin, and physical custody remain mandatory.
 
 Artifact-producing jobs disable reusable mise tool caches and install browser
 tooling before packaging. Immediately after ZIP creation, the packager records
-`packaged_archive_sha256`. The extracted-archive gate compares that original
-digest with the tested ZIP as well as checking every member before and after
-browser execution. Signing and publication compare the packaged and tested
+`packaged_archive_sha256`. The extracted-archive gate checks the ZIP digest and
+every member before and after browser execution, then exports the tested
+digest. Signing and publication compare the original packaged and tested
 digests with the actual bytes; no repackage follows testing.
 
 These controls reduce cache reuse and post-package substitution opportunities.
