@@ -529,17 +529,6 @@ export async function disarmMaintenanceToken(): Promise<void> {
   notifyMaintenanceTokenChanged()
 }
 
-export async function readMaintenanceToken(): Promise<MaintenanceToken | undefined> {
-  try {
-    const database = (await getDb()) as unknown as BootDatabase
-    if (!hasStore(database, STORE_APP_METADATA)) return undefined
-    const row = await database.get(STORE_APP_METADATA, MAINTENANCE_TOKEN_METADATA_KEY)
-    return maintenanceToken(metadataValue(row))
-  } catch {
-    return undefined
-  }
-}
-
 /** Atomically verifies and consumes a valid one-shot maintenance token. */
 export async function consumeMaintenanceToken(): Promise<boolean> {
   try {
