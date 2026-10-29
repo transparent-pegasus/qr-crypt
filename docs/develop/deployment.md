@@ -3,9 +3,15 @@
 This is not run in parallel with GitHub's Cloudflare Git Integration. GitHub Actions
 uploads `dist` via Wrangler (Direct Upload).
 
+Both Pages upload steps explicitly select Wrangler 4.155.0 through the
+SHA-pinned action's `wranglerVersion` input. The unused root Wrangler dependency
+and its exclusive Miniflare/workerd/sharp subtree are removed. The action's
+tool installation does not inherit project `aube.overrides`, so its graph is
+assessed separately.
+
 ## Prerequisites
 
-1. Create the Pages project on the Cloudflare side:
+1. Create the Pages project on the Cloudflare side using the assessed Wrangler version:
 
    ```bash
    wrangler pages project create <name>
@@ -123,6 +129,20 @@ environments. Route A's independently obtained policy, signature verification,
 authenticated source rebuild, complete member comparison, trusted server,
 reserved origin, and physical custody remain mandatory.
 
+## Release hardening contract (2026-10-29)
+
+Artifact-producing jobs disable reusable mise tool caches and install browser
+tooling before packaging. Immediately after ZIP creation, the packager records
+`packaged_archive_sha256`. The extracted-archive gate compares that original
+digest with the tested ZIP as well as checking every member before and after
+browser execution. Signing and publication compare the packaged and tested
+digests with the actual bytes; no repackage follows testing.
+
+These controls reduce cache reuse and post-package substitution opportunities.
+They do not establish benign tools/source or protect a compromised runner.
+The 2026-09-07 results above remain historical; this contract adds no hosted
+signing, publication, or environment-independent rebuild evidence.
+
 ## External security maintenance (2026-09-07)
 
 `.github/workflows/security-maintenance.yml` runs daily at **06:23 UTC** and
@@ -131,20 +151,27 @@ on manual dispatch. Workflow permissions default to empty; its job has only
 persisted. After frozen installation it runs `aube audit`; the release check
 still runs after an earlier install/audit failure unless cancelled.
 
-`bash scripts/check-crypto-release.sh` reads the exact stable pin from cwd
-`package.json` and queries the official GitHub latest-release endpoint.
-Equal versions with or without a leading `v` pass. A differing version,
-non-exact local pin, draft/prerelease, malformed or empty response, or fetch
-error fails visibly; trailing whitespace is rejected. Independent signal
-tests use `tests/unit/crypto-release-check.test.ts` and the offline
-`tests/fixtures/crypto-release-gh.py` API fixture. Integrated tests,
-Actionlint/ShellCheck, zero-advisory audit, and the live helper with pin/release
-0.7.1 passed. Hosted execution is separate evidence; local checks do not
-establish that a scheduler or its notification settings are provisioned.
+The 2026-10-29 extension uses `bash scripts/check-assessed-releases.sh` to
+read both exact stable pins from cwd `package.json`: `@noble/post-quantum`
+and `zxing-wasm`. It queries each project's official GitHub latest-release
+endpoint. Equal versions with or without a leading `v` pass. A differing
+version, non-exact local pin, draft/prerelease, malformed or empty response,
+or fetch error fails visibly; trailing whitespace is rejected. Both checks
+run even when one fails. Signal tests use
+`tests/unit/assessed-release-check.test.ts` and the offline
+`tests/fixtures/assessed-release-gh.py` API fixture.
 
-This is maintainer-side monitoring only. It installs no offline updater,
-changes no device key or policy, and does not silently select a new crypto
-version. A detected release still requires the complete `crypto-noble` review.
+The predecessor's integrated tests, Actionlint/ShellCheck, zero-advisory audit,
+and live Noble 0.7.1 comparison passed on 2026-09-07. That dated result does
+not verify the extended monitor. New integrated and hosted outcomes require
+separate evidence; local checks do not establish scheduler or notification
+provisioning.
+
+This is maintainer-side monitoring only. It supplies no supported in-app
+upgrade, changes no device key or policy, and selects no dependency version.
+A detected Noble release requires the complete `crypto-noble` review; a
+decoder release requires the `deps` unit's release/advisory/provenance review,
+WASM hash/size and upstream-commit record, and same-origin/precache/CSP checks.
 
 ## Release rebuild evidence
 

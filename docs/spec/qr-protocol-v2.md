@@ -78,6 +78,11 @@ Canonical map key order (encoded-key byte order):
 `iv`, `type`, `suite`, `version`, `ciphertext`, `kemCiphertext`,
 `recipientKemKeyId`.
 
+The envelope is readable without decryption. Message kind, suite, the stable
+recipient KEM key identifier, IV, encapsulation ciphertext, and ciphertext
+length are visible. The sender identifier and message creation time are inside
+the encrypted signed body (§5).
+
 AAD (GCM `additionalData`; not carried on the wire, reconstructed on both
 sides):
 
@@ -107,6 +112,11 @@ SymMessageEnvelopeV2 = {
 
 Canonical map key order (encoded-key byte order):
 `iv`, `type`, `keyId`, `suite`, `version`, `createdAt`, `ciphertext`.
+
+Message kind, suite, the stable shared-key identifier, sender-reported
+`createdAt`, IV, and ciphertext length are visible without decryption.
+Repeated shared-key or recipient identifiers can link transfers; they do not
+authenticate a person or make `createdAt` trusted time.
 
 AAD (GCM `additionalData`; not carried on the wire; both sides recompute).
 The fixed salt is not on the wire, and `iv` is bound into HKDF `info`, so a
@@ -286,6 +296,10 @@ QrFrameV2 = {
   chunk: bytes(1..1,000)      // slice of the raw artifact CBOR bytes
 }
 ```
+
+The outer message kind, transfer identifier, frame index/count, and total
+artifact byte length are visible. Framing and base64url encoding provide no
+metadata confidentiality; assembly exposes the envelope fields listed in §3/§3.1.
 
 - **`chunk` splits the raw artifact CBOR bytes directly** (re-base64url of
   the inner `OC?2:` string is forbidden — this avoids frame-count inflation
@@ -532,6 +546,14 @@ stuffed into message-typed frames) and non-canonical stuffing. It does **not**
 defeat a compromised sender who hides data inside otherwise valid
 sender-controlled ciphertext, `transferId`, `iv`, or `createdAt` values — that
 residual is T21.
+
+Playback pre-renders sequentially, yielding a browser task between frames and
+checking cancellation before the next render. Every frame must pass the
+canonical round-trip and render checks before any frame is displayed. Replaced
+input, an ended session, or lifecycle teardown invalidates pending results and
+errors. Yielding permits timer and teardown progress; it does not bound the
+duration of one synchronous QR render or establish phone performance. The
+128-frame protocol limit is unchanged (T19/T20).
 
 - Every displayed frame string is
   `OCF2:<unpadded-base64url(canonical CBOR frame)>`: after the 5-character

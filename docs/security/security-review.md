@@ -117,8 +117,9 @@ confirmation is the documented non-dismissible exception).
 
 Library-specific checks carry their own review date. The Noble source, exact
 published packages, advisories, and FIPS errata were assessed on 2026-09-07;
-the selected pin and local validation below belong to that change. The zxing
-facts remain dated 2026-08-02; its pin and device measurements did not change.
+the selected pin and local validation below belong to that change. The decoder
+assessment dated 2026-10-29 is separate from the historical 3.1.2 record and
+does not supply new device measurements.
 
 ### @noble/post-quantum 0.7.1 (exact pin; version ranges forbidden)
 
@@ -263,7 +264,41 @@ not remeasured or restamped. The full browser run exercised the long-text
 measurement scenario but retained no new attachment, so its historical table
 above is not refreshed from an unrecorded value.
 
-### zxing-wasm 3.1.2 (exact pin; camera QR reading, reader-only build)
+### zxing-wasm 3.1.6 assessment (2026-10-29)
+
+- The official [3.1.6 release](https://github.com/Sec-ant/zxing-wasm/releases/tag/v3.1.6)
+  was published 2026-10-19. Its changes include wide-image out-of-bounds access
+  prevention, reduced temporary allocations, and cleanup of C++ result vectors
+  after `readBarcodes`, including conversion failures. This is an upstream
+  disposition, not a demonstrated QR Crypt exploit or a decoder audit.
+  The release track assessed the
+  [3.1.2→3.1.6 source diff](https://github.com/Sec-ant/zxing-wasm/compare/v3.1.2...v3.1.6),
+  including result fields and build/publication changes. Camera downscaling
+  bounds the wide-image prerequisite; repeated decoding makes cleanup relevant.
+- The [registry tarball](https://registry.npmjs.org/zxing-wasm/3.1.6) matches
+  its published SHA-512 integrity and SHA-1. Reader WASM is **946,860 bytes**,
+  SHA-256 `5003fb4b88c4fbd1fd518a2fd8c8ad365c519e183a08c03a322dddfea3cea84e`.
+  The packaged `ZXING_CPP_COMMIT` export records
+  `2c3dcfeffa7878950a58c1703c86774a428b0c91`.
+- The release tag resolves to
+  `354547ec9c1c1816d666fe0a6e2695f75a4cdc89`, also named by the registry's
+  [SLSA resolved dependency](https://registry.npmjs.org/-/npm/v1/attestations/zxing-wasm@3.1.6).
+  Both publish and provenance statement subjects use SHA-512 and match the
+  downloaded tarball. The registry record supplies no `gitHead`.
+  The release track also verified registry ECDSA signatures with the
+  [official registry keys](https://registry.npmjs.org/-/npm/v1/keys), retrieved
+  through the registry's own trust channel.
+  This checks metadata/content consistency; the documentation assessment did
+  not verify the Sigstore certificate/log chain or reproduce WASM from source.
+- The official GitHub
+  [published-advisory query](https://api.github.com/advisories?ecosystem=npm&affects=zxing-wasm%403.1.6)
+  for `zxing-wasm@3.1.6` returned no records on 2026-10-29. That scope does not
+  prove absence of vulnerabilities.
+  The exact-pin move still requires integrated same-origin asset routing,
+  precache, reader-readiness and CSP checks. Physical-device decode cost,
+  independent audit, and environment-independent reproduction remain unverified.
+
+### zxing-wasm 3.1.2 (historical 2026-08-02 record)
 
 - Replaces `@zxing/browser` (removed). `@zxing/library` remains a **devDependency**
   only, used by unit and Playwright helpers to decode generated PNG pixels; it is not
@@ -389,11 +424,31 @@ above is not refreshed from an unrecorded value.
 - CI `validate` runs `aube audit` after `aube ci` on every push and pull
   request targeting `main` or `dev`. The approved 2026-09-07 maintenance
   contract additionally requires scheduled/manual, read-only external audit
-  and exact-pin/latest-upstream comparison; see
+  and exact-pin/latest-upstream comparison, extended on 2026-10-29 to cover
+  both Noble and the decoder without short-circuiting either check; see
   [deployment.md](../develop/deployment.md). Local verification is recorded
   in §1.4; hosted workflow execution is separate evidence. Neither check
   updates an offline installation or maintains this written record automatically.
 - Supply-chain pins re-verified clean on 2026-07-29: `eslint-config-prettier@10.1.8` and the rollup OMT `aube.overrides` entry. `react-hook-form@7.82.0` was also pinned here until 2026-07-30, when it was removed from the dependency graph entirely: it was never imported by the application, so the pin guarded nothing.
+
+**Release/decoder reconciliation, 2026-10-29.** Release-track source
+`505de894faf1601736d2cacc15c96e88fd1d7186` selects decoder 3.1.6 and action-run
+Wrangler 4.155.0, removes unused root Wrangler and its exclusive sharp
+override, and retains Noble 0.7.1. Its isolated no-override Wrangler graph
+audit passed; the project audit still fails on the existing low-severity
+deepmerge advisory recorded in threat-model §5.1. Its local monitor passed
+both official release comparisons. These are scoped author/self-review
+results; the separately authored regressions and ordinary/extracted
+browser suites still require integrated verification. The earlier dated
+nonpublication and non-reproduction records remain in force.
+
+Wrangler 4.155.0's [official release](https://github.com/cloudflare/workers-sdk/releases/tag/wrangler%404.155.0)
+was published 2026-10-28 at `a09957ab53d871802993dda0dab73b5d0a7fdff1`.
+The release track matched registry tarball integrity, registry ECDSA
+signatures, and decoded provenance subject/source linkage. It did not perform
+full Sigstore trust-policy verification. Exact action-tool selection does not
+freeze its future transitive installation closure or establish source-to-binary
+correspondence; no deployment was performed.
 
 The 2026-09-12 freshness re-check retained the exact
 `@noble/post-quantum@0.7.1` pin. It remained the latest official release, its
@@ -480,7 +535,7 @@ They do not close the external `release-approved` blocker.
   no-frame-or-artifact-derived-persistence invariant, device-keyed opaque tags
   instead of a public ciphertext hash, `receivedMessages` ownership in
   `readBootDecision` (`src/app/boot/boot-controller.ts`), and matching changes
-  to `docs/spec/boot-and-reset-v2.md` (§2 sensitive-store scan, ~48–57). Not
+  to `docs/spec/boot-and-reset-v2.md` (§2 sensitive-store scan). Not
   implemented here.
 - **Also deferred:** conversation IDs, monotonic sequence numbers, hash chains,
   and adding an inner message ID to `sym-message` (all wire-format changes).
@@ -658,6 +713,12 @@ edits change documentation only. An independently assigned agent source review f
 remaining Critical or Important implementation findings. These local results
 are not a production-release approval or evidence of hosted signing/publication.
 
+Evidence classification clarified 2026-10-29: the assigned agent review and
+regression authorship are self-review within this development process, not an
+independent third-party audit. Browser results below use desktop Chromium with
+mobile emulation; they supply no Android/iOS physical-device measurements or
+evidence that an operator performs the comparison correctly.
+
 The assessment assumes persistent targeting of a few installations across
 provisioning, use, captured ciphertext, and retirement. Supply-chain influence,
 unsupervised custody, nearby observation, and browser/OS/firmware compromise
@@ -780,6 +841,8 @@ guaranteed; JS memory erasure has limits
 
 1. Check the latest FIPS 203 / FIPS 204 errata (on the relevant NIST CSRC pages)
 2. Check the `@noble/post-quantum` changelog, known vulnerabilities, and advisories
+   and the `zxing-wasm` release/advisory assessment, reader WASM hash/size,
+   upstream commit, and provenance. A decoder change never moves Noble incidentally
 3. Confirm the KATs (`aube run test:pq-vectors`) are all green
 4. Confirm the bundle makes no external network references **and** that
    same-origin traffic stays on the no-payload allowlist. Same-origin alone

@@ -238,7 +238,12 @@ checker remains required.
 2. Only network-confirmed (sentinel body match) fires the wipe.
 3. **maintenance token**: set offline with strong confirmation, meaning "keep
    the keys across the next single verified online transition only". It always
-   expires after that transition and reverts to ON.
+   expires after that transition and reverts to ON. While armed, a persistent
+   notice in the shared sticky header on offline application routes offers
+   explicit disarm. Disarming
+   removes the token and restores `wipeOnOnline:true` for the next
+   network-confirmed contact; it does not itself wipe data. Token validity,
+   clock handling, and sentinel-only consumption remain boot-layer decisions.
 4. Turning the setting permanently OFF requires the same strong typed
    confirmation as the maintenance token and always shows a persistent warning
    while OFF.
@@ -345,7 +350,7 @@ redundant re-acknowledgement is allowed but skipping acknowledgement is not.
 | `user-requested`            | Settings runs the §4 sequence. On success the app performs a full reload; on partial failure it shows a terminal `RESET_FAILED` state with the failed steps and no resume path | Not re-set (§4 step 6) |
 
 `src/storage/best-effort-reset.ts` supplies the successful-reset database-removal
-side of this transition; `tests/ui/boot/deployment-verdict.test.tsx:60-71` exercises
+side of this transition; `tests/ui/boot/deployment-verdict.test.tsx` exercises
 the later boot with no stored verdict and an unreachable sentinel.
 
 A display offline commit issues no sentinel; only when boot is

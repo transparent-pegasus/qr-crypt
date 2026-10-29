@@ -56,10 +56,14 @@ where consequence and feasibility are recorded separately.
   E8/T21's 277-bit sender-controlled floor in a legitimate symmetric transfer
   remains unchanged. Source retrieval and exact-device measurement gaps are
   retained below; this is not an exhaustive search for every possible attack.
+- On 2026-10-29, E11 was reconciled with the completed 2026-09-07 regression
+  record in security-review.md §1.4. The ordinary and extracted-archive
+  browser suites each passed 40/40. This was agent self-review and desktop
+  browser emulation, not an independent third-party audit or physical-device
+  measurement; comparison-procedure effectiveness remains unmeasured.
 - Registered in `.claude/skills/freshness/targets.yaml` as
-  `environment-threats`. Integrated application/release verification remains
-  pending; the prior `last_checked` date is retained until the complete unit
-  passes. Physical-device and procedure-effectiveness evidence is unmeasured.
+  `environment-threats`. This scoped reconciliation does not re-date the
+  E1–E12 source assessment or stamp the complete freshness unit.
 
 ---
 
@@ -270,7 +274,7 @@ media characteristics, and verification matter.
 **Position.** `EXTERNAL_ASSURANCE` for media-specific sanitization and verified
 disposal. The citation alone approves no physical destruction method.
 
-**Touches.** threat-model §5 “No update path”, T17.
+**Touches.** threat-model §5 “No supported in-app upgrade”, T17.
 
 ## E11 — Operator conditions
 
@@ -289,7 +293,11 @@ over an independent channel. **Save without verification** is a separate choice;
 unverified bundles cannot be encryption recipients, while signatures under
 their stored keys can still be checked without asserting person-binding.
 Symmetric import requires the full key comparison but persists no trust state.
-Independent regression verification remains pending on the integrated tree.
+The 2026-09-07 ordinary and extracted-archive browser suites each passed 40/40,
+including EN/JA full-digest and 320px layout regressions (§1.4). These are
+completed agent self-review and desktop-emulation results; no independent
+third-party audit, physical-device comparison, or operator-effectiveness
+measurement follows.
 
 **Position.** `REPOSITORY_IMPLEMENTABLE` for the display and trust-state gate;
 `EXTERNAL_ASSURANCE` for the comparison procedure. A checkbox or
