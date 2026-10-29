@@ -38,8 +38,8 @@ jobs:
 
       # Still check releases if installation or audit failed, so both external
       # signals remain visible. Failure never updates an installed application.
-      - name: Check the assessed post-quantum release
+      - name: Check assessed cryptography and decoder releases
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/check-crypto-release.sh
+        run: bash scripts/check-assessed-releases.sh

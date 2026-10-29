@@ -257,6 +257,10 @@ ZIP_STAGING_PARENT="$stage_parent" \
   COMMIT_EPOCH="$commit_epoch" \
   python3 scripts/release/write-static-zip.py
 
+packaged_archive_sha256="$(sha256sum "$output_dir/$archive_name" | cut -d ' ' -f 1)"
+[[ "$packaged_archive_sha256" =~ ^[0-9a-f]{64}$ ]] ||
+  fail "packaged archive SHA-256 is invalid"
+
 (
   cd "$output_dir"
   sha256sum "$archive_name" > SHA256SUMS
@@ -301,4 +305,5 @@ cmp "$RUNNER_TEMP/staged-hashes" "$RUNNER_TEMP/extracted-hashes" ||
   printf 'bundle_name=%s\n' "$bundle_name"
   printf 'release_tag=%s\n' "$release_tag"
   printf 'version=%s\n' "$version"
+  printf 'packaged_archive_sha256=%s\n' "$packaged_archive_sha256"
 } >> "$GITHUB_OUTPUT"

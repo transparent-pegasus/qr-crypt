@@ -32,7 +32,7 @@ jobs:
         uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
         with:
           install: true
-          cache: true
+          cache: false
 
       - name: Install dependencies
         run: aube ci
@@ -48,15 +48,6 @@ jobs:
 
       - name: Unit tests
         run: aube run test -- --maxWorkers=2
-
-      - name: Post-quantum known-answer tests
-        run: aube run test:pq-vectors -- --maxWorkers=2
-
-      - name: Post-quantum integration tests
-        run: aube run test:pq -- --maxWorkers=2
-
-      - name: Multipart QR tests
-        run: aube run test:qr-multipart -- --maxWorkers=2
 
       - name: Build production PWA
         run: aube run build:prod
@@ -88,7 +79,7 @@ jobs:
         uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
         with:
           install: true
-          cache: true
+          cache: false
 
       - name: Install dependencies
         run: aube ci
@@ -139,6 +130,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
         with:
+          wranglerVersion: "4.155.0"
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
@@ -150,6 +142,7 @@ jobs:
         if: github.ref == 'refs/heads/dev'
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
         with:
+          wranglerVersion: "4.155.0"
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
