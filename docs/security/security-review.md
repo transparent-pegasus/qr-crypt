@@ -450,6 +450,15 @@ full Sigstore trust-policy verification. Exact action-tool selection does not
 freeze its future transitive installation closure or establish source-to-binary
 correspondence; no deployment was performed.
 
+**Dependency residual recorded 2026-10-30.** The 2026-10-29 deepmerge
+assessment reproduced the library defect but found its sole call in the
+reviewed build graph clones fixed internal defaults. No published fixed
+upstream dependency path was found. Unfiltered `aube audit` still exited 1
+with one low finding; the reachability bound supplies no audit pass or gate
+exception. The gate remains blocked, with root verification pending. See
+[threat-model.md](threat-model.md) §5.1 for the path, prerequisites and closure
+criteria. No suppression or fresh passing unit stamp is recorded.
+
 The 2026-09-12 freshness re-check retained the exact
 `@noble/post-quantum@0.7.1` pin. It remained the latest official release, its
 tagged security policy continued to support `>=0.7.1`, and its tagged README

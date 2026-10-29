@@ -338,6 +338,29 @@ zero-advisory result above is historical. The integrated audit gate still
 requires resolution or an explicit outstanding blocker; no audit bypass or
 successful `deps` freshness stamp follows from the graph reduction.
 
+### Deepmerge residual recorded 2026-10-30
+
+The 2026-10-29 advisory assessment found no published fixed dependency path:
+`vite-plugin-pwa@1.3.0 -> workbox-build@7.4.1 -> @rollup/plugin-node-resolve@16.0.3 -> deepmerge@4.3.1`.
+The assessed PWA 2.0.0 release retains the affected Workbox dependency.
+
+The defect was reproduced as attacker-controlled inherited data on a returned
+object. In the reviewed graph, the resolver's sole
+[deepmerge call](https://github.com/rollup/plugins/blob/node-resolve-v16.0.3/packages/node-resolve/src/index.js)
+clones fixed internal defaults before freezing `DEFAULTS`; ordinary caller
+options use object spread. No QR, ciphertext, request, package metadata or
+other untrusted operand reaches that merge under the reviewed source and
+normally functioning Node assumptions. This bounds observed reachability;
+it establishes no application exploit or protection from build-host/supply-chain
+compromise.
+
+The assessment's unfiltered `aube audit` still exited 1 with one low-severity
+finding. The source bound is not an audit pass or a suppression rationale.
+The audit gate remains unchanged and blocked; root integration verification
+is pending. Closure requires a vetted dependency path that removes the
+finding, a passing unfiltered audit, and the required integrated checks.
+No new passing freshness stamp is supported by this assessment.
+
 CI `validate` runs `aube audit` unconditionally after `aube ci` on every
 push and pull request targeting `main` or `dev`. D5 was superseded by owner
 approval on 2026-09-07: external scheduled/manual maintenance must also audit
