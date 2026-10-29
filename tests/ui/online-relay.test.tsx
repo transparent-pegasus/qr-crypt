@@ -1998,8 +1998,7 @@ describe("online relay UI", () => {
       const input = screen.getByLabelText("Relay text")
       await enterRelayText(user, input, `${first}\n${second}`)
       await user.click(screen.getByRole("button", { name: "Show QR" }))
-      const args: readonly [text: string, signal?: AbortSignal] | undefined =
-        preparation.mock.calls[0]
+      const args = preparation.mock.calls[0]
       const completion: ReturnType<typeof relayPlayback.prepareRelayPlayback> =
         preparation.mock.results[0]?.value
       const visibility = Object.getOwnPropertyDescriptor(document, "visibilityState")
@@ -2046,14 +2045,12 @@ describe("online relay UI", () => {
     await user.click(screen.getByRole("button", { name: "Text → QR" }))
     await enterRelayText(user, screen.getByLabelText("Relay text"), `${first}\n${second}`)
     await user.click(screen.getByRole("button", { name: "Show QR" }))
-    const olderArgs: readonly [text: string, signal?: AbortSignal] | undefined =
-      preparation.mock.calls[0]
+    const olderArgs = preparation.mock.calls[0]
     const olderCompletion: ReturnType<typeof relayPlayback.prepareRelayPlayback> =
       preparation.mock.results[0]?.value
     try {
       await user.click(screen.getByRole("button", { name: "Show QR" }))
-      const newerArgs: readonly [text: string, signal?: AbortSignal] | undefined =
-        preparation.mock.calls[1]
+      const newerArgs = preparation.mock.calls[1]
       expect(olderArgs?.[1]?.aborted).toBe(true)
       expect(newerArgs?.[1]?.aborted).toBe(false)
       expect(newerArgs?.[1]).not.toBe(olderArgs?.[1])
