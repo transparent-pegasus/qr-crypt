@@ -333,7 +333,8 @@ units:
       teardown, reject/release on cancellation or indeterminate state.
       refreshRelayEligibility is display-only; no accepted check-to-lock gap.
       Reconcile T8's five sensitive-input hints and OS/IME limitation, T17's
-      persistent armed-token notice and disarm restoring wipeOnOnline=true,
+      persistent armed-token notice and disarm removing the one-transition
+      exception while preserving the configured wipe policy,
       and T19/T20's sequential yielded pre-render/cancellation boundary. Keep
       visible message metadata aligned across the protocol, READMEs, and EN/JA
       UI copy; no wire field or confidentiality claim changes implicitly.
@@ -579,7 +580,8 @@ units:
       exception and clearReceipts in the buffer-drop inventory. Confirm
       maintenance-token visibility/disarm matches boot metadata, refresh invalidation,
       sentinel-only one-transition consumption, and unchanged clock handling.
-      Disarm restores the next-online wipe policy without immediate deletion.
+      Disarm restores the configured next-online wipe policy without immediate
+      deletion or changing owner D1's permanent wipe-off setting.
       Confirm session admission acquires before reading actual stores and keeps the same lease
       through teardown, checks lifecycle after each await, and rejects/releases
       missing callbacks/locks, failed/dirty reads, cancellation, and stale state.

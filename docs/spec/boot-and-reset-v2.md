@@ -241,8 +241,9 @@ checker remains required.
    expires after that transition and reverts to ON. While armed, a persistent
    notice in the shared sticky header on offline application routes offers
    explicit disarm. Disarming
-   removes the token and restores `wipeOnOnline:true` for the next
-   network-confirmed contact; it does not itself wipe data. Token validity,
+   removes the token without changing the configured wipe policy; the next
+   network-confirmed contact uses that policy without the maintenance
+   exception. Disarm does not itself wipe data. Token validity,
    clock handling, and sentinel-only consumption remain boot-layer decisions.
 4. Turning the setting permanently OFF requires the same strong typed
    confirmation as the maintenance token and always shows a persistent warning
