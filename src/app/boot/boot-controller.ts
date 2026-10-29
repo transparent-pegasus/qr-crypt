@@ -35,6 +35,7 @@ import {
   STORE_KEYS,
   STORE_PQ_IDENTITIES,
   STORE_PREFERENCES,
+  withSensitiveWriteLock,
   withSensitiveWritesExcluded,
   type RelayLease,
 } from "@/storage/database"
@@ -44,6 +45,26 @@ import { clearReceipts } from "@/features/receipt-cache"
 
 export const BOOT_PROBE_TIMEOUT_MS = 3_000
 const MAINTENANCE_TOKEN_METADATA_KEY = "maintenance-token"
+export const MAINTENANCE_TOKEN_CHANGED_EVENT = "qr-crypt:maintenance-token-changed"
+export const MAINTENANCE_TOKEN_BROADCAST_CHANNEL = "qr-crypt-maintenance-token"
+
+function notifyMaintenanceTokenChanged(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(MAINTENANCE_TOKEN_CHANGED_EVENT))
+  }
+  // This carries only an invalidation signal. Every view re-reads the boot
+  // snapshot; a peer message never supplies token state or wipe evidence.
+  try {
+    const channel = new BroadcastChannel(MAINTENANCE_TOKEN_BROADCAST_CHANNEL)
+    try {
+      channel.postMessage({ type: "changed" })
+    } finally {
+      queueMicrotask(() => channel.close())
+    }
+  } catch {
+    // Focus/visibility refresh still works if peer messaging is unavailable.
+  }
+}
 
 // Minimal early-boot storage ports. These are NOT a re-declaration of idb's types for
 // their own sake: readBootDecision accepts an injected getDatabase() and casts to
@@ -475,19 +496,37 @@ export async function readDeploymentVerdict(): Promise<DeploymentVerdict | undef
   }
 }
 
-/** Storage API for the strongly confirmed, one-update-only offline maintenance flow. */
+/** Storage API for one strongly confirmed, verified-online transition. */
 export async function armMaintenanceToken(armedAt = Date.now()): Promise<void> {
   if (!Number.isFinite(armedAt) || armedAt < 0) throw new AppError("STORAGE_FAILED")
-  if (typeof navigator !== "undefined" && navigator.onLine) {
-    throw new AppError("STORAGE_FAILED")
-  }
-  const database = (await getDb()) as unknown as BootDatabase
-  const transaction = appMetadataTransaction(database)
-  await transaction.store.put({
-    key: MAINTENANCE_TOKEN_METADATA_KEY,
-    value: { armedAt },
-  } satisfies MetadataRow)
-  await transaction.done
+  await withSensitiveWriteLock(async () => {
+    if (typeof navigator !== "undefined" && navigator.onLine) {
+      throw new AppError("STORAGE_FAILED")
+    }
+    const database = (await getDb()) as unknown as BootDatabase
+    const transaction = appMetadataTransaction(database)
+    await Promise.all([
+      transaction.store.put({
+        key: MAINTENANCE_TOKEN_METADATA_KEY,
+        value: { armedAt },
+      } satisfies MetadataRow),
+      transaction.done,
+    ])
+  })
+  notifyMaintenanceTokenChanged()
+}
+
+/** Restore normal next-online policy without resetting data or the app. */
+export async function disarmMaintenanceToken(): Promise<void> {
+  await withSensitiveWriteLock(async () => {
+    const database = (await getDb()) as unknown as BootDatabase
+    const transaction = appMetadataTransaction(database)
+    await Promise.all([
+      transaction.store.delete(MAINTENANCE_TOKEN_METADATA_KEY),
+      transaction.done,
+    ])
+  })
+  notifyMaintenanceTokenChanged()
 }
 
 export async function readMaintenanceToken(): Promise<MaintenanceToken | undefined> {
@@ -513,6 +552,7 @@ export async function consumeMaintenanceToken(): Promise<boolean> {
     }
     await transaction.store.delete(MAINTENANCE_TOKEN_METADATA_KEY)
     await transaction.done
+    notifyMaintenanceTokenChanged()
     return true
   } catch {
     return false
@@ -631,10 +671,6 @@ export function createBootController(
 
   const isTerminal = () => terminal(state)
 
-  // The one place offline-confirmed is published. Every caller that used to
-  // emit it directly routes through here, because the sentinel branch is not
-  // the only way to reach it — nudgeDisplayOffline and the probing-time
-  // offline event both did, and both would otherwise bypass the check.
   const enterBlocked = (reason: BlockedReason): void => {
     if (isTerminal()) return
     retireActiveProbe()
@@ -645,6 +681,8 @@ export function createBootController(
     emit({ kind: "blocked", reason })
   }
 
+  // Every offline candidate passes the connectivity hint and persisted
+  // deployment-verdict gates here, including nudges and probing-time events.
   const publishOfflineCandidate = (): void => {
     if (isTerminal()) return
     if (connectivityHint() !== "offline") {

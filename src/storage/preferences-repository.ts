@@ -1,8 +1,7 @@
 // Preferences persistence.
 // The environment supplies the default for defaultAlgorithm.
-// Do not persist delays as preferences; use the
-// WebAssembly-runtime-selected env.autoClearSeconds or
-// env.autoClearFallbackSeconds value. Theme belongs to
+// Do not persist delays as preferences; runtime QR-reader availability selects
+// env.autoClearSeconds or env.autoClearFallbackSeconds. Theme belongs to
 // localStorage("oc-theme") and is outside this store.
 import {
   COMPATIBLE_GENERATED_DISPLAY_PAIR,
