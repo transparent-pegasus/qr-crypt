@@ -311,6 +311,29 @@ afterEach(() => {
 })
 
 describe("online relay UI", () => {
+  it.each(["relay-playback-text", "relay-captured-text"] as const)(
+    "disables browser text assistance hints on %s",
+    async (id) => {
+      const user = userEvent.setup()
+      renderRelay()
+
+      if (id === "relay-playback-text") {
+        await user.click(screen.getByRole("button", { name: "Text → QR" }))
+      } else {
+        await startCapture(user)
+        act(() => scanText?.(symPayload()))
+      }
+
+      const textarea = await screen.findByRole("textbox", { name: "Relay text" })
+      expect(textarea).toHaveAttribute("id", id)
+      expect.soft(textarea).toHaveAttribute("spellcheck", "false")
+      expect.soft(textarea).toHaveAttribute("autocomplete", "off")
+      expect.soft(textarea).toHaveAttribute("autocorrect", "off")
+      expect.soft(textarea).toHaveAttribute("autocapitalize", "off")
+      expect.soft(textarea).toHaveAttribute("writingsuggestions", "false")
+    },
+  )
+
   it("fails closed when eligible is true but the admission callback is missing", async () => {
     render(relayElement({}, false))
     await userEvent.setup().click(screen.getByRole("button", { name: "Text → QR" }))
