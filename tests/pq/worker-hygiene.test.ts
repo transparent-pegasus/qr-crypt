@@ -19,7 +19,7 @@ import {
 
 vi.mock("@/crypto/pq/provider", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/crypto/pq/provider")>()
-  const actual = original.resolveProviders("noble")
+  const actual = original.resolveProviders()
   const providers = { kem1024: { ...actual.kem1024 }, dsa87: { ...actual.dsa87 } }
   return { ...original, resolveProviders: () => providers }
 })
@@ -133,7 +133,7 @@ describe("PQ worker hygiene", () => {
   afterEach(() => vi.restoreAllMocks())
 
   it("zeroes the acquired KEM secret and both seeds when DSA key generation throws", async () => {
-    const providers = resolveProviders("noble")
+    const providers = resolveProviders()
     const keygen = providers.kem1024.keygen.bind(providers.kem1024)
     let kemSeed: Uint8Array | undefined
     let dsaSeed: Uint8Array | undefined
