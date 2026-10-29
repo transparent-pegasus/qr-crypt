@@ -61,14 +61,16 @@ where consequence and feasibility are recorded separately.
   browser suites each passed 40/40. This was agent self-review and desktop
   browser emulation, not an independent third-party audit or physical-device
   measurement; comparison-procedure effectiveness remains unmeasured.
-- The 2026-10-30 bounded review reconciled all 24 linked primary sources
-  retrieved on 2026-10-29 with the integrated application and its recorded
+- The 2026-10-30 bounded review checked the identity and content of 23 usable
+  primary responses from the 2026-10-29 batch. Its 24th response, Ravi/TCHES,
+  was an Anubis challenge, not source content. E5 instead uses the author/ePrint
+  abstract separately reviewed on 2026-10-30; its full paper was not retrieved.
+  Sources were reconciled with the integrated application and recorded
   ordinary/extracted browser passes (43/43 each; security-review.md §1.6).
-  Source applicability, labels, related threats and EN/JA references were
-  checked; no new technique or application-addressable entry was identified.
-  The original substantive assessment date and its van Eck/full-paper gaps
-  above remain. This is source/applicability reconciliation, not new device,
-  facility or operator research.
+  Applicability, labels, related threats and EN/JA references were checked;
+  no new technique or application-addressable entry was identified. The original
+  substantive assessment date and van Eck/2004 full-paper gaps remain. This is
+  source/applicability reconciliation, not new device, facility or operator research.
 - Registered as `environment-threats` in
   `.claude/skills/freshness/targets.yaml`; its 2026-10-30 review date covers
   that bounded method and consistency verification only.
@@ -165,7 +167,10 @@ do not bound timing, power, EM leakage, or GC/native copies.
 
 **Evidence.** `Evidence` for generic lattice-KEM implementation attacks:
 Ravi et al.,
-[*Generic Side-channel attacks on CCA-secure lattice-based PKE and KEMs* (2020-06-19)](https://tches.iacr.org/index.php/TCHES/article/view/8592).
+[*Generic Side-channel attacks on CCA-secure lattice-based PKE and KEM schemes*
+(TCHES 2020-06-19; author/ePrint abstract)](https://eprint.iacr.org/2019/948).
+The abstract reports EM-assisted attacks on round-2 LWE/LWR implementations
+in pqm4 on Cortex-M4; only the abstract was reviewed on 2026-10-30.
 Guo, Nabokov, Johansson's
 [USENIX Security 2026 paper](https://www.usenix.org/conference/usenixsecurity26/presentation/guo-qian)
 ([final PDF](https://www.usenix.org/system/files/usenixsecurity26-guo-qian.pdf))

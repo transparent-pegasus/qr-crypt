@@ -57,12 +57,14 @@ QR Cryptと信頼性のある関係を持つ**物理的およびオペレーシ�
   通常および展開アーカイブのブラウザスイートは各40/40合格。これはエージェントの
   自己レビューとデスクトップブラウザのエミュレーションであり、独立した第三者監査や
   実機計測ではない。比較手順の有効性は未計測である。
-- 2026-10-30の限定レビューでは、2026-10-29に取得したリンク先の一次資料24件すべてを、
-  統合アプリと記録済みの通常・展開アーカイブのブラウザ結果（各43/43、
-  security-review.md §1.6）と整合した。出典の適用可能性、ラベル、関連脅威、EN/JAの
-  参照を確認し、新しい技法やアプリで対処すべき新項目は特定しなかった。上記の
-  元の実質的な評価日とvan Eck原論文・全文取得の不足は維持する。これは出典と
-  適用可能性の整合であり、新たな実機・施設・操作者の研究ではない。
+- 2026-10-30の限定レビューでは、2026-10-29の取得分のうち、利用可能な一次応答23件の
+  同一性と内容を確認した。24件目のRavi/TCHESの応答はAnubisチャレンジであり、出典の
+  内容ではなかった。E5では代わりに著者公開のePrint要旨を2026-10-30に別途確認し、
+  論文全文は取得していない。出典を統合アプリと記録済みの通常・展開アーカイブの
+  ブラウザ結果（各43/43、security-review.md §1.6）と整合した。適用可能性、ラベル、
+  関連脅威、EN/JAの参照を確認し、新しい技法やアプリで対処すべき新項目は特定しなかった。
+  元の実質的な評価日とvan Eck原論文・2004年論文の全文取得の不足は維持する。これは
+  出典と適用可能性の整合であり、新たな実機・施設・操作者の研究ではない。
 - `.claude/skills/freshness/targets.yaml`の`environment-threats`に登録済み。
   2026-10-30のレビュー日は、この限定した手順と整合性の検証だけを示す。
 
@@ -150,7 +152,10 @@ JavaScriptで実行される。採用した
 タイミング・電力・EM漏洩やGC・ネイティブコピーを制限する保証ではない。
 
 **Evidence（証拠）。** 格子KEM実装への一般的な攻撃は`Evidence`：Ravi et al.,
-[*Generic Side-channel attacks on CCA-secure lattice-based PKE and KEMs*（2020-06-19）](https://tches.iacr.org/index.php/TCHES/article/view/8592)。
+[*Generic Side-channel attacks on CCA-secure lattice-based PKE and KEM schemes*
+（TCHES 2020-06-19、著者公開のePrint要旨）](https://eprint.iacr.org/2019/948)。
+要旨はpqm4のCortex-M4向けラウンド2 LWE/LWR実装に対するEM支援攻撃を報告する。
+2026-10-30に確認したのは要旨のみである。
 Guo, Nabokov, Johanssonの
 [USENIX Security 2026論文](https://www.usenix.org/conference/usenixsecurity26/presentation/guo-qian)
 （[最終PDF](https://www.usenix.org/system/files/usenixsecurity26-guo-qian.pdf)）は、
