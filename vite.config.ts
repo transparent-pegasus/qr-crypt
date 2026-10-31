@@ -103,7 +103,7 @@ export default defineConfig(() => {
           name: "QR Crypt",
           short_name: "QR Crypt",
           description:
-            "Offline encryption with a dedicated clean-origin OCF2 message-header QR relay.",
+            "Offline encryption PWA: on the QR transfer path, ciphertext crosses to the online phone as a QR code; removable media and the system clipboard are separate alternatives outside the app's control.",
           lang: "en",
           start_url: "/",
           scope: "/",

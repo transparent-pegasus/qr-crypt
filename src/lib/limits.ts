@@ -26,10 +26,9 @@ export {
   RELAY_PLAYBACK_FRAME_INTERVAL_MS,
 } from "@/lib/frame-interval"
 
-// One environment value serves two roles: MAX_PQ_PLAINTEXT_BYTES is the
-// post-quantum multipart plaintext ceiling, and MAX_PLAINTEXT_BYTES is its
-// shared allocation bound. Symmetric messages use the independent single-frame
-// MAX_SYM_PLAINTEXT_BYTES ceiling below. The vault wraps fixed-length seeds.
+// Both names denote the configured post-quantum multipart plaintext ceiling.
+// Symmetric messages use the independent single-frame MAX_SYM_PLAINTEXT_BYTES
+// ceiling below. The vault wraps fixed-length seeds.
 export const MAX_PQ_PLAINTEXT_BYTES = env.maxPlaintextBytes
 export const MAX_PLAINTEXT_BYTES = MAX_PQ_PLAINTEXT_BYTES
 

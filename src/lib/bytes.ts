@@ -32,10 +32,6 @@ export function countUnicodeFormatCharacters(text: string): number {
   return count
 }
 
-export function utf8ByteLength(text: string): number {
-  return utf8ToBytes(text).byteLength
-}
-
 export function bytesToHex(bytes: Uint8Array): string {
   let result = ""
   for (const byte of bytes) result += byte.toString(16).padStart(2, "0")

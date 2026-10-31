@@ -17,7 +17,7 @@
     "test:pq": "vitest run tests/pq",
     "test:pq-vectors": "vitest run tests/pq-vectors",
     "test:qr-multipart": "vitest run tests/qr-multipart",
-    "bench:pq": "vitest bench tests/bench/pq",
+    "bench:pq": "vitest bench --project node tests/bench/pq",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -44,7 +44,7 @@
     "tailwind-merge": "^3.6.0",
     "tw-animate-css": "^1.4.0",
     "zod": "^4.6.6",
-    "zxing-wasm": "3.1.2"
+    "zxing-wasm": "3.1.6"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -77,7 +77,6 @@
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.1.12",
     "workbox-window": "^7.4.1",
-    "wrangler": "4.114.0",
     "yaml": "^2.9.0"
   },
   "aube": {
@@ -85,13 +84,14 @@
       "@trickfilm400/rollup-plugin-off-main-thread": "npm:@surma/rollup-plugin-off-main-thread@2.2.3",
       "brace-expansion@5": "5.0.12",
       "brace-expansion@2": "5.0.12",
+      "glob": "14.0.3",
+      "minimatch": "11.0.3",
       "fast-uri": "3.1.9",
       "browserslist": "4.28.7",
       "nanoid": "3.3.18",
       "undici": "7.30.1",
       "serialize-javascript": "7.1.3",
       "zod": "4.6.6",
-      "sharp": "0.35.5",
       "baseline-browser-mapping": "2.11.0",
       "source-map-js": "1.2.2"
     }

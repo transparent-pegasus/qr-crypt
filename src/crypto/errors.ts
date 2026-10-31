@@ -18,7 +18,6 @@ export const ERROR_CODES = [
   "QR_DECODE_PROGRESS_TIMEOUT",
   "QR_READER_BLOCKED",
   "DUPLICATE_KEY",
-  "DUPLICATE_QR",
   // v2 post-quantum additions.
   "KEY_ID_CONFLICT",
   "MESSAGE_ID_REUSED",

@@ -66,13 +66,19 @@ sha256sum -c SHA256SUMS
 
 独立した照合は、`INSTALL.txt` と `SHA256SUMS.files` を含む**すべての**アーカイブメンバーを対象としなければならない。`sha256sum -c SHA256SUMS.files` の実行だけでは、攻撃者が管理するマニフェストが攻撃者が管理するアーカイブと自己整合的であることを証明するに過ぎず、ソースとの対応関係を確立するものではない。
 
-1. 独立に認証されたソースコミットでクリーンなチェックアウトを用意する。§4 で検証・安全に展開されたルートを使用すること。展開されたアーカイブやコピー・陳腐化したビルドツリーをチェックアウト配下に置いてはならない。Tailwind はプロジェクトツリーをスキャンするため、そのような残余物が生成 CSS を変更し、偽の不一致を引き起こす可能性がある。
+1. 独立に認証されたソースコミットでクリーンなチェックアウトを用意する。§4 で検証・安全に展開されたルートを使用すること。展開されたアーカイブやコピー・陳腐化したビルドツリーをチェックアウト配下に置いてはならない。Tailwind はプロジェクトツリーをスキャンするため、そのような残余物が生成 CSS を変更し、偽の不一致を引き起こす可能性がある。`QR_CRYPT_EXPECTED_SOURCE_SHA` は §2 で独立に認証した値を保持し、アーカイブから取得してはならない。リモートリポジトリへの到達性は、この値を認証しない。チェックアウト確認やビルドのコマンドを実行する前に、アーカイブの表示と照合する：
 
 ```bash
 set -euo pipefail
-export QR_CRYPT_SOURCE_SHA=<independently-authenticated-full-source-commit>
+[[ "${QR_CRYPT_EXPECTED_SOURCE_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
+  printf 'QR_CRYPT_EXPECTED_SOURCE_SHA must be a full lowercase commit\n' >&2
+  exit 1
+}
+export QR_CRYPT_SOURCE_SHA="$QR_CRYPT_EXPECTED_SOURCE_SHA"
 export QR_CRYPT_CHECKOUT=/absolute/path/to/clean-checkout
 export QR_CRYPT_ARCHIVE_ROOT=/absolute/path/outside-checkout/<extracted-root>
+test "$(sed -n 's/^Source commit: //p' "$QR_CRYPT_ARCHIVE_ROOT/INSTALL.txt")" = \
+  "$QR_CRYPT_SOURCE_SHA"
 test "$(git -C "$QR_CRYPT_CHECKOUT" rev-parse HEAD)" = \
   "$QR_CRYPT_SOURCE_SHA"
 test -z "$(git -C "$QR_CRYPT_CHECKOUT" status \
@@ -170,9 +176,10 @@ rm -rf -- "$QR_CRYPT_COMPARE_TMP"
 
 最後の `diff` は差異なしを報告しなければならない。これは許可されたすべてのメンバーを網羅する。§4 の展開前パス、型、重複名、および展開サイズチェックの代替ではない。
 
-リリースのブラウザゲートは再ビルドせず展開済みアーカイブを配信し、全スイートの
-前後でSHA-256と全メンバーのバイト列を検査し、検査済みアーカイブのダイジェストを
-署名・公開処理へ渡して比較する。別コピーのJavaScriptを壊すとブラウザ起動が失敗し、
+パッケージ作成時にブラウザ試験前のZIPダイジェストを記録する。リリースのブラウザゲートは
+再ビルドせず展開済みアーカイブを配信し、全スイートの前後でSHA-256と全メンバーのバイト列を
+検査する。署名・公開処理では両方の記録済みダイジェストが互いに一致し、実際のZIPとも
+一致しなければ拒否する。別コピーのJavaScriptを壊すとブラウザ起動が失敗し、
 正常なチェックアウトのビルドは起動する必要がある。これはチェックサム拒否とは別の検証。
 これらはソース、ツールチェーン、ハードウェア、実際のサーバーを認証せず、上記の独立検証を
 一つも省略させない。リリース担当のローカル証拠と未了の統合検証は

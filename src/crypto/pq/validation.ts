@@ -1,7 +1,6 @@
-// Strict Zod validation for v2 structures. Layer environment-dependent limits
-// (such as MAX_PLAINTEXT_BYTES) and cross-field constraints over canonical-cbor's
-// protocol-constant structural guards. Reference the size tables in profiles.ts and
-// limits.ts; do not redefine them.
+// Validation for v2 structures. Symmetric envelopes use canonical-cbor's guards
+// directly; PQ and frame schemas add configured limits and cross-field checks.
+// Reference the size tables in profiles.ts and limits.ts; do not redefine them.
 import type {
   MlKemMessageEnvelopeV2,
   PublicIdentityBundleV2,
@@ -12,7 +11,6 @@ import type {
 import {
   ML_DSA_ALGORITHMS,
   ML_KEM_ALGORITHMS,
-  SYM_SUITE,
   V2_ARTIFACT_TYPES,
   WIRE_SUITES,
 } from "@/schemas/domain"
@@ -32,13 +30,10 @@ import {
 } from "@/crypto/pq/profiles"
 import { suiteComponents } from "@/crypto/pq/suites"
 import {
-  AES_GCM_TAG_BYTES,
-  AES_KEY_BYTES,
   FRAME_CHUNK_MAX_BYTES,
   IV_BYTES,
   KEY_ID_PATTERN,
   MAX_ARTIFACT_BYTES_ABSOLUTE,
-  MAX_SYM_PLAINTEXT_BYTES,
   PROTOCOL_MAX_FRAMES,
 } from "@/lib/limits"
 
@@ -80,33 +75,6 @@ const mlKemEnvelopeV2Schema = z
       })
     }
   })
-
-const symMessageEnvelopeV2Schema = z
-  .object({
-    version: z.literal(2),
-    type: z.literal("sym-message"),
-    suite: z.literal(SYM_SUITE),
-    keyId,
-    createdAt: timestamp,
-    iv: bytes(IV_BYTES),
-    ciphertext: bytes().refine(
-      (value) =>
-        value.byteLength >= AES_GCM_TAG_BYTES &&
-        value.byteLength <= MAX_SYM_PLAINTEXT_BYTES + AES_GCM_TAG_BYTES,
-    ),
-  })
-  .strict()
-
-const symmetricKeyEnvelopeV2Schema = z
-  .object({
-    version: z.literal(2),
-    type: z.literal("symmetric-key"),
-    algorithm: z.literal("A256GCM"),
-    keyId,
-    createdAt: timestamp,
-    key: bytes(AES_KEY_BYTES),
-  })
-  .strict()
 
 const publicIdentityBundleV2Schema = z
   .object({
@@ -209,10 +177,7 @@ export function validateSymMessageEnvelopeV2(
   value: unknown,
 ): SymMessageEnvelopeV2 {
   try {
-    return parseOrInvalid<SymMessageEnvelopeV2>(
-      symMessageEnvelopeV2Schema,
-      guardSymMessageEnvelopeV2(value),
-    )
+    return guardSymMessageEnvelopeV2(value)
   } catch {
     throw new AppError("INVALID_QR_PAYLOAD")
   }
@@ -222,10 +187,7 @@ export function validateSymmetricKeyEnvelopeV2(
   value: unknown,
 ): SymmetricKeyEnvelopeV2 {
   try {
-    return parseOrInvalid<SymmetricKeyEnvelopeV2>(
-      symmetricKeyEnvelopeV2Schema,
-      guardSymmetricKeyEnvelopeV2(value),
-    )
+    return guardSymmetricKeyEnvelopeV2(value)
   } catch {
     throw new AppError("INVALID_QR_PAYLOAD")
   }

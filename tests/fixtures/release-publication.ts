@@ -178,6 +178,7 @@ export function publicationFixture(options: FixtureOptions) {
         BUNDLE_NAME,
         PACKAGE_ARTIFACT_ID: "101",
         SIGNATURE_ARTIFACT_ID: "202",
+        PACKAGED_ARCHIVE_SHA256: sha256(archiveBytes),
         TESTED_ARCHIVE_SHA256: sha256(archiveBytes),
         IMMUTABILITY_ACKNOWLEDGED: "true",
         ...env,

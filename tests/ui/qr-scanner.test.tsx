@@ -33,6 +33,12 @@ type HasRetiredSingleProps = "singleTargets" extends keyof PanelProps
     : false
 const HAS_RETIRED_SINGLE_PROPS: HasRetiredSingleProps = false
 
+const PANEL_PRESENTATION = {
+  cameraAvailable: true,
+  title: translate("en", "scanner.defaultTitle"),
+  stopHint: translate("en", "scanner.stopHint.multipart"),
+}
+
 function frameOnlyProps(
   session = new MultipartScanSession(5),
   onComplete: PanelProps["multipart"]["onComplete"] = vi.fn(),
@@ -78,7 +84,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
     const preparation = deferred<void>()
     warmQrReader.mockReturnValue(preparation.promise)
     const user = userEvent.setup()
-    render(<QrScannerPanel {...frameOnlyProps()} />)
+    render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} />)
 
     const startButton = screen.getByRole("button", {
       name: translate("en", "scanner.button.start"),
@@ -102,7 +108,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
     const preparation = deferred<void>()
     void preparation.promise.catch(() => undefined)
     warmQrReader.mockReturnValue(preparation.promise)
-    const view = render(<QrScannerPanel {...frameOnlyProps()} />)
+    const view = render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} />)
 
     expect(vi.getTimerCount()).toBeGreaterThan(0)
     view.unmount()
@@ -120,7 +126,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
     readerModuleState.mockReturnValue("idle")
     const preparation = deferred<void>()
     warmQrReader.mockReturnValue(preparation.promise)
-    const pending = render(<QrScannerPanel {...frameOnlyProps()} autoStart />)
+    const pending = render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} autoStart />)
 
     await act(async () => preparation.resolve())
 
@@ -129,7 +135,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
 
     resetUi()
     readerModuleState.mockReturnValue("ready")
-    render(<QrScannerPanel {...frameOnlyProps()} autoStart />)
+    render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} autoStart />)
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
   })
 
@@ -138,7 +144,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
     const preparation = deferred<void>()
     void preparation.promise.catch(() => undefined)
     warmQrReader.mockReturnValue(preparation.promise)
-    const failed = render(<QrScannerPanel {...frameOnlyProps()} />)
+    const failed = render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} />)
 
     await act(async () => {
       preparation.reject(new Error("reader preparation failed"))
@@ -158,7 +164,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
     void blockedPreparation.promise.catch(() => undefined)
     warmQrReader.mockReturnValue(blockedPreparation.promise)
     probeWebAssemblyRuntime.mockResolvedValue(false)
-    render(<QrScannerPanel {...frameOnlyProps()} />)
+    render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} />)
 
     await act(async () => {
       blockedPreparation.reject(new Error("reader preparation failed"))
@@ -185,7 +191,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
     void preparation.promise.catch(() => undefined)
     warmQrReader.mockReturnValue(preparation.promise)
     probeWebAssemblyRuntime.mockReturnValue(classification.promise)
-    render(<QrScannerPanel {...frameOnlyProps()} />)
+    render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} />)
 
     await act(async () => {
       preparation.reject(new Error("reader preparation failed"))
@@ -207,7 +213,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
     readerModuleState.mockReturnValue("idle")
     vi.useFakeTimers()
     warmQrReader.mockReturnValue(deferred<void>().promise)
-    render(<QrScannerPanel {...frameOnlyProps()} />)
+    render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} />)
 
     await act(async () => vi.advanceTimersByTimeAsync(30_001))
 
@@ -221,7 +227,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
     const user = userEvent.setup()
     const session = new MultipartScanSession(5)
     const onComplete = vi.fn()
-    render(<QrScannerPanel {...frameOnlyProps(session, onComplete)} />)
+    render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps(session, onComplete)} />)
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     await screen.findByRole("button", { name: "Discard scan state" })
 
@@ -247,7 +253,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
   it("leaves one live auto-start run under StrictMode", async () => {
     render(
       <StrictMode>
-        <QrScannerPanel {...frameOnlyProps()} autoStart />
+        <QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} autoStart />
       </StrictMode>,
     )
 
@@ -259,7 +265,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
 
   it("discards explicitly and stops when the screen is hidden", async () => {
     const user = userEvent.setup()
-    render(<QrScannerPanel {...frameOnlyProps()} />)
+    render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} />)
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     const firstSignal = startQrScan.mock.calls[0]?.[3]?.signal
 
@@ -286,7 +292,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
       throw cameraError
     })
     const user = userEvent.setup()
-    render(<QrScannerPanel {...frameOnlyProps()} />)
+    render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} />)
 
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     expect(
@@ -318,7 +324,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
 
     const user = userEvent.setup()
     const onComplete = vi.fn()
-    render(<QrScannerPanel {...frameOnlyProps(undefined, onComplete)} />)
+    render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps(undefined, onComplete)} />)
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     act(() => oldError?.(new AppError("CAMERA_NOT_AVAILABLE"), "failed"))
     await user.click(
@@ -341,7 +347,7 @@ describe("QrScannerPanel frame scanning and camera lifecycle", () => {
 
   it("aborts and stops the active run on unmount", async () => {
     const user = userEvent.setup()
-    const view = render(<QrScannerPanel {...frameOnlyProps()} />)
+    const view = render(<QrScannerPanel {...PANEL_PRESENTATION} {...frameOnlyProps()} />)
     await user.click(screen.getByRole("button", { name: "Start camera" }))
     await waitFor(() => expect(startQrScan).toHaveBeenCalledOnce())
     const signal = startQrScan.mock.calls[0]?.[3]?.signal

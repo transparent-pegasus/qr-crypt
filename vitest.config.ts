@@ -45,7 +45,7 @@ export default defineConfig({
           include: ["tests/ui/**/*.test.tsx"],
           setupFiles: ["tests/setup/jsdom.ts", "tests/helpers/boot-fixtures.ts"],
           benchmark: {
-            include: ["tests/bench/**/*.bench.ts"],
+            include: [],
           },
         },
       },

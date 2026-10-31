@@ -32,10 +32,6 @@ const isDefaultDocument =
   fallback && new URL(fallback.href).pathname === window.location.pathname
 
 function preferredLocale() {
-  // Links to ?lang=xx were handed out before each language had its own path.
-  const requested = new URLSearchParams(window.location.search).get("lang")
-  if (requested && hrefFor(requested)) return requested
-
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY)
     if (stored && hrefFor(stored)) return stored

@@ -5,8 +5,9 @@ protocol that **still constrain the current implementation**. Each row states wh
 code does today and why, so a future change does not silently undo the decision.
 
 Purely historical entries ("feature X was withdrawn", "algorithm Y was removed") are not
-kept here. This project has no backward compatibility and no update path — installs never
-update — so a record of what the software once did constrains nothing.
+kept here. This project has no backward compatibility or supported in-app upgrade;
+protected installations must remain offline. The browser service-worker residual is
+recorded in [../security/threat-model.md](../security/threat-model.md) §5.
 
 ## Stack
 
@@ -15,12 +16,11 @@ update — so a record of what the software once did constrains nothing.
 | `sonner` instead of `toast` | The shadcn v3 registry has no `toast`, so its official successor `sonner` provides the toast surface |
 | No shadcn CLI; manual vendoring | The CLI generates an npm-style lockfile, so it is not used. Components are placed manually into `src/components/ui/` from the official registry JSON |
 | `radix-ui` umbrella package not adopted | Only `radix-ui@1.6.4` lacked provenance, so the scoped `@radix-ui/react-*` packages are used. Supply-chain incident details: [../security/threat-model.md](../security/threat-model.md) §5.1 |
-| `typescript@6` pin | Exact major pin: installs never update, so a silently adopted major has no rollback path; moves happen only through the deps freshness unit. |
+| `typescript@6` pin | Exact major pin: protected installations require a fresh installation after sanitization and have no rollback path; moves happen only through the deps freshness unit. |
 | `@playwright/test` instead of `playwright` | `@playwright/test` is the test runner. Browsers are installed via `aube exec playwright install chromium` (CI uses `--with-deps`) |
 | Test-support dev deps (`fake-indexeddb` / `pngjs` / `@types/pngjs` / `@testing-library/jest-dom`, etc.) and Tailwind / Radix packages | Outside the originally recommended dependency list but required by the stack (e.g. PNG round-trip decoding with `pngjs`) |
 | Additional shadcn components `checkbox` / `collapsible` | Needed for strong confirmation and collapsible detail views |
 | Camera QR reading runs on `zxing-wasm` (reader-only build) | `@zxing/browser` is not used. The WebAssembly binary is served same-origin and precached, so `script-src` carries `'wasm-unsafe-eval'`. See [../security/security-review.md](../security/security-review.md) §1 |
-| `wrangler` kept as an exactly pinned devDependency though no script invokes it | The exact `4.114.0` pin constrains the Wrangler version installed with this project's development dependencies (see [../security/security-review.md](../security/security-review.md) §1 for the advisory-driven bump). The `deploy` job in `.github/workflows/cloudflare-pages.yml` downloads only `dist` and installs no project dependencies. Neither deployment step sets `wranglerVersion`, so the pinned `cloudflare/wrangler-action@v4` defaults to Wrangler v4 `latest`, independently of the package pin |
 | `@zxing/library` kept as a devDependency | Pixel decode of generated PNGs in unit and Playwright helpers only. Not in the shipped bundle |
 | Supply-chain pins and overrides (`eslint-config-prettier@10.1.8` / rollup OMT via `aube.overrides`) | Responses to advisories and a trust downgrade during initial setup. Full list: [../security/threat-model.md](../security/threat-model.md) §5.1 |
 
@@ -30,6 +30,7 @@ update — so a record of what the software once did constrains nothing.
 | --- | --- |
 | `_headers` carries `Cache-Control: no-cache` for `/index.html`, `/sw.js`, `/registerSW.js`, and `/manifest.webmanifest` | Keeps the service worker and manifest fresh. A managed addition to the deployment headers |
 | CI runs `e2e` as a job independent of `validate` | `.github/workflows/cloudflare-pages.yml` splits validation, e2e, and deploy into three jobs; `deploy` needs both `validate` and `e2e`, so a failing e2e blocks deployment |
+| Wrangler 4.155.0 selected explicitly by both Pages actions | The SHA-pinned action installs its own tool without project overrides. Assess that exact graph separately; the unused root Wrangler dependency and exclusive sharp override are removed |
 
 ## Crypto and protocol
 
@@ -46,7 +47,7 @@ update — so a record of what the software once did constrains nothing.
 
 | Deviation | Reason / basis |
 | --- | --- |
-| No in-app update mechanism | Maintainer decision: after installation, devices that hold or have held protected material run offline permanently. A new version requires sanitizing the device and installing fresh |
+| No supported in-app upgrade | Maintainer decision: after installation, devices that hold or have held protected material run offline permanently. A new version requires sanitizing the device and installing fresh. Browser service-worker replacement remains possible if the installed origin becomes reachable; this policy does not freeze browser-managed code |
 | No in-app QR storage | Maintainer requirement, 2026-07-24. Both ciphertext and key QR codes are limited to on-screen display, PNG or frame-ZIP export, and clipboard; there is no `qrArtifacts` store in IndexedDB |
 | Plaintext auto-clear defaults ON | Maintainer decision: auto-clear after successful encryption and after the app moves to the background are both default ON. The primary delay is `VITE_AUTO_CLEAR_SECONDS=60`; when the QR reader's required WebAssembly runtime is unavailable, `VITE_AUTO_CLEAR_FALLBACK_SECONDS=300` applies. Keeping plaintext for five times longer in that fallback environment is an explicitly accepted owner decision because manual payload transport requires longer trips away from the app |
 | Online use limited to installation plus the clean-origin optical relay | Maintainer decision: online encryption/decryption/key-management/settings stay blocked. A fail-closed clean-origin relay may forward exact canonical OCF2 strings whose outer header declares `pq-message` or `sym-message`; `guardQrFrameV2` refuses a multi-frame `sym-message` before assembly, and assembled-artifact schema validation must succeed before playback ([../security/threat-model.md](../security/threat-model.md) T19). The hop still performs no AEAD, signature verification, or decryption. On the offline→online transition, in-memory transient data is cleared immediately |

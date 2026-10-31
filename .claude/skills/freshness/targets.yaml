@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-10-25 # last revision of this registry itself
+updated: 2026-10-31 # last revision of this registry itself
 
 units:
   - id: deps
@@ -40,8 +40,10 @@ units:
       commit the resulting aube-lock.yaml.
       Exact pins stay exact until re-vetted:
         - "@noble/post-quantum" — handled ONLY via unit crypto-noble.
-        - zxing-wasm — on any bump, recompute the reader wasm SHA-256 and size,
-          re-check the upstream zxing-cpp commit, and update the record in
+        - zxing-wasm — before any exact-pin move, assess the official release
+          notes and advisories, registry provenance, and upstream source diff.
+          Recompute the reader wasm SHA-256 and size, re-check the upstream
+          zxing-cpp commit, and update the dated record in
           docs/security/security-review.md §1. Confirm the asset still resolves
           same-origin (no CDN) and stays precached, and that
           tests/e2e/security.spec.ts still pins 'wasm-unsafe-eval' present and
@@ -62,13 +64,19 @@ units:
           7.4.1 -> @rollup/plugin-terser 1.0.0 previously resolved vulnerable
           7.0.7. Remove only when this build graph resolves 7.1.3 or later
           without this override.
-        - sharp 0.35.5 — GHSA-rgj7-g3m4-5g8c, GHSA-wq5f-xc86-pv6w; Miniflare
-          4.20260722.0 exactly requires vulnerable sharp 0.35.2. Remove only when
-          the selected Wrangler/Miniflare graph resolves sharp 0.35.5 or later
-          without this override.
         - baseline-browser-mapping 2.11.0 — GHSA-w5vr-8v7q-w6rv; browserslist
           4.28.7 previously resolved the vulnerable 2.10.44 child. Remove only
           when its parent graph resolves 2.11.0 or later without this override.
+        - glob 14.0.3 — GHSA-3g3m-2fjr-6pw4; workbox-build 7.4.1 previously
+          resolved vulnerable 11.1.0. Remove only when this build graph resolves
+          a vetted version at or above the patched floor 14.0.2 without the
+          override. Re-check globSync options, precache membership and packaged
+          offline boot on major-version changes; assessment in threat-model §5.1.
+        - minimatch 11.0.3 — GHSA-g3hv-75wg-m249; the lint/type-analysis graph,
+          Workbox's glob, and filelist previously resolved 10.2.5 or 5.1.9.
+          Remove only when every path resolves a vetted version at or above
+          the patched floor 11.0.1 without the override. Check named match /
+          Minimatch consumers on major changes: v11 removes RegExp APIs.
       aube.overrides (rollup OMT) stays until upstream trust is restored.
       After bumping vite-plugin-pwa / workbox, re-review the VitePWA options in
       vite.config.ts (globPatterns, cleanupOutdatedCaches, sentinel NetworkOnly).
@@ -132,9 +140,9 @@ units:
       - .github/workflows/dev-to-main-pr.yml
       - .github/workflows/github-release.yml
       - .github/workflows/security-maintenance.yml # scheduled/manual read-only advisory and assessed-pin checks; integration-owned
-      - scripts/check-crypto-release.sh # exact local pin / official latest-release schema and failure signal; integration-owned
-      - tests/unit/crypto-release-check.test.ts # exact-pin equality, invalid API/pin data, and request failures
-      - tests/fixtures/crypto-release-gh.py # offline official-release responses and real jq extraction
+      - scripts/check-assessed-releases.sh # exact Noble/decoder pins versus official latest releases; fail-closed signal
+      - tests/unit/assessed-release-check.test.ts # both exact pins, invalid API/pin data, request failures, and independent checks
+      - tests/fixtures/assessed-release-gh.py # offline official-release responses and real jq extraction
       - playwright.config.ts # no-build artifact root, isolated port, and server lifecycle contract
       - tests/e2e/release-artifact.spec.ts # real healthy/damaged artifact boot, trace pageError, and unchanged original control
       - tests/fixtures/artifact-browser.ts # isolated child ports, bounded processes, tree digests, and trace evidence
@@ -166,6 +174,12 @@ units:
       - tests/unit/release-publication.test.ts # executes the inline publisher across absent, draft, published, and create-race states
       - tests/fixtures/release-publication.ts # real archive/checksum inputs and isolated publication-script execution
       - tests/fixtures/release-publication-command.py # offline GitHub release metadata, asset state, and mutation observations
+      - tests/unit/release-signing.test.ts # both original-package and tested digests before real signing shell side effects
+      - tests/fixtures/release-signing.ts # isolated execution of the actual signing workflow block
+      - tests/fixtures/release-sign-command.py # controlled signing commands and mutation observations
+      - tests/fixtures/release-rebuild.ts # executes the template and EN/JA rebuild procedures
+      - tests/fixtures/release-rebuild-command.py # controlled source identity, tool, and comparison boundaries
+      - tests/unit/release-toolchain.test.ts # action-selected Wrangler, producer cache policy, and single full-suite CI membership
       - tests/fixtures/workflow.ts # parses the actual workflow for structural checks and inline shell extraction
       - tests/unit/workflow-action-pins.test.ts # fails when any workflow references an external action by tag instead of a commit
     why: >
@@ -175,16 +189,27 @@ units:
       docs/develop/install-route-a/README.md holds the complete Route A Cosign /
       rebuild procedure while the README publishes only a summary plus a link.
     method: |
-      Review all four workflows, scripts/check-crypto-release.sh, playwright.config.ts,
+      Review all four workflows, scripts/check-assessed-releases.sh, playwright.config.ts,
       and the scripts/release programs they invoke.
       Check each action repository for newer majors and security advisories.
       Keep release-workflow actions pinned to full SHAs;
-      verify each SHA still matches the documented tag. Review the pinned
+      verify tag-backed SHAs against their exact documented releases, peeling
+      annotated tags. The Cosign installer is an explicit merged-upstream-commit
+      exception: af595e623eec1ede52d6322f53b635d5def0a95a from upstream PR #252,
+      not a fictional release tag. Re-check its immutable action source,
+      embedded/requested Cosign 3.1.3 equality and the vetted hardcoded Linux
+      amd64 digest against official release metadata/checksums. The hash check
+      must precede execution, without the old affected bootstrap bundle parser;
+      latest tagged installer v4.1.2 remains affected. Review the pinned
       Cosign release, verifier image digest, and verification contract. Keep
+      both Pages action wranglerVersion inputs exactly equal. Assess that
+      action-installed Wrangler graph independently of root aube.overrides;
+      no unused root Wrangler dependency or exclusive sharp override remains.
       mise-action reading mise.toml and VITE_BUILD_SHA sourced from
       ${{ github.sha }}. For dev-to-main-pr.yml, review the full-history checkout
-      used to compute the main/dev merge base and the merged-PR manifest, the
-      title/author lookups, content-versus-meta grouping, its contents: read and
+      used to compute the main/dev merge base and the best-effort merge-commit PR
+      manifest (failed title/author lookups and squash/rebase merges are omitted),
+      content-versus-meta grouping, its contents: read and
       pull-requests: write scopes, the workflow_dispatch ref guard, and the
       ahead_by plus commit-tree-SHA promotion guards. Review the existing-PR
       PATCH, the JSON-file POST through gh api --input, and the already-exists
@@ -204,25 +229,38 @@ units:
       ordinary mode builds and explicitly serves this checkout's dist, and neither
       mode reuses an existing server. Confirm test-packaged-pwa.sh runs the full
       browser suite against extracted archive bytes, on the same server used by
-      check-packaged-responses.mjs. Verify ZIP SHA-256 and complete member identity
-      before/after, including INSTALL.txt and SHA256SUMS.files, then follow
-      tested_archive_sha256 -> tested-archive-sha256 into sign/publish comparisons.
+      check-packaged-responses.mjs. Artifact-producing jobs must disable reusable
+      mise tool caches and install browser tooling before packaging. Record
+      packaged_archive_sha256 immediately after ZIP creation. Independently
+      verify the tested ZIP digest and complete member identity before/after browser execution,
+      including INSTALL.txt and SHA256SUMS.files. Follow both original packaged
+      and tested digests into sign/publish comparisons with the actual ZIP.
       Preserve the separate corrupted-JavaScript browser regression and healthy
       checkout control: a digest refusal is not evidence of browser execution.
       Review the daily 06:23 UTC/manual maintenance workflow's read-only scope,
-      audit plus official latest-release signal, exact stable pin validation,
+      audit plus official Noble and zxing-wasm latest-release signals, exact stable pin validation,
       malformed/empty/request-error failure, and release check after an audit
-      failure. It must not update a dependency, installation, issue, or message.
+      failure. Each pin check must run even if the other fails. It must not
+      update a dependency, installation, issue, or message. A decoder change
+      requires the deps unit's release/advisory/provenance/WASM assessment;
+      a Noble change requires crypto-noble, never an incidental decoder bump.
       Reconcile deployment prose and the Route A EN/JA/template requirements;
       reference-server checks do not replace the actual-server response checker.
       Review release-packaged-pwa.test.ts, release-tested-archive.test.ts, and
-      crypto-release-check.test.ts with their registered fixtures. Their controlled
+      assessed-release-check.test.ts with their registered fixtures. Their controlled
       child results cover orchestration and rejection, not real browser execution.
       Review release-publication.test.ts with its publication and workflow fixtures:
       execute the actual inline publisher against absent, draft, published, and
       create-race states; retain authoritative draft ownership/metadata checks and
       verification-only behavior for already-published releases. Structural audit
       assertions consume parsed YAML rather than a separate indentation parser.
+      Review release-signing.test.ts and its fixtures for both digest gates before
+      signing side effects. Review generate-install-txt.test.ts with the rebuild
+      fixtures for independently authenticated expected SHA, archive-display
+      mismatch rejection before tools, and actual checkout identity. Review
+      release-toolchain.test.ts for exact matching action-selected Wrangler,
+      its separately assessed graph, disabled producer caches, and default
+      Vitest's full test-family membership without duplicate CI invocations.
       Confirm release-artifact.spec.ts uses artifact-browser.ts to exercise healthy
       and damaged copies through the existing app-boot.spec.ts, requires the damaged
       asset's pageError and URL, and preserves original byte/boot controls. It must
@@ -235,7 +273,7 @@ units:
       Local only — a freshness sweep must not push:
       aube run test -- tests/unit/serve-dist.test.ts
       aube run test -- tests/unit/workflow-action-pins.test.ts
-      aube run test -- tests/unit/release-packaged-pwa.test.ts tests/unit/release-tested-archive.test.ts tests/unit/crypto-release-check.test.ts
+      aube run test -- tests/unit/release-packaged-pwa.test.ts tests/unit/release-tested-archive.test.ts tests/unit/assessed-release-check.test.ts
       aube run test:e2e -- tests/e2e/release-artifact.spec.ts --workers=1 --retries=0
       aube run test:e2e
       After packaging the integrated tree with package-static-pwa.sh, set
@@ -246,10 +284,11 @@ units:
       output. Both full browser suites must include release-artifact.spec.ts;
       its damaged asset must fail in the browser while the healthy copy and
       original still boot. No scenario may silently skip artifact mode.
-      bash scripts/check-crypto-release.sh
+      bash scripts/check-assessed-releases.sh
       aube run test -- tests/unit/release-tag-read.test.ts
       aube run test -- tests/unit/release-audit-gate.test.ts
       aube run test -- tests/unit/release-publication.test.ts
+      aube run test -- tests/unit/release-signing.test.ts tests/unit/release-toolchain.test.ts
       aube run test -- tests/unit/generate-install-txt.test.ts
       aube run test -- tests/unit/release-build-determinism.test.ts
       aube run test -- tests/unit/release-static-closure.test.ts
@@ -261,7 +300,7 @@ units:
       mise x \
         github:rhysd/actionlint@v1.7.12 \
         github:koalaman/shellcheck@v0.11.0 -- \
-        shellcheck -s bash scripts/release/*.sh scripts/check-crypto-release.sh
+        shellcheck -s bash scripts/release/*.sh scripts/check-assessed-releases.sh
       Extract each run block from .github/workflows/dev-to-main-pr.yml without
       YAML indentation and pipe each one to:
       mise x \
@@ -269,8 +308,10 @@ units:
         github:koalaman/shellcheck@v0.11.0 -- \
         shellcheck -s bash -
       rg -n 'uses:|cosign-release:' .github/workflows/*.yml, then
-      git ls-remote --exit-code <action repo> <tag> for every referenced tag
-      and confirm pinned release-workflow SHAs match.
+      git ls-remote --exit-code <action repo> <tag> for every tag-backed reference
+      and confirm pinned SHAs match the exact release, peeling annotated tags.
+      Verify the explicit Cosign-installer merged-commit/bootstrap exception
+      by the immutable upstream source and digest procedure in method above.
       # Relative links in the Route A install document and deployment prose must
       # resolve (README is summary + link; this document is the authority).
       for f in docs/develop/install-route-a/README.md docs/locales/ja/develop/install-route-a/README.md docs/develop/deployment.md; do
@@ -286,7 +327,7 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-09-12
+    last_checked: 2026-10-30
     files:
       - docs/security/threat-model.md
       - src/app/boot/boot-controller.ts # T19 protected admission versus display-only eligibility
@@ -297,6 +338,7 @@ units:
       - src/qr/wire-codec.ts # bare-paste character and decoded-byte bounds cited by T20
       - src/qr/multipart/assemble.ts # receiver assembly enforcement cited by T20
       - src/qr/camera/frame-pump.ts # scanner downscale, in-flight bound, and scheduled interval cited by T5
+      - src/qr/relay-playback.ts # yielded whole-set preparation and cancellation cited by T19/T20
     why: >
       Living threat model. §5.1 supply-chain advisories are dated (2026-07-21);
       §7 v2 addendum cites algorithm defaults that can diverge from the active
@@ -310,8 +352,16 @@ units:
       sensitive-store reads, validate lifecycle, retain the same lease until
       teardown, reject/release on cancellation or indeterminate state.
       refreshRelayEligibility is display-only; no accepted check-to-lock gap.
+      Reconcile T8's five sensitive-input hints and OS/IME limitation, T17's
+      persistent armed-token notice and disarm removing the one-transition
+      exception while preserving the configured wipe policy,
+      and T19/T20's sequential yielded pre-render/cancellation boundary. Keep
+      visible message metadata aligned across the protocol, READMEs, and EN/JA
+      UI copy; no wire field or confidentiality claim changes implicitly.
       Keep D5/T7/§5.1 consistent with external scheduled/manual monitoring and
-      the no-offline-updater rule; source/report evidence never proves device
+      the no-supported-in-app-upgrade policy, including browser service-worker
+      replacement when the origin becomes reachable; preserve sentinel-only
+      destructive evidence. Source/report evidence never proves device
       leakage resistance, benign source, or operator effectiveness.
       Reconcile threat/mitigation entries (T14/T15 algorithm names) with the
       active policy in src/crypto/pq/suites.ts and boot behavior in
@@ -336,7 +386,7 @@ units:
   - id: environment-threats
     category: security-knowledge
     cadence_days: 90 # same rhythm as threat-model; a review reads both together
-    last_checked: 2026-09-07
+    last_checked: 2026-10-30
     files:
       - docs/security/environment-threat-catalog.md
       - docs/locales/ja/security/environment-threat-catalog.md # Japanese mirror; entries, labels, and sources must not diverge
@@ -395,6 +445,8 @@ units:
       - src/schemas/env-schema.ts # PQ plaintext ceiling and maximum signed-artifact formula
       - tests/pq/maximum-artifact-size.golden.test.ts # executable artifact size/frame table
       - tests/e2e/downloads.spec.ts # long-text export measurement attachment
+      - tests/e2e/relay-playback-responsiveness.spec.ts # real-browser timer progress during 128-frame preparation
+      - tests/fixtures/relay-playback.ts # independent synthetic canonical message/frame inputs
     why: >
       Point-in-time snapshot: the exact Noble pin and review date, the
       zxing-wasm reader pin/hash/provenance, independent
@@ -413,7 +465,7 @@ units:
       aube run test:pq -- tests/pq/maximum-artifact-size.golden.test.ts
       aube run test -- tests/unit/csp-meta.test.ts tests/unit/serve-dist.test.ts tests/unit/deployment-headers.test.ts
       aube run build:prod
-      aube run test:e2e -- tests/e2e/security.spec.ts tests/e2e/online-relay.spec.ts tests/e2e/receipt-non-persistence.spec.ts tests/e2e/fingerprint-comparison.spec.ts tests/e2e/relay-admission.spec.ts
+      aube run test:e2e -- tests/e2e/security.spec.ts tests/e2e/online-relay.spec.ts tests/e2e/receipt-non-persistence.spec.ts tests/e2e/fingerprint-comparison.spec.ts tests/e2e/relay-admission.spec.ts tests/e2e/relay-playback-responsiveness.spec.ts
       Complete the ci-actions artifact-browser/digest and maintenance-helper
       verification on the integrated tree; record source identity and exact
       outcomes separately from the local Noble dependency checks.
@@ -471,15 +523,18 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-09-07
+    last_checked: 2026-10-30
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md
       - src/hooks/use-online-status.ts
       - src/lib/reachability.ts
       - src/app/boot/boot-controller.ts # acquireRelaySession lifecycle/admission contract
+      - src/app/maintenance-token.tsx # token refresh, persistent armed notice, and explicit non-destructive disarm
+      - src/hooks/use-maintenance-token.ts # shared token state/context access
       - src/storage/database.ts # exclusive lease, cancellation, and cooperating sensitive writers
       - tests/ui/boot/relay-session-admission.test.tsx # protected read and pending-read cancellation; integration-owned
+      - tests/ui/boot/maintenance-token.test.tsx # one-transition token visibility, refresh races, and explicit disarm
       - tests/e2e/relay-admission.spec.ts # actual Chromium locks/IDB completed-writer handoff; integration-owned
       - src/crypto/pq/wire-bytes.ts # mirrors documented wire layout
       - src/crypto/pq/canonical-cbor.ts # mirrors documented canonical encoding
@@ -505,6 +560,9 @@ units:
       - tests/fixtures/relay-legacy.ts # retired v1 strings (OCM1/OCK1/OCP1) retained only as rejection fixtures
       - tests/unit/relay-frames.test.ts # parser contract and node-environment fixture pins
       - tests/ui/online-relay.test.tsx # jsdom relay behavior and rejection boundaries
+      - tests/unit/relay-playback.test.ts # sequential preparation, timer yield, cancellation, whole-set and 128-frame admission
+      - tests/e2e/relay-playback-responsiveness.spec.ts # actual canvas serialization and timer progress through relay UI
+      - tests/fixtures/relay-playback.ts # public synthetic canonical ciphertext/frame fixture construction
       - tests/pq/sym-envelope.golden.test.ts # frozen sym envelope, AAD, HKDF info, and size boundary
       - tests/pq/wire-bytes.golden.test.ts # frozen hex must match the docs
       - tests/pq/canonical-cbor.golden.test.ts
@@ -528,16 +586,23 @@ units:
       sym-message/symmetric-key layouts, prefixes, HKDF inputs, byte bounds,
       and single-frame rule with sym-envelope.golden.test.ts. Confirm the relay
       allowlist and completed-set assembled-artifact validation match
-      relay-frames.ts and its unit/UI tests. Confirm qr-display.tsx still
+      relay-frames.ts and its unit/UI tests. Verify sequential relay pre-rendering,
+      a real browser-task yield, cancellation before the next render, stale
+      result/error suppression, whole-set-before-display, and all 128 frames.
+      Confirm qr-display.tsx still
       requires the size prop so no surface can render off that contract. Confirm the
-      qr-protocol-v2.md messageId note (~259–264) still states the wire format
+      qr-protocol-v2.md §5 messageId note still states the wire format
       is not a replay-prevention mechanism while documenting the receiving
       session-memory receipt keyed by it, and that the clarification matches
       src/features/receipt-cache.ts (no wire change). Diff
       boot-and-reset-v2.md against src/app/boot/{boot-contract,boot-controller}.ts
       and wipe coordinator behavior, including the read-only RSA-HYBRID boot
-      exception and clearReceipts in the buffer-drop inventory. Confirm session
-      admission acquires before reading actual stores and keeps the same lease
+      exception and clearReceipts in the buffer-drop inventory. Confirm
+      maintenance-token visibility/disarm matches boot metadata, refresh invalidation,
+      sentinel-only one-transition consumption, and unchanged clock handling.
+      Disarm restores the configured next-online wipe policy without immediate
+      deletion or changing owner D1's permanent wipe-off setting.
+      Confirm session admission acquires before reading actual stores and keeps the same lease
       through teardown, checks lifecycle after each await, and rejects/releases
       missing callbacks/locks, failed/dirty reads, cancellation, and stale state.
       Visibility refresh releases the session first; display eligibility alone
@@ -551,13 +616,13 @@ units:
       Update dated statements to current state.
     verify: |
       aube run test:pq
-      aube run test -- tests/ui/boot tests/ui/boot-app.test.tsx tests/ui/online-status.test.tsx tests/ui/offline-ack.test.tsx tests/ui/key-list-page.test.tsx tests/ui/online-relay.test.tsx tests/unit/relay-lease.test.ts
-      aube run test:e2e -- tests/e2e/relay-admission.spec.ts tests/e2e/online-reachability.spec.ts
+      aube run test -- tests/ui/boot tests/ui/boot-app.test.tsx tests/ui/online-status.test.tsx tests/ui/offline-ack.test.tsx tests/ui/key-list-page.test.tsx tests/ui/online-relay.test.tsx tests/unit/relay-lease.test.ts tests/unit/relay-playback.test.ts
+      aube run test:e2e -- tests/e2e/relay-admission.spec.ts tests/e2e/online-reachability.spec.ts tests/e2e/relay-playback-responsiveness.spec.ts
 
   - id: size-goldens
     category: crypto
     cadence_days: 90 # also on schema / plaintext-limit / encoding change
-    last_checked: 2026-09-07
+    last_checked: 2026-10-30
     files:
       - src/lib/limits.ts # measured CBOR/OCF2 sizes, frames × chunk bound, and timeout floor
       - src/lib/frame-bytes.ts # generated 100–1,000B density grid, effective clamps, and append-only boot range
@@ -621,12 +686,14 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-09-12
+    last_checked: 2026-10-30
     files:
       - src/i18n/catalog-en.ts # canonical disclosure copy, en (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/i18n/catalog-ja.ts # the same disclosure copy, ja; both locales move together
       - src/pages/settings-confirmations.ts # exact destructive ceremony phrases mirrored in both catalogs
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
+      - src/app/maintenance-token.tsx # persistent armed-token warning and disarm copy on offline routes
+      - src/hooks/use-maintenance-token.ts # shared token state/context behind that disclosure
       - src/components/key-add-dialog.tsx # import ceremony descriptions and dismissal boundary
       - src/features/presentation.ts # complete lowercase 64-digit fingerprint representation
       - src/components/fingerprint.tsx # one complete grouped comparison display
@@ -635,6 +702,9 @@ units:
       - src/pages/key-list-page.tsx # saved-key confirmation ceremony
       - tests/unit/presentation.test.ts # every digit, modulo aliases, and suffix comparison
       - tests/ui/fingerprint-confirmation.test.tsx # EN/JA full identity/symmetric comparison; integration-owned
+      - tests/ui/sensitive-inputs.test.tsx # browser text hints on plaintext/decrypt/import fields
+      - tests/ui/online-relay.test.tsx # both relay textarea DOM hint assertions and relay lifecycle/copy coverage
+      - src/app/router.tsx # shared sticky-header armed/unknown token disclosures
       - tests/e2e/fingerprint-comparison.spec.ts # wrapped complete comparison at 320px; integration-owned
       - src/components/key-add/create-key-view.tsx # experimental / not-independently-audited banner
       - src/components/key-add/import-source-view.tsx # camera and paste import guidance
@@ -669,29 +739,37 @@ units:
       an independent channel, without claiming that acknowledgement proves it.
       Include key-detail/identity-details.tsx, peer-bundle-detail-dialog.tsx,
       key-list-page.tsx, and the shared fingerprint/presentation surfaces.
+      Reconcile visible kind, stable shared-key/recipient identifier, symmetric
+      timestamp, size, and frame-count disclosures in both locales with protocol
+      §§3/3.1/6 and the READMEs. Browser text hints must not claim OS/IME control;
+      armed-token copy must preserve owner D1 and offer explicit disarm.
+      The sticky header shows the notice; Settings supplies explicit disarm.
+      sensitive-inputs.test.tsx covers plaintext/decrypt/import DOM hints;
+      online-relay.test.tsx covers both relay textareas.
       Re-read the landing page's AES-256 /
       ML-KEM / wipe honesty wording against the same docs, and keep
       public/about/index.html and messages.js in step — the English text lives
       only in the HTML, the other locales only in messages.js.
     verify: |
-      aube run test -- tests/unit/i18n.test.ts tests/unit/presentation.test.ts tests/ui/fingerprint-confirmation.test.tsx tests/ui/keys.test.tsx tests/ui/key-add-dialog.test.tsx tests/ui/key-list-page.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
+      aube run test -- tests/unit/i18n.test.ts tests/unit/presentation.test.ts tests/ui/fingerprint-confirmation.test.tsx tests/ui/sensitive-inputs.test.tsx tests/ui/online-relay.test.tsx tests/ui/keys.test.tsx tests/ui/key-add-dialog.test.tsx tests/ui/key-list-page.test.tsx tests/ui/settings.test.tsx tests/ui/online-gate.test.tsx tests/ui/offline-ack.test.tsx tests/unit/about-page-i18n.test.ts
       aube run test:e2e -- tests/e2e/fingerprint-comparison.spec.ts
 
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-09-12
+    last_checked: 2026-10-30
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together
       - SECURITY.md # duplicates release-status claims (repo-public ≠ release-approved)
       - index.html # static meta description; must stay aligned with product claims, never relay-derived
+      - vite.config.ts # VitePWA manifest.description mirrors the static product description
       - docs/develop/deviations.md # dated maintainer decisions and active-policy wording
     why: >
       Experimental / not-independently-audited claims, active-suite wording,
       the install route A cosign policy values, the user-selected display
       compatibility preference, per-artifact effective clamps, PNG/ZIP export
-      behaviour, the documentation list, and the dated
+      behaviour, the static HTML/manifest descriptions, the documentation list, and the dated
       maintainer decisions in deviations.md all drift. The two READMEs are a
       translation pair and stale independently.
     method: |
@@ -700,10 +778,14 @@ units:
       suite/profile wording, per-algorithm plaintext ceilings, the atomic
       default/compatible display preference pairs, per-artifact effective
       clamps, the independent relay playback cadence, and PNG/ZIP export
-      behaviour with the active implementation. Confirm the install route A
+      behaviour with the active implementation. Reconcile visible message kind,
+      stable shared-key/recipient identifier, symmetric timestamp, size, and
+      frame counts with protocol §§3/3.1/6 and both locale catalogs. Confirm the install route A
       cosign policy values still match
       .github/workflows/github-release.yml (unit ci-actions). Confirm the
-      documentation list matches the docs/ tree. In deviations.md, drop rows
+      static index.html description matches VitePWA's manifest.description in
+      vite.config.ts and the README claims. Confirm the documentation list
+      matches the docs/ tree. In deviations.md, drop rows
       that no longer constrain the current implementation — history-only
       entries do not belong there (CLAUDE.md: no backward compatibility).
       Any edit to one README must be mirrored in the other.
@@ -718,8 +800,9 @@ units:
           test -e "$(dirname "$f")/$target" || echo "MISSING $f -> $target"
         done
       done
-      # Then read index.html's meta description and confirm it still matches
-      # the product claims in the READMEs (no relay-derived wording).
+      # Then compare index.html's meta description with VitePWA's
+      # manifest.description in vite.config.ts and confirm both match the
+      # product claims in the READMEs (no relay-derived wording).
 
   - id: external-links
     category: links

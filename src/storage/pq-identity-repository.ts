@@ -1,5 +1,5 @@
 // CRUD for the pqIdentities store.
-// keyPath: id / indexes: by-createdAt, by-kemKeyId, by-signingKeyId.
+// keyPath: id / unique indexes: by-kemKeyId and by-signingKeyId.
 //
 // Frozen selection rules:
 //   - Decryption: search every non-destroyed identity, including rotated, by kem.keyId.
@@ -57,21 +57,6 @@ export async function findIdentityByKemKeyId(
     // Rotated and revoked rows remain valid decrypt recipients. Physical deletion is
     // the only state that removes a KEM key from this lookup.
     return value === undefined ? undefined : checkedIdentity(value)
-  } catch (error) {
-    throw toAppError(error, "STORAGE_FAILED")
-  }
-}
-
-export async function findIdentityBySigningKeyId(
-  signingKeyId: string,
-): Promise<PostQuantumIdentity | undefined> {
-  try {
-    const value = await (
-      await getDb()
-    ).getFromIndex(STORE_PQ_IDENTITIES, "by-signingKeyId", signingKeyId)
-    if (value === undefined) return undefined
-    const identity = checkedIdentity(value)
-    return identity.status === "active" ? identity : undefined
   } catch (error) {
     throw toAppError(error, "STORAGE_FAILED")
   }

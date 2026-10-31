@@ -71,13 +71,7 @@ type EncryptionResult = EncryptedMessage & { generation: number }
 
 const EMPTY_ARTIFACT_BYTES = new Uint8Array()
 
-function algorithmOptions(): UiAlgorithm[] {
-  const options: UiAlgorithm[] = ["A256GCM"]
-  if (env.enableMlKem && env.enableMlDsa) {
-    options.push("MLKEM1024_MLDSA87_A256GCM")
-  }
-  return options
-}
+const ALGORITHMS: readonly UiAlgorithm[] = ["A256GCM", "MLKEM1024_MLDSA87_A256GCM"]
 
 export function EncryptPage() {
   const { language, t } = useI18n()
@@ -152,12 +146,7 @@ export function EncryptPage() {
     frames.length > 0 && !frameSplit.splitting && frameError === null
   const localizedFrameError = useLocalizedMessage(frameError)
 
-  const algorithms = useMemo(() => algorithmOptions(), [])
-  const algorithm = algorithms.includes(algorithmOverride as UiAlgorithm)
-    ? (algorithmOverride as UiAlgorithm)
-    : algorithms.includes(preferences.defaultAlgorithm)
-      ? preferences.defaultAlgorithm
-      : (algorithms.at(-1) ?? "A256GCM")
+  const algorithm = algorithmOverride ?? preferences.defaultAlgorithm
   const symmetricKeys = useMemo(
     () => groupLineages(keys).map((group) => group.head),
     [keys],
@@ -348,7 +337,7 @@ export function EncryptPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {algorithms.map((option) => (
+            {ALGORITHMS.map((option) => (
               <SelectItem key={option} value={option}>
                 {t(`algorithm.${option}`)}
               </SelectItem>
@@ -420,6 +409,9 @@ export function EncryptPage() {
           placeholder={t("encrypt.plaintextPlaceholder")}
           autoComplete="off"
           spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          {...{ writingsuggestions: "false" }}
           disabled={busy}
         />
         <p

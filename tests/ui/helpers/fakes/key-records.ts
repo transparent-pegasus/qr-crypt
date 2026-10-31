@@ -43,9 +43,6 @@ async function defaultSaveSymmetricRotation({
   fakeKeys.unshift(next)
 }
 export const saveSymmetricRotation = vi.fn(defaultSaveSymmetricRotation)
-export const findKeyByFingerprint = vi.fn(async (fingerprint: string) =>
-  fakeKeys.find((record) => record.fingerprint === fingerprint),
-)
 export const renameKeyRecord = vi.fn(async (id: string, name: string) => {
   const record = fakeKeys.find((item) => item.id === id)
   if (record) record.name = name

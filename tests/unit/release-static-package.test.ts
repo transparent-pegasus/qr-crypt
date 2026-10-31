@@ -141,10 +141,6 @@ describe("package-static-pwa.sh", () => {
     const tag = `v${VERSION}-main.g${fixture.sourceSha}`
     const rootName = `qr-crypt-${tag}-static-install`
     const archiveName = `${rootName}.zip`
-    const expectedOutputs =
-      `archive_name=${archiveName}\nbundle_name=${archiveName}.sigstore.json\n` +
-      `release_tag=${tag}\nversion=${VERSION}\n`
-    expect(readFileSync(fixture.output, "utf8")).toBe(expectedOutputs)
     expect(existsSync(path.join(fixture.root, "dist/about"))).toBe(false)
 
     const expectedPayload = {
@@ -166,6 +162,16 @@ describe("package-static-pwa.sh", () => {
     const outputDir = path.join(fixture.runnerTemp, "qr-crypt-release")
     const archivePath = path.join(outputDir, archiveName)
     const archiveBytes = readFileSync(archivePath)
+    const expectedOutputs = [
+      `archive_name=${archiveName}`,
+      `bundle_name=${archiveName}.sigstore.json`,
+      `release_tag=${tag}`,
+      `version=${VERSION}`,
+      `packaged_archive_sha256=${sha256(archiveBytes)}`,
+    ]
+    expect(readFileSync(fixture.output, "utf8").split("\n").sort()).toEqual(
+      [...expectedOutputs, ""].sort(),
+    )
     expect(readdirSync(outputDir).sort()).toEqual(["SHA256SUMS", archiveName])
     expect(readFileSync(path.join(outputDir, "SHA256SUMS"), "utf8")).toBe(
       `${sha256(archiveBytes)}  ${archiveName}\n`,
@@ -213,7 +219,9 @@ describe("package-static-pwa.sh", () => {
     const repeated = fixture.execute()
     expect(repeated.status, repeated.stderr).toBe(0)
     expect(readFileSync(archivePath)).toEqual(archiveBytes)
-    expect(readFileSync(fixture.output, "utf8")).toBe(expectedOutputs.repeat(2))
+    expect(readFileSync(fixture.output, "utf8").split("\n").sort()).toEqual(
+      [...expectedOutputs, ...expectedOutputs, ""].sort(),
+    )
   })
 
   it.each([

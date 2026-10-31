@@ -46,21 +46,19 @@ interface ScannerRun {
 
 const IDLE_TRANSFER_STATE: TransferState = { kind: "idle" }
 
-export function QrScannerPanel(props: QrScannerPanelProps) {
+type PanelProps = QrScannerPanelProps & {
+  cameraAvailable: boolean
+  title: string
+  stopHint: string
+}
+
+export function QrScannerPanel(props: PanelProps) {
   const { language, t } = useI18n()
   const readiness = useQrReaderReadiness()
   const readinessRef = useRef(readiness)
   const readyAtMountRef = useRef(readiness === "ready")
-  const {
-    cameraAvailable = true,
-    title: titleProp,
-    autoStart = false,
-    stopHint: stopHintProp,
-  } = props
-  const title = titleProp ?? t("scanner.defaultTitle")
-  const multipart = props.multipart
+  const { cameraAvailable, title, autoStart = false, stopHint, multipart } = props
   const multipartSession = multipart.session
-  const resolvedStopHint = stopHintProp ?? t("scanner.stopHint.multipart")
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const mountedRef = useRef(true)
@@ -490,7 +488,7 @@ export function QrScannerPanel(props: QrScannerPanelProps) {
       </CardHeader>
       <CardContent className="space-y-4 p-4 pt-0">
         <p className="text-xs leading-relaxed text-muted-foreground">
-          {resolvedStopHint}
+          {stopHint}
         </p>
 
         <div className="relative aspect-square overflow-hidden rounded-xl bg-slate-950">
