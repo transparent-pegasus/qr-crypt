@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-10-30 # last revision of this registry itself
+updated: 2026-10-31 # last revision of this registry itself
 
 units:
   - id: deps
@@ -67,6 +67,16 @@ units:
         - baseline-browser-mapping 2.11.0 — GHSA-w5vr-8v7q-w6rv; browserslist
           4.28.7 previously resolved the vulnerable 2.10.44 child. Remove only
           when its parent graph resolves 2.11.0 or later without this override.
+        - glob 14.0.3 — GHSA-3g3m-2fjr-6pw4; workbox-build 7.4.1 previously
+          resolved vulnerable 11.1.0. Remove only when this build graph resolves
+          a vetted version at or above the patched floor 14.0.2 without the
+          override. Re-check globSync options, precache membership and packaged
+          offline boot on major-version changes; assessment in threat-model §5.1.
+        - minimatch 11.0.3 — GHSA-g3hv-75wg-m249; the lint/type-analysis graph,
+          Workbox's glob, and filelist previously resolved 10.2.5 or 5.1.9.
+          Remove only when every path resolves a vetted version at or above
+          the patched floor 11.0.1 without the override. Check named match /
+          Minimatch consumers on major changes: v11 removes RegExp APIs.
       aube.overrides (rollup OMT) stays until upstream trust is restored.
       After bumping vite-plugin-pwa / workbox, re-review the VitePWA options in
       vite.config.ts (globPatterns, cleanupOutdatedCaches, sentinel NetworkOnly).

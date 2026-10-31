@@ -879,6 +879,35 @@ code. Evidence is development-process self-review on desktop Chromium, not
 signing/publication, independent source rebuild, third-party audit, actual-server
 assurance or Android/iOS device measurement. `release-approved` is not reached.
 
+## 1.7 Targeted PR #129 CI recheck (2026-10-31)
+
+The graph at `ce93ff0aea88731eadd993a97855e351723d7e91` acquired two additional
+moderate audit findings after its hosted runs: glob GHSA-3g3m-2fjr-6pw4 and
+minimatch GHSA-g3hv-75wg-m249. Exact overrides to glob 14.0.3 and minimatch
+11.0.3 remove them. The assessed source, compatibility bounds and removal
+conditions are recorded in [threat-model.md](threat-model.md) §5.1 and the
+freshness registry. No direct dependency or deepmerge path changes.
+
+Local verification of that source with the two overrides passed frozen
+installation, typecheck, lint (zero errors and the existing 13 warnings),
+**102 test files / 1,577 tests**, production build, and the full ordinary
+Chromium suite (**43/43**, retries disabled). The first post-update unit run
+hit the existing 20-second child-process limit in the offline release
+publication fixture. All 47 publication tests and then the complete suite
+passed on recheck, without code, assertion or timeout changes; the transient
+timeout's cause was not established. With the same build-SHA input, all
+28 production files and their hashes matched the pre-update build.
+
+Unfiltered audit still exits 1 solely for deepmerge GHSA-gcqx-w48m-w2h4, left
+unchanged at the owner's request while awaiting an upstream fix. Hosted
+`validate` therefore still stops before typecheck/lint/unit/build; the local
+commands above were run separately past that stop. The repository has no
+formatting CI gate; an additional diagnostic found the same 180 inherited
+formatting warnings, with no newly affected files. No passing audit,
+hosted-validate pass, freshness stamp, release approval or independent review
+is implied. Security disclosures and the physical-environment catalog retain
+their existing scope.
+
 ## 2. Prohibited Claims (UI / README / CI)
 
 None of the following may be used in UI, README, or CI displays.

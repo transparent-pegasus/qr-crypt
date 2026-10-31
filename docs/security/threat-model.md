@@ -371,6 +371,45 @@ one fails, and an unassessed release or fetch error fails the monitor. The imple
 These checks never update an offline installation. The freshness review
 remains responsible for the written advisory record.
 
+### Glob/minimatch advisory remediation (2026-10-31)
+
+A fresh audit of the PR #129 graph found two moderate advisories published
+on 2026-10-30, in addition to the retained deepmerge finding:
+
+| Advisory | Resolved before | Exact override | Reason |
+| --- | --- | --- | --- |
+| [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) | `glob@11.1.0` through `workbox-build@7.4.1` | `glob@14.0.3` | AbortSignal cancellation could leave traversal running; patched floor is 14.0.2. |
+| [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) | `minimatch@10.2.5` in lint/type-analysis and glob; `5.1.9` through filelist | `minimatch@11.0.3` | Pattern preprocessing could amplify glob parts and exhaust resources; patched floor is 11.0.1. |
+
+Workbox 7.4.1 still requests glob 11, and the lint/filelist parents still
+request affected minimatch majors. Exact overrides close every installed
+path while retaining those parent versions. The only newly required children
+are `path-scurry@3.0.0` and `@isaacs/nonrecursive-glob-match@1.0.3`; the obsolete
+glob CLI subtree is removed. Existing protective overrides remain.
+
+Registry tarball SHA-512 integrity was checked, and the annotated upstream
+tags match registry gitHead values: glob
+`fc93fd5dab2bd40ea02681e8a1f027dacca216ce`, minimatch
+`b0c2aa83161cb6aaa19fa2e612f0b64edffd18ee`. These descend the reviewed fixes
+[glob 4682e8c](https://github.com/isaacs/node-glob/commit/4682e8c9babee1b385202ede36389634e12076d7)
+and [minimatch 77a0f5c](https://github.com/isaacs/minimatch/commit/77a0f5c4b80bdc641c3c930a1d9edf5ad2db57f8).
+The pinned changelogs and actual consumers were checked for the major changes:
+Workbox uses `globSync`; ESLint/type-analysis use named `minimatch` or
+`Minimatch.match`; filelist uses `minimatch.match`. None uses the removed
+glob CLI or minimatch RegExp-building APIs. A production rebuild with the same
+source-SHA input produced the same 28 files and SHA-256 hashes as before the
+overrides. These checks bound compatibility and package identity; they do
+not establish benign upstream source or independent source-to-package reproduction.
+
+The unfiltered audit now reports only `deepmerge@4.3.1`
+([GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4)) and
+exits 1. Its version, integrity and dependency path are unchanged. Per the
+owner's 2026-10-31 instruction, it awaits an upstream fix; no removal,
+replacement, override or audit exception is introduced. Noble 0.7.1 and
+zxing-wasm 3.1.6 remain exact. Override removal conditions are registered in
+[targets.yaml](../../.claude/skills/freshness/targets.yaml); this remediation does not supply a passing audit,
+release approval or a new passing freshness stamp.
+
 ## 6. Mapping to verification
 
 - Zero external transmission: e2e tests confirm that every in-page network request has origin self only, plus CSP headers
