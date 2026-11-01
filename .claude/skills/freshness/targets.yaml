@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-10-31 # last revision of this registry itself
+updated: 2026-11-02 # last revision of this registry itself
 
 units:
   - id: deps
@@ -27,7 +27,10 @@ units:
     files:
       - package.json
       - aube-lock.yaml
-      - vite.config.ts # PWA/workbox options reviewed on plugin bumps; globPatterns must keep `wasm`
+      - vite.config.ts # application and service-worker builds
+      - src/sw/service-worker.ts # Workbox runtime routes and lifecycle calls
+      - scripts/precache-manifest.mjs # precache extension filter must keep `wasm`
+      - public/manifest.webmanifest # static product/install metadata
       - public/_headers # script-src carries 'wasm-unsafe-eval' for the zxing-wasm reader
       - src/qr/camera/reader-module.ts # same-origin locateFile routing for the reader wasm
     why: >
@@ -60,26 +63,15 @@ units:
           or later without this override. Review the upstream v4.6.6 release's
           compromised-source/history-rewrite note and npm provenance when
           re-vetting; the dated evidence is in threat-model §5.1.
-        - serialize-javascript 7.1.3 — GHSA-m5mm-p8h7-m29v; workbox-build
-          7.4.1 -> @rollup/plugin-terser 1.0.0 previously resolved vulnerable
-          7.0.7. Remove only when this build graph resolves 7.1.3 or later
-          without this override.
         - baseline-browser-mapping 2.11.0 — GHSA-w5vr-8v7q-w6rv; browserslist
           4.28.7 previously resolved the vulnerable 2.10.44 child. Remove only
           when its parent graph resolves 2.11.0 or later without this override.
-        - glob 14.0.3 — GHSA-3g3m-2fjr-6pw4; workbox-build 7.4.1 previously
-          resolved vulnerable 11.1.0. Remove only when this build graph resolves
-          a vetted version at or above the patched floor 14.0.2 without the
-          override. Re-check globSync options, precache membership and packaged
-          offline boot on major-version changes; assessment in threat-model §5.1.
-        - minimatch 11.0.3 — GHSA-g3hv-75wg-m249; the lint/type-analysis graph,
-          Workbox's glob, and filelist previously resolved 10.2.5 or 5.1.9.
+        - minimatch 11.0.3 — GHSA-g3hv-75wg-m249; the eslint/typescript-eslint
+          lint/type-analysis graph previously resolved 10.2.5.
           Remove only when every path resolves a vetted version at or above
           the patched floor 11.0.1 without the override. Check named match /
           Minimatch consumers on major changes: v11 removes RegExp APIs.
-      aube.overrides (rollup OMT) stays until upstream trust is restored.
-      After bumping vite-plugin-pwa / workbox, re-review the VitePWA options in
-      vite.config.ts (globPatterns, cleanupOutdatedCaches, sentinel NetworkOnly).
+      after bumping workbox-* re-review src/sw/service-worker.ts and scripts/precache-manifest.mjs; precache extensions must keep `wasm`.
     verify: aube ci && aube run typecheck && aube run lint && aube run test && aube run build:prod
     sync: [threat-model, security-review]
 
@@ -763,7 +755,7 @@ units:
       - README.ja.md # same content, ja; both must move together
       - SECURITY.md # duplicates release-status claims (repo-public ≠ release-approved)
       - index.html # static meta description; must stay aligned with product claims, never relay-derived
-      - vite.config.ts # VitePWA manifest.description mirrors the static product description
+      - public/manifest.webmanifest # description mirrors the static product description
       - docs/develop/deviations.md # dated maintainer decisions and active-policy wording
     why: >
       Experimental / not-independently-audited claims, active-suite wording,
@@ -783,8 +775,8 @@ units:
       frame counts with protocol §§3/3.1/6 and both locale catalogs. Confirm the install route A
       cosign policy values still match
       .github/workflows/github-release.yml (unit ci-actions). Confirm the
-      static index.html description matches VitePWA's manifest.description in
-      vite.config.ts and the README claims. Confirm the documentation list
+      static index.html description matches the description in
+      public/manifest.webmanifest and the README claims. Confirm the documentation list
       matches the docs/ tree. In deviations.md, drop rows
       that no longer constrain the current implementation — history-only
       entries do not belong there (CLAUDE.md: no backward compatibility).
@@ -800,8 +792,8 @@ units:
           test -e "$(dirname "$f")/$target" || echo "MISSING $f -> $target"
         done
       done
-      # Then compare index.html's meta description with VitePWA's
-      # manifest.description in vite.config.ts and confirm both match the
+      # Then compare index.html's meta description with the description in
+      # public/manifest.webmanifest and confirm both match the
       # product claims in the READMEs (no relay-derived wording).
 
   - id: external-links
@@ -940,22 +932,26 @@ invariants:
     files:
       - public/reachability-sentinel.txt
       - src/app/boot/boot-contract.ts
-      - vite.config.ts # SW must NEVER precache/cache the sentinel
+      - src/sw/service-worker.ts # SW must NEVER cache the sentinel
+      - scripts/precache-manifest.mjs # extension filter must NEVER precache the sentinel
       - public/_headers # sentinel route stays no-store
     rule: >
       Sentinel body ("QR-CRYPT-REACHABLE") and REACHABILITY_SENTINEL_BODY/_PATH
       change only together, with a coordinated deploy — the sentinel gates the
       wipe path. The service worker must never serve it from cache: the
-      vite.config.ts runtimeCaching route for it stays NetworkOnly, the
-      sentinel is excluded from precache globPatterns, and public/_headers
+      src/sw/service-worker.ts sentinel route stays NetworkOnly, the
+      scripts/precache-manifest.mjs extension filter admits only js css html
+      svg png wasm webmanifest (no txt), and public/_headers
       keeps Cache-Control: no-store on the sentinel route. A cached sentinel
       can fake "network-confirmed" while offline and trigger a wipe.
     verify: |
-      test "$(cat public/reachability-sentinel.txt)" = "$(rg -o 'REACHABILITY_SENTINEL_BODY = "([^"]+)"' -r '$1' src/app/boot/boot-contract.ts)"
-      && rg -q 'NetworkOnly' vite.config.ts
-      && ! rg -q 'reachability-sentinel' <(rg -o 'globPatterns:[^]]*]' vite.config.ts)
-      && rg -A2 'reachability-sentinel' public/_headers | rg -q 'no-store'
-      && aube run test -- tests/ui/boot
+      test "$(cat public/reachability-sentinel.txt)" = "$(rg -o 'REACHABILITY_SENTINEL_BODY = "([^"]+)"' -r '$1' src/app/boot/boot-contract.ts)" &&
+      test "$(rg -o 'REACHABILITY_SENTINEL_PATH = "([^"]+)"' -r '$1' src/app/boot/boot-contract.ts)" = "/reachability-sentinel.txt" &&
+      rg -q 'reachability-sentinel' src/sw/service-worker.ts &&
+      rg -q 'NetworkOnly' src/sw/service-worker.ts &&
+      rg -A2 'reachability-sentinel' public/_headers | rg -q 'no-store' &&
+      aube run test -- tests/unit/service-worker.test.ts tests/unit/precache-manifest.test.ts &&
+      aube run test -- tests/ui/boot
   - id: build-sha-placeholder
     files:
       - .env.example
@@ -967,7 +963,7 @@ invariants:
 excluded:
   # Listed so "missing" entries are known-intentional, not oversights.
   - path: dist/**
-    reason: Build output (sw.js, workbox-*.js, manifest.webmanifest) — regenerated by every aube build:prod; never hand-edited, gitignored.
+    reason: Build output (sw.js, manifest.webmanifest) — regenerated by every aube build:prod; never hand-edited, gitignored.
   - path: .tmp/**
     reason: Gitignored scratch/plans; historical by design.
   - path: node_modules/**

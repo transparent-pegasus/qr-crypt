@@ -350,7 +350,7 @@ it; treating it as required would disagree with the archive copy.
    artifact to verify; it is Node tooling, not part of the signed release.
 4. Before accepting the installation, use an independently provisioned
    checker on the actual server's GET responses for `/`, `/index.html`, SPA
-   navigation, scripts, styles, WASM, `/sw.js`, and `/registerSW.js`. Verify the
+   navigation, scripts, styles, WASM, and `/sw.js`. Verify the
    intended security policy, MIME and cache rules, sentinel body and
    `no-store`, method restrictions, and path containment. The app's persisted
    sentinel verdict cannot validate these other responses or prove browser
