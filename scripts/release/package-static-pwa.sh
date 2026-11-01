@@ -42,10 +42,11 @@ mkdir -p -- "$output_dir" "$stage_dir" "$extract_parent"
 
 [[ -d dist ]] || fail "dist directory is missing"
 
-# The /about landing page is an online-only surface (vite.config.ts keeps it out
-# of precache and out of the SPA fallback). It has no place on an air-gapped
-# device: external links, ~260 KB of card images. Remove it here; the allowlist
-# below then proves nothing else slipped into dist.
+# The /about landing page is an online-only surface: scripts/precache-manifest.mjs
+# excludes it from precache, and the navigation denylist in src/sw/service-worker.ts
+# excludes it from the SPA fallback. It has no place on an air-gapped device:
+# external links, ~260 KB of card images. Remove it here; the allowlist below then
+# proves nothing else slipped into dist.
 rm -rf -- dist/about
 
 required_files=(

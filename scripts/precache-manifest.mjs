@@ -3,11 +3,17 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join, relative, sep } from "node:path"
 
 export function precacheManifest(outDir) {
-  return readdirSync(outDir, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) =>
-      relative(outDir, join(entry.parentPath, entry.name)).split(sep).join("/"),
-    )
+  const urls = []
+  function walk(directory) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const file = join(directory, entry.name)
+      if (entry.isDirectory()) walk(file)
+      else if (entry.isFile()) urls.push(relative(outDir, file).split(sep).join("/"))
+    }
+  }
+  walk(outDir)
+
+  return urls
     .filter(
       (url) =>
         /\.(js|css|html|svg|png|wasm|webmanifest)$/.test(url) &&

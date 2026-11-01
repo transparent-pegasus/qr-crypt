@@ -361,10 +361,11 @@ above is not refreshed from an unrecorded value.
   2026-08-02 record asserting that `aube audit` exited 0 was already stale when
   written.
 - **RESOLVED (build/test/deploy chain, 2026-08-08)**: `brace-expansion` was
-  forced to `5.0.9` (now `5.0.12`, after the 2026-10-12 remediation) for both
-  the `@5` and `@2` selectors; `2.1.4` is also patched, and using one 5.x
-  version for both selectors is a deliberate one-version-in-the-graph
-  decision. Additional overrides then forced `fast-uri@3.1.5`,
+  forced to `5.0.9` for both the `@5` and `@2` selectors; `2.1.4` is also
+  patched, and using one 5.x version for both selectors was a deliberate
+  one-version-in-the-graph decision. Only `brace-expansion@5` remains overridden
+  to `5.0.12` (2026-10-12 remediation); the `@2` consumer and override were
+  removed with `workbox-build`. Additional overrides then forced `fast-uri@3.1.5`,
   `nanoid` (now `3.3.18`, after the 2026-08-14 remediation), and
   `undici@7.29.0`. These packages are build, test, or deploy tooling and none is
   in the browser bundle. The known-advisory set grew from seven findings to
