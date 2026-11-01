@@ -3,9 +3,19 @@
 // every action to a commit; this makes that the rule rather than one file's
 // habit.
 import { spawnSync } from "node:child_process"
-import { existsSync, readdirSync, readFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, onTestFinished } from "vitest"
 import { parse } from "yaml"
 import { readWorkflow } from "../fixtures/workflow"
 
@@ -17,6 +27,46 @@ const USES = /^\s*(?:-\s*)?uses:\s*(?!\.\/|docker:\/\/)(\S+)/gm
 const PINNED = /@[0-9a-f]{40}$/
 const DEPLOY_COMMAND =
   '"$GITHUB_WORKSPACE/deploy/node_modules/.bin/wrangler" pages deploy "$GITHUB_WORKSPACE/dist" --project-name="$PAGES_PROJECT"'
+const RUNTIME_CHECKS = [
+  ["validate", "Smoke-test the deploy toolchain"],
+  ["deploy", "Verify the deploy runtime"],
+] as const
+
+function deployRuntimeFixture() {
+  const directory = mkdtempSync(join(tmpdir(), "qr-crypt-deploy-runtime-"))
+  onTestFinished(() => rmSync(directory, { recursive: true, force: true }))
+  const workspace = join(directory, "checkout")
+  const runnerTemp = join(directory, "runner")
+  const bin = join(directory, "pinned node", "bin")
+  const wranglerBin = join(workspace, "deploy/node_modules/.bin")
+  for (const location of [runnerTemp, bin, wranglerBin]) {
+    mkdirSync(location, { recursive: true })
+  }
+  // A synthetic pin proves the check reads mise.toml instead of hardcoding Node.
+  writeFileSync(join(workspace, "mise.toml"), '[tools]\nnode = "91.2.3"\n')
+  writeFileSync(
+    join(bin, "node"),
+    '#!/bin/sh\n[ "$*" = "--version" ] || exit 2\nprintf \'%s\\n\' "$TEST_NODE_VERSION"\n',
+    { mode: 0o755 },
+  )
+  writeFileSync(
+    join(wranglerBin, "wrangler"),
+    '#!/bin/sh\n[ "$*" = "--version" ] || exit 2\nprintf \'%s\\n\' "$TEST_WRANGLER_VERSION"\nexit "$TEST_WRANGLER_EXIT"\n',
+    { mode: 0o755 },
+  )
+  writeFileSync(
+    join(bin, "mise"),
+    '#!/bin/sh\n[ "$*" = "which node" ] || exit 2\nprintf \'%s\\n\' "$TEST_NODE_PATH"\n',
+    { mode: 0o755 },
+  )
+  return {
+    directory,
+    workspace,
+    runnerTemp,
+    bin,
+    env: { PATH: `${bin}:${process.env.PATH}`, GITHUB_WORKSPACE: workspace },
+  }
+}
 
 function workflowFiles(): string[] {
   return readdirSync(WORKFLOW_DIR).filter((name) => /\.ya?ml$/.test(name))
@@ -62,6 +112,128 @@ describe("workflow action pinning", () => {
       expect(branchSteps[0]?.env?.PAGES_PROJECT).toBe(project)
     }
   })
+
+  it.each(["validate", "deploy"])(
+    "%s exports the pinned Node directory before running outside the checkout",
+    (name) => {
+      const steps = readWorkflow("cloudflare-pages.yml").jobs[name]!.steps
+      const mise = steps.findIndex((step) => step.uses?.startsWith("jdx/mise-action@"))
+      const exportNode = steps.findIndex(
+        (step) =>
+          /\bmise\s+which\s+node\b/.test(step.run ?? "") &&
+          step.run?.includes("GITHUB_PATH"),
+      )
+      expect(mise).toBeGreaterThanOrEqual(0)
+      expect(exportNode, "export Node after mise setup").toBeGreaterThan(mise)
+      expect(steps[exportNode]).not.toHaveProperty("working-directory")
+      for (const [index, step] of steps.entries()) {
+        if (step["working-directory"] === "${{ runner.temp }}") {
+          expect(index, step.name).toBeGreaterThan(exportNode)
+        }
+      }
+
+      const fixture = deployRuntimeFixture()
+      const githubPath = join(fixture.directory, "github-path")
+      writeFileSync(githubPath, "existing-tool-bin\n")
+      const result = spawnSync(
+        "bash",
+        ["--noprofile", "--norc", "-eo", "pipefail", "-c", steps[exportNode]!.run!],
+        {
+          cwd: fixture.workspace,
+          env: {
+            ...fixture.env,
+            GITHUB_PATH: githubPath,
+            TEST_NODE_PATH: join(fixture.bin, "node"),
+          },
+          encoding: "utf8",
+          timeout: 5_000,
+        },
+      )
+      expect(result.error).toBeUndefined()
+      expect(result.status, result.stderr).toBe(0)
+      expect(readFileSync(githubPath, "utf8")).toBe(`existing-tool-bin\n${fixture.bin}\n`)
+    },
+  )
+
+  it.each(RUNTIME_CHECKS)(
+    "%s checks its runtime from runner.temp without secrets",
+    (job, name) => {
+      const steps = readWorkflow("cloudflare-pages.yml").jobs[job]!.steps
+      const index = steps.findIndex((step) => step.name === name)
+      expect(index, name).toBeGreaterThanOrEqual(0)
+      const step = steps[index]!
+      expect(step["working-directory"]).toBe("${{ runner.temp }}")
+      expect(step).not.toHaveProperty("if")
+      expect(step).not.toHaveProperty("continue-on-error")
+      expect(JSON.stringify(step)).not.toMatch(/\bsecrets(?:\.|\[)/)
+      expect(step.run).toMatch(/\bnode\s+--version\b/)
+      expect(step.run).toContain("mise.toml")
+      expect(step.run).toContain("4.155.0")
+      if (job === "deploy") {
+        const install = steps.findIndex(
+          (item) => item.run?.trim() === "aube -C deploy ci",
+        )
+        expect(install).toBeGreaterThanOrEqual(0)
+        expect(index).toBeGreaterThan(install)
+        const deployments = steps.flatMap((item, position) =>
+          item.run?.includes("pages deploy") ? [position] : [],
+        )
+        expect(deployments).toHaveLength(2)
+        for (const deployment of deployments) expect(index).toBeLessThan(deployment)
+      }
+    },
+  )
+
+  it.each(["validate", "deploy"])(
+    "%s uses explicit bash for pipes and multiple commands",
+    (name) => {
+      const unsafe = readWorkflow("cloudflare-pages.yml").jobs[name]!.steps.filter(
+        (step) => /[|;\n]|&&/.test(step.run?.trim() ?? "") && step.shell !== "bash",
+      )
+      expect(unsafe.map((step) => step.name ?? step.run)).toEqual([])
+    },
+  )
+
+  it.each(RUNTIME_CHECKS)(
+    "%s runtime check accepts only successful pinned tools",
+    (job, name) => {
+      const step = readWorkflow("cloudflare-pages.yml").jobs[job]!.steps.find(
+        (item) => item.name === name,
+      )
+      expect(step?.run, name).toBeTypeOf("string")
+      const fixture = deployRuntimeFixture()
+      for (const [nodeVersion, wranglerVersion, wranglerExit, passes] of [
+        ["v91.2.3", "4.155.0", "0", true],
+        ["v91.2.3", "4.155.0", "42", false],
+        ["v91.2.3", "4.154.0", "0", false],
+        ["v91.2.4", "4.155.0", "0", false],
+      ] as const) {
+        const result = spawnSync(
+          "bash",
+          ["--noprofile", "--norc", "-eo", "pipefail", "-c", step!.run!],
+          {
+            cwd: fixture.runnerTemp,
+            env: {
+              ...fixture.env,
+              TEST_NODE_VERSION: nodeVersion,
+              TEST_WRANGLER_VERSION: wranglerVersion,
+              TEST_WRANGLER_EXIT: wranglerExit,
+            },
+            encoding: "utf8",
+            timeout: 5_000,
+          },
+        )
+        expect(result.error).toBeUndefined()
+        expect(result.signal).toBeNull()
+        expect
+          .soft(
+            result.status === 0,
+            `${name}: node=${nodeVersion}, Wrangler=${wranglerVersion}, exit=${wranglerExit}: ${result.stderr}`,
+          )
+          .toBe(passes)
+      }
+    },
+  )
 
   it("deploy secrets stay in the deploy steps", () => {
     const workflow = readWorkflow("cloudflare-pages.yml")
@@ -198,10 +370,6 @@ describe("workflow action pinning", () => {
     for (const [name, command] of [
       ["Install the deploy toolchain", "aube -C deploy ci"],
       ["Audit the deploy toolchain", "aube -C deploy audit"],
-      [
-        "Smoke-test the deploy toolchain",
-        'deploy/node_modules/.bin/wrangler --version | grep -Fx "4.155.0"',
-      ],
     ]) {
       const index = steps.findIndex((step) => step.name === name)
       expect(index, name).toBeGreaterThan(previous)
@@ -212,6 +380,9 @@ describe("workflow action pinning", () => {
       expect(step.run).not.toMatch(/\|\|\s*(?:true\b|:)/)
       previous = index
     }
+    expect(
+      steps.findIndex((step) => step.name === "Smoke-test the deploy toolchain"),
+    ).toBeGreaterThan(previous)
     expect(jobs.deploy!.needs).toEqual(["validate", "e2e"])
   })
 

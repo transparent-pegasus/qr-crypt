@@ -6,6 +6,7 @@ export interface WorkflowStep {
   id?: string
   uses?: string
   run?: string
+  shell?: string
   if?: string | boolean
   env?: Record<string, string>
   with?: Record<string, unknown>
