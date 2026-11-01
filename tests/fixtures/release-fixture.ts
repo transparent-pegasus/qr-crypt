@@ -95,10 +95,10 @@ export function writeStaticDist(root: string, sourceSha = "fixture-build") {
       icons: [{ src: "/icons/icon-192.png", type: "image/png" }],
     }),
     "sw.js":
-      'importScripts("/workbox-1234abcd.js");\n' +
-      "workbox.routing.registerRoute(/reachability-sentinel/, new workbox.strategies.NetworkOnly());\n" +
-      'workbox.precaching.precacheAndRoute([{url:"/index.html", revision:"fixture"}]);\n',
-    "workbox-1234abcd.js": "/* fixture Workbox runtime */\n",
+      "(function () {\n" +
+      'precacheAndRoute([{"url": "index.html", "revision": "fixture"}]);\n' +
+      "registerRoute(/\\/reachability-sentinel\\.txt/, new NetworkOnly());\n" +
+      "})();\n",
     "assets/app-1234abcd.js":
       `globalThis.fixtureBuildSha = "${sourceSha}";\n` +
       'globalThis.fixtureWasm = "/assets/worker-11223344.wasm";\n',

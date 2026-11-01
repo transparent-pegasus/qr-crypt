@@ -263,9 +263,9 @@ or firmware behavior. Reject any transfer without adequate assurance.
    and no-store for the reachability sentinel. Avoid collision-prone
    ports such as 8000 or 8080; choose one fixed uncommon high port.
 3. Independently check actual GET responses on this server: /,
-   /index.html, SPA navigation, scripts, styles, WASM, /sw.js, and
-   /registerSW.js. Verify the intended security policy, MIME/cache
-   rules, sentinel body and no-store, method restrictions, and path
+   /index.html, SPA navigation, scripts, styles, WASM, and /sw.js.
+   Verify the intended security policy, MIME/cache rules, sentinel body
+   and no-store, method restrictions, and path
    containment with an independently provisioned checker.
    The app persists a sentinel-response header verdict and refuses to
    mount on an absent/failing verdict. It cannot validate the other

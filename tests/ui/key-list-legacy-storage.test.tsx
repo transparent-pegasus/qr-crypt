@@ -14,11 +14,8 @@ import {
   legacyRsaRecord,
 } from "../fixtures/legacy-rsa-record"
 
-vi.mock("virtual:pwa-register/react", () => ({
-  useRegisterSW: () => ({ offlineReady: [false, () => undefined] }),
-}))
 vi.mock("@/hooks/use-register-sw", () => ({
-  useDefaultRegisterSW: () => ({ offlineReady: [false, () => undefined] }),
+  useDefaultRegisterSW: () => ({ offlineReady: false }),
 }))
 
 describe("key list legacy-storage isolation", () => {

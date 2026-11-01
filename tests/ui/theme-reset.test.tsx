@@ -4,11 +4,8 @@ import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
 import { THEME_STORAGE_KEY, ThemeProvider, useTheme } from "@/app/providers"
 import { memoryLocalStorage } from "./helpers/render-app"
 
-vi.mock("virtual:pwa-register/react", () => ({
-  useRegisterSW: () => ({ offlineReady: [false, () => undefined] }),
-}))
 vi.mock("@/hooks/use-register-sw", () => ({
-  useDefaultRegisterSW: () => ({ offlineReady: [false, () => undefined] }),
+  useDefaultRegisterSW: () => ({ offlineReady: false }),
 }))
 
 function ThemeProbe() {

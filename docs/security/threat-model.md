@@ -141,7 +141,7 @@ As a cross-cutting countermeasure for T8/T11, OnlineGate fail-closes encryption,
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | Malware advisory on some versions of `react-hook-form` (MAL-2026-2853: 7.73.0)                                                                                                                  | Bare range rejected based on the registry advisory        | Pinned to safe version `7.82.0` at the time; the package was removed from the dependency graph on 2026-07-30 (never imported) |
 | Compromised versions of `eslint-config-prettier` (MAL-2025-6022: 8.10.1/9.1.1/10.1.6/10.1.7)                                                                                                    | Same as above                                             | Pinned to clean version `10.1.8`                                                                          |
-| `workbox-build@7.4.1` switched its default `@surma/rollup-plugin-off-main-thread` to a personal fork `@trickfilm400/...@3.0.0-pre1` (matches upstream GitHub v7.4.1 = intentional upstream change) | Judged a reduction of the trust surface (trust downgrade) | Aliased to `@surma/...@2.2.3` via `aube.overrides` and verified build behavior                            |
+| `workbox-build@7.4.1` switched its default `@surma/rollup-plugin-off-main-thread` to a personal fork `@trickfilm400/...@3.0.0-pre1` (matches upstream GitHub v7.4.1 = intentional upstream change) | Judged a reduction of the trust surface (trust downgrade) | Previously aliased to `@surma/...@2.2.3` via `aube.overrides` and verified build behavior; path and alias removed with `vite-plugin-pwa` on 2026-11-02 |
 | Only `radix-ui@1.6.4` (the umbrella package) lacked provenance (the adjacent 1.6.3 / 1.7.0-rc are attested)                                                                                     | Not adopted due to a possible supply-chain incident       | Removed the umbrella package; using the provenance-preserving scoped `@radix-ui/react-*` packages         |
 | `cbor-extract` install script                                                                                                                                                                   | Unreviewed build scripts are not executed (aube default)  | Operating on the pure-JS path without native acceleration (browsers use the JS path anyway)               |
 
@@ -334,11 +334,15 @@ low-severity [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-
 `deepmerge@4.3.1` via `workbox-build`. The advisory, checked 2026-10-29, affects
 `>=4.2.0 <=4.3.1` and lists no patched version. This is build-tool dependency
 exposure; no application exploit was demonstrated. The dated 2026-10-25
-zero-advisory result above is historical. The integrated audit gate still
-requires resolution or an explicit outstanding blocker; no audit bypass or
-successful `deps` freshness stamp follows from the graph reduction.
+zero-advisory result above is historical. At that assessment, the integrated
+audit gate still required resolution or an explicit outstanding blocker; no
+audit bypass or successful `deps` freshness stamp followed from that reduction.
 
-### Deepmerge residual recorded 2026-10-30
+### Deepmerge residual recorded 2026-10-30 (resolved by removal 2026-11-02)
+
+**RESOLVED by removal, 2026-11-02:** the affected build path is gone; see the
+service-worker generator removal record below. The following retains the
+2026-10-30 assessment and its then-blocked audit result.
 
 The 2026-10-29 advisory assessment found no published fixed dependency path:
 `vite-plugin-pwa@1.3.0 -> workbox-build@7.4.1 -> @rollup/plugin-node-resolve@16.0.3 -> deepmerge@4.3.1`.
@@ -356,9 +360,10 @@ compromise.
 
 The assessment's unfiltered `aube audit` still exited 1 with one low-severity
 finding. The source bound is not an audit pass or a suppression rationale.
-The audit gate remains unchanged and blocked; root integration verification
-is pending. Closure requires a vetted dependency path that removes the
-finding, a passing unfiltered audit, and the required integrated checks.
+At that assessment, the unchanged audit gate remained blocked and root
+integration verification was pending. Closure required a vetted dependency
+path that removes the finding, a passing unfiltered audit, and the required
+integrated checks.
 No new passing freshness stamp is supported by this assessment.
 
 CI `validate` runs `aube audit` unconditionally after `aube ci` on every
@@ -401,14 +406,48 @@ source-SHA input produced the same 28 files and SHA-256 hashes as before the
 overrides. These checks bound compatibility and package identity; they do
 not establish benign upstream source or independent source-to-package reproduction.
 
-The unfiltered audit now reports only `deepmerge@4.3.1`
+On 2026-10-31, the unfiltered audit reported only `deepmerge@4.3.1`
 ([GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4)) and
-exits 1. Its version, integrity and dependency path are unchanged. Per the
-owner's 2026-10-31 instruction, it awaits an upstream fix; no removal,
-replacement, override or audit exception is introduced. Noble 0.7.1 and
-zxing-wasm 3.1.6 remain exact. Override removal conditions are registered in
+exited 1. Its version, integrity and dependency path were unchanged. Per the
+owner's 2026-10-31 instruction, it was left awaiting an upstream fix; that
+remediation introduced no removal, replacement, override or audit exception.
+Noble 0.7.1 and zxing-wasm 3.1.6 remain exact. Override removal conditions are registered in
 [targets.yaml](../../.claude/skills/freshness/targets.yaml); this remediation does not supply a passing audit,
 release approval or a new passing freshness stamp.
+
+### Service-worker generator removal (2026-11-02)
+
+The worker now builds from `src/sw/service-worker.ts` using only the four
+Workbox runtime dependencies (`workbox-core`, `workbox-precaching`,
+`workbox-routing`, `workbox-strategies`, each `^7.4.1`). The precache generator
+is `scripts/precache-manifest.mjs`; the static manifest lives in
+`public/manifest.webmanifest`. Removing `vite-plugin-pwa`, `workbox-window`
+and the auto-installed `workbox-build` chain reduces the locked graph from
+713 to 439 package versions (274 removed, measured against integration tip
+`8d1199e`).
+
+| Former build path | Status on 2026-11-02 |
+| --- | --- |
+| `workbox-build` → resolver → `deepmerge@4.3.1` ([GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4)) | **RESOLVED by removal**; no audit exception |
+| `workbox-build` → `glob` (formerly `11.1.0`, [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4)) and the OMT/filelist `minimatch@5.1.9` path | Removed, including the glob override; `minimatch@11.0.3` remains overridden for eslint/typescript-eslint |
+| `@trickfilm400/rollup-plugin-off-main-thread` alias to `@surma/rollup-plugin-off-main-thread@2.2.3` | Path and override removed |
+| `workbox-build` → terser plugin → `serialize-javascript` ([GHSA-m5mm-p8h7-m29v](https://github.com/advisories/GHSA-m5mm-p8h7-m29v)) | Path and override removed |
+| `workbox-build` → AJV → `fast-uri` | Path and override removed; the earlier advisory records above remain historical |
+
+The now-unreachable `brace-expansion@2` override is also removed. Eight
+overrides remain: `brace-expansion@5`, `minimatch`, `browserslist`, `nanoid`,
+`undici`, `zod`, `baseline-browser-mapping`, and `source-map-js`.
+Unfiltered `aube audit` exits 0 on 2026-11-02 and prints:
+
+```text
+No known vulnerabilities found
+```
+
+This closes the recorded deepmerge audit blocker by removing its dependency
+path. The result is a dated known-advisory check, not proof of benign source
+or independent review. No `last_checked` stamp or release approval follows.
+The sentinel remains NetworkOnly and excluded from precache; the browser
+replacement residual in §5 and the permanently-offline deployment policy remain.
 
 ## 6. Mapping to verification
 

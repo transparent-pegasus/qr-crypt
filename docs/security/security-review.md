@@ -361,10 +361,11 @@ above is not refreshed from an unrecorded value.
   2026-08-02 record asserting that `aube audit` exited 0 was already stale when
   written.
 - **RESOLVED (build/test/deploy chain, 2026-08-08)**: `brace-expansion` was
-  forced to `5.0.9` (now `5.0.12`, after the 2026-10-12 remediation) for both
-  the `@5` and `@2` selectors; `2.1.4` is also patched, and using one 5.x
-  version for both selectors is a deliberate one-version-in-the-graph
-  decision. Additional overrides then forced `fast-uri@3.1.5`,
+  forced to `5.0.9` for both the `@5` and `@2` selectors; `2.1.4` is also
+  patched, and using one 5.x version for both selectors was a deliberate
+  one-version-in-the-graph decision. Only `brace-expansion@5` remains overridden
+  to `5.0.12` (2026-10-12 remediation); the `@2` consumer and override were
+  removed with `workbox-build`. Additional overrides then forced `fast-uri@3.1.5`,
   `nanoid` (now `3.3.18`, after the 2026-08-14 remediation), and
   `undici@7.29.0`. These packages are build, test, or deploy tooling and none is
   in the browser bundle. The known-advisory set grew from seven findings to
@@ -429,13 +430,13 @@ above is not refreshed from an unrecorded value.
   [deployment.md](../develop/deployment.md). Local verification is recorded
   in §1.4; hosted workflow execution is separate evidence. Neither check
   updates an offline installation or maintains this written record automatically.
-- Supply-chain pins re-verified clean on 2026-07-29: `eslint-config-prettier@10.1.8` and the rollup OMT `aube.overrides` entry. `react-hook-form@7.82.0` was also pinned here until 2026-07-30, when it was removed from the dependency graph entirely: it was never imported by the application, so the pin guarded nothing.
+- Supply-chain pins re-verified clean on 2026-07-29: `eslint-config-prettier@10.1.8` and the rollup OMT `aube.overrides` entry (path and alias removed with `vite-plugin-pwa` on 2026-11-02; §1.8). `react-hook-form@7.82.0` was also pinned here until 2026-07-30, when it was removed from the dependency graph entirely: it was never imported by the application, so the pin guarded nothing.
 
 **Release/decoder reconciliation, 2026-10-29.** Release-track source
 `505de894faf1601736d2cacc15c96e88fd1d7186` selects decoder 3.1.6 and action-run
 Wrangler 4.155.0, removes unused root Wrangler and its exclusive sharp
 override, and retains Noble 0.7.1. Its isolated no-override Wrangler graph
-audit passed; the project audit still fails on the existing low-severity
+audit passed; the project audit then failed on the existing low-severity
 deepmerge advisory recorded in threat-model §5.1. Its local monitor passed
 both official release comparisons. These are scoped author/self-review
 results; the separately authored regressions and ordinary/extracted
@@ -450,12 +451,13 @@ full Sigstore trust-policy verification. Exact action-tool selection does not
 freeze its future transitive installation closure or establish source-to-binary
 correspondence; no deployment was performed.
 
-**Dependency residual recorded 2026-10-30.** The 2026-10-29 deepmerge
+**Dependency residual recorded 2026-10-30; resolved by removal 2026-11-02 (§1.8).**
+The 2026-10-29 deepmerge
 assessment reproduced the library defect but found its sole call in the
 reviewed build graph clones fixed internal defaults. No published fixed
 upstream dependency path was found. Unfiltered `aube audit` still exited 1
 with one low finding; the reachability bound supplies no audit pass or gate
-exception. The gate remains blocked, with root verification pending. See
+exception. The gate then remained blocked, with root verification pending. See
 [threat-model.md](threat-model.md) §5.1 for the path, prerequisites and closure
 criteria. No suppression or fresh passing unit stamp is recorded.
 
@@ -869,8 +871,8 @@ v7.0.2/download v8.0.2 use exact SHAs; Wrangler action v4.0.0 and binary
 4.155.0 remain selected. Static upstream/source/digest checks support this
 bootstrap correction, separately from the application runs above.
 
-Unfiltered audit still reports the one low deepmerge advisory (§5.1 of the
-threat model). No passing deps/crypto-noble/security-review stamp or hosted-CI
+Unfiltered audit at that assessment still reported the one low deepmerge
+advisory (§5.1 of the threat model). No passing deps/crypto-noble/security-review stamp or hosted-CI
 pass follows. ci-actions awaits matching green hosted CI. Initial packaging
 without COSIGN_VERSION stopped before ZIP creation; the corrected workflow
 environment passed. A multiline metadata harness check was corrected to an
@@ -898,15 +900,60 @@ passed on recheck, without code, assertion or timeout changes; the transient
 timeout's cause was not established. With the same build-SHA input, all
 28 production files and their hashes matched the pre-update build.
 
-Unfiltered audit still exits 1 solely for deepmerge GHSA-gcqx-w48m-w2h4, left
-unchanged at the owner's request while awaiting an upstream fix. Hosted
-`validate` therefore still stops before typecheck/lint/unit/build; the local
+Unfiltered audit on 2026-10-31 still exited 1 solely for deepmerge
+GHSA-gcqx-w48m-w2h4, left unchanged at the owner's request while awaiting an
+upstream fix. Hosted `validate` therefore still stopped before typecheck/lint/unit/build; the local
 commands above were run separately past that stop. The repository has no
 formatting CI gate; an additional diagnostic found the same 180 inherited
 formatting warnings, with no newly affected files. No passing audit,
 hosted-validate pass, freshness stamp, release approval or independent review
 is implied. Security disclosures and the physical-environment catalog retain
 their existing scope.
+
+## 1.8 Service worker built from repository source (2026-11-02)
+
+`src/sw/service-worker.ts` replaces the `vite-plugin-pwa` generator with
+`workbox-core`, `workbox-precaching`, `workbox-routing`, and
+`workbox-strategies`, each a direct `^7.4.1` runtime dependency. The build
+emits one unminified classic `dist/sw.js` script (about 75.8 kB), with no
+`import`, `importScripts`, or separate `workbox-<hash>.js` runtime.
+`scripts/precache-manifest.mjs` supplies 11 precache URLs: with content hashes
+normalized, membership matches the previous worker except for the removed
+`workbox-window` chunk. The static manifest is `public/manifest.webmanifest`.
+
+The worker retains `clientsClaim()`, precaching, outdated-cache cleanup,
+the `/index.html` navigation fallback excluding `/about/`, and the
+NetworkOnly sentinel route. Its generator admits exactly `js css html svg
+png wasm webmanifest`, keeping the sentinel's `txt` out of precache.
+Registration uses the browser API for `/sw.js` with scope `/`, only in
+production and when service workers are supported. The repository worker
+adds no `skipWaiting()` call or message listener; Workbox's default router
+still handles its own `CACHE_URLS` message type, as the generated worker did.
+This preserves the browser-replacement residual and sentinel-only wipe evidence.
+
+Against integration tip `8d1199e`, the locked graph shrinks from 713 to 439
+package versions (274 removed). Removing `vite-plugin-pwa` / `workbox-build`
+resolves deepmerge GHSA-gcqx-w48m-w2h4 by removal and eliminates the former
+`glob@11` (GHSA-3g3m-2fjr-6pw4), `minimatch@5.1.9`, rollup OMT alias,
+`serialize-javascript` (GHSA-m5mm-p8h7-m29v), and `fast-uri` paths recorded in
+[threat-model.md](threat-model.md) §5.1. The OMT alias, serialize-javascript,
+fast-uri, glob, and `brace-expansion@2` overrides are deleted. Eight remain:
+`brace-expansion@5`, `minimatch`, `browserslist`, `nanoid`, `undici`, `zod`,
+`baseline-browser-mapping`, and `source-map-js`. The `minimatch@11.0.3`
+override still protects the eslint/typescript-eslint graph.
+
+Unfiltered `aube audit` exits 0 on 2026-11-02 and prints:
+
+```text
+No known vulnerabilities found
+```
+
+Implementation verification at `f4fb190` / `d62dc2e` recorded **1,604/1,604**
+unit/integration/UI tests, **43/43** ordinary browser tests, real packaging,
+and byte-identical production rebuild checks passing. This is scoped local
+implementation evidence and a dated known-advisory result. It does not
+establish benign upstream source, hosted-CI success, independent review, or
+release approval, and no `last_checked` stamp is advanced.
 
 ## 2. Prohibited Claims (UI / README / CI)
 

@@ -22,13 +22,14 @@ recorded in [../security/threat-model.md](../security/threat-model.md) §5.
 | Additional shadcn components `checkbox` / `collapsible` | Needed for strong confirmation and collapsible detail views |
 | Camera QR reading runs on `zxing-wasm` (reader-only build) | `@zxing/browser` is not used. The WebAssembly binary is served same-origin and precached, so `script-src` carries `'wasm-unsafe-eval'`. See [../security/security-review.md](../security/security-review.md) §1 |
 | `@zxing/library` kept as a devDependency | Pixel decode of generated PNGs in unit and Playwright helpers only. Not in the shipped bundle |
-| Supply-chain pins and overrides (`eslint-config-prettier@10.1.8` / rollup OMT via `aube.overrides`) | Responses to advisories and a trust downgrade during initial setup. Full list: [../security/threat-model.md](../security/threat-model.md) §5.1 |
+| Supply-chain pins and overrides (`eslint-config-prettier@10.1.8` / `aube.overrides`) | Responses to supply-chain incidents and advisories. Full list: [../security/threat-model.md](../security/threat-model.md) §5.1 |
+| Service worker built from `src/sw/service-worker.ts` with the Workbox runtime modules instead of `vite-plugin-pwa` | Measured 2026-11-02 against integration tip `8d1199e`: removes 274 locked package versions (713 → 439), including the deepmerge, glob@11, OMT-alias, serialize-javascript and fast-uri paths. Routes and precache membership are preserved apart from the removed `workbox-window` chunk, with content hashes normalized |
 
 ## Deployment and CI
 
 | Deviation | Reason / basis |
 | --- | --- |
-| `_headers` carries `Cache-Control: no-cache` for `/index.html`, `/sw.js`, `/registerSW.js`, and `/manifest.webmanifest` | Keeps the service worker and manifest fresh. A managed addition to the deployment headers |
+| `_headers` carries `Cache-Control: no-cache` for `/index.html`, `/sw.js`, and `/manifest.webmanifest` | Keeps the service worker and manifest fresh. A managed addition to the deployment headers |
 | CI runs `e2e` as a job independent of `validate` | `.github/workflows/cloudflare-pages.yml` splits validation, e2e, and deploy into three jobs; `deploy` needs both `validate` and `e2e`, so a failing e2e blocks deployment |
 | Wrangler 4.155.0 selected explicitly by both Pages actions | The SHA-pinned action installs its own tool without project overrides. Assess that exact graph separately; the unused root Wrangler dependency and exclusive sharp override are removed |
 

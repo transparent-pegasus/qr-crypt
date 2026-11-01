@@ -42,10 +42,11 @@ mkdir -p -- "$output_dir" "$stage_dir" "$extract_parent"
 
 [[ -d dist ]] || fail "dist directory is missing"
 
-# The /about landing page is an online-only surface (vite.config.ts keeps it out
-# of precache and out of the SPA fallback). It has no place on an air-gapped
-# device: external links, ~260 KB of card images. Remove it here; the allowlist
-# below then proves nothing else slipped into dist.
+# The /about landing page is an online-only surface: scripts/precache-manifest.mjs
+# excludes it from precache, and the navigation denylist in src/sw/service-worker.ts
+# excludes it from the SPA fallback. It has no place on an air-gapped device:
+# external links, ~260 KB of card images. Remove it here; the allowlist below then
+# proves nothing else slipped into dist.
 rm -rf -- dist/about
 
 required_files=(
@@ -66,11 +67,8 @@ for file in "${required_files[@]}"; do
 done
 
 shopt -s nullglob
-workbox_files=(dist/workbox-*.js)
 asset_files=(dist/assets/*)
 shopt -u nullglob
-[[ "${#workbox_files[@]}" -eq 1 ]] ||
-  fail "expected exactly one generated Workbox runtime"
 [[ "${#asset_files[@]}" -gt 0 ]] ||
   fail "dist/assets has no files"
 
@@ -106,7 +104,6 @@ expected_files="$RUNNER_TEMP/expected-dist-files"
 actual_files="$RUNNER_TEMP/actual-dist-files"
 {
   printf '%s\n' "${fixed_paths[@]}"
-  printf '%s\n' "${workbox_files[@]#dist/}"
   printf '%s\n' "${asset_files[@]#dist/}"
 } | LC_ALL=C sort > "$expected_files"
 find dist -type f -printf '%P\n' |
