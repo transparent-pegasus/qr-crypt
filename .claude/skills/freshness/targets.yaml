@@ -31,6 +31,8 @@ units:
       - src/sw/service-worker.ts # Workbox runtime routes and lifecycle calls
       - scripts/precache-manifest.mjs # precache extension filter must keep `wasm`
       - public/manifest.webmanifest # static product/install metadata
+      - deploy/package.json # exact Wrangler deploy pin
+      - deploy/aube-lock.yaml # reviewed deploy graph, installed frozen
       - public/_headers # script-src carries 'wasm-unsafe-eval' for the zxing-wasm reader
       - src/qr/camera/reader-module.ts # same-origin locateFile routing for the reader wasm
     why: >
@@ -72,7 +74,10 @@ units:
           the patched floor 11.0.1 without the override. Check named match /
           Minimatch consumers on major changes: v11 removes RegExp APIs.
       after bumping workbox-* re-review src/sw/service-worker.ts and scripts/precache-manifest.mjs; precache extensions must keep `wasm`.
-    verify: aube ci && aube run typecheck && aube run lint && aube run test && aube run build:prod
+      aube -C deploy outdated && aube -C deploy audit
+      wrangler stays an exact pin moved only by
+      aube -C deploy update --latest --exact wrangler after review.
+    verify: aube ci && aube run typecheck && aube run lint && aube run test && aube run build:prod && aube -C deploy ci && aube -C deploy audit
     sync: [threat-model, security-review]
 
   - id: crypto-noble
@@ -171,9 +176,9 @@ units:
       - tests/fixtures/release-sign-command.py # controlled signing commands and mutation observations
       - tests/fixtures/release-rebuild.ts # executes the template and EN/JA rebuild procedures
       - tests/fixtures/release-rebuild-command.py # controlled source identity, tool, and comparison boundaries
-      - tests/unit/release-toolchain.test.ts # action-selected Wrangler, producer cache policy, and single full-suite CI membership
+      - tests/unit/release-toolchain.test.ts # producer/deploy cache policy and single full-suite CI membership
       - tests/fixtures/workflow.ts # parses the actual workflow for structural checks and inline shell extraction
-      - tests/unit/workflow-action-pins.test.ts # fails when any workflow references an external action by tag instead of a commit
+      - tests/unit/workflow-action-pins.test.ts # external action SHA pins and locked deploy toolchain contract
     why: >
       CI action majors, immutable action SHAs, the pinned Cosign binary/verifier
       image, and GitHub runner/CLI behavior all drift with upstream releases.
@@ -194,9 +199,16 @@ units:
       must precede execution, without the old affected bootstrap bundle parser;
       latest tagged installer v4.1.2 remains affected. Review the pinned
       Cosign release, verifier image digest, and verification contract. Keep
-      both Pages action wranglerVersion inputs exactly equal. Assess that
-      action-installed Wrangler graph independently of root aube.overrides;
+      deploy/package.json's exact Wrangler pin, deploy/aube-lock.yaml importer,
+      deployment docs, and validate's version smoke exactly equal. Assess the
+      committed deploy graph independently of root aube.overrides;
       no unused root Wrangler dependency or exclusive sharp override remains.
+      Verify validate's frozen deploy install/audit/version gates on every
+      push and pull request and daily maintenance's deploy install/audit.
+      Both Pages uploads must invoke the locked CLI from runner.temp, with
+      Cloudflare credentials scoped to those steps and contents: read only;
+      GitHub Deployment records are no longer created. Lifecycle scripts stay
+      unexecuted by default; the version smoke must pass in that state.
       mise-action reading mise.toml and VITE_BUILD_SHA sourced from
       ${{ github.sha }}. For dev-to-main-pr.yml, review the full-history checkout
       used to compute the main/dev merge base and the best-effort merge-commit PR
@@ -250,8 +262,9 @@ units:
       signing side effects. Review generate-install-txt.test.ts with the rebuild
       fixtures for independently authenticated expected SHA, archive-display
       mismatch rejection before tools, and actual checkout identity. Review
-      release-toolchain.test.ts for exact matching action-selected Wrangler,
-      its separately assessed graph, disabled producer caches, and default
+      workflow-action-pins.test.ts for exact matching manifest/lock/docs Wrangler
+      pins, frozen deploy gates, upload working directory, and secret scope.
+      Review release-toolchain.test.ts for disabled producer/deploy caches and default
       Vitest's full test-family membership without duplicate CI invocations.
       Confirm release-artifact.spec.ts uses artifact-browser.ts to exercise healthy
       and damaged copies through the existing app-boot.spec.ts, requires the damaged

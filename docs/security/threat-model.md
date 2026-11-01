@@ -338,6 +338,26 @@ zero-advisory result above is historical. At that assessment, the integrated
 audit gate still required resolution or an explicit outstanding blocker; no
 audit bypass or successful `deps` freshness stamp followed from that reduction.
 
+### Locked deploy toolchain (2026-11-02)
+
+Wrangler 4.155.0 is now an exact dependency in `deploy/package.json`;
+`aube -C deploy ci` installs its reviewed graph from committed
+`deploy/aube-lock.yaml`, independently of root overrides. Pinned aube 1.32.0
+resolved 35 packages, leaving the `esbuild@0.28.2` and
+`workerd@1.20261023.1` build scripts unexecuted by default. The locked CLI's
+version smoke prints `4.155.0`; `aube -C deploy audit` prints
+"No known vulnerabilities found". `validate` installs, audits, and
+version-smoke-tests this graph on every push and pull request targeting
+`main` or `dev`; daily/manual security maintenance also installs and audits it.
+The deploy job invokes that binary from `${{ runner.temp }}` with
+`contents: read` only; Cloudflare credentials are scoped to the upload steps.
+GitHub Deployment records are no longer created. This deploy-only audit is
+separate from the root graph's audit (the root deepmerge residual below was
+resolved by removing the generator chain) and does not establish benign
+tooling, runner integrity, or source-to-binary correspondence. See
+[security-review.md](security-review.md) §1 for the dated selection evidence;
+the 2026-10-29 action-based installation above is historical.
+
 ### Deepmerge residual recorded 2026-10-30 (resolved by removal 2026-11-02)
 
 **RESOLVED by removal, 2026-11-02:** the affected build path is gone; see the

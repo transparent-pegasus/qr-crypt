@@ -451,6 +451,22 @@ full Sigstore trust-policy verification. Exact action-tool selection does not
 freeze its future transitive installation closure or establish source-to-binary
 correspondence; no deployment was performed.
 
+**Locked deploy toolchain, 2026-11-02.** `deploy/package.json` pins Wrangler
+4.155.0 exactly; pinned aube 1.32.0 installs the reviewed graph from committed
+`deploy/aube-lock.yaml` with `aube -C deploy ci` (35 packages resolved).
+The deploy graph remains separate from root `aube.overrides`. The default
+install leaves the `esbuild@0.28.2` and `workerd@1.20261023.1` build scripts
+unexecuted; `deploy/node_modules/.bin/wrangler --version` still prints
+`4.155.0`. `aube -C deploy audit` prints "No known vulnerabilities found".
+CI `validate` installs, audits, and version-smoke-tests this lock on every push
+and pull request targeting `main` or `dev`; daily/manual security maintenance
+installs and audits it too. The deploy job runs the locked CLI from
+`${{ runner.temp }}`, with only `contents: read` and Cloudflare credentials
+scoped to its two upload steps. It creates no GitHub Deployment records.
+The lock constrains dependency resolution; this audit and CLI smoke test do
+not establish benign source, source-to-binary correspondence, or runner
+integrity. No hosted deployment was performed for this check.
+
 **Dependency residual recorded 2026-10-30; resolved by removal 2026-11-02 (§1.8).**
 The 2026-10-29 deepmerge
 assessment reproduced the library defect but found its sole call in the

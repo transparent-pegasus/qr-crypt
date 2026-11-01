@@ -3,14 +3,25 @@
 This is not run in parallel with GitHub's Cloudflare Git Integration. GitHub Actions
 uploads `dist` via Wrangler (Direct Upload).
 
-Both Pages upload steps explicitly select Wrangler 4.155.0 through the
-SHA-pinned action's `wranglerVersion` input. The unused root Wrangler dependency
-and its exclusive Miniflare/workerd/sharp subtree are removed. The action's
-tool installation does not inherit project `aube.overrides`, so its graph is
-assessed separately.
+Both Pages upload steps run Wrangler 4.155.0 from
+`deploy/node_modules/.bin/wrangler`. `deploy/package.json` pins it exactly;
+the pinned aube 1.32.0 installs its reviewed graph from the committed
+`deploy/aube-lock.yaml` with `aube -C deploy ci`. This deploy graph is assessed
+separately from the root dependencies and their `aube.overrides`.
 
-CI pin reconciliation on 2026-10-30 retains Wrangler action v4.0.0 at
-`ebbaa1584979971c8614a24965b4405ff95890e0`; the binary remains 4.155.0.
+To update Wrangler after review, run:
+
+```bash
+aube -C deploy update --latest --exact wrangler
+aube -C deploy audit
+```
+
+Commit `deploy/package.json` and `deploy/aube-lock.yaml` together, and update
+the recorded version and CI version smoke test.
+
+CI pin reconciliation on 2026-10-30 retained Wrangler action v4.0.0 at
+`ebbaa1584979971c8614a24965b4405ff95890e0`; the binary was 4.155.0.
+The locked CLI replaced that action on 2026-11-02.
 Artifact upload/download use v7.0.2 at
 `cf430e030ddbb5b0abf93d22962f4752f3646cd9` and v8.0.2 at
 `9000827ccba6bdab643e8b6fd33ac0654aef8333` respectively. Cosign's installer
@@ -24,10 +35,12 @@ from this static pin correction.
 
 ## Prerequisites
 
-1. Create the Pages project on the Cloudflare side using the assessed Wrangler version:
+1. From the repository root, create the Pages project on the Cloudflare side
+   using the same locked Wrangler version:
 
    ```bash
-   wrangler pages project create <name>
+   aube -C deploy ci
+   deploy/node_modules/.bin/wrangler pages project create <name>
    ```
 
 2. Register the GitHub Repository Secrets (an API token with the minimum permissions required for Pages deploys):
@@ -43,8 +56,11 @@ from this static pin correction.
 `.github/workflows/cloudflare-pages.yml` runs on every branch and on every pull
 request targeting `main` or `dev`:
 
-* The `validate` job installs the frozen dependency graph (`aube ci`), audits
-  it (`aube audit`), then runs type checking, lint, unit tests, post-quantum
+* The `validate` job installs the frozen dependency graph (`aube ci`) and audits
+  it (`aube audit`). It also installs the deploy lock (`aube -C deploy ci`),
+  audits it (`aube -C deploy audit`), and smoke-tests the locked Wrangler with
+  `deploy/node_modules/.bin/wrangler --version`, requiring `4.155.0`.
+  It then runs type checking, lint, unit tests, post-quantum
   known-answer and integration tests, multipart QR tests, and the production
   build. The audit step has no `continue-on-error`: an open known npm advisory
   fails the job on the next triggered run. Scheduled/manual external
@@ -57,7 +73,14 @@ request targeting `main` or `dev`:
 * The `deploy` job requires **both** to pass, and only runs on a `push`:
   `main` deploys to `CLOUDFLARE_PAGES_PROJECT`, `dev` deploys to
   `CLOUDFLARE_PAGES_PROJECT_DEV`. It publishes the artifact `validate` built
-  rather than rebuilding, so the deployed bytes are the validated ones
+  rather than rebuilding, so the deployed bytes are the validated ones.
+  After checkout and mise setup, it installs `deploy/aube-lock.yaml` with
+  `aube -C deploy ci`. Both upload steps run from `${{ runner.temp }}` so
+  Wrangler cannot infer a Pages branch deployment from the checkout's branch:
+  `"$GITHUB_WORKSPACE/deploy/node_modules/.bin/wrangler" pages deploy "$GITHUB_WORKSPACE/dist" --project-name="$PAGES_PROJECT"`.
+  The job has only `contents: read`; Cloudflare credentials are scoped to the
+  two upload steps. It passes no `gitHubToken`, requests no `deployments: write`,
+  and creates no GitHub Deployment records
 * Every other branch and every pull request runs the checks only
 * A `push` to `main` additionally publishes a signed prerelease via
   `.github/workflows/github-release.yml`. Its build job independently installs
@@ -164,8 +187,10 @@ signing, publication, or environment-independent rebuild evidence.
 `.github/workflows/security-maintenance.yml` runs daily at **06:23 UTC** and
 on manual dispatch. Workflow permissions default to empty; its job has only
 `contents: read`. Actions use full SHA pins and checkout credentials are not
-persisted. After frozen installation it runs `aube audit`; the release check
-still runs after an earlier install/audit failure unless cancelled.
+persisted. After frozen installation it runs `aube audit`. The 2026-11-02
+extension installs and audits the deploy lock with `aube -C deploy ci` and
+`aube -C deploy audit`. Both deploy-toolchain checks and the release check
+still run after an earlier install/audit failure unless cancelled.
 
 The 2026-10-29 extension uses `bash scripts/check-assessed-releases.sh` to
 read both exact stable pins from cwd `package.json`: `@noble/post-quantum`
