@@ -36,6 +36,14 @@ jobs:
       - name: Audit dependency advisories
         run: aube audit
 
+      - name: Install the deploy toolchain
+        if: ${{ !cancelled() }}
+        run: aube -C deploy ci
+
+      - name: Audit the deploy toolchain
+        if: ${{ !cancelled() }}
+        run: aube -C deploy audit
+
       # Still check releases if installation or audit failed, so both external
       # signals remain visible. Failure never updates an installed application.
       - name: Check assessed cryptography and decoder releases
