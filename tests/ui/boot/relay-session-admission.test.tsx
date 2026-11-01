@@ -33,7 +33,7 @@ import { defaultKeys } from "../helpers/fakes/key-fixtures"
 import { defaultIdentity } from "../helpers/fakes/pq-fixtures"
 
 vi.mock("@/hooks/use-register-sw", () => ({
-  useDefaultRegisterSW: () => ({ offlineReady: [false, vi.fn()] }),
+  useDefaultRegisterSW: () => ({ offlineReady: false }),
 }))
 
 // These exercise the real controller, repositories and fake-indexeddb. The

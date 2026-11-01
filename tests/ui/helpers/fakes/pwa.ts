@@ -1,17 +1,15 @@
 import { useState } from "react"
-import type { RegisterSWOptions } from "virtual:pwa-register/react"
+import type { RegisterSwOptions, RegisterSwResult } from "@/hooks/use-register-sw"
 import { registerFakeReset } from "./reset"
 
 export const fakePwa = {
   offlineReady: false,
 }
 
-export function useFakeRegisterSW(_options?: RegisterSWOptions) {
-  void _options
-  const offlineReadyState = useState(fakePwa.offlineReady)
-  return {
-    offlineReady: offlineReadyState,
-  }
+export function useFakeRegisterSW(options: RegisterSwOptions): RegisterSwResult {
+  void options
+  const [offlineReady] = useState(fakePwa.offlineReady)
+  return { offlineReady }
 }
 
 registerFakeReset(() => {

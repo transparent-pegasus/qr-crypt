@@ -129,7 +129,7 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
 }
 
 describe("package-static-pwa.sh", () => {
-  it("emits the canonical archive, exact checksums and normalized reproducible member bytes", () => {
+  it("packages a single-file worker with exact checksums and reproducible member bytes", () => {
     const fixture = packageFixture()
     writeFiles(fixture.root, {
       "dist/about/index.html": "online-only page\n",
@@ -178,6 +178,7 @@ describe("package-static-pwa.sh", () => {
     )
 
     const entries = inspectArchive(fixture.root, archivePath)
+    expect(entries.some(({ name }) => /\/workbox-[^/]+\.js$/.test(name))).toBe(false)
     expect(entries.map((entry) => entry.name)).toEqual(
       Object.keys(expectedFiles)
         .sort()
@@ -225,6 +226,12 @@ describe("package-static-pwa.sh", () => {
   })
 
   it.each([
+    {
+      name: "a stray Workbox runtime",
+      mutate: (root: string) =>
+        writeFiles(root, { "dist/workbox-1234abcd.js": "/* stray runtime */\n" }),
+      error: "file outside the explicit release allowlist",
+    },
     {
       name: "an extra file",
       mutate: (root: string) => writeFiles(root, { "dist/unexpected.txt": "extra\n" }),

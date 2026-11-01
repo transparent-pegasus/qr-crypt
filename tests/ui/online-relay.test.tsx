@@ -42,7 +42,7 @@ vi.mock("@/lib/feature-detect", async (importOriginal) => ({
 }))
 
 vi.mock("@/hooks/use-register-sw", () => ({
-  useDefaultRegisterSW: () => ({ offlineReady: [false, vi.fn()] }),
+  useDefaultRegisterSW: () => ({ offlineReady: false }),
 }))
 
 import { FeatureSupportProvider } from "@/app/providers"
