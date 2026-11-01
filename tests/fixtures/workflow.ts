@@ -9,12 +9,14 @@ export interface WorkflowStep {
   if?: string | boolean
   env?: Record<string, string>
   with?: Record<string, unknown>
+  "working-directory"?: string
   "continue-on-error"?: string | boolean
 }
 
 interface WorkflowJob {
   needs?: string | string[]
   outputs?: Record<string, string>
+  permissions?: Record<string, string>
   steps: WorkflowStep[]
 }
 
