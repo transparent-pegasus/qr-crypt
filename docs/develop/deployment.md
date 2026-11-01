@@ -9,6 +9,11 @@ the pinned aube 1.32.0 installs its reviewed graph from the committed
 `deploy/aube-lock.yaml` with `aube -C deploy ci`. This deploy graph is assessed
 separately from the root dependencies and their `aube.overrides`.
 
+In both `validate` and `deploy`, the step immediately after mise setup resolves
+`mise which node` from the checkout and appends its directory to `$GITHUB_PATH`.
+Later steps therefore use the real Node binary pinned in `mise.toml`, including
+from `${{ runner.temp }}`, where mise shims cannot resolve that file.
+
 To update Wrangler after review, run:
 
 ```bash
@@ -58,8 +63,10 @@ request targeting `main` or `dev`:
 
 * The `validate` job installs the frozen dependency graph (`aube ci`) and audits
   it (`aube audit`). It also installs the deploy lock (`aube -C deploy ci`),
-  audits it (`aube -C deploy audit`), and smoke-tests the locked Wrangler with
-  `deploy/node_modules/.bin/wrangler --version`, requiring `4.155.0`.
+  audits it (`aube -C deploy audit`), and smoke-tests from `${{ runner.temp }}`.
+  The smoke requires `node --version` to equal `v` plus the `mise.toml` Node pin
+  and the locked Wrangler's `--version` to equal `4.155.0`. Explicit `shell: bash`
+  enables `pipefail`, so either command's failure blocks deployment.
   It then runs type checking, lint, unit tests, post-quantum
   known-answer and integration tests, multipart QR tests, and the production
   build. The audit step has no `continue-on-error`: an open known npm advisory
@@ -75,7 +82,9 @@ request targeting `main` or `dev`:
   `CLOUDFLARE_PAGES_PROJECT_DEV`. It publishes the artifact `validate` built
   rather than rebuilding, so the deployed bytes are the validated ones.
   After checkout and mise setup, it installs `deploy/aube-lock.yaml` with
-  `aube -C deploy ci`. Both upload steps run from `${{ runner.temp }}` so
+  `aube -C deploy ci`. The secret-free `Verify the deploy runtime` step repeats
+  both version checks from `${{ runner.temp }}` before the uploads.
+  Both upload steps run from `${{ runner.temp }}` so
   Wrangler cannot infer a Pages branch deployment from the checkout's branch:
   `"$GITHUB_WORKSPACE/deploy/node_modules/.bin/wrangler" pages deploy "$GITHUB_WORKSPACE/dist" --project-name="$PAGES_PROJECT"`.
   The job has only `contents: read`; Cloudflare credentials are scoped to the

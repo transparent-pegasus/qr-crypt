@@ -77,6 +77,10 @@ units:
       aube -C deploy outdated && aube -C deploy audit
       wrangler stays an exact pin moved only by
       aube -C deploy update --latest --exact wrangler after review.
+      On every Wrangler bump, re-read pages deploy's git detection before
+      merging: branch inference must still use process.cwd() (or --branch),
+      not the asset directory. Detecting git from the asset directory would
+      turn dev production uploads into preview deployments.
     verify: aube ci && aube run typecheck && aube run lint && aube run test && aube run build:prod && aube -C deploy ci && aube -C deploy audit
     sync: [threat-model, security-review]
 

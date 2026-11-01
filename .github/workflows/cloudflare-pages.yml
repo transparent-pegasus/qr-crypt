@@ -34,6 +34,12 @@ jobs:
           install: true
           cache: false
 
+      - name: Use the pinned Node binary
+        shell: bash
+        run: |
+          node_bin="$(mise which node)"
+          dirname "$node_bin" >> "$GITHUB_PATH"
+
       - name: Install dependencies
         run: aube ci
 
@@ -47,7 +53,11 @@ jobs:
         run: aube -C deploy audit
 
       - name: Smoke-test the deploy toolchain
-        run: deploy/node_modules/.bin/wrangler --version | grep -Fx "4.155.0"
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          node --version | grep -Fx "v$(sed -n 's/^node = "\(.*\)"$/\1/p' "$GITHUB_WORKSPACE/mise.toml")"
+          "$GITHUB_WORKSPACE/deploy/node_modules/.bin/wrangler" --version | grep -Fx "4.155.0"
 
       - name: Type check
         run: aube run typecheck
@@ -125,8 +135,21 @@ jobs:
           install: true
           cache: false
 
+      - name: Use the pinned Node binary
+        shell: bash
+        run: |
+          node_bin="$(mise which node)"
+          dirname "$node_bin" >> "$GITHUB_PATH"
+
       - name: Install the deploy toolchain
         run: aube -C deploy ci
+
+      - name: Verify the deploy runtime
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          node --version | grep -Fx "v$(sed -n 's/^node = "\(.*\)"$/\1/p' "$GITHUB_WORKSPACE/mise.toml")"
+          "$GITHUB_WORKSPACE/deploy/node_modules/.bin/wrangler" --version | grep -Fx "4.155.0"
 
       - name: Download the built site
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -137,6 +160,7 @@ jobs:
       # Fail closed: an unset variable would otherwise send this branch's build
       # to a wrongly named or non-existent Pages project.
       - name: Require the target Pages project to be configured
+        shell: bash
         env:
           PAGES_PROJECT_MAIN: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
           PAGES_PROJECT_DEV: ${{ vars.CLOUDFLARE_PAGES_PROJECT_DEV }}
