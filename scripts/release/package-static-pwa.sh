@@ -66,11 +66,8 @@ for file in "${required_files[@]}"; do
 done
 
 shopt -s nullglob
-workbox_files=(dist/workbox-*.js)
 asset_files=(dist/assets/*)
 shopt -u nullglob
-[[ "${#workbox_files[@]}" -eq 1 ]] ||
-  fail "expected exactly one generated Workbox runtime"
 [[ "${#asset_files[@]}" -gt 0 ]] ||
   fail "dist/assets has no files"
 
@@ -106,7 +103,6 @@ expected_files="$RUNNER_TEMP/expected-dist-files"
 actual_files="$RUNNER_TEMP/actual-dist-files"
 {
   printf '%s\n' "${fixed_paths[@]}"
-  printf '%s\n' "${workbox_files[@]#dist/}"
   printf '%s\n' "${asset_files[@]#dist/}"
 } | LC_ALL=C sort > "$expected_files"
 find dist -type f -printf '%P\n' |

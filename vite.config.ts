@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 import { fileURLToPath, URL } from "node:url"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
-import { defineConfig, type Plugin } from "vite"
-import { VitePWA } from "vite-plugin-pwa"
+import { build, defineConfig, type Plugin } from "vite"
 import { buildAboutLocales, renderAboutLocales } from "./scripts/build-about-locales.mjs"
 import {
   deploymentPolicyFromHeaders,
   metaCspFromHeaders,
 } from "./scripts/csp-from-headers.mjs"
+import { precacheManifest } from "./scripts/precache-manifest.mjs"
 
 const pkg = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
@@ -89,6 +89,51 @@ function metaCsp(): Plugin {
   }
 }
 
+function serviceWorker(): Plugin {
+  let outDir = "dist"
+  return {
+    name: "service-worker",
+    apply: "build",
+    configResolved(config) {
+      outDir = resolve(config.root, config.build.outDir)
+    },
+    closeBundle: {
+      order: "post",
+      sequential: true,
+      async handler() {
+        const manifest = precacheManifest(outDir)
+        await build({
+          configFile: false,
+          publicDir: false,
+          logLevel: "warn",
+          define: {
+            "process.env.NODE_ENV": JSON.stringify("production"),
+            __PRECACHE_MANIFEST__: JSON.stringify(manifest),
+          },
+          build: {
+            outDir,
+            emptyOutDir: false,
+            copyPublicDir: false,
+            minify: false,
+            sourcemap: false,
+            write: true,
+            rolldownOptions: {
+              input: fileURLToPath(
+                new URL("./src/sw/service-worker.ts", import.meta.url),
+              ),
+              output: {
+                format: "iife",
+                entryFileNames: "sw.js",
+                codeSplitting: false,
+              },
+            },
+          },
+        })
+      },
+    },
+  }
+}
+
 export default defineConfig(() => {
   return {
     plugins: [
@@ -96,56 +141,7 @@ export default defineConfig(() => {
       tailwindcss(),
       aboutLocales(),
       metaCsp(),
-      VitePWA({
-        registerType: "prompt",
-        includeAssets: ["favicon.svg", "icons/apple-touch-icon-180.png"],
-        manifest: {
-          name: "QR Crypt",
-          short_name: "QR Crypt",
-          description:
-            "Offline encryption PWA: on the QR transfer path, ciphertext crosses to the online phone as a QR code; removable media and the system clipboard are separate alternatives outside the app's control.",
-          lang: "en",
-          start_url: "/",
-          scope: "/",
-          display: "standalone",
-          background_color: "#0F172A",
-          theme_color: "#0F172A",
-          icons: [
-            { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-            { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
-            {
-              src: "/icons/maskable-512.png",
-              sizes: "512x512",
-              type: "image/png",
-              purpose: "maskable",
-            },
-          ],
-        },
-        workbox: {
-          globPatterns: ["**/*.{js,css,html,svg,png,wasm,webmanifest}"],
-          // The landing page under /about/ is an online-only surface. Keep its
-          // bytes out of the offline bundle, and stop the SPA navigation
-          // fallback from serving the app shell in its place.
-          globIgnores: ["about/**"],
-          navigateFallbackDenylist: [/^\/about\//],
-          navigateFallback: "/index.html",
-          cleanupOutdatedCaches: true,
-          // Without this the worker never controls the page that installed it, so the
-          // precached reader WASM is unreachable on the first run once the device goes
-          // offline. Claiming happens at activation only; waiting-worker semantics and
-          // the message-driven SKIP_WAITING path are unchanged.
-          clientsClaim: true,
-          // The reachability sentinel gating the destructive wipe-on-online path
-          // must always bypass the service worker: excluded from precache and
-          // served NetworkOnly, so it always fails while offline.
-          runtimeCaching: [
-            {
-              urlPattern: /\/reachability-sentinel\.txt/,
-              handler: "NetworkOnly",
-            },
-          ],
-        },
-      }),
+      serviceWorker(),
     ],
     resolve: {
       alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
