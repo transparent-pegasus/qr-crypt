@@ -1,0 +1,8 @@
+{
+  "name": "qr-crypt-deploy",
+  "private": true,
+  "license": "Apache-2.0",
+  "dependencies": {
+    "wrangler": "4.155.0"
+  }
+}

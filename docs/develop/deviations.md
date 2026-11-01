@@ -31,7 +31,7 @@ recorded in [../security/threat-model.md](../security/threat-model.md) §5.
 | --- | --- |
 | `_headers` carries `Cache-Control: no-cache` for `/index.html`, `/sw.js`, and `/manifest.webmanifest` | Keeps the service worker and manifest fresh. A managed addition to the deployment headers |
 | CI runs `e2e` as a job independent of `validate` | `.github/workflows/cloudflare-pages.yml` splits validation, e2e, and deploy into three jobs; `deploy` needs both `validate` and `e2e`, so a failing e2e blocks deployment |
-| Wrangler 4.155.0 selected explicitly by both Pages actions | The SHA-pinned action installs its own tool without project overrides. Assess that exact graph separately; the unused root Wrangler dependency and exclusive sharp override are removed |
+| Wrangler 4.155.0 installed from the committed deploy lock | `aube -C deploy ci` installs the reviewed graph for both Pages uploads. Lifecycle scripts stay unexecuted, and one fewer third-party action holds the Cloudflare token. The deploy graph is assessed separately from root overrides. Cost: no GitHub Deployment records |
 
 ## Crypto and protocol
 
