@@ -116,6 +116,30 @@ describe("useDefaultRegisterSW", () => {
     expect(onRegisterError).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ["installed", true],
+    ["redundant", false],
+  ] as const)(
+    "first install with delayed updatefound reaches %s (offlineReady: %s)",
+    async (state, offlineReady) => {
+      const registered = registration()
+      const installing = new FakeWorker()
+      const { result } = renderHook(() => useDefaultRegisterSW({ onRegisterError }))
+      await resolveRegistration(registered)
+      expect(result.current.offlineReady).toBe(false)
+
+      act(() => {
+        Object.assign(registered, { installing })
+        registered.dispatchEvent(new Event("updatefound"))
+      })
+      expect(result.current.offlineReady).toBe(false)
+
+      act(() => installing.transitionTo(state))
+      expect(result.current.offlineReady).toBe(offlineReady)
+      expect(onRegisterError).not.toHaveBeenCalled()
+    },
+  )
+
   it.each(["activating", "activated"] as const)(
     "first install reports ready at %s",
     async (state) => {
@@ -176,6 +200,28 @@ describe("useDefaultRegisterSW", () => {
     expect(result.current.offlineReady).toBe(false)
   })
 
+  it("update with delayed updatefound never reports offline readiness", async () => {
+    const active = new FakeWorker("activated")
+    const installing = new FakeWorker()
+    getRegistration.mockResolvedValue(registration({ active }))
+    const registered = registration({ active })
+    const { result } = renderHook(() => useDefaultRegisterSW({ onRegisterError }))
+    await resolveRegistration(registered)
+    expect(result.current.offlineReady).toBe(false)
+
+    act(() => {
+      Object.assign(registered, { installing })
+      registered.dispatchEvent(new Event("updatefound"))
+    })
+    expect(result.current.offlineReady).toBe(false)
+
+    act(() => installing.transitionTo("installed"))
+    expect(result.current.offlineReady).toBe(false)
+    act(() => installing.transitionTo("activated"))
+    expect(result.current.offlineReady).toBe(false)
+    expect(onRegisterError).not.toHaveBeenCalled()
+  })
+
   it("redundant install never reports ready", async () => {
     const installing = new FakeWorker()
     const { result } = renderHook(() => useDefaultRegisterSW({ onRegisterError }))
@@ -194,6 +240,29 @@ describe("useDefaultRegisterSW", () => {
     expect(register).toHaveBeenCalledTimes(1)
     expect(onRegisterError).toHaveBeenCalledExactlyOnceWith(error)
     expect(result.current.offlineReady).toBe(false)
+  })
+
+  it("unmount before delayed updatefound ignores the worker", async () => {
+    const registered = registration()
+    const installing = new FakeWorker()
+    const listen = vi.spyOn(installing, "addEventListener")
+    const { result, unmount } = renderHook(() =>
+      useDefaultRegisterSW({ onRegisterError }),
+    )
+    await resolveRegistration(registered)
+    expect(result.current.offlineReady).toBe(false)
+    unmount()
+
+    act(() => {
+      Object.assign(registered, { installing })
+      registered.dispatchEvent(new Event("updatefound"))
+      installing.transitionTo("installed")
+    })
+
+    expect(result.current.offlineReady).toBe(false)
+    expect(listen).not.toHaveBeenCalled()
+    expect(installing.onstatechange).toBeNull()
+    expect(onRegisterError).not.toHaveBeenCalled()
   })
 
   it.each(["resolve", "reject"] as const)(

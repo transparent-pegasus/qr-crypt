@@ -62,6 +62,13 @@ describe("precacheManifest", () => {
     expect(precacheManifest(outDir).map(({ url }) => url)).toEqual(["index.html"])
   })
 
+  it("does not follow directory symlinks", () => {
+    writeFixture(["real/inside.js"])
+    symlinkSync("real", path.join(outDir, "linked"), "dir")
+
+    expect(precacheManifest(outDir).map(({ url }) => url)).toEqual(["real/inside.js"])
+  })
+
   it("revision is the SHA-256 of the bytes", () => {
     const bytes = Buffer.from([0, 0xff, 0x80, 0x0a, 0x0d, 0x61])
     writeFileSync(path.join(outDir, "binary.wasm"), bytes)
