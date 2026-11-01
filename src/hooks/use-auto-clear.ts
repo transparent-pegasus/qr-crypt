@@ -21,7 +21,6 @@ export function useAutoClear({
   const onClearRef = useRef(onClear)
   const nowRef = useRef(now)
   const deadlineRef = useRef<number | null>(null)
-  const hiddenAtRef = useRef<number | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clearedRef = useRef(false)
   const initialNonceRef = useRef(clearNonce)
@@ -44,7 +43,6 @@ export function useAutoClear({
     const resetDeadline = () => {
       cancelTimer()
       deadlineRef.current = null
-      hiddenAtRef.current = null
       clearedRef.current = false
     }
 
@@ -64,7 +62,6 @@ export function useAutoClear({
     const scheduleFrom = (hiddenAt: number) => {
       cancelTimer()
       clearedRef.current = false
-      hiddenAtRef.current = hiddenAt
       const delaySeconds =
         webAssemblyRuntimeSupport() === false
           ? env.autoClearFallbackSeconds
@@ -83,7 +80,6 @@ export function useAutoClear({
       if (deadline !== null && nowRef.current() >= deadline) clearOnce()
       cancelTimer()
       deadlineRef.current = null
-      hiddenAtRef.current = null
     }
 
     const handleVisibility = () => {

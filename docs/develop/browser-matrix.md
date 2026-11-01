@@ -52,8 +52,9 @@ this policy is an open maintainer decision and is deliberately not settled here.
   device is offline-confirmed, so the camera reader never gets an online *runtime* fetch —
   its first runtime load must be satisfied from the precache the service worker populated
   while installing online. That requires the worker to control the page *before* the
-  device goes offline, which since 2026-07-29 is what `workbox.clientsClaim` and the
-  install screen's **Offline-use readiness: Ready** row guarantee. The manual case to run
+  device goes offline, which since 2026-07-29 is what the `clientsClaim()` call in
+  `src/sw/service-worker.ts` and the install screen's **Offline-use readiness: Ready** row
+  guarantee. The manual case to run
   on device is therefore: one online load, **no reload**, wait for readiness Ready, go
   offline, then open the camera for the first time. Ephemeral private sessions (observed
   on Brave iOS Private tabs, where the worker registration appears not to survive the

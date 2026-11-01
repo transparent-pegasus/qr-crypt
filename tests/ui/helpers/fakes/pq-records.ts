@@ -120,16 +120,9 @@ async function defaultFindBundleBySigningKeyId(keyId: string) {
   )
 }
 
-async function defaultFindBundleByKemKeyId(keyId: string) {
-  return fakeBundles.find(
-    (record) => record.kem.keyId === keyId && record.revokedAt === undefined,
-  )
-}
-
 export const findBundleBySigningKeyId = vi.fn(
   defaultFindBundleBySigningKeyId,
 )
-export const findBundleByKemKeyId = vi.fn(defaultFindBundleByKemKeyId)
 
 registerFakeReset(() => {
   const identity = defaultIdentity()
@@ -142,5 +135,4 @@ registerFakeReset(() => {
   findBundleBySigningKeyId.mockImplementation(
     defaultFindBundleBySigningKeyId,
   )
-  findBundleByKemKeyId.mockImplementation(defaultFindBundleByKemKeyId)
 })

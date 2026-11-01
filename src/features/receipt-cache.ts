@@ -2,10 +2,10 @@
 // app window loaded or the cache was last cleared.
 //
 // Rules (frozen):
-//   - Memory only. Nothing here is written to IndexedDB, localStorage, or CacheStorage:
-//     a persisted ciphertext digest would be a frame-derived value, which
-//     docs/security/threat-model.md:11 (and T11/T19) state this app never stores, and
-//     which the clean-origin boot gate relies on.
+//   - Memory only. Nothing here is written to IndexedDB, localStorage, or CacheStorage.
+//     This preserves the no-persistence rule for frame-derived values in
+//     docs/security/threat-model.md §1 ("Ciphertext QR / relay payload strings")
+//     and T11/T19, which the clean-origin boot gate relies on.
 //   - Record only after AEAD authentication and, for signed suites, signature
 //     verification have both succeeded.
 //   - firstSeenAt is local time at the first sighting and is never refreshed. The

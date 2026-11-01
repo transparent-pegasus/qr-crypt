@@ -20,7 +20,7 @@ the repository root as `README.ja.md` (GitHub language switcher).
 * Web Crypto API / IndexedDB (idb)
 * Zod / qrcode / zxing-wasm (reader-only, camera scanning); v2 wire CBOR is the
   in-house canonical codec in `src/crypto/pq/canonical-cbor.ts` (no `cbor-x`)
-* vite-plugin-pwa / workbox-window
+* workbox-core / workbox-precaching / workbox-routing / workbox-strategies
 * Vitest / Testing Library / Playwright (@playwright/test)
 * Aube (package manager) / mise (pinned tool versions)
 * Cloudflare Pages / GitHub Actions

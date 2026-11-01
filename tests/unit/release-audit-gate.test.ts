@@ -3,7 +3,11 @@ import { stringify } from "yaml"
 import { parseReleaseWorkflow, releaseWorkflowSource } from "../fixtures/workflow"
 
 function dependencies(value: string | string[] | undefined): string[] {
-  return value === undefined ? [] : typeof value === "string" ? [value] : [...value].sort()
+  return value === undefined
+    ? []
+    : typeof value === "string"
+      ? [value]
+      : [...value].sort()
 }
 
 // Exercise the same assertions after formatting-only changes to the real
@@ -55,5 +59,39 @@ describe.each([
     const { jobs } = parseReleaseWorkflow(source)
     expect(dependencies(jobs.sign.needs)).toEqual(["build"])
     expect(dependencies(jobs.publish.needs)).toEqual(["build", "sign"])
+  })
+
+  it("installs browser tooling before creating the package whose bytes will be tested", () => {
+    const steps = parseReleaseWorkflow(source).jobs.build.steps
+    const browserInstall = steps.findIndex((step) =>
+      /\baube exec playwright install\b/.test(step.run ?? ""),
+    )
+    const packaging = steps.findIndex((step) => step.id === "package")
+    const browserTest = steps.findIndex((step) => step.id === "test-package")
+    expect(browserInstall).toBeGreaterThanOrEqual(0)
+    expect(packaging).toBeGreaterThan(browserInstall)
+    expect(browserTest).toBeGreaterThan(packaging)
+    expect(steps[browserInstall]).not.toHaveProperty("if")
+    expect(steps[browserInstall]).not.toHaveProperty("continue-on-error")
+  })
+
+  it("carries the package-time and browser-tested digests independently into sign and publish", () => {
+    const { jobs } = parseReleaseWorkflow(source)
+    expect(jobs.build.outputs?.["packaged-archive-sha256"]).toBe(
+      "${{ steps.package.outputs.packaged_archive_sha256 }}",
+    )
+    expect(jobs.build.outputs?.["tested-archive-sha256"]).toBe(
+      "${{ steps.test-package.outputs.tested_archive_sha256 }}",
+    )
+    const signing = jobs.sign.steps.find((step) => step.run?.includes("cosign sign-blob"))
+    const publishing = jobs.publish.steps.find((step) => step.run !== undefined)
+    for (const step of [signing, publishing]) {
+      expect(step?.env?.PACKAGED_ARCHIVE_SHA256).toBe(
+        "${{ needs.build.outputs.packaged-archive-sha256 }}",
+      )
+      expect(step?.env?.TESTED_ARCHIVE_SHA256).toBe(
+        "${{ needs.build.outputs.tested-archive-sha256 }}",
+      )
+    }
   })
 })

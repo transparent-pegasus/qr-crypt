@@ -9,7 +9,6 @@ vi.mock("@/storage/key-repository", () => ({
   getKeyRecord: fakes.getKeyRecord,
   getActiveKeyRecord: fakes.getActiveKeyRecord,
   saveSymmetricRotation: fakes.saveSymmetricRotation,
-  findKeyByFingerprint: fakes.findKeyByFingerprint,
   renameKeyRecord: fakes.renameKeyRecord,
   deleteKeyRecord: fakes.deleteKeyRecord,
   markKeyUsed: fakes.markKeyUsed,

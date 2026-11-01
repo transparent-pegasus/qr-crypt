@@ -11,10 +11,11 @@ import {
 } from "./helpers/fakes/pwa"
 import { resetUi } from "./helpers/render-app"
 
-function useOfflineReadyAfterMount() {
-  const offlineReady = useState(false)
-  const setOfflineReady = offlineReady[1]
-  useEffect(() => setOfflineReady(true), [setOfflineReady])
+const useOfflineReadyAfterMount: UseRegisterSwHook = () => {
+  const [offlineReady, setOfflineReady] = useState(false)
+  useEffect(() => {
+    queueMicrotask(() => setOfflineReady(true))
+  }, [setOfflineReady])
   return { offlineReady }
 }
 
@@ -90,11 +91,13 @@ describe("PWA offline readiness", () => {
     })
     expect(row()).toHaveTextContent("Preparing")
     expect(row()).not.toHaveTextContent("Ready")
+    expect(screen.queryByText("Offline use is ready")).not.toBeInTheDocument()
 
     await act(async () => {
       container.takeControl()
     })
     await waitFor(() => expect(row()).toHaveTextContent("Ready"))
+    expect(screen.queryByText("Offline use is ready")).not.toBeInTheDocument()
   })
 
   it("detects control taken after the first snapshot but before subscription", async () => {
@@ -110,7 +113,7 @@ describe("PWA offline readiness", () => {
         tookControl = true
         container.takeControl()
       }
-      return { offlineReady: [false, () => undefined] }
+      return { offlineReady: false }
     }
 
     render(
@@ -181,5 +184,49 @@ describe("PWA offline readiness", () => {
     expect(await screen.findByText("Offline use is ready")).toBeInTheDocument()
     expect(screen.queryByLabelText("アプリ更新通知")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "更新する" })).not.toBeInTheDocument()
+  })
+
+  it("waits for page control before notifying and announces readiness once", async () => {
+    const container = installContainer()
+    fakePwa.offlineReady = true
+    const { AppProviders } = await import("@/app/providers")
+
+    render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFakeRegisterSW}>
+        <p>App</p>
+      </AppProviders>,
+    )
+
+    expect(screen.queryByText("Offline use is ready")).not.toBeInTheDocument()
+    act(() => container.takeControl())
+    expect(await screen.findByText("Offline use is ready")).toBeInTheDocument()
+
+    act(() => container.takeControl())
+    expect(screen.getAllByText("Offline use is ready")).toHaveLength(1)
+  })
+
+  it("exposes pwa.registerError after registration fails", async () => {
+    installContainer()
+    const { AppProviders } = await import("@/app/providers")
+    const { usePwaOfflineReady } = await import("@/components/pwa-offline-ready")
+    const useFailedRegistration: UseRegisterSwHook = (options) => {
+      useEffect(() => {
+        options.onRegisterError(new Error("registration failed"))
+      }, [options])
+      return { offlineReady: false }
+    }
+    function ErrorProbe() {
+      const { error } = usePwaOfflineReady()
+      return <output>{error ?? "none"}</output>
+    }
+
+    render(
+      <AppProviders features={{ ...fakeFeatures }} pwaHook={useFailedRegistration}>
+        <ErrorProbe />
+      </AppProviders>,
+    )
+
+    expect(await screen.findByText("pwa.registerError")).toBeInTheDocument()
+    expect(screen.queryByText("Offline use is ready")).not.toBeInTheDocument()
   })
 })

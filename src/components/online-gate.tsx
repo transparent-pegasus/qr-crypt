@@ -22,7 +22,6 @@ import { Button } from "@/components/ui/button"
 import { LanguageField, useI18n, type MessageKey } from "@/i18n"
 import { isStandalone } from "@/lib/feature-detect"
 import { cn } from "@/lib/utils"
-import { env } from "@/schemas/env-schema"
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -163,7 +162,7 @@ export function OnlineInstallScreen({
         <header className="flex items-center gap-3">
           <img
             src="/icons/icon-192.png"
-            alt={t("gate.appIcon.alt", { appName: env.appName })}
+            alt={t("gate.appIcon.alt", { appName: "QR Crypt" })}
             width={56}
             height={56}
             className="size-14 rounded-xl"
@@ -173,7 +172,7 @@ export function OnlineInstallScreen({
               {t("gate.mode.label")}
             </p>
             <h1 id="online-gate-title" className="truncate text-2xl font-bold">
-              {env.appName}
+              QR Crypt
             </h1>
           </div>
           <NetworkStatusBadge />

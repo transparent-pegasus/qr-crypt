@@ -6,20 +6,17 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type Dispatch,
   type ReactNode,
-  type SetStateAction,
 } from "react"
-import type { RegisterSWOptions } from "virtual:pwa-register/react"
 import { toast } from "sonner"
-import { useDefaultRegisterSW } from "@/hooks/use-register-sw"
+import {
+  useDefaultRegisterSW,
+  type RegisterSwOptions,
+  type RegisterSwResult,
+} from "@/hooks/use-register-sw"
 import { useI18n, type MessageKey } from "@/i18n"
 
-interface RegisterSwResult {
-  offlineReady: [boolean, Dispatch<SetStateAction<boolean>>]
-}
-
-export type UseRegisterSwHook = (options?: RegisterSWOptions) => RegisterSwResult
+export type UseRegisterSwHook = (options: RegisterSwOptions) => RegisterSwResult
 
 interface PwaOfflineReadyContextValue {
   offlineReady: boolean
@@ -66,7 +63,7 @@ export function PwaOfflineReady({
     getServerServiceWorkerControllerSnapshot,
   )
   const announcedOfflineReady = useRef(false)
-  const registrationOptions = useMemo<RegisterSWOptions>(
+  const registrationOptions = useMemo<RegisterSwOptions>(
     () => ({
       onRegisterError: () => {
         setError("pwa.registerError")
@@ -75,7 +72,7 @@ export function PwaOfflineReady({
     [],
   )
   const useRegistration = registerHook ?? useDefaultRegisterSW
-  const [offlineReady] = useRegistration(registrationOptions).offlineReady
+  const { offlineReady } = useRegistration(registrationOptions)
 
   const announceReady = offlineReady && swControlling
 

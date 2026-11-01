@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { promisify } from "node:util"
 import { describe, expect, it } from "vitest"
+import { DISPLAYED_SOURCE_SHA, rebuildFixture } from "../fixtures/release-rebuild"
 
 const run = promisify(execFile)
 const REPO_ROOT = path.resolve(__dirname, "../..")
@@ -74,8 +75,9 @@ describe("INSTALL.txt generation", () => {
   it("renders LF only, and the repository pins that", async () => {
     const { stdout } = await generate(SOURCE_SHA)
     expect(stdout).not.toContain("\r")
-    expect(await readFile(path.join(REPO_ROOT, ".gitattributes"), "utf8"))
-      .toMatch(/^\* text=auto eol=lf$/m)
+    expect(await readFile(path.join(REPO_ROOT, ".gitattributes"), "utf8")).toMatch(
+      /^\* text=auto eol=lf$/m,
+    )
   })
 })
 
@@ -116,9 +118,7 @@ describe("INSTALL.txt as the self-contained procedure", () => {
     const text = await template()
     expect(text).toContain('> "$QR_CRYPT_REBUILT_ROOT/SHA256SUMS.files"')
     expect(text).toContain('diff -u "$QR_CRYPT_REBUILT_ROOT/SHA256SUMS.files"')
-    expect(text).toContain(
-      'diff -qr "$QR_CRYPT_REBUILT_ROOT" "$QR_CRYPT_ARCHIVE_ROOT"',
-    )
+    expect(text).toContain('diff -qr "$QR_CRYPT_REBUILT_ROOT" "$QR_CRYPT_ARCHIVE_ROOT"')
   })
 })
 
@@ -139,5 +139,73 @@ describe("Route A rebuild comparison", () => {
 
   it("is what the release workflow does", async () => {
     expect(await readFile(PACKAGE_SCRIPT, "utf8")).toContain("rm -rf -- dist/about")
+  })
+
+  describe.each(documents)("%s executable source authentication", (file) => {
+    const fixture = async () => {
+      const template = file.endsWith(".txt")
+      const text = template
+        ? (await generate(DISPLAYED_SOURCE_SHA)).stdout
+        : await readFile(path.join(REPO_ROOT, file), "utf8")
+      return rebuildFixture(text, template)
+    }
+
+    it("stops an independently expected SHA that disagrees with the archive before git or build tools", async () => {
+      const expected = "b".repeat(40)
+      const outcome = (await fixture()).execute(expected, expected)
+      expect(outcome.status, outcome.stderr).not.toBe(0)
+      expect(outcome.calls).toEqual([])
+    })
+
+    it.each([
+      undefined,
+      "",
+      "not-a-commit",
+      DISPLAYED_SOURCE_SHA.toUpperCase(),
+      "a".repeat(39),
+      "a".repeat(41),
+      `${DISPLAYED_SOURCE_SHA}\n`,
+    ])(
+      "rejects independently supplied source SHA %j before git or build tools",
+      async (expected) => {
+        const outcome = (await fixture()).execute(expected)
+        expect(outcome.status, outcome.stderr).not.toBe(0)
+        expect(outcome.calls).toEqual([])
+      },
+    )
+
+    it("uses only the matching independent SHA for checkout verification and build identity", async () => {
+      const outcome = (await fixture()).execute(DISPLAYED_SOURCE_SHA)
+      expect(outcome.status, outcome.stderr).toBe(0)
+      expect(
+        outcome.calls
+          .filter((call) => call.command === "git")
+          .map((call) => call.args.slice(2)),
+      ).toEqual([
+        ["rev-parse", "HEAD"],
+        ["status", "--porcelain", "--untracked-files=all"],
+      ])
+      expect(
+        outcome.calls.filter((call) => call.command === "aube").map((call) => call.args),
+      ).toEqual([["ci"], ["run", "build:prod"]])
+      const build = outcome.calls.find(
+        (call) => call.command === "aube" && call.args[0] === "run",
+      )
+      expect(build).toMatchObject({
+        sourceSha: DISPLAYED_SOURCE_SHA,
+        buildSha: DISPLAYED_SOURCE_SHA,
+      })
+    })
+
+    it("refuses a checkout that differs from the authenticated SHA before installing or building", async () => {
+      const outcome = (await fixture()).execute(DISPLAYED_SOURCE_SHA, "c".repeat(40))
+      expect(outcome.status, outcome.stderr).not.toBe(0)
+      expect(outcome.calls.some((call) => call.command === "git")).toBe(true)
+      expect(
+        outcome.calls.filter(
+          (call) => call.command === "mise" || call.command === "aube",
+        ),
+      ).toEqual([])
+    })
   })
 })

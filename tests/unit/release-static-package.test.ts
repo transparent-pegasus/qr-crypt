@@ -129,7 +129,7 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
 }
 
 describe("package-static-pwa.sh", () => {
-  it("emits the canonical archive, exact checksums and normalized reproducible member bytes", () => {
+  it("packages a single-file worker with exact checksums and reproducible member bytes", () => {
     const fixture = packageFixture()
     writeFiles(fixture.root, {
       "dist/about/index.html": "online-only page\n",
@@ -141,10 +141,6 @@ describe("package-static-pwa.sh", () => {
     const tag = `v${VERSION}-main.g${fixture.sourceSha}`
     const rootName = `qr-crypt-${tag}-static-install`
     const archiveName = `${rootName}.zip`
-    const expectedOutputs =
-      `archive_name=${archiveName}\nbundle_name=${archiveName}.sigstore.json\n` +
-      `release_tag=${tag}\nversion=${VERSION}\n`
-    expect(readFileSync(fixture.output, "utf8")).toBe(expectedOutputs)
     expect(existsSync(path.join(fixture.root, "dist/about"))).toBe(false)
 
     const expectedPayload = {
@@ -166,12 +162,23 @@ describe("package-static-pwa.sh", () => {
     const outputDir = path.join(fixture.runnerTemp, "qr-crypt-release")
     const archivePath = path.join(outputDir, archiveName)
     const archiveBytes = readFileSync(archivePath)
+    const expectedOutputs = [
+      `archive_name=${archiveName}`,
+      `bundle_name=${archiveName}.sigstore.json`,
+      `release_tag=${tag}`,
+      `version=${VERSION}`,
+      `packaged_archive_sha256=${sha256(archiveBytes)}`,
+    ]
+    expect(readFileSync(fixture.output, "utf8").split("\n").sort()).toEqual(
+      [...expectedOutputs, ""].sort(),
+    )
     expect(readdirSync(outputDir).sort()).toEqual(["SHA256SUMS", archiveName])
     expect(readFileSync(path.join(outputDir, "SHA256SUMS"), "utf8")).toBe(
       `${sha256(archiveBytes)}  ${archiveName}\n`,
     )
 
     const entries = inspectArchive(fixture.root, archivePath)
+    expect(entries.some(({ name }) => /\/workbox-[^/]+\.js$/.test(name))).toBe(false)
     expect(entries.map((entry) => entry.name)).toEqual(
       Object.keys(expectedFiles)
         .sort()
@@ -213,10 +220,18 @@ describe("package-static-pwa.sh", () => {
     const repeated = fixture.execute()
     expect(repeated.status, repeated.stderr).toBe(0)
     expect(readFileSync(archivePath)).toEqual(archiveBytes)
-    expect(readFileSync(fixture.output, "utf8")).toBe(expectedOutputs.repeat(2))
+    expect(readFileSync(fixture.output, "utf8").split("\n").sort()).toEqual(
+      [...expectedOutputs, ...expectedOutputs, ""].sort(),
+    )
   })
 
   it.each([
+    {
+      name: "a stray Workbox runtime",
+      mutate: (root: string) =>
+        writeFiles(root, { "dist/workbox-1234abcd.js": "/* stray runtime */\n" }),
+      error: "file outside the explicit release allowlist",
+    },
     {
       name: "an extra file",
       mutate: (root: string) => writeFiles(root, { "dist/unexpected.txt": "extra\n" }),

@@ -1,7 +1,5 @@
 // Runtime validation for environment variables.
-// Accept only the explicit "true"/"false" enumeration for booleans to avoid the
-// z.coerce.boolean trap. Throw on invalid values at startup; never silently fall
-// back to defaults.
+// Throw on invalid values at startup; never silently fall back to defaults.
 import { z } from "zod"
 import {
   FRAME_BYTES_MAX,
@@ -9,34 +7,23 @@ import {
 } from "@/lib/frame-bytes"
 import { isFrameIntervalMs } from "@/lib/frame-interval"
 import {
+  COMPATIBLE_GENERATED_DISPLAY_PAIR,
   DEFAULT_GENERATED_DISPLAY_PAIR,
   type UiAlgorithm,
 } from "@/schemas/domain"
 
 export interface AppEnv {
-  appName: string
-  appShortName: string
   defaultAlgorithm: UiAlgorithm
   qrRenderSize: number
   // Post-quantum multipart plaintext ceiling.
   maxPlaintextBytes: number
-  enableMlKem: boolean
-  enableMlDsa: boolean
   qrFrameBytes: number
   qrFrameIntervalMs: number
   qrMaxFrames: number
-  pqProvider: "noble"
-  pqWorkerEnabled: boolean
   autoClearSeconds: number
   autoClearFallbackSeconds: number
   buildSha: string
 }
-
-const boolFromString = (defaultValue: "true" | "false") =>
-  z
-    .enum(["true", "false"])
-    .default(defaultValue)
-    .transform((value) => value === "true")
 
 const intFromString = (defaultValue: number, min: number, max: number) =>
   z
@@ -100,8 +87,6 @@ function maximumSignedArtifactBytes(plaintextBytes: number): number {
 }
 
 const rawSchema = z.object({
-  VITE_APP_NAME: z.string().min(1).default("QR Crypt"),
-  VITE_APP_SHORT_NAME: z.string().min(1).default("QR Crypt"),
   VITE_DEFAULT_ALGORITHM: z
     .enum(["A256GCM", "MLKEM1024_MLDSA87_A256GCM"])
     .default("A256GCM"),
@@ -112,14 +97,9 @@ const rawSchema = z.object({
   // Post-quantum multipart plaintext ceiling. Symmetric messages have a smaller,
   // fixed single-frame ceiling in lib/limits.
   VITE_MAX_PLAINTEXT_BYTES: intFromString(120_000, 1, 120_000),
-  VITE_ENABLE_ML_KEM: boolFromString("true"),
-  VITE_ENABLE_ML_DSA: boolFromString("true"),
   VITE_QR_FRAME_BYTES: frameBytesFromString,
   VITE_QR_FRAME_INTERVAL_MS: frameIntervalMsFromString,
   VITE_QR_MAX_FRAMES: intFromString(128, 1, 128),
-  // Unknown provider names are startup errors.
-  VITE_PQ_PROVIDER: z.enum(["noble"]).default("noble"),
-  VITE_PQ_WORKER_ENABLED: boolFromString("true"),
   VITE_AUTO_CLEAR_SECONDS: intFromString(60, 0, 86_400),
   VITE_AUTO_CLEAR_FALLBACK_SECONDS: intFromString(300, 0, 86_400),
   VITE_BUILD_SHA: z.string().min(1).default("development"),
@@ -140,12 +120,20 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
     throw new Error(`Invalid environment variables: ${paths}`)
   }
   const v = parsed.data
-  // Cross-field constraints (fail closed; the only silent degradation is the
-  // feature-flag normalization below):
-  // 1) Reject before startup any configuration where the raw artifact bytes for a
-  //    maximum signed message with maximum plaintext do not fit at the maximum
-  //    selectable density. The renderer clamps each artifact independently, so the
-  //    stored/default density is not a boot-capacity constraint.
+  if (
+    ![DEFAULT_GENERATED_DISPLAY_PAIR, COMPATIBLE_GENERATED_DISPLAY_PAIR].some(
+      (pair) =>
+        pair.frameBytes === v.VITE_QR_FRAME_BYTES &&
+        pair.frameIntervalMs === v.VITE_QR_FRAME_INTERVAL_MS,
+    )
+  ) {
+    throw new Error(
+      "Invalid environment variables: VITE_QR_FRAME_BYTES and VITE_QR_FRAME_INTERVAL_MS must form a supported display pair",
+    )
+  }
+  // Reject configurations where a maximum signed artifact cannot fit at the
+  // maximum internal density. Each artifact's renderer clamps independently;
+  // the default display pair is not a boot-capacity constraint.
   const maximumSignedBytes = maximumSignedArtifactBytes(v.VITE_MAX_PLAINTEXT_BYTES)
   const configuredFrameCapacity = v.VITE_QR_MAX_FRAMES * FRAME_BYTES_MAX
   if (maximumSignedBytes > configuredFrameCapacity) {
@@ -153,28 +141,13 @@ export function parseAppEnv(raw: Record<string, unknown>): AppEnv {
       "Invalid environment variables: the maximum signed canonical CBOR for VITE_MAX_PLAINTEXT_BYTES does not fit within VITE_QR_MAX_FRAMES × the maximum selectable frame density",
     )
   }
-  let defaultAlgorithm: UiAlgorithm = v.VITE_DEFAULT_ALGORITHM
-  // 2) Signed PQ requires both ML-KEM and ML-DSA. If either feature is disabled,
-  // normalize a PQ default to A256GCM.
-  if (
-    (!v.VITE_ENABLE_ML_KEM || !v.VITE_ENABLE_ML_DSA) &&
-    defaultAlgorithm === "MLKEM1024_MLDSA87_A256GCM"
-  ) {
-    defaultAlgorithm = "A256GCM"
-  }
   return {
-    appName: v.VITE_APP_NAME,
-    appShortName: v.VITE_APP_SHORT_NAME,
-    defaultAlgorithm,
+    defaultAlgorithm: v.VITE_DEFAULT_ALGORITHM,
     qrRenderSize: v.VITE_QR_RENDER_SIZE,
     maxPlaintextBytes: v.VITE_MAX_PLAINTEXT_BYTES,
-    enableMlKem: v.VITE_ENABLE_ML_KEM,
-    enableMlDsa: v.VITE_ENABLE_ML_DSA,
     qrFrameBytes: v.VITE_QR_FRAME_BYTES,
     qrFrameIntervalMs: v.VITE_QR_FRAME_INTERVAL_MS,
     qrMaxFrames: v.VITE_QR_MAX_FRAMES,
-    pqProvider: v.VITE_PQ_PROVIDER,
-    pqWorkerEnabled: v.VITE_PQ_WORKER_ENABLED,
     autoClearSeconds: v.VITE_AUTO_CLEAR_SECONDS,
     autoClearFallbackSeconds: v.VITE_AUTO_CLEAR_FALLBACK_SECONDS,
     buildSha: v.VITE_BUILD_SHA,

@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   armMaintenanceToken,
   consumeMaintenanceToken,
+  createBootController,
+  disarmMaintenanceToken,
   readBootDecision,
-  readMaintenanceToken,
 } from "@/app/boot/boot-controller"
 import {
   performUserRequestedReset,
@@ -21,6 +22,7 @@ import {
 } from "@/storage/best-effort-reset"
 import {
   deleteEntireDatabase,
+  closeDb,
   engageDatabaseAccessBarrier,
   getDb,
   resetDatabaseAccessBarrierForTesting,
@@ -235,13 +237,126 @@ describe("best-effort local reset", () => {
 describe("boot storage APIs and barrier", () => {
   it("persists and consumes a valid maintenance token exactly once", async () => {
     await armMaintenanceToken(1_700_000_000_000)
-    await expect(readMaintenanceToken()).resolves.toEqual({
-      armedAt: 1_700_000_000_000,
+    closeDb()
+    await expect(readBootDecision()).resolves.toMatchObject({
+      maintenanceTokenArmed: true,
     })
     await expect(consumeMaintenanceToken()).resolves.toBe(true)
     await expect(consumeMaintenanceToken()).resolves.toBe(false)
-    await expect(readMaintenanceToken()).resolves.toBeUndefined()
+    await expect(readBootDecision()).resolves.toMatchObject({
+      maintenanceTokenArmed: false,
+    })
   })
+
+  it("persists explicit disarm without deleting sensitive data or unrelated metadata", async () => {
+    expect(disarmMaintenanceToken).toBeTypeOf("function")
+    const database = await getDb()
+    await database.put(STORE_KEYS, { id: "retained-key" } as never)
+    await database.put(STORE_APP_METADATA, { key: "unrelated", value: "keep" })
+    await armMaintenanceToken(1_700_000_000_000)
+    closeDb()
+    await expect(readBootDecision()).resolves.toMatchObject({
+      maintenanceTokenArmed: true,
+      sensitiveDataExists: true,
+    })
+
+    await expect(disarmMaintenanceToken()).resolves.toBeUndefined()
+    closeDb()
+
+    await expect(readBootDecision()).resolves.toMatchObject({
+      maintenanceTokenArmed: false,
+      sensitiveDataExists: true,
+    })
+    expect(await (await getDb()).get(STORE_APP_METADATA, "unrelated")).toEqual({
+      key: "unrelated",
+      value: "keep",
+    })
+    await expect(consumeMaintenanceToken()).resolves.toBe(false)
+    await expect(disarmMaintenanceToken()).resolves.toBeUndefined()
+  })
+
+  it("uses normal wipe policy at the next verified-online transition after explicit disarm", async () => {
+    expect(disarmMaintenanceToken).toBeTypeOf("function")
+    await (await getDb()).put(STORE_KEYS, { id: "wipe-after-disarm" } as never)
+    await armMaintenanceToken()
+    await disarmMaintenanceToken()
+    closeDb()
+    const policy = __DEPLOYMENT_HEADER_POLICY__
+    const controller = createBootController({
+      fetchImpl: async () =>
+        new Response("QR-CRYPT-REACHABLE", {
+          headers: {
+            ...policy.root,
+            "cache-control": policy.sentinelCacheControl,
+            "content-type": "text/plain",
+          },
+        }),
+      performWipe: (args) => bestEffortLocalReset(args),
+    })
+
+    await controller.probe()
+
+    expect(controller.getState()).toEqual({ kind: "wiped" })
+    expect((await indexedDB.databases()).some((entry) => entry.name === "qr-crypt")).toBe(
+      false,
+    )
+  })
+
+  it("rejects disarm when its delete transaction aborts and leaves the token armed", async () => {
+    expect(disarmMaintenanceToken).toBeTypeOf("function")
+    await armMaintenanceToken()
+    const remove = IDBObjectStore.prototype.delete
+    vi.spyOn(IDBObjectStore.prototype, "delete").mockImplementation(function (
+      this: IDBObjectStore,
+      key,
+    ) {
+      const request = remove.call(this, key)
+      request.addEventListener("success", () => this.transaction.abort(), { once: true })
+      return request
+    })
+
+    await expect(disarmMaintenanceToken()).rejects.toBeDefined()
+    vi.restoreAllMocks()
+    closeDb()
+    await expect(readBootDecision()).resolves.toMatchObject({
+      maintenanceTokenArmed: true,
+    })
+  })
+
+  it("cannot disarm a persisted token through the one-way reset barrier", async () => {
+    expect(disarmMaintenanceToken).toBeTypeOf("function")
+    await armMaintenanceToken()
+    engageDatabaseAccessBarrier()
+
+    await expect(disarmMaintenanceToken()).rejects.toMatchObject({ code: "RESET_FAILED" })
+
+    resetDatabaseAccessBarrierForTesting()
+    await expect(readBootDecision()).resolves.toMatchObject({
+      maintenanceTokenArmed: true,
+    })
+  })
+
+  it.each(["arm", "disarm", "consume"] as const)(
+    "publishes only the peer invalidation marker after a successful token %s",
+    async (action) => {
+      if (action !== "arm") await armMaintenanceToken()
+      if (action === "disarm") expect(disarmMaintenanceToken).toBeTypeOf("function")
+      const peer = new BroadcastChannel("qr-crypt-maintenance-token")
+      const received: unknown[] = []
+      peer.onmessage = (event) => {
+        received.push(event.data)
+      }
+      try {
+        if (action === "arm") await armMaintenanceToken()
+        else if (action === "disarm") await disarmMaintenanceToken()
+        else await expect(consumeMaintenanceToken()).resolves.toBe(true)
+
+        await vi.waitFor(() => expect(received).toEqual([{ type: "changed" }]))
+      } finally {
+        peer.close()
+      }
+    },
+  )
 
   it("fails safe on malformed preferences only when sensitive data is confirmed", async () => {
     const database = await getDb()
@@ -313,7 +428,7 @@ describe("performUserRequestedReset", () => {
     expect(report).toEqual({ ok: true, failedSteps: [] })
   })
 
-  it("supports retry after a partially failed reset (no cross-call latch)", async () => {
+  it("uses separate coordinators for separate reset helper calls", async () => {
     const bestEffortReset: ResetSpy = vi
       .fn<(args: BestEffortResetArgs) => Promise<BestEffortResetReport>>()
       .mockResolvedValueOnce({ ok: false, failedSteps: ["database"] })

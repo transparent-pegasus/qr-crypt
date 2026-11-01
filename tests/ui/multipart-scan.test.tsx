@@ -7,6 +7,7 @@ import { QrScannerPanel } from "@/components/qr-scanner-panel"
 import { AppError, messageFor } from "@/crypto/errors"
 import { MultipartScanSession } from "@/features/multipart-scan-session"
 import { LanguageProvider } from "@/i18n"
+import { translate } from "@/i18n/messages"
 import type { TransferState } from "@/qr/multipart/transfer-state"
 import { deferred } from "../helpers/deferred"
 import { multipartPayload } from "./helpers/fakes/qr-codec"
@@ -20,8 +21,16 @@ import { resetUi } from "./helpers/render-app"
 function scanner(
   session: MultipartScanSession,
   onComplete = vi.fn(),
+  language: "en" | "ja" = "en",
 ) {
-  return <QrScannerPanel multipart={{ session, onComplete }} />
+  return (
+    <QrScannerPanel
+      cameraAvailable
+      title={translate(language, "scanner.defaultTitle")}
+      stopHint={translate(language, "scanner.stopHint.multipart")}
+      multipart={{ session, onComplete }}
+    />
+  )
 }
 
 describe("QrScannerPanel multipart scan", () => {
@@ -394,7 +403,7 @@ describe("QrScannerPanel multipart scan", () => {
       const session = new MultipartScanSession(5)
       render(
         <LanguageProvider initialLanguage={language}>
-          {scanner(session)}
+          {scanner(session, undefined, language)}
         </LanguageProvider>,
       )
       await user.click(screen.getByRole("button", { name: startLabel }))

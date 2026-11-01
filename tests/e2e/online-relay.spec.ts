@@ -60,8 +60,6 @@ function expectAllowedRelayRequest(request: ObservedRequest): void {
       url.pathname === "/encrypt" ||
       url.pathname === "/manifest.webmanifest" ||
       url.pathname === "/sw.js" ||
-      url.pathname === "/registerSW.js" ||
-      /^\/workbox-[A-Za-z0-9_-]+\.js$/.test(url.pathname) ||
       /^\/(?:assets|icons)\//.test(url.pathname) ||
       (request.fromServiceWorker &&
         (url.pathname === "/index.html" || url.pathname === "/favicon.svg")),
