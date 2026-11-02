@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { OCM1_MESSAGE_33, OCM1_MESSAGE_44 } from "../fixtures/relay-legacy"
@@ -208,6 +208,13 @@ async function startImageCapture(user: ReturnType<typeof userEvent.setup>) {
     }),
   )
   await waitFor(() => expect(scanText).not.toBeNull())
+}
+
+// userEvent's async wrapper waits on its own timer under Vitest fake timers.
+async function clickRelayButton(name: string): Promise<void> {
+  await act(async () => {
+    screen.getByRole("button", { name }).click()
+  })
 }
 
 function playbackPayloads(marker: number): readonly [string, string] {
@@ -1349,6 +1356,193 @@ describe("online relay UI", () => {
     expect(screen.getByText(translate("en", "relay.error.timeout"))).toBeInTheDocument()
     expect(scanStop).toHaveBeenCalled()
   })
+
+  it.each(["QR → Text", "QR → QR", "Text → QR"] as const)(
+    "expires an idle %s session ten minutes after admission and unblocks a sensitive writer",
+    async (mode) => {
+      vi.useFakeTimers()
+      const admission = deferred<RelayLease | null>()
+      const lease = await acquireRelayLease()
+      expect(lease).not.toBeNull()
+      const sensitiveStore = new Map<string, string>()
+      const writeSensitiveStore = () =>
+        withSensitiveWriteLock(async () => {
+          sensitiveStore.set("key", "written")
+        })
+      let writer: Promise<void> | undefined
+      const rendered = renderRelay({ onSessionAcquire: () => admission.promise })
+      try {
+        await clickRelayButton(mode)
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2 * 60_000)
+        })
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+        await act(async () => {
+          admission.resolve(lease)
+          await admission.promise
+        })
+        expect(screen.getByRole("dialog")).toBeVisible()
+
+        writer = writeSensitiveStore()
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(599_999)
+        })
+        expect(sensitiveStore.has("key")).toBe(false)
+        expect(screen.getByRole("dialog")).toBeVisible()
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1)
+        })
+        expect.soft(sensitiveStore.get("key")).toBe("written")
+        expect.soft(screen.queryByRole("dialog")).not.toBeInTheDocument()
+        expect.soft(screen.queryByText(translate("en", "relay.error.timeout"))).toBeVisible()
+      } finally {
+        rendered.unmount()
+        lease?.release()
+        admission.resolve(null)
+        await writer
+      }
+    },
+  )
+
+  it.each([
+    { mode: "QR → Text", input: OCM1_MESSAGE_33, error: "relay.error.prefix" },
+    { mode: "QR → QR", input: payload(0), error: "relay.error.multiFrame" },
+    { mode: "Text → QR", input: OCM1_MESSAGE_33, error: "relay.error.prefix" },
+  ] as const)(
+    "does not extend the admission deadline after rejected input in $mode",
+    async ({ mode, input, error }) => {
+      vi.useFakeTimers()
+      renderRelay()
+      await clickRelayButton(mode)
+      if (mode !== "Text → QR") {
+        await clickRelayButton("Start camera")
+        expect(scanText).not.toBeNull()
+      }
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9 * 60_000)
+      })
+      if (mode === "Text → QR") {
+        fireEvent.change(screen.getByLabelText("Relay text"), { target: { value: input } })
+        await clickRelayButton("Show QR")
+      } else act(() => scanText?.(input))
+      expect(screen.getByText(translate("en", error))).toBeVisible()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(59_999)
+      })
+      expect(screen.getByRole("dialog")).toBeVisible()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect.soft(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      expect.soft(screen.queryByText(translate("en", "relay.error.timeout"))).toBeVisible()
+    },
+  )
+
+  it.each(["QR → Text", "QR → QR", "Text → QR"] as const)(
+    "does not extend the admission deadline for a late first valid frame in %s",
+    async (mode) => {
+      vi.useFakeTimers()
+      renderRelay()
+      await clickRelayButton(mode)
+      if (mode !== "Text → QR") {
+        await clickRelayButton("Start camera")
+        expect(scanText).not.toBeNull()
+      }
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(9 * 60_000)
+      })
+      if (mode === "Text → QR") {
+        fireEvent.change(screen.getByLabelText("Relay text"), { target: { value: symPayload() } })
+        await clickRelayButton("Show QR")
+      } else await act(async () => scanText?.(symPayload()))
+      if (mode === "QR → Text") {
+        expect(screen.getByLabelText("Relay text")).toHaveValue(symPayload())
+      } else expect(screen.getByRole("img")).toBeVisible()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(59_999)
+      })
+      expect(screen.getByRole("dialog")).toBeVisible()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect.soft(screen.queryByRole("dialog")).not.toBeInTheDocument()
+      expect.soft(screen.queryByText(translate("en", "relay.error.timeout"))).toBeVisible()
+    },
+  )
+
+  it("gives a reopened session a fresh deadline without firing the prior timer", async () => {
+    vi.useFakeTimers()
+    renderRelay()
+    await clickRelayButton("QR → Text")
+    await clickRelayButton("Start camera")
+    expect(scanText).not.toBeNull()
+    act(() => scanText?.(payload(0)))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+    })
+    await clickRelayButton("Close")
+    await clickRelayButton("Text → QR")
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+    })
+    expect(screen.getByRole("dialog")).toBeVisible()
+    expect(screen.queryByText(translate("en", "relay.error.timeout"))).not.toBeInTheDocument()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(299_999)
+    })
+    expect(screen.getByRole("dialog")).toBeVisible()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+    expect.soft(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect.soft(screen.queryByText(translate("en", "relay.error.timeout"))).toBeVisible()
+  })
+
+  it.each(["resolve", "reject"] as const)(
+    "aborts playback preparation at the admission deadline and ignores its late %s",
+    async (outcome) => {
+      vi.useFakeTimers()
+      const pending = deferred<string>()
+      const original = symPayload()
+      deferPreflight(pending, original)
+      const preparation = vi.spyOn(relayPlayback, "prepareRelayPlayback")
+      const rendered = renderRelay()
+      try {
+        await clickRelayButton("Text → QR")
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(9 * 60_000)
+        })
+        fireEvent.change(screen.getByLabelText("Relay text"), { target: { value: original } })
+        await clickRelayButton("Show QR")
+        const signal = preparation.mock.calls[0]?.[1]
+        const completion: ReturnType<typeof relayPlayback.prepareRelayPlayback> =
+          preparation.mock.results[0]?.value
+        expect(signal?.aborted).toBe(false)
+        expect(screen.queryByRole("img")).not.toBeInTheDocument()
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(59_999)
+        })
+        expect(signal?.aborted).toBe(false)
+        expect(screen.getByRole("dialog")).toBeVisible()
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1)
+        })
+        expect.soft(signal?.aborted).toBe(true)
+        expect.soft(screen.queryByRole("dialog")).not.toBeInTheDocument()
+        await act(async () => {
+          if (outcome === "resolve") pending.resolve(dataUrl(original))
+          else pending.reject(new Error("late playback render failure"))
+          await completion
+        })
+        expect.soft(screen.queryByRole("img")).not.toBeInTheDocument()
+        expect.soft(screen.queryByText(translate("en", "errors.QR_TOO_LARGE"))).not.toBeInTheDocument()
+        expect.soft(screen.queryByText(translate("en", "relay.error.timeout"))).toBeVisible()
+      } finally {
+        rendered.unmount()
+        pending.resolve(dataUrl(original))
+      }
+    },
+  )
 
   it("shows the QR → QR usage hint on the relay card", () => {
     renderRelay()
