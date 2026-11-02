@@ -23,7 +23,6 @@ import {
 } from "@/storage/database"
 import {
   confirmBundleFingerprint,
-  findBundleByKemKeyId,
   findBundleBySigningKeyId,
   getBundle,
   listBundles,
@@ -33,7 +32,6 @@ import {
 import {
   deleteSupersededIdentities,
   findIdentityByKemKeyId,
-  findIdentityBySigningKeyId,
   getIdentity,
   markIdentityUsed,
   renameIdentity,
@@ -184,7 +182,9 @@ describe("PQ envelope and storage integration", () => {
       trustConfirmedAt: NOW + 3,
     })
 
-    const selectedRecipient = await findBundleByKemKeyId(recipient.kem.keyId)
+    const selectedRecipient = (await listBundles()).find(
+      (record) => record.recordId === recipientRecord.recordId,
+    )
     expect(selectedRecipient?.recordId).toBe(recipientRecord.recordId)
     const plaintext = utf8ToBytes("PQ integration message")
     const envelope = await encryptPq({
@@ -264,8 +264,7 @@ describe("PQ envelope and storage integration", () => {
     await saveRotation(rotation)
     const oldRecipient = await findIdentityByKemKeyId(recipient.kem.keyId)
     expect(oldRecipient).toMatchObject({ id: recipient.id, status: "rotated" })
-    expect(await findIdentityBySigningKeyId(recipient.signing.keyId)).toBeUndefined()
-    expect(await findIdentityBySigningKeyId(rotation.next.signing.keyId)).toMatchObject({
+    expect(await getIdentity(rotation.next.id)).toMatchObject({
       id: rotation.next.id,
       status: "active",
     })
@@ -285,7 +284,6 @@ describe("PQ envelope and storage integration", () => {
     await revokeIdentity(sender.id, NOW + 6)
     const revokedSender = await getIdentity(sender.id)
     expect(revokedSender?.status).toBe("revoked")
-    expect(await findIdentityBySigningKeyId(sender.signing.keyId)).toBeUndefined()
     expect(await findIdentityByKemKeyId(sender.kem.keyId)).toMatchObject({
       id: sender.id,
       status: "revoked",
@@ -301,11 +299,11 @@ describe("PQ envelope and storage integration", () => {
     ).rejects.toMatchObject({ code: "ENCRYPTION_FAILED" })
 
     await revokeBundle(recipientRecord.recordId, NOW + 8)
-    expect(await findBundleByKemKeyId(recipient.kem.keyId)).toBeUndefined()
     expect((await listBundles()).map((record) => record.recordId)).not.toContain(
       recipientRecord.recordId,
     )
     const revokedRecipient = await getBundle(recipientRecord.recordId)
+    expect(revokedRecipient?.revokedAt).toBe(NOW + 8)
     await expect(
       encryptPq({
         client,

@@ -291,6 +291,9 @@ export function DecryptPage() {
               placeholder={t("decrypt.payloadPlaceholder")}
               autoComplete="off"
               spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              {...{ writingsuggestions: "false" }}
               disabled={busy}
             />
           </div>

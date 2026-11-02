@@ -11,6 +11,7 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify("test"),
+    __PRECACHE_MANIFEST__: "globalThis.__PRECACHE_MANIFEST__",
     __DEPLOYMENT_HEADER_POLICY__: JSON.stringify(
       deploymentPolicyFromHeaders(
         readFileSync(new URL("./public/_headers", import.meta.url), "utf8"),
@@ -45,7 +46,7 @@ export default defineConfig({
           include: ["tests/ui/**/*.test.tsx"],
           setupFiles: ["tests/setup/jsdom.ts", "tests/helpers/boot-fixtures.ts"],
           benchmark: {
-            include: ["tests/bench/**/*.bench.ts"],
+            include: [],
           },
         },
       },

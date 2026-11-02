@@ -111,10 +111,10 @@ export function OnlineRelay({
   const joinedTextRef = useRef("")
   const imageLockRef = useRef(false)
   const playbackTextRef = useRef("")
-  const playbackFramesRef = useRef<readonly QrFrameV2[]>([])
   const startupAbortRef = useRef<AbortController | null>(null)
   const liveHandleRef = useRef<QrScanHandle | null>(null)
   const lifetimeTimeoutRef = useRef<number | null>(null)
+  const playbackPreparationAbortRef = useRef<AbortController | null>(null)
   const playbackAnimationAbortRef = useRef<AbortController | null>(null)
   const playbackOperationRef = useRef(0)
   const sessionGenerationRef = useRef(0)
@@ -148,6 +148,8 @@ export function OnlineRelay({
       relayLeaseRef.current = null
       playbackOperationRef.current += 1
       sessionGenerationRef.current += 1
+      playbackPreparationAbortRef.current?.abort()
+      playbackPreparationAbortRef.current = null
       stopCameraOnly()
       if (lifetimeTimeoutRef.current !== null) {
         window.clearTimeout(lifetimeTimeoutRef.current)
@@ -159,7 +161,6 @@ export function OnlineRelay({
       joinedTextRef.current = ""
       imageLockRef.current = false
       playbackTextRef.current = ""
-      playbackFramesRef.current = []
       if (!mountedRef.current) return
       setDialogMode(null)
       setCapture(EMPTY_RELAY_CAPTURE)
@@ -443,10 +444,12 @@ export function OnlineRelay({
 
   const copyCaptureText = async () => {
     if (joinedTextRef.current.length === 0) return
+    const generation = sessionGenerationRef.current
     setCaptureError(null)
     try {
       await copyTextToClipboard(joinedTextRef.current)
     } catch {
+      if (generation !== sessionGenerationRef.current || !mountedRef.current) return
       setCaptureError("relay.error.copy")
     }
   }
@@ -465,10 +468,13 @@ export function OnlineRelay({
   }
 
   const showPlayback = async () => {
+    playbackPreparationAbortRef.current?.abort()
+    const preparationAbort = new AbortController()
+    playbackPreparationAbortRef.current = preparationAbort
     const input = playbackTextRef.current
     const operation = ++playbackOperationRef.current
     const generation = sessionGenerationRef.current
-    const prepared = await prepareRelayPlayback(input)
+    const prepared = await prepareRelayPlayback(input, preparationAbort.signal)
     // One staleness gate for every outcome: a superseded input or an ended session
     // must not publish its verdict, error included.
     if (
@@ -478,7 +484,9 @@ export function OnlineRelay({
     ) {
       return
     }
+    playbackPreparationAbortRef.current = null
     if (!prepared.ok) {
+      if (prepared.reason === "cancelled") return
       if (prepared.reason === "render") {
         endSession()
         if (mountedRef.current) {
@@ -493,7 +501,6 @@ export function OnlineRelay({
     playbackAnimationAbortRef.current?.abort()
     const animationAbort = new AbortController()
     playbackAnimationAbortRef.current = animationAbort
-    playbackFramesRef.current = prepared.frames
     setPlaybackFrames(prepared.frames)
     setPlaybackAnimationSignal(animationAbort.signal)
     setPlaybackError(null)
@@ -710,6 +717,11 @@ export function OnlineRelay({
                 <Textarea
                   id="relay-captured-text"
                   className="min-h-36 font-mono text-xs"
+                  spellCheck={false}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  {...{ writingsuggestions: "false" }}
                   readOnly
                   value={joinedText}
                 />
@@ -771,9 +783,16 @@ export function OnlineRelay({
               <Textarea
                 id="relay-playback-text"
                 className="min-h-36 font-mono text-xs"
+                spellCheck={false}
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                {...{ writingsuggestions: "false" }}
                 value={playbackText}
                 onChange={(event) => {
                   playbackOperationRef.current += 1
+                  playbackPreparationAbortRef.current?.abort()
+                  playbackPreparationAbortRef.current = null
                   playbackTextRef.current = event.target.value
                   setPlaybackText(event.target.value)
                   setPlaybackMissingIndexes([])

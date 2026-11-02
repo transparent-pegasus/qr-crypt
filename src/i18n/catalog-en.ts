@@ -70,7 +70,6 @@ export const en = {
   "errors.QR_READER_BLOCKED":
     "This browser blocks the QR reader. On iPhone, use Safari 16 or newer.",
   "errors.DUPLICATE_KEY": "A key with the same contents is already stored.",
-  "errors.DUPLICATE_QR": "A QR code with the same contents is already stored.",
   "errors.KEY_ID_CONFLICT":
     "One of these key IDs is already reserved by a stored bundle, which may be disabled and hidden from the list. The import was refused.",
   "errors.MESSAGE_ID_REUSED":
@@ -140,7 +139,7 @@ export const en = {
     "Pass encrypted messages between a messenger and an offline device using QR codes and text. This works only while a scan finds no keys, PQ identities, or Vault on this device; nothing is decrypted and no keys are used.",
   "relay.boundary.title": "Untrusted relay boundary",
   "relay.boundary.body":
-    "This relay accepts only encrypted message frames (OCF2 pq-message or sym-message). It checks their format but does not decrypt or verify them. Frames remain in this page's memory for this session only, with no app-managed persistence, and the relay makes no payload-bearing network request. The copy action places text on the system clipboard, which is outside the app's control. Everything the sender chose — the ciphertext, transferId, IV, and createdAt values — stays untrusted and can carry covert data until the receiving offline device authenticates it. Exchange keys face to face, never through this relay.",
+    "This relay accepts only encrypted message frames (OCF2 pq-message or sym-message). It checks their format but does not decrypt or verify them. Message kind, stable key identifiers (including the recipient's key identifier), symmetric-message creation time, artifact size, and frame counts remain visible. Frames remain in this page's memory for this session only, with no app-managed persistence, and the relay makes no payload-bearing network request. The copy action places text on the system clipboard, which is outside the app's control. Sender-chosen ciphertext, transferId, IV, and createdAt values can carry covert data. Authentication by the receiving offline device does not prove that the sender's device is uncompromised. Exchange keys face to face, never through this relay.",
   "relay.capture.open": "QR → Text",
   "relay.capture.unavailable":
     "Camera capture is unavailable on this device. Text-to-QR playback remains available.",
@@ -534,6 +533,8 @@ export const en = {
     "Key retention has been armed for the next transition only",
   "settings.error.maintenanceFailed":
     "The maintenance token could not be set. Confirm that the device is offline.",
+  "settings.error.maintenanceDisarmFailed":
+    "The maintenance token could not be disarmed. Key retention may still be armed. Check the device storage and retry.",
   "settings.title": "Settings",
   "settings.card.display": "Display",
   "settings.field.theme": "Theme",
@@ -567,8 +568,16 @@ export const en = {
   "settings.wipeOff.cancel": "Cancel",
   "settings.maintenance.button": "Keep keys across the next online transition only",
   "settings.maintenance.hint":
-    "This can be armed only while offline. It is not a recovery path for stored ciphertext and always expires after the next verified transition.",
+    "Arm this only while offline. It remains armed across reloads until explicitly disarmed or consumed by the next verified online transition. It has no time limit and does not recover stored ciphertext.",
   "settings.maintenance.onlineDisabled": "This cannot be set while online.",
+  "settings.maintenance.armedNotice":
+    "Key retention is armed for the next verified online transition. It remains armed across reloads until used or explicitly disarmed. Review or disarm it in Settings.",
+  "settings.maintenance.armedStatus": "One-time key retention is armed.",
+  "settings.maintenance.unarmedStatus":
+    "No maintenance token is armed. The next verified online transition follows the normal reset setting.",
+  "settings.maintenance.unknownStatus":
+    "Maintenance-token state could not be confirmed. A key-retention exemption may still be armed.",
+  "settings.maintenance.disarm": "Disarm maintenance token",
   "settings.advanced.title": "Advanced: reset churn",
   "settings.advanced.field": "reset churn ({min}–{max} MB)",
   "settings.resetChurn.warning":
@@ -583,7 +592,7 @@ export const en = {
   "settings.sw.unavailable":
     "This feature is unavailable: Service Worker. Offline startup is unavailable.",
   "settings.pwa.noUpdatePolicy":
-    "In-place upgrades are not supported. To install a new version, follow media-appropriate sanitization guidance or use a replacement device. App reset and ordinary formatting do not guarantee physical erasure.",
+    "In-place upgrades are not supported. The browser can still replace Service Worker code when this origin is reachable; keep the installed device offline. To install a new version, follow media-appropriate sanitization guidance or use a replacement device. App reset and ordinary formatting do not guarantee physical erasure.",
   "settings.info.version": "Version",
   "settings.info.build": "Build",
   "settings.pwa.offlineReadyNote":
@@ -593,18 +602,20 @@ export const en = {
     "If Web Crypto or IndexedDB is unavailable, the UNSUPPORTED_BROWSER screen stops all features.",
   "settings.security.title": "About security",
   "settings.security.scope":
-    "This app guarantees only that the application does not intentionally transmit plaintext or secret keys.",
+    "This application is designed to keep plaintext and secret keys on the offline device.",
   "settings.security.outOfScope.heading": "Out of scope:",
   "settings.security.outOfScope.1": "Compromise of the OS, browser, or firmware",
   "settings.security.outOfScope.2": "Keyloggers, screen recording, and screenshots",
   "settings.security.outOfScope.3": "Malware that captures camera frames",
   "settings.security.outOfScope.4":
-    "Supply-chain compromise during the initial PWA download or reinstallation",
+    "Supply-chain compromise during the initial PWA download, reinstallation, or browser replacement of Service Worker code",
   "settings.security.outOfScope.5": "Physical theft of the device",
   "settings.security.outOfScope.6": "Accidental sharing of a secret QR code",
   "settings.security.outOfScope.7": "Key loss caused by clearing browser data",
   "settings.security.offlineDisplayNote":
     "The offline indicator is supporting information about the current network state, not proof of security.",
+  "settings.security.inputHintsNote":
+    "Sensitive fields ask the browser to disable spelling checks and writing suggestions. These are best-effort hints; they do not control the OS, keyboard, or input method.",
   "settings.security.caveat.1":
     "The integration of noble used by this app has not completed an independent audit.",
   "settings.security.caveat.2":

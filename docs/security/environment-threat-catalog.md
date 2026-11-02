@@ -56,10 +56,24 @@ where consequence and feasibility are recorded separately.
   E8/T21's 277-bit sender-controlled floor in a legitimate symmetric transfer
   remains unchanged. Source retrieval and exact-device measurement gaps are
   retained below; this is not an exhaustive search for every possible attack.
-- Registered in `.claude/skills/freshness/targets.yaml` as
-  `environment-threats`. Integrated application/release verification remains
-  pending; the prior `last_checked` date is retained until the complete unit
-  passes. Physical-device and procedure-effectiveness evidence is unmeasured.
+- On 2026-10-29, E11 was reconciled with the completed 2026-09-07 regression
+  record in security-review.md §1.4. The ordinary and extracted-archive
+  browser suites each passed 40/40. This was agent self-review and desktop
+  browser emulation, not an independent third-party audit or physical-device
+  measurement; comparison-procedure effectiveness remains unmeasured.
+- The 2026-10-30 bounded review checked the identity and content of 23 usable
+  primary responses from the 2026-10-29 batch. Its 24th response, Ravi/TCHES,
+  was an Anubis challenge, not source content. E5 instead uses the author/ePrint
+  abstract separately reviewed on 2026-10-30; its full paper was not retrieved.
+  Sources were reconciled with the integrated application and recorded
+  ordinary/extracted browser passes (43/43 each; security-review.md §1.6).
+  Applicability, labels, related threats and EN/JA references were checked;
+  no new technique or application-addressable entry was identified. The original
+  substantive assessment date and van Eck/2004 full-paper gaps remain. This is
+  source/applicability reconciliation, not new device, facility or operator research.
+- Registered as `environment-threats` in
+  `.claude/skills/freshness/targets.yaml`; its 2026-10-30 review date covers
+  that bounded method and consistency verification only.
 
 ---
 
@@ -153,7 +167,10 @@ do not bound timing, power, EM leakage, or GC/native copies.
 
 **Evidence.** `Evidence` for generic lattice-KEM implementation attacks:
 Ravi et al.,
-[*Generic Side-channel attacks on CCA-secure lattice-based PKE and KEMs* (2020-06-19)](https://tches.iacr.org/index.php/TCHES/article/view/8592).
+[*Generic Side-channel attacks on CCA-secure lattice-based PKE and KEM schemes*
+(TCHES 2020-06-19; author/ePrint abstract)](https://eprint.iacr.org/2019/948).
+The abstract reports EM-assisted attacks on round-2 LWE/LWR implementations
+in pqm4 on Cortex-M4; only the abstract was reviewed on 2026-10-30.
 Guo, Nabokov, Johansson's
 [USENIX Security 2026 paper](https://www.usenix.org/conference/usenixsecurity26/presentation/guo-qian)
 ([final PDF](https://www.usenix.org/system/files/usenixsecurity26-guo-qian.pdf))
@@ -270,7 +287,7 @@ media characteristics, and verification matter.
 **Position.** `EXTERNAL_ASSURANCE` for media-specific sanitization and verified
 disposal. The citation alone approves no physical destruction method.
 
-**Touches.** threat-model §5 “No update path”, T17.
+**Touches.** threat-model §5 “No supported in-app upgrade”, T17.
 
 ## E11 — Operator conditions
 
@@ -289,7 +306,11 @@ over an independent channel. **Save without verification** is a separate choice;
 unverified bundles cannot be encryption recipients, while signatures under
 their stored keys can still be checked without asserting person-binding.
 Symmetric import requires the full key comparison but persists no trust state.
-Independent regression verification remains pending on the integrated tree.
+The 2026-09-07 ordinary and extracted-archive browser suites each passed 40/40,
+including EN/JA full-digest and 320px layout regressions (§1.4). These are
+completed agent self-review and desktop-emulation results; no independent
+third-party audit, physical-device comparison, or operator-effectiveness
+measurement follows.
 
 **Position.** `REPOSITORY_IMPLEMENTABLE` for the display and trust-state gate;
 `EXTERNAL_ASSURANCE` for the comparison procedure. A checkbox or

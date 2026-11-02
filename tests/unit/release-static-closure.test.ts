@@ -20,7 +20,7 @@ function closureFixture() {
 }
 
 describe("validate-static-closure.cjs", () => {
-  it("silently accepts an origin-root PWA with existing assets, query and fragment URLs", () => {
+  it("silently accepts a single-file worker PWA with assets, query and fragment URLs", () => {
     const outcome = closureFixture().execute()
 
     expect(outcome.status, outcome.stderr).toBe(0)
@@ -89,12 +89,14 @@ describe("validate-static-closure.cjs", () => {
   it.each([
     '{url:"reachability-sentinel.txt"}',
     '{"url":"/reachability-sentinel.txt"}',
+    '{"url": "reachability-sentinel.txt", "revision": "fixture"}',
+    '{"url": "/reachability-sentinel.txt", "revision": "fixture"}',
     "{'url': 'reachability-sentinel.txt'}",
   ])("rejects precaching the reachability sentinel as %s", (entry) => {
     const fixture = closureFixture()
     appendFileSync(
       path.join(fixture.root, "dist/sw.js"),
-      `workbox.precaching.precacheAndRoute([${entry}]);\n`,
+      `precacheAndRoute([${entry}]);\n`,
     )
     const outcome = fixture.execute()
 

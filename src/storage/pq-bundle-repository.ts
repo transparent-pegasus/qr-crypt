@@ -1,6 +1,5 @@
 // CRUD for the pqPublicBundles store.
-// keyPath: recordId / indexes: by-identityId (non-unique), signing.keyId and
-// kem.keyId (unique).
+// keyPath: recordId / unique indexes: by-signingKeyId and by-kemKeyId.
 //
 // Rules (frozen):
 //   - Encryption recipient selection uses only records without revokedAt.
@@ -71,35 +70,18 @@ export async function getBundle(
   }
 }
 
-async function resolveByIndex(
-  index: "by-signingKeyId" | "by-kemKeyId",
-  keyId: string,
-): Promise<PqPublicBundleRecord | undefined> {
-  const value = await (await getDb()).getFromIndex(
-    STORE_PQ_PUBLIC_BUNDLES,
-    index,
-    keyId,
-  )
-  const record = value === undefined ? undefined : safeBundle(value)
-  // Revoked records stay unresolvable: treat them as unknown, never as a fallback.
-  return record === undefined || record.revokedAt !== undefined ? undefined : record
-}
-
 export async function findBundleBySigningKeyId(
   signingKeyId: string,
 ): Promise<PqPublicBundleRecord | undefined> {
   try {
-    return await resolveByIndex("by-signingKeyId", signingKeyId)
-  } catch (error) {
-    throw toAppError(error, "STORAGE_FAILED")
-  }
-}
-
-export async function findBundleByKemKeyId(
-  kemKeyId: string,
-): Promise<PqPublicBundleRecord | undefined> {
-  try {
-    return await resolveByIndex("by-kemKeyId", kemKeyId)
+    const value = await (await getDb()).getFromIndex(
+      STORE_PQ_PUBLIC_BUNDLES,
+      "by-signingKeyId",
+      signingKeyId,
+    )
+    const record = value === undefined ? undefined : safeBundle(value)
+    // Revoked records stay unresolvable: treat them as unknown, never as a fallback.
+    return record === undefined || record.revokedAt !== undefined ? undefined : record
   } catch (error) {
     throw toAppError(error, "STORAGE_FAILED")
   }

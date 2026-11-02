@@ -135,19 +135,6 @@ export function saveSymmetricRotation(rotated: RotatedSymmetricKey): Promise<voi
   })
 }
 
-export async function findKeyByFingerprint(
-  sha256Hex: string,
-): Promise<StoredKeyRecord | undefined> {
-  try {
-    const value = await (
-      await getDb()
-    ).getFromIndex(STORE_KEYS, "by-fingerprint", sha256Hex)
-    return value === undefined ? undefined : checkedRecord(value)
-  } catch (error) {
-    throw toAppError(error, "STORAGE_FAILED")
-  }
-}
-
 export async function renameKeyRecord(id: string, name: string): Promise<void> {
   try {
     const parsedName = keyNameSchema.parse(name)

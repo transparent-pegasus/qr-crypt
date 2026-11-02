@@ -13,6 +13,7 @@ import {
   type PublicationCall,
   type Release,
 } from "../fixtures/release-publication"
+import { sha256 } from "../fixtures/tested-archive"
 
 function expectVerified(calls: PublicationCall[]) {
   expect(calls.some(({ args }) => args[0] === "release" && args[1] === "verify")).toBe(
@@ -66,6 +67,71 @@ const publishedRelease = () =>
   })
 
 describe("inline release publication", () => {
+  it.each([
+    { name: "packaged", env: { PACKAGED_ARCHIVE_SHA256: "0".repeat(64) } },
+    { name: "tested", env: { TESTED_ARCHIVE_SHA256: "0".repeat(64) } },
+    {
+      name: "both",
+      env: {
+        PACKAGED_ARCHIVE_SHA256: "0".repeat(64),
+        TESTED_ARCHIVE_SHA256: "0".repeat(64),
+      },
+    },
+  ])("refuses a mismatching $name digest before release mutation", ({ env }) => {
+    const fixture = publicationFixture({ release: matchingRelease() })
+    const before = fixture.state()
+    const assets = fixture.assets()
+    const outcome = fixture.execute(env)
+
+    expect(outcome.status, outcome.stderr).not.toBe(0)
+    expect(mutationCalls(outcome.calls)).toEqual([])
+    expect(outcome.calls.some(({ command }) => command === "docker")).toBe(false)
+    expect(fixture.state()).toEqual(before)
+    expect(fixture.assets()).toEqual(assets)
+  })
+
+  describe.each(["PACKAGED_ARCHIVE_SHA256", "TESTED_ARCHIVE_SHA256"])(
+    "%s validation",
+    (name) => {
+      it("rejects the actual ZIP digest in uppercase before release mutation", () => {
+        const fixture = publicationFixture({ release: matchingRelease() })
+        const digest = sha256(fixture.expectedAssets[ARCHIVE_NAME]!).toUpperCase()
+        const outcome = fixture.execute({ [name]: digest })
+        expect(outcome.status, outcome.stderr).not.toBe(0)
+        expect(mutationCalls(outcome.calls)).toEqual([])
+        expect(outcome.calls.some(({ command }) => command === "docker")).toBe(false)
+      })
+
+      it.each([
+        undefined,
+        "",
+        "A".repeat(64),
+        "a".repeat(63),
+        "g".repeat(64),
+        `${"a".repeat(64)}\n`,
+      ])("rejects missing or noncanonical digest %j before release mutation", (value) => {
+        const fixture = publicationFixture({ release: matchingRelease() })
+        const outcome = fixture.execute({ [name]: value })
+        expect(outcome.status, outcome.stderr).not.toBe(0)
+        expect(mutationCalls(outcome.calls)).toEqual([])
+        expect(outcome.calls.some(({ command }) => command === "docker")).toBe(false)
+      })
+    },
+  )
+
+  it("publishes when packaged and tested digests both identify the actual ZIP", () => {
+    const fixture = publicationFixture({ release: null, tag: null })
+    const digest = sha256(fixture.expectedAssets[ARCHIVE_NAME]!)
+    const outcome = fixture.execute({
+      PACKAGED_ARCHIVE_SHA256: digest,
+      TESTED_ARCHIVE_SHA256: digest,
+    })
+    expect(outcome.status, outcome.stderr).toBe(0)
+    expect(fixture.state().release).toMatchObject({ draft: false, immutable: true })
+    expect(fixture.assets()).toEqual(fixture.expectedAssets)
+    expectVerified(outcome.calls)
+  })
+
   it.each([
     { name: "empty", names: [] },
     { name: "partial", names: ["SHA256SUMS"] },

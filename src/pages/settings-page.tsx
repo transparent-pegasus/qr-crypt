@@ -13,8 +13,10 @@ import {
 import { toast } from "sonner"
 import {
   armMaintenanceToken,
+  disarmMaintenanceToken,
   getDefaultBootController,
 } from "@/app/boot/boot-controller"
+import { useMaintenanceToken } from "@/hooks/use-maintenance-token"
 import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
 import {
   useFeatureSupport,
@@ -84,6 +86,7 @@ export function SettingsPage() {
   const features = useFeatureSupport()
   const { theme, setTheme } = useTheme()
   const { clearTransient } = useTransientClear()
+  const maintenanceToken = useMaintenanceToken()
   const { refresh: refreshKeys } = useKeys()
   const {
     preferences,
@@ -203,12 +206,26 @@ export function SettingsPage() {
     setError(null)
     try {
       await armMaintenanceToken()
+      await maintenanceToken.refresh()
       setMaintenanceOpen(false)
       setMaintenanceConfirmation("")
       setMaintenanceAcknowledged(false)
       toast.success(t("settings.toast.maintenanceArmed"))
     } catch {
       setError("settings.error.maintenanceFailed")
+    } finally {
+      setWorking(false)
+    }
+  }
+
+  const disarmMaintenance = async () => {
+    setWorking(true)
+    setError(null)
+    try {
+      await disarmMaintenanceToken()
+      await maintenanceToken.refresh()
+    } catch {
+      setError("settings.error.maintenanceDisarmFailed")
     } finally {
       setWorking(false)
     }
@@ -265,11 +282,9 @@ export function SettingsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="A256GCM">{t("algorithm.A256GCM")}</SelectItem>
-              {env.enableMlKem && env.enableMlDsa && (
-                <SelectItem value="MLKEM1024_MLDSA87_A256GCM">
-                  {t("algorithm.MLKEM1024_MLDSA87_A256GCM")}
-                </SelectItem>
-              )}
+              <SelectItem value="MLKEM1024_MLDSA87_A256GCM">
+                {t("algorithm.MLKEM1024_MLDSA87_A256GCM")}
+              </SelectItem>
             </SelectContent>
           </Select>
         </SettingField>
@@ -382,11 +397,31 @@ export function SettingsPage() {
             <AlertDescription>{t("settings.wipeOnOnline.offBody")}</AlertDescription>
           </Alert>
         )}
+        <p role="status" className="text-sm">
+          {t(
+            maintenanceToken.readFailed || maintenanceToken.armed === null
+              ? "settings.maintenance.unknownStatus"
+              : maintenanceToken.armed
+                ? "settings.maintenance.armedStatus"
+                : "settings.maintenance.unarmedStatus",
+          )}
+        </p>
+        {maintenanceToken.armed !== false && (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 w-full"
+            disabled={working}
+            onClick={() => void disarmMaintenance()}
+          >
+            {t("settings.maintenance.disarm")}
+          </Button>
+        )}
         <Button
           type="button"
           variant="outline"
           className="h-11 w-full"
-          disabled={navigatorOnline}
+          disabled={working || navigatorOnline}
           onClick={() => {
             setMaintenanceConfirmation("")
             setMaintenanceAcknowledged(false)
@@ -578,6 +613,7 @@ export function SettingsPage() {
                 </ul>
               </div>
               <p>{t("settings.security.offlineDisplayNote")}</p>
+              <p>{t("settings.security.inputHintsNote")}</p>
               <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
                 <li>{t("settings.security.caveat.1")}</li>
                 <li>{t("settings.security.caveat.2")}</li>

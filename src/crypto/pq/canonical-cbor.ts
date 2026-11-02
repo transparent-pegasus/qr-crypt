@@ -315,7 +315,7 @@ export function decodeCanonicalCbor(bytes: Uint8Array): unknown {
 
 // ---------------------------------------------------------------------------
 // Structural guards validate protocol-level constants. validation.ts
-// layers complete strict Zod validation on top.
+// adds PQ limits and frame cross-field checks.
 // ---------------------------------------------------------------------------
 
 function guardKeys(

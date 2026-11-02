@@ -15,8 +15,10 @@ QR Crypt is a Progressive Web App you install on a device you then keep permanen
 offline. You type a message; the app encrypts it on that device and shows the ciphertext on
 screen as a QR code. Your everyday online phone scans that code, turns it into a text
 string, and sends it through any ordinary messenger. The recipient does the same in
-reverse. Only the two offline devices ever see the real message — though anyone watching
-the messenger can still see how large it is and how many pieces it came in.
+reverse and decrypts the message on the offline device. Anyone watching the
+transfer can still read the message type, stable shared-key or recipient-key identifier,
+size, and frame count. Shared-key messages also expose the sender-reported creation time;
+repeated key identifiers allow transfers to be linked.
 
 **What it does**: encryption and decryption on the offline device (AES-256-GCM, or the
 post-quantum ML-KEM / ML-DSA suites), key generation and management, QR display and
@@ -221,8 +223,11 @@ erasure on flash media. When assurance matters, use a media-appropriate sanitiza
 procedure (for example NIST SP 800-88), or destroy the media. Details:
 [docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md).
 
-**There is no update mechanism.** To use a new version, sanitize the device and install
-fresh. Never bring a device that holds or has held keys, identities, or plaintext-bearing
-state back online without sanitizing it first.
+**There is no supported in-app upgrade.** If the installed origin becomes reachable,
+the browser's service-worker lifecycle can fetch and activate replacement code. Permanent
+offline operation is a deployment requirement, not a browser guarantee that code stays
+unchanged ([threat model, §5](docs/security/threat-model.md)). To use a new version,
+sanitize the device and install fresh. Never bring a device that holds or has held keys,
+identities, or plaintext-bearing state back online without sanitizing it first.
 
 This project is distributed under the Apache License 2.0 ([LICENSE](LICENSE)).

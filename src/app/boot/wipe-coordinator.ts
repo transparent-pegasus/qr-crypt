@@ -191,8 +191,8 @@ export function wipeOnOnline(args: WipeCoordinatorArgs): Promise<BestEffortReset
   return defaultCoordinator.wipe(args)
 }
 
-// The online terminal path memoizes one execution. Settings gets a fresh
-// coordinator per attempt so a partial reset can be retried without reloading.
+// The online terminal path memoizes one execution. Each helper call creates a
+// separate coordinator; the production database barrier remains one-way until reload.
 export function performUserRequestedReset(
   args: { resetChurnMb: number; resetTransient: () => void },
   overrides: Partial<WipeCoordinatorDependencies> = {},

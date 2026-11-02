@@ -72,7 +72,6 @@ export const ja = {
   "errors.QR_READER_BLOCKED":
     "このブラウザーではQRコードリーダーがブロックされています。iPhoneではSafari 16以降を使用してください。",
   "errors.DUPLICATE_KEY": "同じ内容の鍵がすでに保存されています。",
-  "errors.DUPLICATE_QR": "同じ内容のQRコードがすでに保存されています。",
   "errors.KEY_ID_CONFLICT":
     "この鍵IDのいずれかは、保存済みバンドルによってすでに予約されています。そのバンドルは利用停止済みで一覧に表示されていない場合もあります。取り込みを中止しました。",
   "errors.MESSAGE_ID_REUSED":
@@ -143,7 +142,7 @@ export const ja = {
     "QRコードとテキストで、メッセンジャーとオフライン端末の間で暗号化済みメッセージを受け渡します。走査で鍵・PQ identity・Vaultが無いと確認できた端末でのみ使え、復号は行わず、鍵も使いません。",
   "relay.boundary.title": "信頼しない中継境界",
   "relay.boundary.body":
-    "このリレーは暗号化済みメッセージフレーム(OCF2のpq-messageまたはsym-message)だけを受け入れます。形式だけを検査し、復号や検証は行いません。フレームはこのページのメモリーにセッション中だけ保持され、アプリが管理する永続化は行いません。ペイロードを含むネットワークリクエストは行いません。コピー操作ではテキストがシステムのクリップボードに置かれ、その後はアプリの制御外になります。送信者が決めた値(暗号文・transferId・IV・createdAt)は隠れたデータを運べ、受信側のオフライン端末が認証するまで信頼できません。鍵の交換は必ず対面で行い、このリレーでは行わないでください。",
+    "このリレーは暗号化済みメッセージフレーム(OCF2のpq-messageまたはsym-message)だけを受け入れます。形式だけを検査し、復号や検証は行いません。メッセージ種別、受信者の鍵IDを含む固定の鍵識別子、対称暗号メッセージの作成時刻、データサイズ、フレーム数は中継側から見えます。フレームはこのページのメモリーにセッション中だけ保持され、アプリが管理する永続化は行いません。ペイロードを含むネットワークリクエストは行いません。コピー操作ではテキストがシステムのクリップボードに置かれ、その後はアプリの制御外になります。送信者が決めた値(暗号文・transferId・IV・createdAt)は隠れたデータを運べます。受信側のオフライン端末による認証は、送信者の端末が侵害されていないことの証明にはなりません。鍵の交換は必ず対面で行い、このリレーでは行わないでください。",
   "relay.capture.open": "QR → テキスト",
   "relay.capture.unavailable":
     "この端末ではカメラを利用できません。テキストからQRへの再生は利用できます。",
@@ -536,6 +535,8 @@ export const ja = {
     "次の一回だけ鍵を保持する設定を arm しました",
   "settings.error.maintenanceFailed":
     "maintenance tokenを設定できませんでした。オフライン状態を確認してください。",
+  "settings.error.maintenanceDisarmFailed":
+    "maintenance tokenを解除できませんでした。鍵を保持する設定が残っている可能性があります。保存領域を確認して再試行してください。",
   "settings.title": "設定",
   "settings.card.display": "表示",
   "settings.field.theme": "テーマ",
@@ -571,8 +572,16 @@ export const ja = {
   "settings.wipeOff.cancel": "キャンセル",
   "settings.maintenance.button": "次のオンライン確定時だけ鍵を保持",
   "settings.maintenance.hint":
-    "オフライン中だけ arm できます。暗号文保存の救済経路ではなく、次の verified transition 後に必ず失効します。",
+    "オフライン中だけ設定できます。明示的に解除するか、次のオンライン確定時に一度使われるまで、再読み込み後も設定が残ります。時間による失効はなく、保存済み暗号文を復旧する機能ではありません。",
   "settings.maintenance.onlineDisabled": "オンライン中は設定できません。",
+  "settings.maintenance.armedNotice":
+    "次のオンライン確定時に鍵を一度だけ保持する設定が有効です。一度使うか明示的に解除するまで、再読み込み後も残ります。設定画面で確認・解除できます。",
+  "settings.maintenance.armedStatus": "次の一回だけ鍵を保持する設定が有効です。",
+  "settings.maintenance.unarmedStatus":
+    "maintenance tokenは設定されていません。次のオンライン確定時は通常の初期化設定に従います。",
+  "settings.maintenance.unknownStatus":
+    "maintenance tokenの状態を確認できませんでした。鍵を保持する設定が残っている可能性があります。",
+  "settings.maintenance.disarm": "maintenance tokenを解除",
   "settings.advanced.title": "Advanced: reset churn",
   "settings.advanced.field": "reset churn ({min}–{max} MB)",
   "settings.resetChurn.warning":
@@ -587,7 +596,7 @@ export const ja = {
   "settings.sw.unavailable":
     "この機能は利用できません: Service Worker。オフライン起動を利用できません。",
   "settings.pwa.noUpdatePolicy":
-    "既存のインストールをそのまま更新する方法はサポートしていません。新しいバージョンを使うには、記憶媒体に適したサニタイズ手順に従うか端末を交換してから、新規インストールしてください。アプリの初期化や通常のフォーマットでは物理消去は保証されません。",
+    "既存のインストールをそのまま更新する方法はサポートしていません。ただし、このオリジンに接続できるとブラウザーがService Workerのコードを置き換える可能性があるため、インストール済み端末はオフラインに保ってください。新しいバージョンを使うには、記憶媒体に適したサニタイズ手順に従うか端末を交換してから、新規インストールしてください。アプリの初期化や通常のフォーマットでは物理消去は保証されません。",
   "settings.info.version": "バージョン",
   "settings.info.build": "ビルド",
   "settings.pwa.offlineReadyNote":
@@ -597,7 +606,7 @@ export const ja = {
     "Web CryptoまたはIndexedDBが利用できない場合はUNSUPPORTED_BROWSER画面で全機能を停止します。",
   "settings.security.title": "セキュリティについて",
   "settings.security.scope":
-    "このアプリが保証するのは、アプリケーションが意図的に平文や秘密鍵を外部送信しないことまでです。",
+    "このアプリは、平文と秘密鍵をオフライン端末内に保持するよう設計されています。",
   "settings.security.outOfScope.heading": "防御対象外:",
   "settings.security.outOfScope.1": "OS・ブラウザー・ファームウェアの侵害",
   "settings.security.outOfScope.2":
@@ -605,7 +614,7 @@ export const ja = {
   "settings.security.outOfScope.3":
     "カメラフレームを取得するマルウェア",
   "settings.security.outOfScope.4":
-    "PWA初回取得時・再インストール時の供給網侵害",
+    "PWA初回取得・再インストール・ブラウザーによるService Workerのコード置換時の供給網侵害",
   "settings.security.outOfScope.5": "端末の物理的な窃取",
   "settings.security.outOfScope.6":
     "ユーザー自身による秘密QRの誤共有",
@@ -613,6 +622,8 @@ export const ja = {
     "ブラウザーデータ削除による鍵の消失",
   "settings.security.offlineDisplayNote":
     "オフライン表示は現在のネットワーク状態を示す補助情報であり、安全性の証明ではありません。",
+  "settings.security.inputHintsNote":
+    "機密情報の入力欄ではスペルチェックや文章の候補表示を無効にするようブラウザーへ要求します。これは可能な範囲で使われるヒントであり、OS・キーボード・入力方式を制御するものではありません。",
   "settings.security.caveat.1":
     "採用している noble の本アプリ統合は独立監査を完了していません。",
   "settings.security.caveat.2":

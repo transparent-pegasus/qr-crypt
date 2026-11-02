@@ -49,9 +49,7 @@ interface PqProviders {
   dsa87: MlDsaProvider
 }
 
-// Resolve from env.pqProvider ("noble" only; env-schema rejects unknown values at startup).
-export function resolveProviders(providerId: "noble"): PqProviders {
-  if (providerId !== "noble") throw new TypeError("unsupported PQ provider")
+export function resolveProviders(): PqProviders {
   return Object.freeze({
     kem1024: createNobleKem1024(),
     dsa87: createNobleDsa87(),

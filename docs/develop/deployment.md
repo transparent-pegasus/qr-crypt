@@ -3,12 +3,49 @@
 This is not run in parallel with GitHub's Cloudflare Git Integration. GitHub Actions
 uploads `dist` via Wrangler (Direct Upload).
 
+Both Pages upload steps run Wrangler 4.155.0 from
+`deploy/node_modules/.bin/wrangler`. `deploy/package.json` pins it exactly;
+the pinned aube 1.32.0 installs its reviewed graph from the committed
+`deploy/aube-lock.yaml` with `aube -C deploy ci`. This deploy graph is assessed
+separately from the root dependencies and their `aube.overrides`.
+
+In both `validate` and `deploy`, the step immediately after mise setup resolves
+`mise which node` from the checkout and appends its directory to `$GITHUB_PATH`.
+Later steps therefore use the real Node binary pinned in `mise.toml`, including
+from `${{ runner.temp }}`, where mise shims cannot resolve that file.
+
+To update Wrangler after review, run:
+
+```bash
+aube -C deploy update --latest --exact wrangler
+aube -C deploy audit
+```
+
+Commit `deploy/package.json` and `deploy/aube-lock.yaml` together, and update
+the recorded version and CI version smoke test.
+
+CI pin reconciliation on 2026-10-30 retained Wrangler action v4.0.0 at
+`ebbaa1584979971c8614a24965b4405ff95890e0`; the binary was 4.155.0.
+The locked CLI replaced that action on 2026-11-02.
+Artifact upload/download use v7.0.2 at
+`cf430e030ddbb5b0abf93d22962f4752f3646cd9` and v8.0.2 at
+`9000827ccba6bdab643e8b6fd33ac0654aef8333` respectively. Cosign's installer
+uses merged upstream [PR #252](https://github.com/sigstore/cosign-installer/pull/252),
+commit `af595e623eec1ede52d6322f53b635d5def0a95a`, which embeds the requested
+Cosign 3.1.3 and checks its vetted hardcoded digest before execution. This is
+an explicit upstream-commit pin: the latest tagged installer v4.1.2 still has
+the affected bootstrap. [Security review §1.6](../security/security-review.md)
+records the hash, tested source and assurance limits; no hosted CI pass follows
+from this static pin correction.
+
 ## Prerequisites
 
-1. Create the Pages project on the Cloudflare side:
+1. From the repository root, create the Pages project on the Cloudflare side
+   using the same locked Wrangler version:
 
    ```bash
-   wrangler pages project create <name>
+   aube -C deploy ci
+   deploy/node_modules/.bin/wrangler pages project create <name>
    ```
 
 2. Register the GitHub Repository Secrets (an API token with the minimum permissions required for Pages deploys):
@@ -24,8 +61,13 @@ uploads `dist` via Wrangler (Direct Upload).
 `.github/workflows/cloudflare-pages.yml` runs on every branch and on every pull
 request targeting `main` or `dev`:
 
-* The `validate` job installs the frozen dependency graph (`aube ci`), audits
-  it (`aube audit`), then runs type checking, lint, unit tests, post-quantum
+* The `validate` job installs the frozen dependency graph (`aube ci`) and audits
+  it (`aube audit`). It also installs the deploy lock (`aube -C deploy ci`),
+  audits it (`aube -C deploy audit`), and smoke-tests from `${{ runner.temp }}`.
+  The smoke requires `node --version` to equal `v` plus the `mise.toml` Node pin
+  and the locked Wrangler's `--version` to equal `4.155.0`. Explicit `shell: bash`
+  enables `pipefail`, so either command's failure blocks deployment.
+  It then runs type checking, lint, unit tests, post-quantum
   known-answer and integration tests, multipart QR tests, and the production
   build. The audit step has no `continue-on-error`: an open known npm advisory
   fails the job on the next triggered run. Scheduled/manual external
@@ -38,7 +80,16 @@ request targeting `main` or `dev`:
 * The `deploy` job requires **both** to pass, and only runs on a `push`:
   `main` deploys to `CLOUDFLARE_PAGES_PROJECT`, `dev` deploys to
   `CLOUDFLARE_PAGES_PROJECT_DEV`. It publishes the artifact `validate` built
-  rather than rebuilding, so the deployed bytes are the validated ones
+  rather than rebuilding, so the deployed bytes are the validated ones.
+  After checkout and mise setup, it installs `deploy/aube-lock.yaml` with
+  `aube -C deploy ci`. The secret-free `Verify the deploy runtime` step repeats
+  both version checks from `${{ runner.temp }}` before the uploads.
+  Both upload steps run from `${{ runner.temp }}` so
+  Wrangler cannot infer a Pages branch deployment from the checkout's branch:
+  `"$GITHUB_WORKSPACE/deploy/node_modules/.bin/wrangler" pages deploy "$GITHUB_WORKSPACE/dist" --project-name="$PAGES_PROJECT"`.
+  The job has only `contents: read`; Cloudflare credentials are scoped to the
+  two upload steps. It passes no `gitHubToken`, requests no `deployments: write`,
+  and creates no GitHub Deployment records
 * Every other branch and every pull request runs the checks only
 * A `push` to `main` additionally publishes a signed prerelease via
   `.github/workflows/github-release.yml`. Its build job independently installs
@@ -58,14 +109,17 @@ request targeting `main` or `dev`:
   archive digest. Local verification is recorded below.
 
 `.github/workflows/dev-to-main-pr.yml` checks out full history on a `dev` push,
-or on an intentional `workflow_dispatch`, and builds a manifest from merge
-commits since the `main`/`dev` merge base. It fetches each pull request's title
+or on an intentional `workflow_dispatch`, and builds a best-effort manifest from merge
+commits since the `main`/`dev` merge base. It fetches available pull-request titles
 and author, separates product changes from CI/docs/chore entries, and updates
 the body of a matching open promotion PR. If none exists, `dev` has commits
 ahead of `main`, and `main` does not already have `dev`'s commit tree, it opens
 the pull request titled `release: promote dev to production`. It never merges
 or pushes. The title says release rather than merge because merging it is what
 deploys production and publishes the signed release.
+
+Failed title/author API lookups are omitted, and squash/rebase merges are not
+listed. The promotion body therefore does not provide a complete change inventory.
 
 * Closing this PR without merging is a pause, not a permanent veto: the next push to `dev` opens a new one because a new dev commit is new information; `workflow_dispatch` also opens one as a deliberate human action, so it cannot conflict with a human veto
 * This is a real production gate only while `main`'s ruleset requires `validate` and `e2e` with strict up-to-date status checks. If those required checks are removed, even a red dev push becomes an openly mergeable production promotion
@@ -123,28 +177,51 @@ environments. Route A's independently obtained policy, signature verification,
 authenticated source rebuild, complete member comparison, trusted server,
 reserved origin, and physical custody remain mandatory.
 
+## Release hardening contract (2026-10-29)
+
+Artifact-producing jobs disable reusable mise tool caches and install browser
+tooling before packaging. Immediately after ZIP creation, the packager records
+`packaged_archive_sha256`. The extracted-archive gate checks the ZIP digest and
+every member before and after browser execution, then exports the tested
+digest. Signing and publication compare the original packaged and tested
+digests with the actual bytes; no repackage follows testing.
+
+These controls reduce cache reuse and post-package substitution opportunities.
+They do not establish benign tools/source or protect a compromised runner.
+The 2026-09-07 results above remain historical; this contract adds no hosted
+signing, publication, or environment-independent rebuild evidence.
+
 ## External security maintenance (2026-09-07)
 
 `.github/workflows/security-maintenance.yml` runs daily at **06:23 UTC** and
 on manual dispatch. Workflow permissions default to empty; its job has only
 `contents: read`. Actions use full SHA pins and checkout credentials are not
-persisted. After frozen installation it runs `aube audit`; the release check
-still runs after an earlier install/audit failure unless cancelled.
+persisted. After frozen installation it runs `aube audit`. The 2026-11-02
+extension installs and audits the deploy lock with `aube -C deploy ci` and
+`aube -C deploy audit`. Both deploy-toolchain checks and the release check
+still run after an earlier install/audit failure unless cancelled.
 
-`bash scripts/check-crypto-release.sh` reads the exact stable pin from cwd
-`package.json` and queries the official GitHub latest-release endpoint.
-Equal versions with or without a leading `v` pass. A differing version,
-non-exact local pin, draft/prerelease, malformed or empty response, or fetch
-error fails visibly; trailing whitespace is rejected. Independent signal
-tests use `tests/unit/crypto-release-check.test.ts` and the offline
-`tests/fixtures/crypto-release-gh.py` API fixture. Integrated tests,
-Actionlint/ShellCheck, zero-advisory audit, and the live helper with pin/release
-0.7.1 passed. Hosted execution is separate evidence; local checks do not
-establish that a scheduler or its notification settings are provisioned.
+The 2026-10-29 extension uses `bash scripts/check-assessed-releases.sh` to
+read both exact stable pins from cwd `package.json`: `@noble/post-quantum`
+and `zxing-wasm`. It queries each project's official GitHub latest-release
+endpoint. Equal versions with or without a leading `v` pass. A differing
+version, non-exact local pin, draft/prerelease, malformed or empty response,
+or fetch error fails visibly; trailing whitespace is rejected. Both checks
+run even when one fails. Signal tests use
+`tests/unit/assessed-release-check.test.ts` and the offline
+`tests/fixtures/assessed-release-gh.py` API fixture.
 
-This is maintainer-side monitoring only. It installs no offline updater,
-changes no device key or policy, and does not silently select a new crypto
-version. A detected release still requires the complete `crypto-noble` review.
+The predecessor's integrated tests, Actionlint/ShellCheck, zero-advisory audit,
+and live Noble 0.7.1 comparison passed on 2026-09-07. That dated result does
+not verify the extended monitor. New integrated and hosted outcomes require
+separate evidence; local checks do not establish scheduler or notification
+provisioning.
+
+This is maintainer-side monitoring only. It supplies no supported in-app
+upgrade, changes no device key or policy, and selects no dependency version.
+A detected Noble release requires the complete `crypto-noble` review; a
+decoder release requires the `deps` unit's release/advisory/provenance review,
+WASM hash/size and upstream-commit record, and same-origin/precache/CSP checks.
 
 ## Release rebuild evidence
 

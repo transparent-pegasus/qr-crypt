@@ -29,7 +29,6 @@ import {
 import {
   clearAllKeys,
   deleteKeyRecord,
-  findKeyByFingerprint,
   getActiveKeyRecord,
   getKeyRecord,
   listKeyRecords,
@@ -96,15 +95,12 @@ describe("database creation", () => {
     const database = await getDb()
     expect(database.version).toBe(DB_VERSION)
     expect(Array.from(database.objectStoreNames).sort()).toEqual(CURRENT_STORES)
-    expect(Array.from(database.objectStoreNames)).not.toContain("qrArtifacts")
     const keyTx = database.transaction(STORE_KEYS)
     expect(Array.from(keyTx.store.indexNames).sort()).toEqual([
-      "by-createdAt",
       "by-fingerprint",
     ])
     const identities = database.transaction(STORE_PQ_IDENTITIES).store
     expect(Array.from(identities.indexNames).sort()).toEqual([
-      "by-createdAt",
       "by-kemKeyId",
       "by-signingKeyId",
     ])
@@ -112,11 +108,9 @@ describe("database creation", () => {
     expect(identities.index("by-signingKeyId").unique).toBe(true)
     const bundles = database.transaction(STORE_PQ_PUBLIC_BUNDLES).store
     expect(Array.from(bundles.indexNames).sort()).toEqual([
-      "by-identityId",
       "by-kemKeyId",
       "by-signingKeyId",
     ])
-    expect(bundles.index("by-identityId").unique).toBe(false)
     expect(bundles.index("by-kemKeyId").unique).toBe(true)
     expect(bundles.index("by-signingKeyId").unique).toBe(true)
 
@@ -147,14 +141,11 @@ describe("database creation", () => {
     const database = await getDb()
     expect(database.version).toBe(DB_VERSION)
     expect(Array.from(database.objectStoreNames).sort()).toEqual(CURRENT_STORES)
-    expect(Array.from(database.objectStoreNames)).not.toContain("legacyDummyStore")
     const bundles = database.transaction(STORE_PQ_PUBLIC_BUNDLES).store
     expect(Array.from(bundles.indexNames).sort()).toEqual([
-      "by-identityId",
       "by-kemKeyId",
       "by-signingKeyId",
     ])
-    expect(bundles.index("by-identityId").unique).toBe(false)
     expect(bundles.index("by-kemKeyId").unique).toBe(true)
     expect(bundles.index("by-signingKeyId").unique).toBe(true)
   })
@@ -189,7 +180,7 @@ describe("key repository", () => {
     expect(hasRetiredKind).toBe(false)
   })
 
-  it("supports CRUD, lookup, atomic usage increments, and CryptoKey reuse after reopen", async () => {
+  it("supports ordered listing, CRUD, atomic usage increments, and CryptoKey reuse after reopen", async () => {
     const first = await createSymmetricKeyRecord("鍵A", NOW)
     const second = await createSymmetricKeyRecord("鍵B", NOW + 1)
     await saveKeyRecord(first)
@@ -198,7 +189,10 @@ describe("key repository", () => {
       second.id,
       first.id,
     ])
-    expect((await findKeyByFingerprint(first.fingerprint))?.id).toBe(first.id)
+    expect(await getKeyRecord(first.id)).toMatchObject({
+      id: first.id,
+      fingerprint: first.fingerprint,
+    })
     await renameKeyRecord(first.id, " 鍵A改 ")
     await Promise.all(Array.from({ length: 5 }, () => markKeyUsed(first.id, NOW + 2)))
     const used = await getKeyRecord(first.id)

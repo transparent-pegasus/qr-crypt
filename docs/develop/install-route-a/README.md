@@ -138,13 +138,22 @@ source correspondence.
    Use the validated, safely extracted root from §4. Never put the extracted
    archive or a copied/stale build tree under the checkout: Tailwind scans the
    project tree, and such leftovers can change generated CSS and cause a false
-   mismatch.
+   mismatch. Keep `QR_CRYPT_EXPECTED_SOURCE_SHA` from the independently
+   authenticated inputs in §2; never take it from the archive. A remote
+   repository's reachability does not authenticate that value. Check the
+   archive's display before any checkout or build command:
 
 ```bash
 set -euo pipefail
-export QR_CRYPT_SOURCE_SHA=<independently-authenticated-full-source-commit>
+[[ "${QR_CRYPT_EXPECTED_SOURCE_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
+  printf 'QR_CRYPT_EXPECTED_SOURCE_SHA must be a full lowercase commit\n' >&2
+  exit 1
+}
+export QR_CRYPT_SOURCE_SHA="$QR_CRYPT_EXPECTED_SOURCE_SHA"
 export QR_CRYPT_CHECKOUT=/absolute/path/to/clean-checkout
 export QR_CRYPT_ARCHIVE_ROOT=/absolute/path/outside-checkout/<extracted-root>
+test "$(sed -n 's/^Source commit: //p' "$QR_CRYPT_ARCHIVE_ROOT/INSTALL.txt")" = \
+  "$QR_CRYPT_SOURCE_SHA"
 test "$(git -C "$QR_CRYPT_CHECKOUT" rev-parse HEAD)" = \
   "$QR_CRYPT_SOURCE_SHA"
 test -z "$(git -C "$QR_CRYPT_CHECKOUT" status \
@@ -269,9 +278,10 @@ The last `diff` must report no difference. It covers every permitted member; it
 is not a substitute for the pre-extraction path, type, duplicate-name, and
 expansion checks in §4.
 
-The release browser gate serves the extracted archive without rebuilding,
-checks its SHA-256 and all member bytes before and after the full suite, and
-passes the tested archive digest to signing and publication for comparison.
+Packaging records the ZIP digest before browser testing. The release browser
+gate serves the extracted archive without rebuilding and checks its SHA-256
+and all member bytes before and after the full suite. Signing and publication
+require both recorded digests to match each other and the actual ZIP.
 A separate corrupted JavaScript copy must fail browser boot while the healthy
 checkout build still boots; that is distinct from checksum rejection. These
 controls do not certify source, toolchain, hardware, or your actual server,
@@ -340,7 +350,7 @@ it; treating it as required would disagree with the archive copy.
    artifact to verify; it is Node tooling, not part of the signed release.
 4. Before accepting the installation, use an independently provisioned
    checker on the actual server's GET responses for `/`, `/index.html`, SPA
-   navigation, scripts, styles, WASM, `/sw.js`, and `/registerSW.js`. Verify the
+   navigation, scripts, styles, WASM, and `/sw.js`. Verify the
    intended security policy, MIME and cache rules, sentinel body and
    `no-store`, method restrictions, and path containment. The app's persisted
    sentinel verdict cannot validate these other responses or prove browser

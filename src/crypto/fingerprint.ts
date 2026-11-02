@@ -1,4 +1,4 @@
-// Key fingerprints.
+// AES-256 key fingerprints.
 // The complete SHA-256 hex is grouped for out-of-band comparison by
 // features/presentation.formatFingerprint.
 import { exportAesKeyRaw } from "@/crypto/key-import-export"

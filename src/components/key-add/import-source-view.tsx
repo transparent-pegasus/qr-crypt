@@ -68,6 +68,11 @@ export function ImportSourceView({
               onChange={(event) => onPasteChange(event.target.value)}
               placeholder={t("keys.import.payloadPlaceholder")}
               className="min-h-28 break-all font-mono"
+              autoComplete="off"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+              {...{ writingsuggestions: "false" }}
             />
             <Button
               type="button"

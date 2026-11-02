@@ -129,7 +129,7 @@ export interface PublicIdentityBundleV2 {
 export type PqTrustLevel = "unverified" | "fingerprint-confirmed"
 
 // Record in the pqPublicBundles store (keyPath: recordId).
-// identityId is sender-asserted, so it is not unique; by-identityId is non-unique.
+// identityId is sender-asserted, so it is not unique.
 export interface PqPublicBundleRecord {
   recordId: string
   identityId: string

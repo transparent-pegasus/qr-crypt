@@ -7,7 +7,6 @@ import {
   concatBytes,
   sha256Hex,
   toOwnedArrayBuffer,
-  utf8ByteLength,
   utf8ToBytes,
 } from "@/lib/bytes"
 import { detectFeatures } from "@/lib/feature-detect"
@@ -19,7 +18,6 @@ describe("byte and base64url primitives", () => {
     const text = "日本語🔐"
     const bytes = utf8ToBytes(text)
     expect(bytesToUtf8(bytes)).toBe(text)
-    expect(utf8ByteLength(text)).toBe(bytes.byteLength)
     expect(bytesToHex(new Uint8Array([0, 15, 255]))).toBe("000fff")
     expect(concatBytes(new Uint8Array([1, 2]), new Uint8Array([3]))).toEqual(
       new Uint8Array([1, 2, 3]),

@@ -1,6 +1,5 @@
-// IndexedDB connection. For schema changes, increment DB_VERSION;
-// during upgrade, delete all old object stores and recreate the current schema.
-// There is no incremental migration: all old data is discarded.
+// IndexedDB connection. New installs create the current schema.
+// Opening an older version discards its stores instead of migrating data.
 import { deleteDB, openDB } from "idb"
 import type { DBSchema, IDBPDatabase } from "idb"
 import { AppError, toAppError } from "@/crypto/errors"
@@ -24,11 +23,11 @@ export interface KeyValueRow {
   value: unknown
 }
 
-interface OfflineCipherDb extends DBSchema {
+interface QrCryptDb extends DBSchema {
   keys: {
     key: string
     value: StoredKeyRecord
-    indexes: { "by-fingerprint": string; "by-createdAt": number }
+    indexes: { "by-fingerprint": string }
   }
   preferences: { key: string; value: KeyValueRow }
   appMetadata: { key: string; value: KeyValueRow }
@@ -36,7 +35,6 @@ interface OfflineCipherDb extends DBSchema {
     key: string
     value: PostQuantumIdentity
     indexes: {
-      "by-createdAt": number
       "by-kemKeyId": string
       "by-signingKeyId": string
     }
@@ -45,15 +43,14 @@ interface OfflineCipherDb extends DBSchema {
     key: string
     value: PqPublicBundleRecord
     indexes: {
-      "by-identityId": string
       "by-signingKeyId": string
       "by-kemKeyId": string
     }
   }
 }
 
-let databasePromise: Promise<IDBPDatabase<OfflineCipherDb>> | undefined
-let databaseInstance: IDBPDatabase<OfflineCipherDb> | undefined
+let databasePromise: Promise<IDBPDatabase<QrCryptDb>> | undefined
+let databaseInstance: IDBPDatabase<QrCryptDb> | undefined
 let databaseAccessBarrier = false
 
 const DATABASE_DELETE_TIMEOUT_MS = 3_000
@@ -198,7 +195,7 @@ function timeoutOrDefault(value: number | undefined, fallback: number): number {
 
 function openApplicationDatabase(
   options: GetDatabaseOptions,
-): Promise<IDBPDatabase<OfflineCipherDb>> {
+): Promise<IDBPDatabase<QrCryptDb>> {
   const timeoutMs = timeoutOrDefault(options.timeoutMs, DATABASE_OPEN_BLOCKED_TIMEOUT_MS)
   return new Promise((resolve, reject) => {
     let settled = false
@@ -207,7 +204,7 @@ function openApplicationDatabase(
       if (blockedTimeoutId !== undefined) clearTimeout(blockedTimeoutId)
       blockedTimeoutId = undefined
     }
-    const opening = openDB<OfflineCipherDb>(DB_NAME, DB_VERSION, {
+    const opening = openDB<QrCryptDb>(DB_NAME, DB_VERSION, {
       upgrade(database, oldVersion) {
         if (oldVersion !== 0) {
           for (const name of Array.from(database.objectStoreNames)) {
@@ -216,7 +213,6 @@ function openApplicationDatabase(
         }
         const keys = database.createObjectStore(STORE_KEYS, { keyPath: "id" })
         keys.createIndex("by-fingerprint", "fingerprint", { unique: true })
-        keys.createIndex("by-createdAt", "createdAt")
 
         database.createObjectStore(STORE_PREFERENCES, { keyPath: "key" })
         database.createObjectStore(STORE_APP_METADATA, { keyPath: "key" })
@@ -224,7 +220,6 @@ function openApplicationDatabase(
         const identities = database.createObjectStore(STORE_PQ_IDENTITIES, {
           keyPath: "id",
         })
-        identities.createIndex("by-createdAt", "createdAt")
         identities.createIndex("by-kemKeyId", "kem.keyId", { unique: true })
         identities.createIndex("by-signingKeyId", "signing.keyId", {
           unique: true,
@@ -233,7 +228,6 @@ function openApplicationDatabase(
         const bundles = database.createObjectStore(STORE_PQ_PUBLIC_BUNDLES, {
           keyPath: "recordId",
         })
-        bundles.createIndex("by-identityId", "identityId")
         bundles.createIndex("by-signingKeyId", "signing.keyId", { unique: true })
         bundles.createIndex("by-kemKeyId", "kem.keyId", { unique: true })
       },
@@ -285,7 +279,7 @@ function openApplicationDatabase(
 
 export async function getDb(
   options: GetDatabaseOptions = {},
-): Promise<IDBPDatabase<OfflineCipherDb>> {
+): Promise<IDBPDatabase<QrCryptDb>> {
   assertDatabaseAccessAllowed()
   databasePromise ??= openApplicationDatabase(options)
   try {

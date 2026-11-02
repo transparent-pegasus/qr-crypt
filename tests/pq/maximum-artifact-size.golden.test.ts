@@ -312,22 +312,28 @@ describe("maximum canonical CBOR artifact sizing", () => {
     for (const plaintextBytes of [MAX_PQ_PLAINTEXT_BYTES, 16_384]) {
       const signedArtifactBytes = messageArtifact(plaintextBytes).byteLength
       const requiredFrames = Math.ceil(signedArtifactBytes / FRAME_BYTES_MAX)
-      for (const frameBytes of FRAME_BYTES) {
+      for (const [frameBytes, frameIntervalMs] of [
+        [1_000, 200],
+        [100, 2_000],
+      ] as const) {
         expect(
           parseAppEnv({
             VITE_MAX_PLAINTEXT_BYTES: String(plaintextBytes),
             VITE_QR_FRAME_BYTES: String(frameBytes),
+            VITE_QR_FRAME_INTERVAL_MS: String(frameIntervalMs),
             VITE_QR_MAX_FRAMES: String(requiredFrames),
           }),
         ).toMatchObject({
           maxPlaintextBytes: plaintextBytes,
           qrFrameBytes: frameBytes,
+          qrFrameIntervalMs: frameIntervalMs,
           qrMaxFrames: requiredFrames,
         })
         expect(() =>
           parseAppEnv({
             VITE_MAX_PLAINTEXT_BYTES: String(plaintextBytes),
             VITE_QR_FRAME_BYTES: String(frameBytes),
+            VITE_QR_FRAME_INTERVAL_MS: String(frameIntervalMs),
             VITE_QR_MAX_FRAMES: String(requiredFrames - 1),
           }),
         ).toThrow(

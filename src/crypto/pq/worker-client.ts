@@ -38,7 +38,6 @@ import {
 } from "@/crypto/pq/suites"
 import { keyIdRawBytes } from "@/crypto/pq/wire-bytes"
 import { isVaultKey } from "@/crypto/vault/is-vault-key"
-import { env } from "@/schemas/env-schema"
 import {
   DSA_SEED_BYTES,
   IV_BYTES,
@@ -134,7 +133,7 @@ export interface PqCryptoClient {
 }
 
 interface CreatePqCryptoClientOptions {
-  // Test seam. When omitted, resolve from env.pqWorkerEnabled and the runtime environment.
+  // Test seam for the RPC timeout; a browser Worker is always required.
   timeoutMs?: number
 }
 
@@ -446,7 +445,7 @@ interface PendingRpc {
 }
 
 function createBrowserWorkerClient(timeoutMs: number): PqCryptoClient {
-  if (!env.pqWorkerEnabled || typeof Worker === "undefined") {
+  if (typeof Worker === "undefined") {
     throw new AppError("WORKER_UNAVAILABLE")
   }
   let worker: Worker

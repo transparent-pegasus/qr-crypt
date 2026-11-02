@@ -2,6 +2,8 @@
 // Hold the synchronous provider (provider-noble) only inside this Worker.
 // Never return secret material (seeds, expanded secret keys, shared secrets, or derived
 // key bytes) through postMessage; zeroize it in each operation's finally block.
+// Decryption may return unverified plaintext-bearing inner CBOR for signer lookup;
+// the caller must withhold it from UI until signature verification succeeds.
 import { AppError, type ErrorCode } from "@/crypto/errors"
 import {
   decodeSignedMessageV2,
@@ -40,7 +42,7 @@ import type {
   SignedMessageBodyV2,
 } from "@/schemas/domain"
 
-const providers = resolveProviders("noble")
+const providers = resolveProviders()
 
 type IdentityKeyStage = "seed" | "keygen" | "public-key-digest" | "seed-encryption"
 
