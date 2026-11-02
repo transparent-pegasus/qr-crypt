@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-11-02 # last revision of this registry itself
+updated: 2026-11-03 # last revision of this registry itself
 
 units:
   - id: deps
@@ -532,7 +532,7 @@ units:
   - id: protocol-docs
     category: docs
     cadence_days: 90 # also on any protocol/boot change
-    last_checked: 2026-10-30
+    last_checked: 2026-11-03
     files:
       - docs/spec/qr-protocol-v2.md
       - docs/spec/boot-and-reset-v2.md

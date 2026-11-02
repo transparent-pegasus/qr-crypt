@@ -288,6 +288,7 @@ export function OnlineRelay({
       return
     }
     relayLeaseRef.current = lease
+    beginLifetime()
     setDialogMode(mode)
   }
 
@@ -304,11 +305,6 @@ export function OnlineRelay({
       }
 
       const next = accepted.capture
-      // Lifetime starts at the first ACCEPTED frame, before any image-mode
-      // policy rejection — the design's "same lifetime timer" means the lease
-      // and dialog never sit outside the transfer timeout once a payload has
-      // touched this device. (beginLifetime is idempotent.)
-      if (previous.kind === null) beginLifetime()
       if (
         mode === "image" &&
         next.set.metadata !== null &&
@@ -375,7 +371,7 @@ export function OnlineRelay({
         stopCameraOnly()
       }
     },
-    [beginLifetime, endSession, stopCameraOnly],
+    [endSession, stopCameraOnly],
   )
 
   const startCamera = () => {
@@ -505,7 +501,6 @@ export function OnlineRelay({
     setPlaybackAnimationSignal(animationAbort.signal)
     setPlaybackError(null)
     setPlaybackMissingIndexes([])
-    beginLifetime()
   }
 
   if (!eligible) return null
