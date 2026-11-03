@@ -217,10 +217,6 @@ jobs:
           if ((Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant() -cne $build.executable_sha256) { throw 'The original executable changed during the integrity control' }
           exit 0
 
-      - name: TEMPORARY original helper diagnostic stop
-        if: always()
-        run: throw 'NHELPDIAG_1104 diagnostic-only; native acceptance and developer EXE publication blocked'
-
       - name: Prove a permissive policy fails the negative tests
         run: |
           $PSNativeCommandUseErrorActionPreference = $false

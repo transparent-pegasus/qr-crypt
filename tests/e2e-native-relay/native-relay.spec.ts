@@ -122,9 +122,11 @@ test("synthetic camera pixels traverse bundled WASM and trusted copy writes comp
   const before = "native-relay-prior-text-state"
   expect(await native.seedClipboard(before)).toEqual({ text: before, png: null })
   await capture.getByRole("button", { name: "Copy relay text", exact: true }).click()
-  await expect.poll(async () => (await native.readClipboard()).text).toBe(text)
+  await expect
+    .poll(async () => (await native.readClipboard()).text)
+    .toBe(messages.pq.join("\r\n"))
   const clipboard = await native.readClipboard()
-  expect(clipboard.text).toBe(text)
+  expect(clipboard.text).toBe(messages.pq.join("\r\n"))
   await testInfo.attach("synthetic-camera-native-text.json", {
     body: Buffer.from(
       JSON.stringify({
