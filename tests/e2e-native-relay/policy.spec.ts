@@ -94,7 +94,39 @@ for (const operation of ["navigation", "popup"] as const) {
             native.requests.filter(
               (request) => new URL(request.url).origin === new URL(destination).origin,
             ),
-          ).toEqual([])
+          ).toEqual(
+            operation === "navigation"
+              ? [{ url: destination, method: "GET", body: null }]
+              : [],
+          )
+          expect(droppedEvents).toBe(0)
+          expect(requestEvents).toEqual(
+            (operation === "navigation"
+              ? [
+                  { event: "request", status: null, error: null },
+                  { event: "response", status: 403, error: null },
+                  { event: "requestfailed", status: null, error: "net::ERR_ABORTED" },
+                ]
+              : []
+            ).map((event) =>
+              expect.objectContaining({
+                ...event,
+                url: destination,
+                method: "GET",
+                resourceType: "document",
+                textTruncated: false,
+                errorTextOmitted: false,
+                timing: expect.objectContaining({
+                  domainLookupStart: -1,
+                  domainLookupEnd: -1,
+                  connectStart: -1,
+                  connectEnd: -1,
+                  secureConnectionStart: -1,
+                  requestStart: -1,
+                }),
+              }),
+            ),
+          )
         } finally {
           context.off("page", onPage)
           context.off("request", onRequest)
