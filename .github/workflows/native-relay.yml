@@ -88,6 +88,7 @@ jobs:
               $chain += [ordered]@{
                 type = $Exception.GetType().FullName
                 message = $message.Substring(0, [Math]::Min(1024, $message.Length))
+                stack_trace = ([string]$Exception.StackTrace).Substring(0, [Math]::Min(2048, ([string]$Exception.StackTrace).Length))
                 hresult = $Exception.HResult
                 native_error_code = $(if ($Exception -is [ComponentModel.Win32Exception]) { $Exception.NativeErrorCode } else { $null })
               }
