@@ -25,7 +25,58 @@ if ($request.action -eq 'terminate') {
 }
 Add-Type @'
 using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
+public sealed class RelayIntegrity {
+  public uint rid;
+  public bool elevated;
+}
+public static class RelayToken {
+  [DllImport("advapi32.dll", SetLastError = true)] static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+  [DllImport("advapi32.dll", SetLastError = true)] static extern bool GetTokenInformation(IntPtr token, int informationClass, IntPtr buffer, int size, out int needed);
+  [DllImport("advapi32.dll")] static extern bool IsValidSid(IntPtr sid);
+  [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
+  [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthority(IntPtr sid, uint index);
+  [DllImport("kernel32.dll", SetLastError = true)] static extern bool CloseHandle(IntPtr handle);
+  public static RelayIntegrity Measure(IntPtr process) {
+    IntPtr token = IntPtr.Zero, label = IntPtr.Zero, elevation = IntPtr.Zero;
+    try {
+      if (!OpenProcessToken(process, 0x0008, out token)) // TOKEN_QUERY only.
+        throw new Win32Exception(Marshal.GetLastWin32Error(), "OpenProcessToken failed");
+      int size;
+      bool sized = GetTokenInformation(token, 25, IntPtr.Zero, 0, out size); // TokenIntegrityLevel.
+      int error = Marshal.GetLastWin32Error();
+      if (sized || error != 122)
+        throw new Win32Exception(error, "Cannot size TokenIntegrityLevel");
+      if (size < IntPtr.Size + 4) throw new InvalidOperationException("Invalid integrity label size");
+      label = Marshal.AllocHGlobal(size);
+      int received;
+      if (!GetTokenInformation(token, 25, label, size, out received))
+        throw new Win32Exception(Marshal.GetLastWin32Error(), "TokenIntegrityLevel failed");
+      if (received < IntPtr.Size + 4 || received > size)
+        throw new InvalidOperationException("Invalid integrity label length");
+      IntPtr sid = Marshal.ReadIntPtr(label); // TOKEN_MANDATORY_LABEL starts with SID_AND_ATTRIBUTES.Sid.
+      if (sid == IntPtr.Zero || !IsValidSid(sid)) throw new InvalidOperationException("Invalid integrity SID");
+      IntPtr countAddress = GetSidSubAuthorityCount(sid);
+      if (countAddress == IntPtr.Zero) throw new InvalidOperationException("Missing integrity SID count");
+      byte count = Marshal.ReadByte(countAddress);
+      if (count == 0) throw new InvalidOperationException("Missing integrity RID");
+      IntPtr ridAddress = GetSidSubAuthority(sid, (uint)(count - 1));
+      if (ridAddress == IntPtr.Zero) throw new InvalidOperationException("Missing integrity RID address");
+      uint rid = unchecked((uint)Marshal.ReadInt32(ridAddress));
+      elevation = Marshal.AllocHGlobal(4);
+      if (!GetTokenInformation(token, 20, elevation, 4, out received)) // TokenElevation.
+        throw new Win32Exception(Marshal.GetLastWin32Error(), "TokenElevation failed");
+      if (received != 4) throw new InvalidOperationException("Invalid elevation length");
+      return new RelayIntegrity { rid = rid, elevated = Marshal.ReadInt32(elevation) != 0 };
+    } finally {
+      if (elevation != IntPtr.Zero) Marshal.FreeHGlobal(elevation);
+      if (label != IntPtr.Zero) Marshal.FreeHGlobal(label);
+      if (token != IntPtr.Zero && !CloseHandle(token))
+        throw new Win32Exception(Marshal.GetLastWin32Error(), "Token CloseHandle failed");
+    }
+  }
+}
 public static class RelayWindow {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr handle, System.Text.StringBuilder text, int capacity);
@@ -36,6 +87,13 @@ public static class RelayWindow {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
 }
 '@
+if ($request.action -eq 'token') {
+  @{
+    processId = $owned.Id; startedAt = $startedAt; executable = $owned.Path
+    integrity = [RelayToken]::Measure($owned.Handle)
+  } | ConvertTo-Json -Compress
+  exit 0
+}
 $handle = if ($null -eq $request.windowHandle) { $owned.MainWindowHandle } else { [IntPtr]([long]$request.windowHandle) }
 if ($null -eq $request.windowHandle -and $owned.MainWindowTitle -cne 'QR Crypt Relay') {
   throw 'Owned QR Crypt Relay window is not ready or has the wrong identity'

@@ -169,7 +169,7 @@ Windows resource manifest from that build; a developer EXE does not prove
 package capabilities or OS isolation.
 
 After building the clean candidate above, execute its native tests on a dedicated
-relay test device in PowerShell:
+relay test device in a non-elevated PowerShell:
 
 ```powershell
 $env:NATIVE_RELAY_EXE = (Resolve-Path native/desktop/target/release/qr-crypt-relay.exe).Path
@@ -177,8 +177,15 @@ mise exec -- aube exec playwright test -c playwright.native-relay.config.ts --wo
 ```
 
 Keep `VITE_BUILD_SHA` equal to that checkout's full HEAD. The suite launches the
-actual EXE with its own WebView2 profile and test-side CDP port. It replaces the
-test session's clipboard, reads native text/PNG content, and minimizes, hides and
+actual EXE directly. Before waiting for CDP, the PowerShell helper measures that
+owned process's `TokenIntegrityLevel` RID and `TokenElevation` through its held,
+path/start-validated process handle with `TOKEN_QUERY` only. `native.integrity`
+must be exactly `{ rid: 8192, elevated: false }`; missing measurements fail setup,
+and other values fail immediately with `NATIVE_RELAY_INTEGRITY` and the measured
+values. [Elevated WebView2 hosts ignore environment overrides](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security#recommended-privilege-level-for-webview2-host-applications).
+The accepted process must use its own verified WebView2 profile and test-side CDP
+port. The suite replaces the test session's clipboard, reads native text/PNG
+content, and minimizes, hides and
 restores the same owned HWND. Hide requires an invisible, non-minimized window
 and an actual hidden DOM state before checking camera teardown. CI's isolated
 hide-forwarding mutation must fail the dedicated `NATIVE_RELAY_HIDE_DOM` assertion;
@@ -189,7 +196,34 @@ Non-Windows hosts and missing/mismatched candidate inputs fail setup.
 
 [`native-relay.yml`](../../.github/workflows/native-relay.yml) builds on Windows
 Server 2025, checks the compiled context and actual WebView, and retains the linked
-manifest, generated ACL inputs, hashes and test reports. Separate mutation
+manifest, generated ACL inputs and build hashes before runtime controls. CI alone
+uses portable gsudo `2.6.1`, verifies the reviewed ZIP SHA256
+`21130bf178d7b9891207f00bff56f05b6b363ce9cec7b2d084e45fb12ee51f44`
+and companion checksum before extracting only `x64/gsudo.exe` into a fresh
+`RUNNER_TEMP` directory, and records its exact version and actual ZIP/EXE hashes.
+`--integrity Medium --direct --wait` launches the whole PowerShell/mise/aube
+command; the fixture still directly owns the release EXE. The Medium child
+captures stdout/stderr separately for parent readback and returns the exact child
+exit code. A preceding probe requires checkout CWD, the selected mise and pinned
+aube/Node, distinct stream sentinels and deliberate exit `37`. No profile import,
+global install/configuration, credential cache, environment-copy option or ACL
+grant is used.
+
+An untouched-runner control selects only the existing identity case. It must
+fail solely at the owned-token guard with RID `12288` and `elevated: true`, the
+original source/EXE/lock identity and owned-process/requested-temp cleanup.
+The elevated host may ignore the requested profile; removal of that temporary
+directory does not verify or clean its unknown default WebView profile.
+Then the original EXE must pass all 18 cases under measured Medium without skips
+or retries. The compiled hide mutant uses the same Medium command chain and must
+fail only the existing DOM-hide assertion. Both controls decode the pinned
+Playwright JSON reporter's Buffer attachment from its Base64 `body`, retaining
+candidate/token and cleanup evidence. Reports and separate streams live under
+`.tmp/native-relay-evidence/{launcher,integrity-negative,hide-negative,medium}`,
+with the ordinary HTML report under `playwright-report/native-relay`.
+These gates still require actual Windows results; a launcher probe or Linux
+discovery is insufficient. Medium integrity does not establish AppContainer or
+compromised-OS isolation. Separate mutation
 checkouts must reject permissive navigation and an added IPC permission without
 replacing the tested EXE. The Linux job audits the full lock and checks the Windows
 dependency graph under the strict source/license/advisory policy. Outputs are

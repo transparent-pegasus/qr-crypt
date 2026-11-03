@@ -158,6 +158,18 @@ units:
       authority and linked manifest. Test-side CDP/profile/window/clipboard operations
       must belong to the spawned candidate. Missing Windows execution or clipboard
       content is an incomplete gate, never a blanket skip or a browser substitute.
+      Before CDP, measure the directly spawned EXE's TokenIntegrityLevel RID and
+      TokenElevation using TOKEN_QUERY on its held, path/start-validated process
+      handle; retain PID/start/token evidence even for rejection and close/free
+      token handles/buffers. Require native.integrity {rid:8192,elevated:false}.
+      The single untouched-runner identity control must fail only the immediate
+      NATIVE_RELAY_INTEGRITY guard with measured RID12288/elevatedtrue, original
+      source/EXE/locks and owned-tree/requested-storage cleanup. An ignored default
+      WebView profile remains unverified; requested-temp removal is not its cleanup.
+      Then require all 18 current cases on the original EXE under measured Medium,
+      and the assertion-only compiled hide control under the same launcher chain.
+      Decode the pinned Playwright JSON reporter's Buffer attachment from Base64
+      body, not a path. API/parse/access/startup failures cannot satisfy a control.
     verify: |
       aube run test -- tests/unit/relay-bundle-allowlist.test.ts tests/ui/relay-app.test.tsx
       aube run test -- tests/unit/generate-install-txt.test.ts tests/unit/release-static-package.test.ts
@@ -332,6 +344,23 @@ units:
       and runtime reports. Native developer artifacts do not establish package or
       physical-release gates. Review the Linux-hosted Windows-target dependency job
       separately from full-lock informational advisory notices.
+      The native CI-only launcher is exact portable gsudo v2.6.1 from
+      https://github.com/gerardog/gsudo/releases/download/v2.6.1/gsudo.portable.zip,
+      reviewed ZIP SHA256 21130bf178d7b9891207f00bff56f05b6b363ce9cec7b2d084e45fb12ee51f44.
+      Re-vet the exact-tag disabled-UAC Safer/SetIntegrity and no-service exit paths
+      before moving this pin. Check the reviewed digest and companion before any
+      extraction/execution; select only x64/gsudo.exe in fresh RUNNER_TEMP storage,
+      require exact version and retain actual ZIP/EXE hashes. Use Medium/direct/wait
+      for the whole existing Playwright command, preserving direct EXE ownership.
+      Before native invocations, the same command chain must prove checkout CWD,
+      selected mise and pinned aube/Node, distinct stdout/stderr and exact exit37;
+      capture inside the Medium child and read both streams back in the parent.
+      Do not use copyEV/copyNS, global install/config/profile, automatic credential
+      caching, broad ACL grants or product automation hooks. Retain build/manifest
+      identity before any later control failure, High-control token/cleanup,
+      Medium baseline and assertion-only hide mutation evidence separately.
+      Require actual Windows results for all 18 cases and both runtime controls;
+      Linux discovery, launcher probes and source/digest review cannot stamp them.
       Check each action repository for newer majors and security advisories.
       Keep release-workflow actions pinned to full SHAs;
       verify tag-backed SHAs against their exact documented releases, peeling

@@ -39,6 +39,13 @@ export function redactEvidence(
   return value.replace(/[A-Z]:[\\/]+Users[\\/]+[^\\/\s"']+/gi, "<user-profile>")
 }
 
+interface ProcessIdentity {
+  processId: number
+  startedAt: number
+  executable: string
+  integrity: { rid: number; elevated: boolean }
+}
+
 interface WindowIdentity {
   processId: number
   startedAt: number
@@ -110,6 +117,7 @@ export interface NativeRelay {
   context: BrowserContext
   buildSha: string
   version: string
+  integrity: ProcessIdentity["integrity"]
   initial: DocumentObservation
   requests: ObservedRequest[]
   downloads: string
@@ -194,6 +202,7 @@ export const test = base.extend<{ native: NativeRelay }>({
       spawnError = error
     })
     let browser: Browser | undefined
+    let processIdentity: ProcessIdentity | undefined
     let identity: WindowIdentity | undefined
     let runtime: unknown
     let cleanupFailure: unknown
@@ -221,7 +230,7 @@ export const test = base.extend<{ native: NativeRelay }>({
           processId: child.pid,
           executable,
           spawnedAfter,
-          startedAt: identity?.startedAt ?? null,
+          startedAt: identity?.startedAt ?? processIdentity?.startedAt ?? null,
           windowHandle: identity?.windowHandle ?? null,
           profile,
           port,
@@ -247,6 +256,23 @@ export const test = base.extend<{ native: NativeRelay }>({
         throw new Error(
           "NATIVE_RELAY_SETUP: executable did not start: " +
             redact(String(spawnError ?? "no child PID") + "\n" + output),
+        )
+      processIdentity = await windows<ProcessIdentity>("token")
+      if (
+        processIdentity?.processId !== child.pid ||
+        !Number.isSafeInteger(processIdentity.startedAt) ||
+        processIdentity.startedAt < spawnedAfter ||
+        processIdentity.executable?.toLowerCase() !== executable.toLowerCase() ||
+        !Number.isSafeInteger(processIdentity.integrity?.rid) ||
+        typeof processIdentity.integrity?.elevated !== "boolean"
+      )
+        throw new Error("NATIVE_RELAY_SETUP: invalid owned token observation")
+      if (processIdentity.integrity.rid !== 8192 || processIdentity.integrity.elevated)
+        throw new Error(
+          "NATIVE_RELAY_INTEGRITY: expected rid=8192 elevated=false; measured rid=" +
+            processIdentity.integrity.rid +
+            " elevated=" +
+            processIdentity.integrity.elevated,
         )
       const startupDeadline = Date.now() + 45_000
       let lastError: unknown
@@ -398,6 +424,7 @@ export const test = base.extend<{ native: NativeRelay }>({
         context,
         initial,
         version,
+        integrity: processIdentity.integrity,
         buildSha: input.buildSha,
         requests,
         downloads,
@@ -505,7 +532,11 @@ export const test = base.extend<{ native: NativeRelay }>({
           maxRetries: 5,
           retryDelay: 300,
         })
-        cleanup = { ownedTreeExited: true, profileRemoved: true }
+        cleanup = {
+          ownedTreeExited: true,
+          requestedStorageRemoved: true,
+          profileRemoved: identity?.cdpOwned === true,
+        }
       } catch (error) {
         cleanup = { error: redact(String(error)) }
         cleanupFailure = error
@@ -520,6 +551,10 @@ export const test = base.extend<{ native: NativeRelay }>({
                   version,
                   exeSha256,
                   locks,
+                  process: processIdentity && {
+                    ...processIdentity,
+                    executable: redact(processIdentity.executable),
+                  },
                   window: identity,
                   runtime,
                   assets: Object.fromEntries(assetHashes),
