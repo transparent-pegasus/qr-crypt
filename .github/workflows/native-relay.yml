@@ -102,6 +102,101 @@ jobs:
           }
           exit 0
 
+      - name: Prove missing hide forwarding fails the native DOM assertion
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $negativeRoot = Join-Path $env:RUNNER_TEMP 'native-policy-negative'
+          $evidence = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/hide-negative'
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          $inputs = @(git ls-files -- native/desktop)
+          if ($LASTEXITCODE -ne 0 -or $inputs.Count -eq 0) { throw 'Cannot identify the original native inputs' }
+          foreach ($inputPath in $inputs) {
+            Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE $inputPath) -Destination (Join-Path $negativeRoot $inputPath) -Force
+          }
+          git -C $negativeRoot diff --exit-code -- native/desktop
+          if ($LASTEXITCODE -ne 0) { throw 'The hide control must start from the original tracked native inputs' }
+          $visibilityPath = Join-Path $negativeRoot 'native/desktop/src/visibility.rs'
+          $source = Get-Content -LiteralPath $visibilityPath -Raw
+          $before = @'
+                          let visible = match message {
+                              WM_SIZE => {
+                                  wparam.0 != SIZE_MINIMIZED as usize && IsWindowVisible(hwnd).as_bool()
+                              }
+                              WM_SHOWWINDOW => wparam.0 != 0 && !IsIconic(hwnd).as_bool(),
+                              _ => IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool(),
+                          };
+          '@
+          $before = $before.Replace("`r`n", "`n")
+          if ($source.Contains("`r`n")) { $before = $before.Replace("`n", "`r`n") }
+          $after = '                let visible = !IsIconic(hwnd).as_bool();'
+          if ([regex]::Matches($source, [regex]::Escape($before)).Count -ne 1) {
+            throw 'Expected exactly one complete visibility-callback mutation target'
+          }
+          $originalExecutable = $env:NATIVE_RELAY_EXE
+          $originalHash = (Get-FileHash -Algorithm SHA256 $originalExecutable).Hash.ToLowerInvariant()
+          $mutation = [ordered]@{
+            source = $env:GITHUB_SHA
+            original_executable_sha256 = $originalHash
+            original_visibility_sha256 = (Get-FileHash -Algorithm SHA256 $visibilityPath).Hash.ToLowerInvariant()
+            path = 'native/desktop/src/visibility.rs'; before = $before; after = $after
+          }
+          [IO.File]::WriteAllText($visibilityPath, $source.Replace($before, $after), [Text.UTF8Encoding]::new($false))
+          $mutation.mutant_visibility_sha256 = (Get-FileHash -Algorithm SHA256 $visibilityPath).Hash.ToLowerInvariant()
+          $mutation | ConvertTo-Json | Set-Content (Join-Path $evidence 'mutation.json')
+          git -C $negativeRoot diff -- native/desktop | Set-Content (Join-Path $evidence 'mutation.diff')
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot retain the hide mutation diff' }
+          Push-Location (Join-Path $negativeRoot 'native/desktop')
+          try {
+            $output = & mise exec -- cargo build --release --locked --target-dir target 2>&1
+            $buildExit = $LASTEXITCODE
+          } finally {
+            Pop-Location
+          }
+          $output | Set-Content (Join-Path $evidence 'build.log')
+          $output | Write-Output
+          if ($buildExit -ne 0) { throw 'The hide mutation must compile successfully' }
+          $mutantExecutable = Join-Path $negativeRoot 'native/desktop/target/release/qr-crypt-relay.exe'
+          $mutation.mutant_executable_sha256 = (Get-FileHash -Algorithm SHA256 $mutantExecutable).Hash.ToLowerInvariant()
+          $mutation | ConvertTo-Json | Set-Content (Join-Path $evidence 'mutation.json')
+          if ($mutation.mutant_executable_sha256 -eq $originalHash) { throw 'The hide mutant must differ from the original executable' }
+          $title = 'OS hide ends active synthetic camera tracks and restore never resumes capture'
+          $previousJsonOutput = $env:PLAYWRIGHT_JSON_OUTPUT_NAME
+          try {
+            $env:NATIVE_RELAY_EXE = $mutantExecutable
+            $env:PLAYWRIGHT_JSON_OUTPUT_NAME = Join-Path $evidence 'report.json'
+            $output = & mise exec -- aube exec playwright test -c playwright.native-relay.config.ts tests/e2e-native-relay/lifecycle.spec.ts --grep "${title}$" --workers=1 --retries=0 --reporter=list,json "--output=$(Join-Path $evidence 'test-results')" 2>&1
+            $testExit = $LASTEXITCODE
+          } finally {
+            $env:NATIVE_RELAY_EXE = $originalExecutable
+            $env:PLAYWRIGHT_JSON_OUTPUT_NAME = $previousJsonOutput
+            $mutation.original_executable_unchanged = (Get-FileHash -Algorithm SHA256 $originalExecutable).Hash.ToLowerInvariant() -eq $originalHash
+            $mutation | ConvertTo-Json | Set-Content (Join-Path $evidence 'mutation.json')
+            if (!$mutation.original_executable_unchanged) { throw 'The original release executable changed' }
+          }
+          $output | Set-Content (Join-Path $evidence 'playwright.log')
+          $output | Write-Output
+          $report = Get-Content -LiteralPath (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+          $specs = @($report.suites | ForEach-Object { $_.specs })
+          if ($testExit -ne 1 -or @($report.errors).Count -ne 0 -or $report.stats.unexpected -ne 1 -or $report.stats.expected -ne 0 -or $report.stats.skipped -ne 0 -or $report.stats.flaky -ne 0 -or $specs.Count -ne 1 -or $specs[0].title -cne $title -or @($specs[0].tests).Count -ne 1) {
+            throw 'The hide control must report exactly one intended failing case and no infrastructure errors or skips'
+          }
+          $case = $specs[0].tests[0]
+          $results = @($case.results)
+          if ($case.expectedStatus -ne 'passed' -or $case.status -ne 'unexpected' -or $results.Count -ne 1 -or $results[0].status -ne 'failed' -or $results[0].retry -ne 0 -or @($results[0].errors).Count -ne 1 -or $results[0].errors[0].message -notmatch 'NATIVE_RELAY_HIDE_DOM:') {
+            throw 'The hide mutant must fail only the dedicated DOM-hide assertion, not startup, OS setup, timeout or cleanup'
+          }
+          $message = $results[0].errors[0].message -replace '\x1b\[[0-9;]*m', ''
+          if ($message -notmatch 'Expected:\s+"hidden"' -or $message -notmatch 'Received:\s+"visible"') {
+            throw 'The DOM-hide assertion must observe visible instead of hidden, not a failed evaluation'
+          }
+          $attachments = @($results[0].attachments | Where-Object { $_.name -eq 'native-candidate.json' -and $_.contentType -eq 'application/json' })
+          if ($attachments.Count -ne 1) { throw 'The hide control must retain its candidate and cleanup evidence' }
+          $candidate = Get-Content -LiteralPath $attachments[0].path -Raw | ConvertFrom-Json
+          if ($candidate.sourceHead -cne $env:GITHUB_SHA -or $candidate.exeSha256 -cne $mutation.mutant_executable_sha256 -or $candidate.cleanup.ownedTreeExited -ne $true -or $candidate.cleanup.profileRemoved -ne $true) {
+            throw 'The hide control must identify the mutant and complete owned-process/profile cleanup'
+          }
+          exit 0
+
       - name: Record the developer executable identity
         run: |
           New-Item -ItemType Directory -Force .tmp/native-relay-evidence | Out-Null

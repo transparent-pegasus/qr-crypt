@@ -28,6 +28,7 @@ using System;
 using System.Runtime.InteropServices;
 public static class RelayWindow {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr handle, System.Text.StringBuilder text, int capacity);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr handle);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr handle);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr handle);
@@ -35,13 +36,15 @@ public static class RelayWindow {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
 }
 '@
-$handle = $owned.MainWindowHandle
-if ($null -ne $request.windowHandle -and $handle.ToInt64().ToString() -cne $request.windowHandle) {
-  throw 'Native window handle identity changed'
+$handle = if ($null -eq $request.windowHandle) { $owned.MainWindowHandle } else { [IntPtr]([long]$request.windowHandle) }
+if ($null -eq $request.windowHandle -and $owned.MainWindowTitle -cne 'QR Crypt Relay') {
+  throw 'Owned QR Crypt Relay window is not ready or has the wrong identity'
 }
 [uint32]$windowOwner = 0
 $null = [RelayWindow]::GetWindowThreadProcessId($handle, [ref]$windowOwner)
-if (![RelayWindow]::IsWindow($handle) -or $windowOwner -ne $owned.Id -or $owned.MainWindowTitle -cne 'QR Crypt Relay') {
+$title = New-Object System.Text.StringBuilder 256
+$null = [RelayWindow]::GetWindowText($handle, $title, $title.Capacity)
+if (![RelayWindow]::IsWindow($handle) -or $windowOwner -ne $owned.Id -or $title.ToString() -cne 'QR Crypt Relay') {
   throw 'Owned QR Crypt Relay window is not ready or has the wrong identity'
 }
 switch ($request.action) {
@@ -69,25 +72,31 @@ switch ($request.action) {
     $os = Get-CimInstance Win32_OperatingSystem
     @{
       processId = $owned.Id; startedAt = $startedAt; windowHandle = $handle.ToInt64().ToString()
-      title = $owned.MainWindowTitle
+      title = $title.ToString()
       windows = @{ caption = $os.Caption; version = $os.Version; build = $os.BuildNumber }
       webview2 = @{ fileVersion = $runtimeVersion.FileVersion; productVersion = $runtimeVersion.ProductVersion }
       cdpOwned = $true
     } | ConvertTo-Json -Compress
   }
-  { $_ -in 'minimize', 'restore' } {
+  { $_ -in 'minimize', 'hide', 'restore' } {
     $minimize = $request.action -eq 'minimize'
-    $command = if ($minimize) { 6 } else { 9 }
+    $visible = $request.action -ne 'hide'
+    $command = if ($minimize) { 6 } elseif (!$visible) { 0 } else { 9 }
     $null = [RelayWindow]::ShowWindow($handle, $command)
-    if (!$minimize) { $null = [RelayWindow]::SetForegroundWindow($handle) }
+    if ($request.action -eq 'restore') { $null = [RelayWindow]::SetForegroundWindow($handle) }
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
-    while ([RelayWindow]::IsIconic($handle) -ne $minimize -and [DateTime]::UtcNow -lt $deadline) {
+    while (([RelayWindow]::IsIconic($handle) -ne $minimize -or [RelayWindow]::IsWindowVisible($handle) -ne $visible) -and [DateTime]::UtcNow -lt $deadline) {
       Start-Sleep -Milliseconds 50
     }
-    if ([RelayWindow]::IsIconic($handle) -ne $minimize) { throw 'Native window operation did not take effect' }
+    if ([RelayWindow]::IsIconic($handle) -ne $minimize -or [RelayWindow]::IsWindowVisible($handle) -ne $visible) {
+      throw 'Native window operation did not take effect'
+    }
+    $null = [RelayWindow]::GetWindowThreadProcessId($handle, [ref]$windowOwner)
+    if (![RelayWindow]::IsWindow($handle) -or $windowOwner -ne $owned.Id) { throw 'Native window owner identity changed' }
     @{
       minimized = [RelayWindow]::IsIconic($handle); visible = [RelayWindow]::IsWindowVisible($handle)
       at = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds(); processId = $windowOwner
+      windowHandle = $handle.ToInt64().ToString()
     } | ConvertTo-Json -Compress
   }
   { $_ -in 'seedClipboard', 'readClipboard' } {

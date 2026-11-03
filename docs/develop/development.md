@@ -178,8 +178,12 @@ mise exec -- aube exec playwright test -c playwright.native-relay.config.ts --wo
 
 Keep `VITE_BUILD_SHA` equal to that checkout's full HEAD. The suite launches the
 actual EXE with its own WebView2 profile and test-side CDP port. It replaces the
-test session's clipboard, reads native text/PNG content, and minimizes/restores
-the owned window. Camera pixels are synthetic and decoded by the shipped WASM;
+test session's clipboard, reads native text/PNG content, and minimizes, hides and
+restores the same owned HWND. Hide requires an invisible, non-minimized window
+and an actual hidden DOM state before checking camera teardown. CI's isolated
+hide-forwarding mutation must fail the dedicated `NATIVE_RELAY_HIDE_DOM` assertion;
+Windows baseline/control acceptance remains pending until both are measured.
+Camera pixels are synthetic and decoded by the shipped WASM;
 this does not measure a physical camera or Windows 11 client compatibility.
 Non-Windows hosts and missing/mismatched candidate inputs fail setup.
 

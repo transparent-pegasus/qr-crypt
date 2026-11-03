@@ -49,6 +49,14 @@ interface WindowIdentity {
   cdpOwned: boolean
 }
 
+interface NativeWindowState {
+  minimized: boolean
+  visible: boolean
+  at: number
+  processId: number
+  windowHandle: string
+}
+
 export interface NativeClipboard {
   text: string
   png: string | null
@@ -105,8 +113,9 @@ export interface NativeRelay {
   initial: DocumentObservation
   requests: ObservedRequest[]
   downloads: string
-  minimize(): Promise<{ minimized: boolean; at: number }>
-  restore(): Promise<{ minimized: boolean; at: number }>
+  minimize(): Promise<NativeWindowState>
+  hide(): Promise<NativeWindowState>
+  restore(): Promise<NativeWindowState>
   seedClipboard(text: string): Promise<NativeClipboard>
   readClipboard(): Promise<NativeClipboard>
   assertBundleTraffic(requireWasm?: boolean): Promise<void>
@@ -357,6 +366,33 @@ export const test = base.extend<{ native: NativeRelay }>({
       await expect(
         page.getByRole("heading", { level: 1, name: "QR Crypt Relay", exact: true }),
       ).toBeVisible()
+      const ownedWindow = identity
+      const changeWindow = async (action: "minimize" | "hide" | "restore") => {
+        const result = await windows<NativeWindowState>(action)
+        observations.push({ phase: "OS-" + action, result })
+        expect(result.windowHandle).toBe(ownedWindow.windowHandle)
+        expect(result.processId).toBe(ownedWindow.processId)
+        expect(result).toMatchObject({
+          minimized: action === "minimize",
+          visible: action !== "hide",
+        })
+        await expect
+          .poll(
+            async () => {
+              const state = await page.evaluate(() => document.visibilityState)
+              observations.push({ phase: "DOM-" + action, state, at: Date.now() })
+              return state
+            },
+            {
+              message:
+                action === "hide"
+                  ? "NATIVE_RELAY_HIDE_DOM: owned non-minimized hidden HWND must make the document hidden"
+                  : "Native " + action + " must reach document visibility",
+            },
+          )
+          .toBe(action === "restore" ? "visible" : "hidden")
+        return result
+      }
       await provide({
         page,
         context,
@@ -365,24 +401,9 @@ export const test = base.extend<{ native: NativeRelay }>({
         buildSha: input.buildSha,
         requests,
         downloads,
-        minimize: async () => {
-          const result = await windows<{ minimized: boolean; at: number }>("minimize")
-          observations.push({ phase: "OS-minimize", result })
-          expect(result.minimized).toBe(true)
-          await expect
-            .poll(() => page.evaluate(() => document.visibilityState))
-            .toBe("hidden")
-          return result
-        },
-        restore: async () => {
-          const result = await windows<{ minimized: boolean; at: number }>("restore")
-          observations.push({ phase: "OS-restore", result })
-          expect(result.minimized).toBe(false)
-          await expect
-            .poll(() => page.evaluate(() => document.visibilityState))
-            .toBe("visible")
-          return result
-        },
+        minimize: () => changeWindow("minimize"),
+        hide: () => changeWindow("hide"),
+        restore: () => changeWindow("restore"),
         seedClipboard: (text) => windows<NativeClipboard>("seedClipboard", { text }),
         readClipboard: () => windows<NativeClipboard>("readClipboard"),
         assertBundleTraffic: async (requireWasm = false) => {
