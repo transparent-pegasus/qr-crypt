@@ -90,6 +90,7 @@ AES-256-GCM（`sym-message` / `OCA2`）では、オフラインデバイスは�
 * [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QRプロトコル仕様（v2：ポスト量子暗号と対称鍵）、ユーザー選択の表示設定とアーティファクトごとの密度クランプを含む
 * [docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md) — 起動 / オンライン時ワイプ契約
 * [docs/security/threat-model.md](docs/security/threat-model.md) — 脅威モデル
+* [docs/locales/ja/security/environment-threat-catalog.md](docs/locales/ja/security/environment-threat-catalog.md) — 物理・運用環境の脅威カタログ（[English](docs/security/environment-threat-catalog.md)）
 * [docs/security/security-review.md](docs/security/security-review.md) — セキュリティレビュー記録（v2、監査分類）
 * [docs/develop/development.md](docs/develop/development.md) — 技術スタック、セットアップ、コマンド、環境変数
 * [docs/develop/deployment.md](docs/develop/deployment.md) — Cloudflare PagesデプロイメントおよびCI フロー
