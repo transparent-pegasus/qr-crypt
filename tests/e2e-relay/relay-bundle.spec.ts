@@ -28,7 +28,7 @@ type RelayWindow = Window &
 
 const test = base.extend<{ bundleRequests: ObservedRequest[] }>({
   bundleRequests: [
-    async ({ baseURL, context, page }, use) => {
+    async ({ baseURL, context, page }, use, testInfo) => {
       if (baseURL === undefined) throw new Error("E2E_BASE_URL_MISSING")
       const root = resolve("dist-relay")
       const files = new Set(
@@ -60,6 +60,7 @@ const test = base.extend<{ bundleRequests: ObservedRequest[] }>({
 
       await use(requests)
 
+      if (testInfo.status === "skipped") return
       expect(requests.length).toBeGreaterThan(0)
       for (const request of requests) {
         const url = new URL(request.url)
@@ -187,7 +188,7 @@ test("makes no request outside the bundle's own files", async ({
   )
 })
 
-test("plays back sym and pq frames", async ({ page }) => {
+test("plays back sym and pq frames and reopens with an empty session", async ({ page }) => {
   await page.goto("/")
   for (const payloads of [messages.sym, messages.pq]) {
     await page.getByRole("button", { name: "Text → QR", exact: true }).click()
@@ -209,6 +210,10 @@ test("plays back sym and pq frames", async ({ page }) => {
     }
     await playback.getByRole("button", { name: "Close", exact: true }).click()
     await expect(playback).toBeHidden()
+    await page.getByRole("button", { name: "Text → QR", exact: true }).click()
+    await expect(playback.getByLabel("Relay text", { exact: true })).toHaveValue("")
+    await expect(playback.getByRole("img")).toHaveCount(0)
+    await playback.getByRole("button", { name: "Close", exact: true }).click()
   }
 })
 
@@ -231,9 +236,14 @@ test("rejects a non-message outer type in playback", async ({ page }) => {
 })
 
 test("captures a pq set from the injected decoder and copies the text", async ({
+  browserName,
   context,
   page,
 }) => {
+  test.skip(
+    browserName !== "chromium",
+    "This native clipboard readback uses clipboard-write permission, unsupported by Playwright WebKit.",
+  )
   await installInjectedDecoderStream(page)
   await context.grantPermissions(["camera", "clipboard-read", "clipboard-write"])
   await page.goto("/")
@@ -256,10 +266,15 @@ test("captures a pq set from the injected decoder and copies the text", async ({
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(text)
 })
 
-test("captures a sym frame in image mode and copies the image", async ({
+test("captures a sym frame with the injected decoder in image mode and copies the image", async ({
+  browserName,
   context,
   page,
 }) => {
+  test.skip(
+    browserName !== "chromium",
+    "This native PNG clipboard readback uses clipboard-write permission, unsupported by Playwright WebKit.",
+  )
   await installInjectedDecoderStream(page)
   await context.grantPermissions(["camera", "clipboard-read", "clipboard-write"])
   await page.goto("/")
@@ -297,9 +312,14 @@ test("captures a sym frame in image mode and copies the image", async ({
     .toBe(messages.sym[0])
 })
 
-test("starts the fake camera only on Start and stops it when the page is hidden", async ({
+test("starts the fake camera only on Start and stops it after an injected hidden-page event", async ({
+  browserName,
   page,
 }) => {
+  test.skip(
+    browserName !== "chromium",
+    "Fake camera capture uses Chromium-only media launch flags.",
+  )
   await page.addInitScript(() => {
     const probe = { calls: 0, streams: [] as MediaStream[] }
     ;(window as RelayWindow).__relayBundleCamera = probe

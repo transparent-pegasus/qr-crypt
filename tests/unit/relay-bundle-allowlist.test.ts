@@ -100,7 +100,7 @@ describe("relay allowlist exports", () => {
 
   it("lists the measured ZXing CDN URL as an exact normalized template", () => {
     expect(RELAY_ALLOWED_URL_TEMPLATES.map(({ template }) => template)).toContain(
-      "https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${}/${}",
+      "https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/${}/${}",
     )
   })
 
@@ -358,23 +358,27 @@ describe("findRelayOutputViolations", () => {
   })
 
   it.each([
-    '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${n[1]}/${e}`',
-    '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${directory}/${file}`',
+    '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/${n[1]}/${e}`',
+    '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/${directory}/${file}`',
   ])("accepts the measured ZXing CDN template after normalization: %s", (text) => {
     expect(findRelayOutputViolations([{ fileName: "assets/relay.js", text }])).toEqual([])
   })
 
   it.each([
     [
-      '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/other/${directory}/${file}`',
-      "url:https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/other/${}/${} in assets/relay.js",
+      '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.6/other/${directory}/${file}`',
+      "url:https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.6/other/${}/${} in assets/relay.js",
+    ],
+    [
+      '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${directory}/${file}`',
+      "url:https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${}/${} in assets/relay.js",
     ],
     [
       '`https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.1/dist/${directory}/${file}`',
       "url:https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.1/dist/${}/${} in assets/relay.js",
     ],
     [
-      '"https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/reader/zxing_reader.wasm"',
+      '"https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/reader/zxing_reader.wasm"',
       "url:https://fastly.jsdelivr.net in assets/relay.js",
     ],
   ])(

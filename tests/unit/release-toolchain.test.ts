@@ -7,6 +7,7 @@ describe("artifact-producing toolchain", () => {
     ["cloudflare-pages.yml", "validate"],
     // Ordinary Playwright mode builds dist through its configured webServer.
     ["cloudflare-pages.yml", "e2e"],
+    ["cloudflare-pages.yml", "e2e-relay"],
     ["cloudflare-pages.yml", "deploy"],
   ])("%s %s disables reusable mise caches", (file, name) => {
     const steps = readWorkflow(file).jobs[name]!.steps.filter((step) =>
