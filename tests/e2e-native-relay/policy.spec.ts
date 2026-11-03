@@ -1,5 +1,6 @@
 import { createServer } from "node:http"
 import { readdir } from "node:fs/promises"
+import type { Page, Request, Response } from "@playwright/test"
 import { APP_ORIGIN, expect, test } from "./native-fixture"
 
 for (const operation of ["navigation", "popup"] as const) {
@@ -14,61 +15,112 @@ for (const operation of ["navigation", "popup"] as const) {
         response.writeHead(200, { "Content-Type": "text/plain" })
         response.end("inert native policy probe")
       })
-      await new Promise<void>((done, fail) => {
-        sink.once("error", fail)
-        sink.listen(0, "127.0.0.1", done)
-      })
-      const address = sink.address()
-      if (!address || typeof address === "string") throw new Error("No owned policy sink")
-      const destination = "http://127.0.0.1:" + address.port + "/native-policy"
-      const newPages: string[] = []
-      context.on("page", (opened) => newPages.push(opened.url()))
       try {
-        await page.evaluate(
-          ({ destination, operation }) => {
-            const anchor = document.createElement("a")
-            anchor.textContent = "Inert native policy attempt"
-            anchor.href = destination
-            if (operation === "popup") anchor.target = "_blank"
-            document.body.append(anchor)
-          },
-          { destination, operation },
-        )
-        await page
-          .getByRole("link", { name: "Inert native policy attempt", exact: true })
-          .click({ noWaitAfter: true })
-        // Observe the denied operation long enough for a local request or newly created page to surface.
-        await page.waitForTimeout(1_000)
-        expect(new URL(page.url()).origin).toBe(APP_ORIGIN)
-        await expect(
-          page.getByRole("heading", { name: "QR Crypt Relay", exact: true }),
-        ).toBeVisible()
-        expect(context.pages()).toEqual([page])
-        expect(newPages).toEqual([])
-        expect(hits).toEqual([])
-        expect(
-          native.requests.filter(
-            (request) => new URL(request.url).origin === new URL(destination).origin,
-          ),
-        ).toEqual([])
-        await testInfo.attach("native-" + operation + "-denial.json", {
-          body: Buffer.from(
-            JSON.stringify({
-              destination,
-              observationMilliseconds: 1_000,
-              pages: context.pages().map((open) => open.url()),
-              newPages,
-              hits,
-              requests: native.requests,
-            }),
-          ),
-          contentType: "application/json",
+        await new Promise<void>((done, fail) => {
+          sink.once("error", fail)
+          sink.listen(0, "127.0.0.1", done)
         })
+        const address = sink.address()
+        if (!address || typeof address === "string")
+          throw new Error("No owned policy sink")
+        const destination = "http://127.0.0.1:" + address.port + "/native-policy"
+        const newPages: string[] = []
+        const eventLimit = 64
+        const requestEvents: unknown[] = []
+        let droppedEvents = 0
+        const observationStarted = performance.now()
+        const observeRequest = (
+          event: "request" | "response" | "requestfailed",
+          request: Request,
+          status: number | null = null,
+        ) => {
+          if (request.url() !== destination) return
+          if (requestEvents.length >= eventLimit) {
+            droppedEvents++
+            return
+          }
+          const method = request.method()
+          const resourceType = request.resourceType()
+          const failure = request.failure()?.errorText ?? null
+          // Keep only Chromium error codes; arbitrary failure text may contain private paths.
+          const error = failure?.match(/^net::ERR_[A-Z0-9_]{1,96}$/)?.[0] ?? null
+          requestEvents.push({
+            event,
+            elapsedMilliseconds: performance.now() - observationStarted,
+            url: request.url(),
+            method: method.slice(0, 32),
+            resourceType: resourceType.slice(0, 32),
+            textTruncated: method.length > 32 || resourceType.length > 32,
+            status,
+            error,
+            errorTextOmitted: failure !== null && failure !== error,
+            timing: { ...request.timing() },
+          })
+        }
+        const onPage = (opened: Page) => newPages.push(opened.url())
+        const onRequest = (request: Request) => observeRequest("request", request)
+        const onResponse = (response: Response) =>
+          observeRequest("response", response.request(), response.status())
+        const onRequestFailed = (request: Request) =>
+          observeRequest("requestfailed", request)
+        try {
+          context.on("page", onPage)
+          context.on("request", onRequest)
+          context.on("response", onResponse)
+          context.on("requestfailed", onRequestFailed)
+          await page.evaluate(
+            ({ destination, operation }) => {
+              const anchor = document.createElement("a")
+              anchor.textContent = "Inert native policy attempt"
+              anchor.href = destination
+              if (operation === "popup") anchor.target = "_blank"
+              document.body.append(anchor)
+            },
+            { destination, operation },
+          )
+          await page
+            .getByRole("link", { name: "Inert native policy attempt", exact: true })
+            .click({ noWaitAfter: true })
+          // Observe the denied operation long enough for a local request or newly created page to surface.
+          await page.waitForTimeout(1_000)
+          expect(new URL(page.url()).origin).toBe(APP_ORIGIN)
+          await expect(
+            page.getByRole("heading", { name: "QR Crypt Relay", exact: true }),
+          ).toBeVisible()
+          expect(context.pages()).toEqual([page])
+          expect(newPages).toEqual([])
+          expect(hits).toEqual([])
+          expect(
+            native.requests.filter(
+              (request) => new URL(request.url).origin === new URL(destination).origin,
+            ),
+          ).toEqual([])
+        } finally {
+          context.off("page", onPage)
+          context.off("request", onRequest)
+          context.off("response", onResponse)
+          context.off("requestfailed", onRequestFailed)
+          await testInfo.attach("native-" + operation + "-denial.json", {
+            body: Buffer.from(
+              JSON.stringify({
+                destination,
+                observationMilliseconds: 1_000,
+                pages: context.pages().map((open) => open.url()),
+                newPages,
+                hits,
+                requests: native.requests,
+                passive: { eventLimit, droppedEvents, events: requestEvents },
+              }),
+            ),
+            contentType: "application/json",
+          })
+        }
       } finally {
         sink.closeAllConnections()
-        await new Promise<void>((done, fail) =>
-          sink.close((error) => (error ? fail(error) : done())),
-        )
+        if (sink.listening)
+          await new Promise<void>((done, fail) =>
+            sink.close((error) => (error ? fail(error) : done())),
+          )
       }
     },
   )
