@@ -13,7 +13,7 @@ Types and constants are frozen in `src/app/boot/boot-contract.ts`.
 | Non-destructive lock (`blocked`) | The connectivity hint (`navigator.onLine`, three-valued: only an explicit `false` reads as `offline`) and the deployment verdict taken from the same sentinel response | Refuses to mount the Router. **Never wipes, never writes, never deletes** |
 
 - The sentinel is excluded from the SW precache, served via a `NetworkOnly`
-  runtime route (vite.config.ts), and delivered with
+  runtime route (`src/sw/service-worker.ts`), and delivered with
   `Cache-Control: no-store` through the Cloudflare `_headers` file. Offline it
   always fails.
 - False-positive classes (probe ≠ airgap): SW interference, captive portals,

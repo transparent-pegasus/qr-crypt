@@ -376,22 +376,19 @@ test("relays a canonical sym-message frame without relay-payload persistence or 
   })
   await expect(playback).toBeHidden()
 
-  await page.evaluate(() => {
-    const nativeSetTimeout = window.setTimeout.bind(window)
-    window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
-      nativeSetTimeout(
-        handler,
-        timeout === 10 * 60_000 ? 20 : timeout,
-        ...args,
-      )) as typeof window.setTimeout
-  })
+  await page.clock.install()
   await relayNavigationButton.click()
   await scanButton.click()
   await page
     .getByRole("dialog", { name: "QR to text" })
     .getByRole("button", { name: "Start camera" })
     .click()
+  await expect
+    .poll(async () => (await injectedScanSnapshot(page)).at(-1)?.active)
+    .toBe(true)
   await emitInjectedQr(page, symmetricFramePayload)
+  await expect(capture.getByLabel("Relay text")).toHaveValue(relayText)
+  await page.clock.fastForward(10 * 60_000)
   await expect(
     page.getByText(
       "The relay session timed out and its app-held payload references were cleared.",

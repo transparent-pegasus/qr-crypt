@@ -182,6 +182,7 @@ validation or an independent security assessment. Current status and blockers:
 * [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QR protocol specification (v2: post-quantum and symmetric), including the user-selected display preference and per-artifact density clamps
 * [docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md) — Boot / wipe-on-online contract
 * [docs/security/threat-model.md](docs/security/threat-model.md) — Threat model
+* [docs/security/environment-threat-catalog.md](docs/security/environment-threat-catalog.md) — Physical and operational threat catalog ([日本語](docs/locales/ja/security/environment-threat-catalog.md))
 * [docs/security/security-review.md](docs/security/security-review.md) — Security review record (v2, audit classification)
 * [docs/develop/development.md](docs/develop/development.md) — Tech stack, setup, commands, environment variables
 * [docs/develop/deployment.md](docs/develop/deployment.md) — Cloudflare Pages deployment and CI flow

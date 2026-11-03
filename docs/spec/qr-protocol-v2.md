@@ -547,6 +547,14 @@ defeat a compromised sender who hides data inside otherwise valid
 sender-controlled ciphertext, `transferId`, `iv`, or `createdAt` values — that
 residual is T21.
 
+Every successfully admitted relay session has a fixed 10-minute lifetime,
+starting when the dialog accepts and retains its lease after the protected
+cleanliness read. This covers empty, invalid-input, and active capture, image,
+and playback dialogs; input never extends the deadline. Expiry uses the shared
+teardown to release the lease, stop camera work, cancel pending playback
+preparation and display work, and clear retained session data. Browser task
+scheduling can delay teardown; this is not a hard real-time guarantee.
+
 Playback pre-renders sequentially, yielding a browser task between frames and
 checking cancellation before the next render. Every frame must pass the
 canonical round-trip and render checks before any frame is displayed. Replaced
