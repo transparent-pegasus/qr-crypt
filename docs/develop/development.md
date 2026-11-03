@@ -108,8 +108,8 @@ deployed to the web origin.
 ## Windows native relay candidate
 
 `native/desktop/` embeds only `dist-relay/`. Its scoped `mise.toml` pins Rust
-`1.99.1`; Cargo pins Tauri `2.12.5` and tauri-build `2.7.4` and commits the
-resolved graph. Tauri reads the application version from the root `package.json`;
+`1.99.1` with the required `rustfmt` component; Cargo pins Tauri `2.12.5` and
+tauri-build `2.7.4` and commits the resolved graph. Tauri reads the application version from the root `package.json`;
 the unpublished Cargo package has no separate release version.
 
 Build on x64 Windows with the Visual Studio C++ build tools, Windows SDK and
