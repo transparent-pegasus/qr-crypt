@@ -153,7 +153,13 @@ soundness notices. Do not suppress an advisory or unknown license to pass a gate
 The source/license policy is `native/desktop/deny.toml`.
 
 The shell selects one inline capability for `main` with no IPC permissions;
-Tauri's internal bridge remains. On Windows, the host forwards actual
+Tauri's internal bridge remains. Windows first creates a hidden blank controller,
+registers HTTP(S) request filters for all contexts/source kinds, and installs the
+visibility callback before navigating to embedded assets and showing the window.
+Foreign or malformed requests receive an empty local 403; guard failures terminate
+the process. `webview2-com` is a direct exact reference to the already locked
+`0.39.1`, with no added package version or selected feature. This is a WebView
+content-request boundary, not an OS network sandbox. The host forwards actual
 minimize/hide/restore messages to WebView2 controller visibility. The existing
 frontend hidden-state handler ends the session; restore does not request a new
 session. Propagation failure terminates the process. Actual Windows OS lifecycle,
@@ -184,12 +190,15 @@ must be exactly `{ rid: 8192, elevated: false }`; missing measurements fail setu
 and other values fail immediately with `NATIVE_RELAY_INTEGRITY` and the measured
 values. [Elevated WebView2 hosts ignore environment overrides](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security#recommended-privilege-level-for-webview2-host-applications).
 The accepted process must use its own verified WebView2 profile and test-side CDP
-port. The suite replaces the test session's clipboard, reads native text/PNG
+port. Attach with Playwright's `noDefaults: true`: its default focus emulation
+otherwise keeps the document visible during real OS hide/minimize operations.
+The suite replaces the test session's clipboard, reads native text/PNG
 content, and minimizes, hides and
 restores the same owned HWND. Hide requires an invisible, non-minimized window
 and an actual hidden DOM state before checking camera teardown. CI's isolated
-hide-forwarding mutation must fail the dedicated `NATIVE_RELAY_HIDE_DOM` assertion;
-Windows baseline/control acceptance remains pending until both are measured.
+hide-forwarding mutation must fail the dedicated `NATIVE_RELAY_HIDE_DOM` assertion.
+Native Windows text must match every frame in order with exact CRLF separators;
+the DOM representation uses LF. Do not trim or normalize away other differences.
 Camera pixels are synthetic and decoded by the shipped WASM;
 this does not measure a physical camera or Windows 11 client compatibility.
 Non-Windows hosts and missing/mismatched candidate inputs fail setup.
@@ -215,8 +224,8 @@ readback. A preceding probe requires checkout CWD, the selected mise and pinned
 aube/Node, distinct stream sentinels and deliberate exit `37`. The independent
 `medium-launcher-timeout.ps1` control checks deadline cleanup. Launcher source and
 selected tool hashes are retained. No profile import, global configuration,
-credential cache or environment copying is used. Native acceptance, including this
-default-DACL correction, still requires Windows results.
+credential cache or environment copying is used. The measured launcher correction
+does not by itself establish native acceptance.
 
 An untouched-runner control selects only the existing identity case. It must
 fail solely at the owned-token guard with RID `12288` and `elevated: true`, the
@@ -230,7 +239,16 @@ Playwright JSON reporter's Buffer attachment from its Base64 `body`, retaining
 candidate/token and cleanup evidence. Reports and separate streams live under
 `.tmp/native-relay-evidence/{launcher,integrity-negative,hide-negative,medium}`,
 with the ordinary HTML report under `playwright-report/native-relay`.
-These gates still require actual Windows results; a launcher probe or Linux
+At source `75b1324965b9a966a544f0191d6abb8b19e38bd1`, Windows Server 2025
+with WebView2 `156.0.4314.50` passed 16 of 18 cases, including all five OS lifecycle
+cases and native text/PNG clipboard content. The original hide case passed and
+the compiled hide control failed its intended assertion. External navigation
+still reached the owned loopback sink; the download case observed completion.
+The two explicit test-side CDP download `allow` settings override native handling;
+safe native-default observation needs an owned profile/destination setup and a
+discriminating compiled control. Do not substitute CDP `deny`, silence, or an empty
+unused directory for evidence. See the [dated results](../security/security-review.md#111-windows-native-runtime-checkpoint-2026-11-04).
+All 18 cases must pass on the same candidate; a launcher probe or Linux
 discovery is insufficient. Medium integrity does not establish AppContainer or
 compromised-OS isolation. Separate mutation
 checkouts must reject permissive navigation and an added IPC permission without

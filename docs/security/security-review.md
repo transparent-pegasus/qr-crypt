@@ -1056,6 +1056,49 @@ and all 17 extracted members before and after execution. Production rebuilds
 were byte-identical. These are PWA checks; they do not establish native runtime,
 MSIX, physical-device or publication gates.
 
+## 1.11 Windows native runtime checkpoint (2026-11-04)
+
+Source `75b1324965b9a966a544f0191d6abb8b19e38bd1` and its identical-tree PR
+merge `6e2a8bc96cef476f78ce9d7b9ab34d1fe7cc5232` each reached all 18 native-suite
+cases: **16 passed, 2 failed, no skips, retries or flaky results**. The
+[push execution](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41681837866)
+and [PR execution](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41681845127)
+used Windows Server 2025 build 26100 and WebView2 `156.0.4314.50`.
+The push EXE SHA-256 is
+`2a068c7ee0a909d0c2b318feaf3a50877dbf6b03b9988b0b2f755c785c25cad7`;
+its evidence ZIP SHA-256 is
+`949b7be294aef3286890c1e6253f04b120c6b25c512d82b594c5233560e0c464`.
+All 14 actual-native attachments bind source, EXE, assets and locks to the owned
+process/window, measured RID 8192/non-elevated token, owned CDP endpoint, and
+successful owned-process/profile cleanup. Four other cases exercise portable
+launcher/evidence boundaries.
+
+All five OS lifecycle cases passed: active minimize/hide, late camera acquisition,
+playback teardown and pending real-canvas cancellation. The compiled hide mutant
+failed only the intended DOM-hide assertion while the original passed. Actual
+native clipboard text matched all frames with Windows CRLF separators; native
+PNG readback decoded correctly. Camera input was synthetic. Popup denial, denied
+internal IPC and initial/reloaded asset identity also passed. Playwright attachment
+uses `noDefaults: true` so test-side focus emulation does not conceal OS visibility.
+
+Acceptance remains blocked: external navigation made a GET to the owned inert
+loopback sink despite preserving the application page, and the download case
+observed completed progress. The fixture's two explicit CDP download `allow`
+settings prevent this from proving native-default download behavior. Request-stage
+confinement and safe native-default download observation require their own verified
+corrections. The High-token rejection, compiled navigation/ACL controls and
+independent launcher deadline/owned-descendant cleanup control passed; an earlier
+intermittent 15-second PowerShell-helper timeout remains unexplained. Native
+freshness dates remain unset. This is no Windows 11 client, physical-camera,
+AppContainer, MSIX, store or independent-audit approval.
+
+Ordinary CI passed for this source. Separately, frozen source
+`1522a49dd964c15f5a71edbc9738fe6933223738` passed deterministic PWA rebuilding and
+all 45 packaged E2E cases with retries disabled. ZIP SHA-256
+`b900687a05e63b00b78805fd681d608c527e8094bcbdcf9c8aa6220d61bbfe03`
+and all 17 extracted members matched before/after testing. This unsigned local
+PWA artifact is not a later native candidate's artifact.
+
 ## 2. Prohibited Claims (UI / README / CI)
 
 None of the following may be used in UI, README, or CI displays.

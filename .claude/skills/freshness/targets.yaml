@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-11-03 # last revision of this registry itself
+updated: 2026-11-04 # last revision of this registry itself
 
 units:
   - id: deps
@@ -124,6 +124,7 @@ units:
       - native/desktop/tauri.conf.json # exact origin, inline zero-permission capability, embedded frontend
       - native/desktop/src/main.rs # navigation, popup/download denial and one main window
       - native/desktop/src/navigation.rs # platform origin, credentials and port boundary
+      - native/desktop/src/request_policy.rs # pre-navigation HTTP(S) filters and local denial
       - native/desktop/src/visibility.rs # actual Win32 lifecycle propagation; recheck locked Wry behavior
       - native/desktop/tests/navigation.rs # exact-origin behavior, including parsed URL normalization
       - native/desktop/tests/acl.rs # actual generated context; recheck pinned Tauri authority API
@@ -149,6 +150,16 @@ units:
       servicing sources; a numeric floor does not permit an unmaintained release.
       Inspect the exact selected native framework's origin, capability and
       lifecycle defaults when a shell is introduced or its pin changes.
+      Check hidden blank bootstrap and request-filter registration before the
+      first application navigation; require all HTTP(S) contexts/source kinds,
+      exact-origin admission, local empty rejection and fail-closed API errors.
+      Preserve owned-sink and passive request/response/failure evidence even
+      when a native policy assertion fails. A retained page is not no-egress.
+      Attach CDP with noDefaults so focus emulation cannot mask OS visibility.
+      Native text comparisons retain exact Windows CRLF and every frame byte.
+      Do not claim native download denial from CDP allow/deny overrides or
+      an empty unused directory; native-default observation needs a verified
+      owned destination/profile and a discriminating compiled control.
       Keep native/package/physical gates explicitly pending until evidence identifies
       their actual source, artifact hash, OS/runtime and measured operation.
       Historical G0r results keep their original dates, failures and clipboard/camera
