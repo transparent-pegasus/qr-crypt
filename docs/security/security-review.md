@@ -1092,6 +1092,26 @@ intermittent 15-second PowerShell-helper timeout remains unexplained. Native
 freshness dates remain unset. This is no Windows 11 client, physical-camera,
 AppContainer, MSIX, store or independent-audit approval.
 
+The request-stage correction at `aa29dd363c6c7a69d9730f7bb2ed253b619ab7db`
+was measured in same-tree PR merge `d5d13794380e344cfb63023b4f12812cec75a2ce`
+([execution](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41686771209)).
+The controlled navigation sink received **zero requests**; passive evidence showed
+one GET attempt, a local 403 response, then `net::ERR_ABORTED`, with no observed
+DNS/connect/request-start timing. The server would return 200 if reached. Exact
+application origin, heading and the single original page remained intact. The
+suite still reported 16/18 because its retained zero-CDP-request assertion rejects
+that locally answered attempt, and the separate download still completed. This
+distinguishes request intent from measured server contact; it does not prove OS
+network isolation. All 14 native identities/token/cleanup records and the existing
+lifecycle/clipboard/control checks remained valid on that PR execution.
+EXE SHA-256: `019e90969dabf7628e7805ab28c02bbe40626774340da60199de8fec18160077`;
+evidence ZIP SHA-256:
+`b295cce18df6fd9c59fd99e2defb2a696b9ddbacc54dc6c1d21668b1972aeb16`.
+The separate [push execution](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41686759046)
+failed in the original PowerShell token helper before obtaining a token observation;
+its later native cases did not execute. That failure remains recorded alongside the
+PR result, and native acceptance remains incomplete.
+
 Ordinary CI passed for this source. Separately, frozen source
 `1522a49dd964c15f5a71edbc9738fe6933223738` passed deterministic PWA rebuilding and
 all 45 packaged E2E cases with retries disabled. ZIP SHA-256

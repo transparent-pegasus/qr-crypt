@@ -248,6 +248,10 @@ The two explicit test-side CDP download `allow` settings override native handlin
 safe native-default observation needs an owned profile/destination setup and a
 discriminating compiled control. Do not substitute CDP `deny`, silence, or an empty
 unused directory for evidence. See the [dated results](../security/security-review.md#111-windows-native-runtime-checkpoint-2026-11-04).
+The subsequent request-stage correction produced zero owned-sink hits and a local
+403 followed by `net::ERR_ABORTED`; CDP still records the attempted GET. Retain
+both request/response evidence and the server observation when assessing that
+boundary. A DevTools request event alone is not proof of network contact.
 All 18 cases must pass on the same candidate; a launcher probe or Linux
 discovery is insufficient. Medium integrity does not establish AppContainer or
 compromised-OS isolation. Separate mutation
