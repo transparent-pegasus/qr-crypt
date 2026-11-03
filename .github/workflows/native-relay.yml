@@ -50,7 +50,7 @@ jobs:
             observation_files = @('direct.json', 'medium.json', 'launcher.json')
           }
           $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath
-          foreach ($file in $manifest.observation_files) {
+          foreach ($file in @('direct.json', 'launcher.json')) {
             @{ state = 'not-observed'; source = $env:GITHUB_SHA } | ConvertTo-Json |
               Set-Content -LiteralPath (Join-Path $directory $file)
           }
@@ -59,9 +59,10 @@ jobs:
             foreach ($name in @('pwsh', 'mise', 'aube', 'node')) {
               $tool = [ordered]@{ path = $null; sha256 = $null; selection_error = $null }
               try {
-                $tool.path = (Get-Command "${name}.exe" -CommandType Application -ErrorAction Stop).Source
-                if (-not [IO.Path]::IsPathFullyQualified($tool.path) -or [IO.Path]::GetFileName($tool.path) -ine "${name}.exe") {
-                  throw 'Expected the selected absolute executable path'
+                $tool.path = (Get-Command "${name}.exe" -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+                if ($tool.path -isnot [string] -or -not [IO.Path]::IsPathFullyQualified($tool.path) -or
+                    [IO.Path]::GetFileName($tool.path) -ine "${name}.exe" -or -not [IO.File]::Exists($tool.path)) {
+                  throw 'Expected one selected absolute existing executable path'
                 }
                 $tool.sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $tool.path).Hash.ToLowerInvariant()
               } catch {
@@ -230,6 +231,11 @@ jobs:
             } finally { $env:NATIVE_RELAY_PWSH = $previousPwsh }
           }
           $launch | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'launcher.json')
+          $mediumPath = Join-Path $PSScriptRoot 'medium.json'
+          if (-not (Test-Path -LiteralPath $mediumPath)) {
+            @{ state = 'not-observed'; source = $env:GITHUB_SHA; reason = 'Direct-parent placeholder: Medium observation absent after launcher attempt' } |
+              ConvertTo-Json | Set-Content -LiteralPath $mediumPath
+          }
           '@ | Set-Content -LiteralPath $payloadPath
             $manifest.payload_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $payloadPath).Hash.ToLowerInvariant()
             $manifest.state = 'prepared'
