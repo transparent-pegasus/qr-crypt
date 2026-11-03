@@ -34,6 +34,8 @@ const e2ePort =
 export default defineConfig({
   testDir: "tests/e2e",
   timeout: 60_000,
+  // Keep expensive PQ/QR browser cases within the same budget on every runner.
+  workers: 2,
   // CI job timeout is 30 min; fail with a report before GH kills the job silently
   globalTimeout: process.env.CI ? 25 * 60_000 : 0,
   retries: process.env.CI ? 2 : 0,
