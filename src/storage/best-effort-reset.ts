@@ -33,7 +33,7 @@ import {
   STORE_APP_METADATA,
 } from "@/storage/database"
 import { setAckPending } from "@/app/offline-ack-marker"
-import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
+import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/lib/local-storage-events"
 
 const VAULT_ENCRYPTED_SECRET_STORES = ["pqIdentities"] as const
 

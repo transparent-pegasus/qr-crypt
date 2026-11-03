@@ -10,10 +10,8 @@ import {
   encodeSymMessageEnvelopeV2,
 } from "@/crypto/pq/canonical-cbor"
 import { validateSymMessageEnvelopeV2 } from "@/crypto/pq/validation"
-import {
-  useFeatureSupport,
-  useTransientClear,
-} from "@/app/providers"
+import { useFeatureSupport } from "@/app/feature-support"
+import { useTransientClear } from "@/app/providers"
 import { DetailRow } from "@/components/detail-row"
 import { NoAutofocusDialogContent } from "@/components/no-autofocus-dialog-content"
 import { QrScannerModal } from "@/components/qr-scanner-modal"

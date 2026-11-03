@@ -10,7 +10,7 @@ import {
   useLocalizedMessage,
 } from "@/i18n"
 import { bestEffortLocalReset } from "@/storage/best-effort-reset"
-import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
+import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/lib/local-storage-events"
 import { memoryLocalStorage } from "./helpers/render-app"
 
 function LanguageProbe() {

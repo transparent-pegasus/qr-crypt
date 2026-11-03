@@ -14,8 +14,15 @@ import { parseHeadersFile } from "./csp-from-headers.mjs"
 try {
   const root = fs.realpathSync(path.resolve(process.env.SERVE_DIST_ROOT ?? "dist"))
   const port = Number(process.env.SERVE_DIST_PORT ?? 4173)
+  const headersMode = process.env.SERVE_DIST_HEADERS ?? "required"
+  if (headersMode !== "required" && headersMode !== "none") {
+    throw new Error("Invalid SERVE_DIST_HEADERS")
+  }
 
-  const rules = parseHeadersFile(await fsp.readFile(path.join(root, "_headers"), "utf8"))
+  const rules =
+    headersMode === "none"
+      ? []
+      : parseHeadersFile(await fsp.readFile(path.join(root, "_headers"), "utf8"))
 
   const matches = (pattern, pathname) =>
     pattern === "/*"
@@ -78,7 +85,9 @@ try {
         return
       }
       const file =
-        filePath === undefined ? undefined : await fsp.stat(filePath).catch(() => undefined)
+        filePath === undefined
+          ? undefined
+          : await fsp.stat(filePath).catch(() => undefined)
       if (!file?.isFile()) filePath = await contained(path.join(root, "index.html"))
       if (filePath === undefined || filePath === null) {
         response.writeHead(400)
