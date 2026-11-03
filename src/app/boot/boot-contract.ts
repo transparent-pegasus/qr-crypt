@@ -60,9 +60,9 @@ export type BootState =
   | { kind: "partial-failure"; failedSteps: readonly string[] }
 
 // Do not wipe on the install-gate path, where no sensitive data exists.
-// Maintenance token: set it with strong confirmation while offline; it must expire after
-// one verified transition and restore wipeOnOnline=ON
-// ("retain keys across the next single verified online transition only").
+// Maintenance token: set it with strong confirmation while offline to retain keys across
+// the next single verified online transition. Consumption or explicit disarm removes the
+// token without changing the configured wipeOnOnline policy (owner D1).
 export interface WipeDecisionInput {
   wipeOnOnline: boolean
   sensitiveDataExists: boolean

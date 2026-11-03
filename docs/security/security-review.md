@@ -46,8 +46,8 @@ retained four-suite wire/codec contract. Boot alone keeps a read-only
 Self-investigation and self-authored documents (including this one) are no
 substitute for independent review and do not close the blocker.
 
-Maximum fixture re-verified 2026-09-12 within the passing 17-file / 187-test
-`aube run test:pq` result by `tests/pq/maximum-artifact-size.golden.test.ts`
+Maximum fixture re-verified 2026-11-03 in the passing complete Vitest run
+(105 files / 1,638 tests), including `tests/pq/maximum-artifact-size.golden.test.ts`
 (`maxPlaintext=120,000B`, `name="テスト"` — the literal fixture string):
 
 | artifact | canonical CBOR (bytes) | compatible-preference frames | default-preference frames |
@@ -82,26 +82,27 @@ Verified 2026-07-30: assembly timeout floor and default match
 [qr-protocol-v2.md](../spec/qr-protocol-v2.md) §6 (dwell-only floors are not
 measured cycle times).
 
-**Long-text export, measured 2026-09-07** on the Linux desktop host
-(`make e2e`, mobile-chromium Playwright project, eight workers), using the
-120,000-byte signed PQ fixture at source
-`66076e0eb5be608424230c9ec6474fbd7d1e94c4`:
+**Long-text export, measured 2026-11-03** on the Linux desktop host
+(mobile-chromium Playwright emulation, one worker), using the
+120,000-byte signed PQ fixture in the extracted archive from clean source
+`e832072ad780398749d8887e0cbfca60bba6bcea` (§1.9):
 
 | step | measurement |
 | --- | --- |
-| encryption | 130 ms |
-| split into frames | 100 ms |
-| first frame render | 14 ms |
-| complete 127-frame ZIP export | 5,886 ms |
-| archive size | 9,633,018 B (≈9.6 MB) |
+| encryption | 134 ms |
+| split into frames | 103 ms |
+| first frame render | 12 ms |
+| complete 127-frame ZIP export | 12,935 ms |
+| archive size | 9,631,549 B (≈9.6 MB) |
 | artifact / frames | 126,576 B / 127 frames at 1,000B |
 
 These values come from the retained `long-text-metrics.json` attachment of
-one complete passing browser run. They are desktop-emulation measurements,
-not phone measurements. **On-device figures for Android Chrome and iOS Safari
+one passing extracted-byte test (1/1). They are desktop-emulation measurements,
+not phone measurements or a performance comparison with earlier runs.
+**On-device figures for Android Chrome and iOS Safari
 are not yet measured** — see [browser-matrix.md](../develop/browser-matrix.md).
 The ZIP path renders frames serially, so its raster working set is roughly
-one 1024px frame rather than 127 concurrent frames. This host's 5.9-second
+one 1024px frame rather than 127 concurrent frames. This run's 12.935-second
 export does not establish phone latency or total browser memory use.
 
 Numeric generated-display boot readability is append-only; non-exact
@@ -115,11 +116,32 @@ confirmation is the documented non-dismissible exception).
 
 ## 1. Facts About the Adopted Libraries
 
-Library-specific checks carry their own review date. The Noble source, exact
-published packages, advisories, and FIPS errata were assessed on 2026-09-07;
-the selected pin and local validation below belong to that change. The decoder
-assessment dated 2026-10-29 is separate from the historical 3.1.2 record and
-does not supply new device measurements.
+**Rechecked 2026-11-03.** The unchanged exact pins match the inspected official
+latest releases: [@noble/post-quantum 0.7.1](https://github.com/paulmillr/noble-post-quantum/releases/tag/0.7.1),
+[hashes 2.4.0](https://github.com/paulmillr/noble-hashes/releases/tag/2.4.0),
+[curves 2.4.0](https://github.com/paulmillr/noble-curves/releases/tag/2.4.0),
+[ciphers 2.4.0](https://github.com/paulmillr/noble-ciphers/releases/tag/2.4.0),
+and [zxing-wasm 3.1.6](https://github.com/Sec-ant/zxing-wasm/releases/tag/v3.1.6).
+Exact-version GitHub published-advisory and [OSV](https://api.osv.dev/v1/query)
+queries returned no entries for those five packages.
+
+Both NIST errata workbooks
+([FIPS 203](https://csrc.nist.gov/files/pubs/fips/203/final/docs/fips-203-potential-updates.xlsx),
+[FIPS 204](https://csrc.nist.gov/files/pubs/fips/204/final/docs/fips-204-potential-updates.xlsx))
+were read in full; their recorded rows and selected-source dispositions below
+remain unchanged. Downloaded package tarballs matched registry SHA-512 integrity
+and both publish/SLSA attestation subject digests, installed package contents
+matched the tarballs, and provenance commits matched upstream release commits.
+The zxing reader remains 946,860 bytes with SHA-256
+`5003fb4b88c4fbd1fd518a2fd8c8ad365c519e183a08c03a322dddfea3cea84e`
+and packaged `ZXING_CPP_COMMIT` `2c3dcfeffa7878950a58c1703c86774a428b0c91`.
+These are dated known-advisory and metadata/content-consistency checks, not
+independent audit, signature/log-chain verification, source rebuild, or device
+assurance.
+
+The source-diff, upgrade, and validation records below retain their original
+dates. The 2026-11-03 recheck changed no package, lockfile, pin, or override;
+its local verification is recorded separately in §1.9.
 
 ### @noble/post-quantum 0.7.1 (exact pin; version ranges forbidden)
 
@@ -186,8 +208,8 @@ AES-256-GCM/HKDF-SHA-256 composition is unchanged.
 **Provenance disposition.** The four exact registry records provide publish
 and SLSA v1 attestations. In the assessment, downloaded tarballs matched
 registry SHA-512 integrity, decoded attestation subjects matched their
-SHA-256 digests, and provenance commits matched registry `gitHead` and
-upstream source heads. Installed package files were compared with those
+tarball digests (SHA-512 in the 2026-11-03 recheck), and provenance commits
+matched registry `gitHead` and upstream source heads. Installed package files were compared with those
 assessed tarballs. This is content/metadata consistency, **not** independent
 Sigstore certificate-chain, signature, or transparency-log verification;
 neither that trust-chain check nor an independent source-to-published-JS
@@ -260,9 +282,9 @@ phone measurement. Mean milliseconds per operation:
 Signing relative margins were ±14.96% and ±16.10%, with 45 and 49 samples.
 These are reference throughput figures, not constant-time or timing/power/EM
 leakage measurements. Device support and Android/iOS browser-matrix cells were
-not remeasured or restamped. The full browser run exercised the long-text
-measurement scenario but retained no new attachment, so its historical table
-above is not refreshed from an unrecorded value.
+not remeasured or restamped. That browser run exercised the long-text
+measurement scenario but retained no new attachment and supplied no replacement
+measurement for the table above.
 
 ### zxing-wasm 3.1.6 assessment (2026-10-29)
 
@@ -971,6 +993,31 @@ implementation evidence and a dated known-advisory result. It does not
 establish benign upstream source, hosted-CI success, independent review, or
 release approval, and no `last_checked` stamp is advanced.
 
+## 1.9 Local review-followup verification (2026-11-03)
+
+The retained `make check` run exited 0: 105 files / 1,638 tests, including the
+unchanged PQ goldens and upstream-vector KATs; typecheck passed and lint reported
+0 errors / 13 existing warnings. Static checks after the E2E timing-harness
+adaptation also exited 0. The ordinary full mobile-chromium browser suite passed
+43/43 with two workers. Root `aube audit --json` exited 0 with no advisories and
+zero vulnerabilities in every severity across 439 dependencies. The official
+latest-release helper exited 0 with Noble 0.7.1 and zxing-wasm 3.1.6 matching
+the exact pins. No package or lockfile changed.
+
+Clean source `e832072ad780398749d8887e0cbfca60bba6bcea` passed the production
+build/package and exact extracted-archive browser gate: 43/43 with eight
+workers. ZIP and all 17 extracted members verified before and after the run;
+packaged and tested archive SHA-256 matched:
+`b8eeb673048800d93cabe4d2a0be215d198390ae5ea91daa8e3324eda7872af9`.
+Both full browser suites include the healthy/damaged-asset regression. An
+additional passing extracted-byte test with one worker supplies the retained
+`long-text-metrics.json` values above from the same source and archive.
+
+This is local, unsigned source/artifact verification. No signing, publication,
+deployment, or new hosted-CI evidence follows. Independent audit, signature/log
+trust-chain verification, independent source rebuild, physical-device
+measurements, and `release-approved` remain unestablished.
+
 ## 2. Prohibited Claims (UI / README / CI)
 
 None of the following may be used in UI, README, or CI displays.
@@ -1012,14 +1059,15 @@ guaranteed; JS memory erasure has limits
      bodies, every IndexedDB database's schema names — database, object-store
      and index names and key paths — as well as its keys/values, CacheStorage
      metadata/bodies (static shell permitted), localStorage (only `{oc-theme,
-     oc-lang, oc-offline-ack-pending, oc-online-tab}`), console,
+     oc-lang, oc-offline-ack-pending, oc-online-tab}`), browser-context cookies
+     (including HttpOnly), console,
      `window.onerror` / unhandled rejections, visible error text,
      `document.title`, `location.href`, and history state. **One marker set
      covers every sink**; a request oracle that searches fewer markers than the
      storage oracle is the hole this line exists to close. The byte-aware
-     storage oracle's self-test plants both a typed-array value marker and a
-     marker that appears only in an object-store name, and requires exactly
-     those two matches.
+     storage oracle's self-test plants a typed-array value marker, a marker
+     that appears only in an object-store name, and an HttpOnly cookie marker,
+     and requires exactly those three matches.
    - **Window-realm receipts must never appear in IndexedDB, localStorage, or
      CacheStorage.** Receipts are intentional module-memory residue in one loaded
      app window only (`src/features/receipt-cache.ts`), not shared with other tabs

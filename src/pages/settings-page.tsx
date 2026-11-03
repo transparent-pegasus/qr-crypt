@@ -550,11 +550,11 @@ export function SettingsPage() {
         <p className="text-sm leading-relaxed text-muted-foreground">
           {t("settings.pwa.noUpdatePolicy")}
         </p>
-        <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
+        <div className="grid grid-cols-1 gap-3 rounded-lg border p-3 text-sm sm:grid-cols-2">
           <InfoRow label={t("settings.info.version")} value={__APP_VERSION__} mono />
           <InfoRow
             label={t("settings.info.build")}
-            value={env.buildSha.slice(0, 7)}
+            value={env.buildSha}
             mono
           />
         </div>
@@ -843,8 +843,10 @@ function InfoRow({
 }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-3 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={mono ? "font-mono text-xs" : "font-medium"}>{value}</span>
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className={mono ? "min-w-0 break-all font-mono text-xs" : "font-medium"}>
+        {value}
+      </span>
     </div>
   )
 }

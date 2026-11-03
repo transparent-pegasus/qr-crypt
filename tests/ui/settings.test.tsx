@@ -71,6 +71,22 @@ describe("settings page", () => {
     resetDefaultBootControllerForTesting()
   })
 
+  it.each(["0123456789abcdef0123456789abcdef89abcdef", "development"])(
+    "shows the complete build identity %s",
+    async (buildSha) => {
+      const originalBuildSha = env.buildSha
+      env.buildSha = buildSha
+      try {
+        await renderApp("/settings")
+        await screen.findByText(en("settings.info.build"))
+        expect(screen.queryByText(buildSha, { exact: true })).not.toBeNull()
+        expect(screen.queryByText(buildSha, { exact: true })).toBeVisible()
+      } finally {
+        env.buildSha = originalBuildSha
+      }
+    },
+  )
+
   it("shows both environment-selected background auto-clear delays", async () => {
     const originalNormalSeconds = env.autoClearSeconds
     const originalFallbackSeconds = env.autoClearFallbackSeconds
