@@ -172,6 +172,11 @@ units:
       and the assertion-only compiled hide control under the same launcher chain.
       Use the measured own-primary-token CreateRestrictedToken flags0x5 path,
       lower only the new token to Medium and validate its non-elevated state.
+      Preserve its default DACL's entries/order and append a non-inheritable
+      GENERIC_ALL allow for its actual TokenUser SID, then verify readback;
+      reject null/invalid/oversized data or API failure. This private new-token
+      default addresses the measured administrator-default pipe failure, without
+      changing any existing filesystem, desktop or process ACL.
       The suspended child must join a private kill-on-close job before resuming;
       reject assignment/resume/wait/cleanup errors without elevated-token fallback.
       Require the independent launcher deadline control to verify the complete
@@ -356,14 +361,18 @@ units:
       separately from full-lock informational advisory notices.
       The native CI-only run-medium.ps1 uses the measured own-primary-token
       CreateRestrictedToken LUA_TOKEN|DISABLE_MAX_PRIVILEGE flags0x5 path and
-      lowers only the new token to Medium. Recheck official Win32 token/process/job
+      lowers only the new token to Medium. Preserve all default-DACL entries/order,
+      append one non-inheritable GENERIC_ALL allow for the actual TokenUser SID
+      on that private new token only, and verify readback. Reject null, malformed,
+      oversized or failed queries/setters. No existing filesystem/desktop/process
+      ACL changes. Recheck official Win32 token/process/job
       contracts, API outputs and cleanup when this launcher changes. Open only the
       current process token with necessary rights; validate the new token's Medium
       integrity and non-elevated state before CreateProcessAsUserW of the absolute
       selected pwsh. Use canonical UTF16LE/Base64, bounded command length/wait,
       checkout CWD and inherited same-user environment/desktop. Assign the suspended
       child to a private non-inherited kill-on-close job before resume; no breakaway,
-      PID/name-only termination, token fallback or account/UAC/registry/ACL changes.
+      PID/name-only termination, token fallback or account/UAC/registry changes.
       Preserve exact normal child exits, including37; terminate and verify the
       complete owned tree before timeout124 with NATIVE_RELAY_LAUNCH_TIMEOUT:.
       Preserve primary errors and surface cleanup errors; close/free all owned
@@ -374,7 +383,7 @@ units:
       selected mise and pinned aube/Node, distinct stdout/stderr and exact exit37;
       capture inside the Medium child and read both streams back in the parent.
       Do not use broad environment copying, global install/config/profile,
-      credentials, sandbox-inert flags, ACL grants or product automation hooks.
+      credentials, sandbox-inert flags, existing-object ACL grants or product automation hooks.
       Retain build/manifest identity before any later control failure, High-control
       token/cleanup, Medium baseline and assertion-only hide mutation evidence separately.
       Require actual Windows results for all 18 cases and both runtime controls;

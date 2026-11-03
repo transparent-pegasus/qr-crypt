@@ -200,7 +200,11 @@ manifest, generated ACL inputs and build hashes before runtime controls. CI alon
 uses [`run-medium.ps1`](../../tests/e2e-native-relay/run-medium.ps1) to derive a
 restricted version of its own primary token with `CreateRestrictedToken` flags
 `LUA_TOKEN | DISABLE_MAX_PRIVILEGE` (`0x5`). It sets only the new token to Medium,
-validates its integrity and elevation, and uses `CreateProcessAsUserW` to start
+validates its integrity and elevation, and appends a non-inheritable `GENERIC_ALL`
+allow for its actual `TokenUser` SID to its private default DACL, preserving all
+existing entries and their order and verifying readback. This addresses the measured
+administrator-default pipe failure; it changes no existing filesystem, desktop or
+process ACL. It uses `CreateProcessAsUserW` to start
 the selected PowerShell in the checkout with the same user's inherited environment
 and desktop. The child starts suspended, joins a private kill-on-close Job Object
 without breakaway, then resumes. Deadlines terminate and verify the owned tree
@@ -211,9 +215,8 @@ readback. A preceding probe requires checkout CWD, the selected mise and pinned
 aube/Node, distinct stream sentinels and deliberate exit `37`. The independent
 `medium-launcher-timeout.ps1` control checks deadline cleanup. Launcher source and
 selected tool hashes are retained. No profile import, global configuration,
-credential cache, environment copying or ACL grant is used. Token-only measurements
-support this choice; launched-process and native acceptance still require Windows
-results.
+credential cache or environment copying is used. Native acceptance, including this
+default-DACL correction, still requires Windows results.
 
 An untouched-runner control selects only the existing identity case. It must
 fail solely at the owned-token guard with RID `12288` and `elevated: true`, the

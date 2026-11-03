@@ -31,6 +31,8 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Threading;
 
@@ -98,6 +100,9 @@ public static class NativeMediumLauncher
     [DllImport("advapi32.dll", ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     static extern bool EqualSid(IntPtr first, IntPtr second);
+    [DllImport("advapi32.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    static extern bool IsValidAcl(IntPtr acl);
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     static extern bool CreateProcessAsUserW(IntPtr token, [MarshalAs(UnmanagedType.LPWStr)] string application, [In, Out] StringBuilder commandLine, IntPtr processAttributes, IntPtr threadAttributes, [MarshalAs(UnmanagedType.Bool)] bool inheritHandles, uint flags, IntPtr environment, [MarshalAs(UnmanagedType.LPWStr)] string directory, ref StartupInfo startup, out ProcessInfo process);
@@ -138,6 +143,63 @@ public static class NativeMediumLauncher
     {
         if (!Valid(handle)) throw new InvalidOperationException(api + " returned an invalid handle");
     }
+    static byte[] ReadTokenData(IntPtr token, int infoClass)
+    {
+        uint needed;
+        bool sized = GetTokenInformation(token, infoClass, IntPtr.Zero, 0, out needed);
+        int error = Marshal.GetLastWin32Error();
+        if (sized || error != 122) throw new Win32Exception(error, "Size token information/" + infoClass);
+        int header = infoClass == 1 ? Marshal.SizeOf<Label>() : IntPtr.Size;
+        if (needed < header + 8 || needed > 65536) throw new InvalidOperationException("Invalid token buffer size");
+        IntPtr buffer = Marshal.AllocHGlobal((int)needed);
+        try
+        {
+            uint returned;
+            Check(GetTokenInformation(token, infoClass, buffer, needed, out returned), "GetTokenInformation/" + infoClass);
+            if (returned < header + 8 || returned > needed) throw new InvalidOperationException("Invalid token buffer length");
+            IntPtr data = Marshal.ReadIntPtr(buffer);
+            long offset = checked(data.ToInt64() - buffer.ToInt64());
+            if (data == IntPtr.Zero || offset < header || offset > returned - 8L)
+                throw new InvalidOperationException("Invalid token data pointer");
+            int length = checked((int)(returned - offset));
+            if (infoClass == 6)
+            {
+                int aclSize = (ushort)Marshal.ReadInt16(data, 2);
+                if (aclSize < 8 || aclSize > length || !IsValidAcl(data))
+                    throw new InvalidOperationException("Invalid token default DACL");
+                length = aclSize;
+            }
+            var bytes = new byte[length];
+            Marshal.Copy(data, bytes, 0, length);
+            return bytes;
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+    static void PrepareDefaultDacl(IntPtr token)
+    {
+        var user = new SecurityIdentifier(ReadTokenData(token, 1), 0);
+        byte[] original = ReadTokenData(token, 6);
+        var acl = new RawAcl(original, 0);
+        int existingEntriesLength = acl.BinaryLength - 8;
+        // The measured administrator default denied Medium CreatePipe access for this user.
+        acl.InsertAce(acl.Count, new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, 0x10000000, user, false, null));
+        if (acl.BinaryLength > 65536 - IntPtr.Size) throw new InvalidOperationException("Token default DACL is too large");
+        var expected = new byte[acl.BinaryLength];
+        acl.GetBinaryForm(expected, 0);
+        if (!expected.AsSpan(8, existingEntriesLength).SequenceEqual(original.AsSpan(8, existingEntriesLength)))
+            throw new InvalidOperationException("Token default DACL entries must be preserved");
+        IntPtr update = Marshal.AllocHGlobal(IntPtr.Size + expected.Length);
+        try
+        {
+            IntPtr data = IntPtr.Add(update, IntPtr.Size);
+            Marshal.Copy(expected, 0, data, expected.Length);
+            Marshal.WriteIntPtr(update, data);
+            Check(SetTokenInformation(token, 6, update, (uint)IntPtr.Size), "SetTokenInformation/DefaultDacl");
+            if (!expected.AsSpan().SequenceEqual(ReadTokenData(token, 6)))
+                throw new InvalidOperationException("Token default DACL readback mismatch");
+        }
+        finally { Marshal.FreeHGlobal(update); }
+    }
     static void PrepareToken(IntPtr token)
     {
         IntPtr label = IntPtr.Zero, observed = IntPtr.Zero;
@@ -166,6 +228,7 @@ public static class NativeMediumLauncher
             uint elevated;
             Check(GetTokenDword(token, 20, out elevated, 4, out returned), "GetTokenInformation/Elevation");
             if (returned != 4 || elevated != 0) throw new InvalidOperationException("The new token must not be elevated");
+            PrepareDefaultDacl(token);
         }
         finally
         {
