@@ -24,46 +24,56 @@ async function expectEmptyPlayback(page: Page): Promise<void> {
   await expect(playback.getByRole("img")).toHaveCount(0)
 }
 
-test("OS minimize ends active synthetic camera tracks and restore never resumes capture", async ({
-  native,
-  page,
-}, testInfo) => {
-  await installSyntheticCamera(page, [])
-  await page.getByRole("button", { name: "QR → Text", exact: true }).click()
-  const capture = page.getByRole("dialog", { name: "QR to text", exact: true })
-  await capture.getByRole("button", { name: "Start camera", exact: true }).click()
-  await expect
-    .poll(cameraSnapshot.bind(null, page))
-    .toEqual({ calls: 1, pending: 0, stopCalls: 0, tracks: ["live"] })
-  await expect
-    .poll(() =>
-      capture
-        .locator("video")
-        .evaluate((video: HTMLVideoElement) => !video.paused && video.currentTime > 0),
-    )
-    .toBe(true)
-  await native.minimize()
-  await expect.poll(async () => (await cameraSnapshot(page)).tracks).toEqual(["ended"])
-  await native.restore()
-  await expect(capture).toBeHidden()
-  await page.getByRole("button", { name: "QR → Text", exact: true }).click()
-  await expect(
-    capture.getByRole("button", { name: "Start camera", exact: true }),
-  ).toBeEnabled()
-  await expect(capture.getByLabel("Relay text", { exact: true })).toHaveCount(0)
-  await expect(capture.getByRole("img")).toHaveCount(0)
-  expect(await cameraSnapshot(page)).toMatchObject({
-    calls: 1,
-    pending: 0,
-    tracks: ["ended"],
+for (const operation of ["minimize", "hide"] as const) {
+  test(`OS ${operation} ends active synthetic camera tracks and restore never resumes capture`, async ({
+    native,
+    page,
+  }, testInfo) => {
+    await installSyntheticCamera(page, [])
+    await page.getByRole("button", { name: "QR → Text", exact: true }).click()
+    const capture = page.getByRole("dialog", { name: "QR to text", exact: true })
+    await capture.getByRole("button", { name: "Start camera", exact: true }).click()
+    await expect
+      .poll(cameraSnapshot.bind(null, page))
+      .toEqual({ calls: 1, pending: 0, stopCalls: 0, tracks: ["live"] })
+    await expect
+      .poll(() =>
+        capture
+          .locator("video")
+          .evaluate((video: HTMLVideoElement) => !video.paused && video.currentTime > 0),
+      )
+      .toBe(true)
+    if (operation === "hide") {
+      expect(await native.hide()).toMatchObject({ minimized: false, visible: false })
+      await expect
+        .poll(() => page.evaluate(() => document.visibilityState))
+        .toBe("hidden")
+    } else {
+      await native.minimize()
+    }
+    await expect.poll(async () => (await cameraSnapshot(page)).tracks).toEqual(["ended"])
+    await native.restore()
+    await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("visible")
+    await expect(capture).toBeHidden()
+    await page.getByRole("button", { name: "QR → Text", exact: true }).click()
+    await expect(
+      capture.getByRole("button", { name: "Start camera", exact: true }),
+    ).toBeEnabled()
+    await expect(capture.getByLabel("Relay text", { exact: true })).toHaveCount(0)
+    await expect(capture.getByRole("img")).toHaveCount(0)
+    expect(await cameraSnapshot(page)).toMatchObject({
+      calls: 1,
+      pending: 0,
+      tracks: ["ended"],
+    })
+    expect((await cameraSnapshot(page)).stopCalls).toBeGreaterThanOrEqual(1)
+    await testInfo.attach("synthetic-camera-OS-lifecycle.json", {
+      body: Buffer.from(JSON.stringify(await cameraSnapshot(page))),
+      contentType: "application/json",
+    })
+    await native.assertBundleTraffic(true)
   })
-  expect((await cameraSnapshot(page)).stopCalls).toBeGreaterThanOrEqual(1)
-  await testInfo.attach("synthetic-camera-OS-lifecycle.json", {
-    body: Buffer.from(JSON.stringify(await cameraSnapshot(page))),
-    contentType: "application/json",
-  })
-  await native.assertBundleTraffic(true)
-})
+}
 
 test("OS minimize cancels still-pending acquisition and ends a stream resolved after restore", async ({
   native,
