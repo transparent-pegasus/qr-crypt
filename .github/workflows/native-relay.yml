@@ -1,0 +1,190 @@
+name: Native relay
+
+on:
+  push:
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-relay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      VITE_BUILD_SHA: ${{ github.sha }}
+      NATIVE_RELAY_EXE: ${{ github.workspace }}/native/desktop/target/release/qr-crypt-relay.exe
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pinned project tools
+        uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: false
+
+      - name: Install the scoped Rust toolchain
+        working-directory: native/desktop
+        run: mise install
+
+      - name: Install frozen frontend dependencies
+        run: mise exec -- aube ci
+
+      - name: Build the isolated relay assets
+        run: mise exec -- aube run build:relay
+
+      - name: Check Rust formatting
+        working-directory: native/desktop
+        run: mise exec -- cargo fmt --all -- --check
+
+      - name: Test the locked Windows host policy
+        working-directory: native/desktop
+        run: mise exec -- cargo test --release --locked --target-dir target
+
+      - name: Build the release executable
+        working-directory: native/desktop
+        run: mise exec -- cargo build --release --locked --target-dir target
+
+      - name: Prove a permissive policy fails the negative tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $negativeRoot = Join-Path $env:RUNNER_TEMP 'native-policy-negative'
+          git worktree add --detach $negativeRoot $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create the isolated negative checkout' }
+          Copy-Item dist-relay (Join-Path $negativeRoot 'dist-relay') -Recurse
+          $policy = Join-Path $negativeRoot 'native/desktop/src/navigation.rs'
+          Set-Content -LiteralPath $policy -Encoding utf8 -Value 'pub(crate) fn navigation_allowed(_url: &tauri::Url) -> bool { true }'
+          Push-Location (Join-Path $negativeRoot 'native/desktop')
+          try {
+            $output = & mise exec -- cargo test --release --locked --target-dir target --test navigation 2>&1
+            $testExit = $LASTEXITCODE
+          } finally {
+            Pop-Location
+          }
+          New-Item -ItemType Directory -Force .tmp/native-relay-evidence | Out-Null
+          $output | Set-Content .tmp/native-relay-evidence/permissive-policy.log
+          $output | Write-Output
+          if ($testExit -eq 0 -or ($output -join "`n") -notmatch 'test .*rejects.*FAILED') {
+            throw 'The permissive mutation must compile and fail a navigation denial assertion'
+          }
+          exit 0
+
+      - name: Prove an added IPC permission fails the generated-authority test
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $negativeRoot = Join-Path $env:RUNNER_TEMP 'native-policy-negative'
+          $configPath = Join-Path $negativeRoot 'native/desktop/tauri.conf.json'
+          $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+          $config.app.security.capabilities[0].permissions = @('core:app:allow-version')
+          $config | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath $configPath -Encoding utf8
+          Push-Location (Join-Path $negativeRoot 'native/desktop')
+          try {
+            $output = & mise exec -- cargo test --release --locked --target-dir target --test acl 2>&1
+            $testExit = $LASTEXITCODE
+          } finally {
+            Pop-Location
+          }
+          $output | Set-Content .tmp/native-relay-evidence/added-permission.log
+          $output | Write-Output
+          if ($testExit -eq 0 -or ($output -join "`n") -notmatch 'test denies_frontend_commands_in_generated_context .*FAILED') {
+            throw 'The added permission must compile and fail the generated authority assertion'
+          }
+          exit 0
+
+      - name: Record the developer executable identity
+        run: |
+          New-Item -ItemType Directory -Force .tmp/native-relay-evidence | Out-Null
+          $identity = [ordered]@{
+            source = $env:GITHUB_SHA
+            executable_sha256 = (Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant()
+            cargo_lock_sha256 = (Get-FileHash -Algorithm SHA256 native/desktop/Cargo.lock).Hash.ToLowerInvariant()
+            windows = [Environment]::OSVersion.Version.ToString()
+            artifact_kind = 'unsigned developer executable; not an MSIX or store release'
+          }
+          $identity | ConvertTo-Json | Set-Content .tmp/native-relay-evidence/build.json
+
+      - name: Inspect the linked Windows manifest and retain ACL inputs
+        run: |
+          $sdkBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
+          $mt = Get-ChildItem "$sdkBin/*/x64/mt.exe" | Sort-Object FullName | Select-Object -Last 1
+          if (-not $mt) { throw 'Windows SDK manifest tool is required' }
+          $manifestPath = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/application.manifest'
+          & $mt.FullName "-inputresource:$($env:NATIVE_RELAY_EXE);#1" "-out:$manifestPath"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the actual executable manifest' }
+          [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
+          $level = $manifest.SelectSingleNode("//*[local-name()='requestedExecutionLevel']")
+          if ($level -and ($level.level -ne 'asInvoker' -or $level.uiAccess -eq 'true')) {
+            throw 'The relay must not request elevated or UIAccess privileges'
+          }
+          $autoElevate = $manifest.SelectSingleNode("//*[local-name()='autoElevate']")
+          if ($autoElevate -and $autoElevate.InnerText -ne 'false') { throw 'Automatic elevation is forbidden' }
+          Copy-Item native/desktop/gen/schemas/*.json .tmp/native-relay-evidence/
+
+      - name: Test the actual Windows WebView2 executable
+        run: mise exec -- aube exec playwright test -c playwright.native-relay.config.ts --workers=1 --retries=0
+
+      - name: Retain native verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-relay-windows-evidence-${{ github.sha }}
+          path: |
+            .tmp/native-relay-evidence
+            test-results
+            playwright-report/native-relay
+            native/desktop/Cargo.lock
+            native/desktop/tauri.conf.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Retain the verified developer executable
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-relay-windows-developer-${{ github.sha }}
+          path: native/desktop/target/release/qr-crypt-relay.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: native/desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up project tools
+        uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: false
+
+      - name: Install the scoped Rust toolchain
+        run: mise install
+
+      - name: Install the exact audit tool
+        run: mise exec -- cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Install the exact license and source checker
+        run: mise exec -- cargo install cargo-deny --version 0.20.2 --locked
+
+      - name: Audit the entire lockfile
+        run: mise exec -- cargo audit --file Cargo.lock
+
+      - name: Check the Windows dependency graph
+        run: mise exec -- cargo deny --locked check

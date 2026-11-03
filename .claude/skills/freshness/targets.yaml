@@ -125,6 +125,18 @@ units:
       - native/desktop/src/main.rs # navigation, popup/download denial and one main window
       - native/desktop/src/navigation.rs # platform origin, credentials and port boundary
       - native/desktop/src/visibility.rs # actual Win32 lifecycle propagation; recheck locked Wry behavior
+      - native/desktop/tests/navigation.rs # exact-origin behavior, including parsed URL normalization
+      - native/desktop/tests/acl.rs # actual generated context; recheck pinned Tauri authority API
+      - tests/unit/native-relay-host.test.ts # parsed config intent, separate from runtime enforcement
+      - tests/e2e-native-relay/native-fixture.ts # actual EXE, source/asset identity, process ownership and request observation
+      - tests/e2e-native-relay/launcher.ts # fail-closed platform/path/SHA and owned-process setup
+      - tests/e2e-native-relay/launcher.spec.ts
+      - tests/e2e-native-relay/native-relay.spec.ts # native clipboard content and real WASM decoding of synthetic camera pixels
+      - tests/e2e-native-relay/lifecycle.spec.ts # OS minimize/restore, active and pending work
+      - tests/e2e-native-relay/policy.spec.ts # actual navigation, popup, download and IPC denial
+      - tests/e2e-native-relay/synthetic-camera.ts # test-side pixel source, never a physical-camera claim
+      - tests/e2e-native-relay/windows.ps1 # test-side native window/process and clipboard APIs
+      - tests/fixtures/relay-messages.ts # shared synthetic protocol fixtures, never product imports
     why: >
       Supported OS/runtime maintenance, native host defaults, response-policy
       differences, and the boundary between measured and pending gates can drift.
@@ -142,6 +154,10 @@ units:
       Keep the device prohibition and ambient-camera warning consistent in both
       READMEs, both Route A procedures, INSTALL.template.txt, threat-model and
       security-review. Do not turn IPC denial into an OS network/sandbox claim.
+      Compare native fixture observations with actual embedded assets, compiled
+      authority and linked manifest. Test-side CDP/profile/window/clipboard operations
+      must belong to the spawned candidate. Missing Windows execution or clipboard
+      content is an incomplete gate, never a blanket skip or a browser substitute.
     verify: |
       aube run test -- tests/unit/relay-bundle-allowlist.test.ts tests/ui/relay-app.test.tsx
       aube run test -- tests/unit/generate-install-txt.test.ts tests/unit/release-static-package.test.ts
@@ -187,7 +203,12 @@ units:
       cargo metadata --locked --format-version 1
       cargo audit
       cargo deny --locked check
-      On Windows: cargo test --release --locked && cargo build --release --locked.
+      On Windows: cargo test --release --locked --target-dir target
+      and cargo build --release --locked --target-dir target.
+      With absolute NATIVE_RELAY_EXE and VITE_BUILD_SHA equal to checkout HEAD:
+      mise exec -- aube exec playwright test -c playwright.native-relay.config.ts --workers=1 --retries=0
+      The native workflow's isolated permissive-navigation and added-IPC-permission
+      controls must compile and fail their intended assertions, not fail setup.
       Run the actual Windows native gate with this candidate's full source SHA;
       no stamp until the generated ACL/manifest and required runtime checks pass.
     sync: [native-relay-host, threat-model, security-review]
@@ -249,11 +270,13 @@ units:
       - .github/workflows/dev-to-main-pr.yml
       - .github/workflows/github-release.yml
       - .github/workflows/security-maintenance.yml # scheduled/manual read-only advisory and assessed-pin checks; integration-owned
+      - .github/workflows/native-relay.yml # actual Windows developer EXE and strict native dependency checks
       - scripts/check-assessed-releases.sh # exact Noble/decoder pins versus official latest releases; fail-closed signal
       - tests/unit/assessed-release-check.test.ts # both exact pins, invalid API/pin data, request failures, and independent checks
       - tests/fixtures/assessed-release-gh.py # offline official-release responses and real jq extraction
       - playwright.config.ts # no-build artifact root, isolated port, and server lifecycle contract
       - playwright.relay.config.ts # isolated relay port, header-less server, and mobile browser project
+      - playwright.native-relay.config.ts # actual Windows EXE through test-side CDP, one worker and no retries
       - tests/e2e/release-artifact.spec.ts # real healthy/damaged artifact boot, trace pageError, and unchanged original control
       - tests/fixtures/artifact-browser.ts # isolated child ports, bounded processes, tree digests, and trace evidence
       - scripts/release/check-packaged-responses.mjs # archived JS/CSS/WASM and sentinel/CSP/MIME responses; integration-owned
@@ -299,9 +322,16 @@ units:
       docs/develop/install-route-a/README.md holds the complete Route A Cosign /
       rebuild procedure while the README publishes only a summary plus a link.
     method: |
-      Review all four workflows, scripts/check-assessed-releases.sh, playwright.config.ts,
-      playwright.relay.config.ts,
+      Review all workflows, scripts/check-assessed-releases.sh, playwright.config.ts,
+      playwright.relay.config.ts, playwright.native-relay.config.ts,
       and the scripts/release programs they invoke.
+      Native Windows checks use a release EXE, locked Cargo graph and full source SHA,
+      no reusable caches or signing/store secrets. Keep mutation checkouts/targets
+      separate from the EXE under test; require assertion failures for both negative
+      controls. Retain EXE/lock hashes, actual linked manifest, generated ACL inputs
+      and runtime reports. Native developer artifacts do not establish package or
+      physical-release gates. Review the Linux-hosted Windows-target dependency job
+      separately from full-lock informational advisory notices.
       Check each action repository for newer majors and security advisories.
       Keep release-workflow actions pinned to full SHAs;
       verify tag-backed SHAs against their exact documented releases, peeling

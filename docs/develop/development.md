@@ -168,6 +168,29 @@ and denied calls in the actual Windows candidate. Also retain the generated
 Windows resource manifest from that build; a developer EXE does not prove
 package capabilities or OS isolation.
 
+After building the clean candidate above, execute its native tests on a dedicated
+relay test device in PowerShell:
+
+```powershell
+$env:NATIVE_RELAY_EXE = (Resolve-Path native/desktop/target/release/qr-crypt-relay.exe).Path
+mise exec -- aube exec playwright test -c playwright.native-relay.config.ts --workers=1 --retries=0
+```
+
+Keep `VITE_BUILD_SHA` equal to that checkout's full HEAD. The suite launches the
+actual EXE with its own WebView2 profile and test-side CDP port. It replaces the
+test session's clipboard, reads native text/PNG content, and minimizes/restores
+the owned window. Camera pixels are synthetic and decoded by the shipped WASM;
+this does not measure a physical camera or Windows 11 client compatibility.
+Non-Windows hosts and missing/mismatched candidate inputs fail setup.
+
+[`native-relay.yml`](../../.github/workflows/native-relay.yml) builds on Windows
+Server 2025, checks the compiled context and actual WebView, and retains the linked
+manifest, generated ACL inputs, hashes and test reports. Separate mutation
+checkouts must reject permissive navigation and an added IPC permission without
+replacing the tested EXE. The Linux job audits the full lock and checks the Windows
+dependency graph under the strict source/license/advisory policy. Outputs are
+unsigned developer artifacts; package isolation and release gates remain separate.
+
 ## Environment variables
 
 | File | Role |
