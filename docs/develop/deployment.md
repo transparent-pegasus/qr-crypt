@@ -81,8 +81,16 @@ request targeting `main` or `dev`:
   Vite preview without those headers
 * The `e2e-relay` job builds `dist-relay/` and serves it with
   `SERVE_DIST_HEADERS=none`, because the native relay shells receive no
-  response headers. `dist-relay/` is never uploaded or deployed; only `dist/`
-  reaches Cloudflare Pages and the release archive
+  response headers. It disables the reusable mise cache and installs both
+  Chromium and WebKit. The `mobile-chromium` and `webkit` projects both check
+  CSP, own-file requests, no service worker, sym/pq playback, non-message
+  rejection, and close/reopen cleanup. WebKit skips only the text and PNG
+  clipboard readback cases (their `clipboard-write` permission grant is
+  unsupported) and fake-camera capture (Chromium-only media flags).
+  Injected decoder results, the fake camera, and the injected visibility
+  event do not establish physical-camera or native OS background behavior.
+  `dist-relay/` is never uploaded or deployed; only `dist/` reaches
+  Cloudflare Pages and the release archive
 * The `deploy` job requires `validate`, `e2e` and `e2e-relay` to pass, and only runs on a `push`:
   `main` deploys to `CLOUDFLARE_PAGES_PROJECT`, `dev` deploys to
   `CLOUDFLARE_PAGES_PROJECT_DEV`. It publishes the artifact `validate` built

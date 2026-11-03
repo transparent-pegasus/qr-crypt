@@ -165,7 +165,7 @@ export const RELAY_ALLOWED_URL_TEMPLATES = Object.freeze([
       "zod's IPv6 validation builds this string to test a host; it is never fetched, and the CSP blocks any external connection",
   }),
   Object.freeze({
-    template: "https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/${}/${}",
+    template: "https://fastly.jsdelivr.net/npm/zxing-wasm@3.1.6/dist/${}/${}",
     reason:
       "ZXing's default WASM locator is replaced by reader-module.ts with the bundled same-origin asset before preparation or decoding; the ready gate prevents use after failure, and the CSP's connect-src 'self' blocks external connections.",
   }),

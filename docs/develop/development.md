@@ -71,12 +71,22 @@ aube test:qr-multipart # multi-QR (OCF2) assembly and splitting
 E2E:
 
 ```bash
-aube exec playwright install chromium
+aube exec playwright install chromium webkit
 aube test:e2e
 aube test:e2e:relay    # relay-only bundle (dist-relay), served without _headers
 ```
 
-On CI, `aube exec playwright install --with-deps chromium` is used. The
+The web suite uses Chromium. The relay suite runs its common CSP, own-file
+request, no-service-worker, sym/pq playback, non-message rejection, and
+close/reopen checks in both `mobile-chromium` and `webkit`. WebKit skips
+three individual API cases: text and PNG clipboard readback require the
+unsupported `clipboard-write` permission grant, and fake-camera capture
+requires Chromium's media launch flags. The clipboard cases inject decoder
+results; the camera case uses a fake source and an injected visibility event.
+These checks do not measure a physical camera or native OS background behavior.
+
+On CI, the web job installs Chromium; the relay job uses
+`aube exec playwright install --with-deps chromium webkit`. The
 authoritative `validate` job step list and gate behavior are maintained in
 [deployment.md](deployment.md#ci-flow).
 
