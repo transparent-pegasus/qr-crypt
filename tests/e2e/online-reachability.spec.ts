@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises"
 import { expect, test, type Request } from "@playwright/test"
 import { loadOnlineGate, mainNavigation } from "./helpers"
 
@@ -10,8 +11,13 @@ function isDisplayProbe(request: Request): boolean {
   )
 }
 
-for (const tab of ["Home", "Relay"] as const) {
-  test(`online ${tab} survives repeated display HEAD failures after admission`, async ({
+for (const [tab, routeDelayMs] of [
+  ["Home", 0],
+  ["Home", 500],
+  ["Relay", 0],
+  ["Relay", 500],
+] as const) {
+  test(`online ${tab} survives repeated display HEAD failures after admission (${routeDelayMs}ms route delay)`, async ({
     context,
     page,
   }, testInfo) => {
@@ -23,6 +29,7 @@ for (const tab of ["Home", "Relay"] as const) {
     })
     await context.route("**/manifest.webmanifest?reach=*", async (route) => {
       if (failDisplayProbes && isDisplayProbe(route.request())) {
+        if (routeDelayMs > 0) await delay(routeDelayMs)
         failedProbes += 1
         await route.abort("failed")
       } else await route.continue()
