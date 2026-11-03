@@ -16,6 +16,7 @@ test("the initial and reloaded EXE window has the exact origin, CSP and full can
   native,
   page,
 }) => {
+  expect(native.integrity).toEqual({ rid: 8192, elevated: false })
   const csp = metaCspFromHeaders(await readFile("public/_headers", "utf8"))
   for (const observation of [native.initial, await observeDocument(page)]) {
     expect(observation.origin).toBe(APP_ORIGIN)
