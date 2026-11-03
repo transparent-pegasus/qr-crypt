@@ -7,6 +7,7 @@ import { LanguageProvider, type Language } from "@/i18n"
 import { acquireLocalRelaySession } from "@/relay/local-session"
 import { RelayApp } from "@/relay/relay-app"
 import { followSystemTheme } from "@/relay/system-theme"
+import { env } from "@/schemas/env-schema"
 
 const readerModuleState = vi.hoisted(() => vi.fn<() => "idle" | "ready">())
 
@@ -52,11 +53,36 @@ afterEach(() => {
 })
 
 describe("relay-only app", () => {
+  it.each([
+    { language: "en", title: "QR Crypt Relay", version: "Version", build: "Build" },
+    { language: "ja", title: "QR Crypt リレー", version: "バージョン", build: "ビルド" },
+  ] as const)(
+    "shows the $language relay edition, version and complete build SHA",
+    ({ language, title, version, build }) => {
+      const originalBuildSha = env.buildSha
+      const buildSha = "a17c42e90b6d835f2c48a790e5136fd8b024c95e"
+      env.buildSha = buildSha
+      try {
+        renderRelayApp(language)
+
+        expect
+          .soft(screen.queryByRole("heading", { level: 1, name: title }))
+          .toBeVisible()
+        expect.soft(screen.queryByText(version, { exact: true })).toBeVisible()
+        expect.soft(screen.queryByText("test", { exact: true })).toBeVisible()
+        expect.soft(screen.queryByText(build, { exact: true })).toBeVisible()
+        expect.soft(screen.queryByText(buildSha, { exact: true })).toBeVisible()
+      } finally {
+        env.buildSha = originalBuildSha
+      }
+    },
+  )
+
   it("shows the English warning notice before any relay action", () => {
     renderRelayApp()
 
     const language = screen.getByRole("combobox", { name: "Language" })
-    const title = screen.getByRole("heading", { level: 1, name: "QR Crypt" })
+    const title = screen.getByRole("heading", { level: 1, name: "QR Crypt Relay" })
     const notice = screen.getByRole("note")
     expect(
       within(notice).getByRole("heading", { name: "Before you use this relay" }),
@@ -126,9 +152,7 @@ describe("relay-only app", () => {
       const app = renderRelayApp(language)
 
       expect.soft(screen.queryByText(nativeDescription)).toBeVisible()
-      expect
-        .soft(screen.queryByText(scanClaim, { exact: false }))
-        .not.toBeInTheDocument()
+      expect.soft(screen.queryByText(scanClaim, { exact: false })).not.toBeInTheDocument()
 
       app.unmount()
       render(
