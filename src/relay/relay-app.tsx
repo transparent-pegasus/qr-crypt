@@ -1,6 +1,7 @@
 import type { JSX } from "react"
 import { OnlineRelay } from "@/components/online-relay"
 import { LanguageField, useI18n } from "@/i18n"
+import { env } from "@/schemas/env-schema"
 import { acquireLocalRelaySession } from "./local-session"
 
 export function RelayApp(): JSX.Element {
@@ -14,8 +15,18 @@ export function RelayApp(): JSX.Element {
       <div className="mx-auto w-full max-w-2xl space-y-5">
         <LanguageField />
         <h1 id="relay-title" className="text-2xl font-bold tracking-tight">
-          QR Crypt
+          QR Crypt {t("nav.relay")}
         </h1>
+        <dl className="space-y-1 text-sm">
+          <div>
+            <dt className="text-muted-foreground">{t("settings.info.version")}</dt>
+            <dd className="font-mono">{__APP_VERSION__}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">{t("settings.info.build")}</dt>
+            <dd className="break-all font-mono">{env.buildSha}</dd>
+          </div>
+        </dl>
         <section
           role="note"
           aria-labelledby="relay-notice-title"

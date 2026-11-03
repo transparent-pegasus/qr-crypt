@@ -121,6 +121,10 @@ units:
       - docs/spec/native-relay.md # host contract, lifecycle floor, and unmeasured release gates
       - docs/locales/ja/spec/native-relay.md # equivalent Japanese contract
       - docs/develop/native-spikes/g0r-20261025.md # historical evidence; recheck links, never rewrite measurement dates
+      - native/desktop/tauri.conf.json # exact origin, inline zero-permission capability, embedded frontend
+      - native/desktop/src/main.rs # navigation, popup/download denial and one main window
+      - native/desktop/src/navigation.rs # platform origin, credentials and port boundary
+      - native/desktop/src/visibility.rs # actual Win32 lifecycle propagation; recheck locked Wry behavior
     why: >
       Supported OS/runtime maintenance, native host defaults, response-policy
       differences, and the boundary between measured and pending gates can drift.
@@ -146,6 +150,47 @@ units:
       Record pending native, package and physical measurements without stamping
       those unexecuted checks as passed.
     sync: [threat-model, security-review, ui-security-copy, readme]
+
+  - id: native-relay-deps
+    category: dependencies
+    cadence_days: 14 # also before a native candidate or dependency/toolchain change
+    last_checked: null
+    files:
+      - native/desktop/Cargo.toml # exact direct native pins and minimal features
+      - native/desktop/Cargo.lock # resolved registry origins, checksums and transitive versions
+      - native/desktop/mise.toml # Rust toolchain scoped to the desktop shell
+      - native/desktop/deny.toml # source/license policy; no advisory or unknown-license bypass
+      - native/desktop/build.rs # native build-time entry point
+      - docs/develop/development.md # native build and pinned audit-tool commands
+    why: >
+      Native framework defaults, WebView2/Win32 bindings, transitive build scripts,
+      licenses, advisories and the Rust/audit toolchain decay independently of
+      the JavaScript graph. Source checks do not establish Windows runtime behavior.
+    method: |
+      Check official release/advisory and pinned source evidence for Tauri,
+      tauri-build, the locked Wry/Tao, Windows bindings and Rust toolchain.
+      Run cargo metadata --locked; inspect direct/transitive source origins,
+      target reachability, enabled features, build scripts and licenses.
+      Use cargo-audit 0.22.2 and cargo-deny 0.20.2 without advisory ignores or
+      unknown-license exceptions. Record maintenance and soundness notices
+      separately from vulnerability errors with dated target reachability.
+      Rebuild the relay with its full source SHA and compile/test the release
+      shell on Windows. Inspect generated ACL/resource manifest and exercise
+      actual denied IPC, navigation/popups/downloads, native minimize/hide/restore,
+      camera teardown and clipboard content. Keep physical/package gates pending.
+    verify: |
+      mise exec -- aube run typecheck
+      mise exec -- aube run lint
+      mise exec -- aube run build:relay
+      From native/desktop with the scoped toolchain:
+      cargo fmt -- --check
+      cargo metadata --locked --format-version 1
+      cargo audit
+      cargo deny --locked check
+      On Windows: cargo test --release --locked && cargo build --release --locked.
+      Run the actual Windows native gate with this candidate's full source SHA;
+      no stamp until the generated ACL/manifest and required runtime checks pass.
+    sync: [native-relay-host, threat-model, security-review]
 
   - id: crypto-noble
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md

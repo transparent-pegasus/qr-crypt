@@ -1,0 +1,24 @@
+[graph]
+targets = ["x86_64-pc-windows-msvc"]
+
+[advisories]
+unmaintained = "all"
+unsound = "all"
+yanked = "deny"
+
+[licenses]
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.95
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

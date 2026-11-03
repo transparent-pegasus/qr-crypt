@@ -105,6 +105,69 @@ URL origin falls outside the lists in `scripts/relay-bundle-allowlist.mjs`;
 re-measure those lists when dependencies change. `dist-relay/` is never
 deployed to the web origin.
 
+## Windows native relay candidate
+
+`native/desktop/` embeds only `dist-relay/`. Its scoped `mise.toml` pins Rust
+`1.99.1`; Cargo pins Tauri `2.12.5` and tauri-build `2.7.4` and commits the
+resolved graph. Tauri reads the application version from the root `package.json`;
+the unpublished Cargo package has no separate release version.
+
+Build on x64 Windows with the Visual Studio C++ build tools, Windows SDK and
+WebView2 installed. The maintained Windows edition/runtime requirements and
+remaining evidence gates are in [the host contract](../spec/native-relay.md).
+From the repository root in PowerShell:
+
+```powershell
+$env:VITE_BUILD_SHA = (git rev-parse HEAD).Trim()
+mise exec -- aube run build:relay
+Push-Location native/desktop
+mise install
+mise exec -- cargo fmt -- --check
+mise exec -- cargo test --release --locked --target-dir target
+mise exec -- cargo build --release --locked --target-dir target
+Pop-Location
+.\native\desktop\target\release\qr-crypt-relay.exe
+```
+
+Build from a clean source tree so the complete displayed SHA identifies the
+candidate. `--target-dir target` keeps the documented executable path even when
+the developer has a global Cargo target directory. No Tauri CLI or JavaScript
+API package is needed. The executable is
+a developer candidate, not an MSIX/AppContainer or store-ready package. Linux
+requires GTK/WebKit development libraries and has no product support claim.
+
+For dependency review, use cargo-audit `0.22.2` and cargo-deny `0.20.2`:
+
+```bash
+cd native/desktop
+mise exec -- cargo install cargo-audit --version 0.22.2 --locked
+mise exec -- cargo install cargo-deny --version 0.20.2 --locked
+mise exec -- cargo metadata --locked --format-version 1
+mise exec -- cargo audit
+mise exec -- cargo deny --locked check
+```
+
+Review all advisory notices, target reachability, source origins, licenses and
+build scripts. An exit code alone does not clear informational maintenance or
+soundness notices. Do not suppress an advisory or unknown license to pass a gate.
+The source/license policy is `native/desktop/deny.toml`.
+
+The shell selects one inline capability for `main` with no IPC permissions;
+Tauri's internal bridge remains. On Windows, the host forwards actual
+minimize/hide/restore messages to WebView2 controller visibility. The existing
+frontend hidden-state handler ends the session; restore does not request a new
+session. Propagation failure terminates the process. Actual Windows OS lifecycle,
+denied IPC, navigation, downloads and clipboard content still require the native
+verification gate; source inspection and a browser run cannot establish them.
+
+Tauri generates ACL inspection inputs under `native/desktop/gen/schemas/` and
+`native/desktop/target/release/build/qr-crypt-relay-*/out/`. The generated
+`capabilities.json` contains filesystem capabilities; the inline selection is
+resolved with configuration during code generation. Inspect the effective ACL
+and denied calls in the actual Windows candidate. Also retain the generated
+Windows resource manifest from that build; a developer EXE does not prove
+package capabilities or OS isolation.
+
 ## Environment variables
 
 | File | Role |

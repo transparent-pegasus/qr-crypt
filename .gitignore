@@ -1,6 +1,8 @@
 coverage/
 dist/
 dist-relay/
+native/desktop/target/
+native/desktop/gen/
 dev-dist/
 node_modules/
 playwright-report/
