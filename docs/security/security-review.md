@@ -1018,6 +1018,33 @@ deployment, or new hosted-CI evidence follows. Independent audit, signature/log
 trust-chain verification, independent source rebuild, physical-device
 measurements, and `release-approved` remain unestablished.
 
+## 1.10 Relay bundle integration and native-host contract (2026-11-03)
+
+At `1a9f16544a0d9d750c494d4226317245c8a071d5`, the isolated relay bundle was
+reconciled with current dependencies and web admission/build-identity fixes.
+The complete default suite passed 1,788 tests in 108 files. The real relay build
+measured 2,043 graph module IDs and four final files; its unchanged strict
+module/output gates and negative build cases passed. The only URL-template
+allowance change replaces the obsolete decoder 3.1.2 template with the exact
+installed 3.1.6 template; it permits no CDN request.
+
+Header-less relay browser tests passed 7 Chromium and 4 WebKit cases. Three
+individual WebKit cases remain skipped because their clipboard grant or fake-camera
+setup is Chromium-specific. Common CSP, own-file requests/no SW, sym/pq playback,
+non-message rejection and close/reopen cleanup executed in both engines. Chromium
+clipboard readback used actual browser APIs, but decoder inputs and visibility
+events were injected and the camera source was synthetic. No native host or
+physical-camera result follows from these browser checks.
+
+The [native host contract](../spec/native-relay.md) records the device prohibition,
+missing response-policy limits, OS/runtime residuals and product/package/publication
+gates. The separately retained [G0r snapshot](../develop/native-spikes/g0r-20261025.md)
+records all 16 observations and their original source identity. Five native hosts
+each passed 14/16; automatic clipboard failures, absent physical capture and absent
+independent native PNG-content readback remain explicit. Native implementation and
+release assurance must be established on their own candidates; no independent
+third-party audit or release approval is added by this integration.
+
 ## 2. Prohibited Claims (UI / README / CI)
 
 None of the following may be used in UI, README, or CI displays.

@@ -9,6 +9,15 @@ STATUS
 This is an automated experimental build. It is not independently
 audited or security-approved.
 
+KEEP THE RELAY ON A SEPARATE DEVICE
+Do not install a native relay on this offline device, including one
+holding this PWA's browser profile. A separate app identifier does not
+protect that profile from a full-trust process under the same OS user.
+Use a separate relay device and control what its camera can see.
+An app's session cleanup cannot erase OS clipboard history or runtime
+copies. Offline devices remain offline and are sanitized before a new
+installation; a relay's store updates do not change that requirement.
+
 AUTHENTICATE BEFORE USE
 Treat this file, the ZIP, its signature bundle, the release page, and
 the transport medium as untrusted until verification succeeds.

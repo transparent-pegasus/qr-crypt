@@ -66,6 +66,8 @@ AES-256-GCM（`sym-message` / `OCA2`）では、オフラインデバイスは�
 
 公開鍵とアイデンティティは引き続き対面で交換します。リレーが受け入れるのは正規のOCF2 `pq-message` または `sym-message` フレームのみであり、再生前に組み立てた成果物を検証しますが、受け入れた不透明なバイト列自体は認証しません。許可リストと残差の詳細：[docs/security/threat-model.md](docs/security/threat-model.md) T19 / T21。
 
+ネイティブ中継版は開発中です。**鍵や平文を持つ端末には入れないでください。Route A の PWA を入れたブラウザプロファイルがある端末も含みます。** アプリ識別子を分けても、同じ OS ユーザーの full-trust プロセスからそのプロファイルを保護できません。カメラには周囲も映ります。ホストの要件と未測定の公開ゲートは[ネイティブ中継版の契約](docs/locales/ja/spec/native-relay.md)にあります。
+
 インポート時または保存済みの公開アイデンティティを確認するときは、独立した
 チャネルで意図した相手と**アイデンティティのフィンガープリントの16進数64桁すべて**を
 比較してください。表示は4桁区切りであり、KEM鍵と署名鍵のフィンガープリントは補足です。
@@ -89,6 +91,7 @@ AES-256-GCM（`sym-message` / `OCA2`）では、オフラインデバイスは�
 
 * [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QRプロトコル仕様（v2：ポスト量子暗号と対称鍵）、ユーザー選択の表示設定とアーティファクトごとの密度クランプを含む
 * [docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md) — 起動 / オンライン時ワイプ契約
+* [docs/locales/ja/spec/native-relay.md](docs/locales/ja/spec/native-relay.md) — ネイティブ中継版のホスト契約と公開ゲート（[English](docs/spec/native-relay.md)）、[過去の G0r の検証記録](docs/develop/native-spikes/g0r-20261025.md)
 * [docs/security/threat-model.md](docs/security/threat-model.md) — 脅威モデル
 * [docs/locales/ja/security/environment-threat-catalog.md](docs/locales/ja/security/environment-threat-catalog.md) — 物理・運用環境の脅威カタログ（[English](docs/security/environment-threat-catalog.md)）
 * [docs/security/security-review.md](docs/security/security-review.md) — セキュリティレビュー記録（v2、監査分類）

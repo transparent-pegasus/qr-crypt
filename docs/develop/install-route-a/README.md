@@ -20,6 +20,12 @@ device from ever contacting the live app origin: you verify a signed static ZIP 
 a trusted computer, carry it to the offline device, and serve it from
 `127.0.0.1` on a reserved port.
 
+Do not install the native relay on this offline device, including one holding this
+PWA's browser profile. A separate native application identifier does not protect
+that profile from a full-trust process under the same OS user. Keep the relay on a
+separate device and control what its camera can see. The [native relay host
+contract](../../spec/native-relay.md) records the remaining runtime and update risks.
+
 Route B gives the recipient no integrity check they can perform. An attacker who
 controls the origin, TLS, or CDN can serve one targeted device an altered bundle
 that the Service Worker persists. Going offline afterwards does not undo it: a

@@ -147,6 +147,12 @@ canonical OCF2 `pq-message` or `sym-message` frames, validates the assembled art
 before playback, and does not authenticate accepted opaque bytes — full allowlist and
 residual: [docs/security/threat-model.md](docs/security/threat-model.md) T19 / T21.
 
+The native relay is under development. **Do not install it on a device that holds
+keys or plaintext, including a device with a Route A PWA browser profile.** A separate
+app identifier does not protect that profile from a full-trust process under the same
+OS user. The camera also captures its surroundings. Host requirements and unmeasured
+release gates: [native relay contract](docs/spec/native-relay.md).
+
 Before confirming an imported or saved public identity, compare **all 64
 hexadecimal digits of the identity fingerprint** with the intended person
 through an independent channel. The display groups digits in fours; the
@@ -181,6 +187,7 @@ validation or an independent security assessment. Current status and blockers:
 
 * [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QR protocol specification (v2: post-quantum and symmetric), including the user-selected display preference and per-artifact density clamps
 * [docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md) — Boot / wipe-on-online contract
+* [docs/spec/native-relay.md](docs/spec/native-relay.md) — Native relay host contract and release gates ([日本語](docs/locales/ja/spec/native-relay.md)); [historical G0r evidence](docs/develop/native-spikes/g0r-20261025.md)
 * [docs/security/threat-model.md](docs/security/threat-model.md) — Threat model
 * [docs/security/environment-threat-catalog.md](docs/security/environment-threat-catalog.md) — Physical and operational threat catalog ([日本語](docs/locales/ja/security/environment-threat-catalog.md))
 * [docs/security/security-review.md](docs/security/security-review.md) — Security review record (v2, audit classification)

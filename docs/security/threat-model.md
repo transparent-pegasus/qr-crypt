@@ -135,6 +135,29 @@ As a cross-cutting countermeasure for T8/T11, OnlineGate fail-closes encryption,
   that browser behavior. No service-worker event is a destructive wipe trigger;
   T17/T18 retain sentinel-only evidence.
 
+### Native relay boundary (2026-11-03)
+
+The [native relay host contract](../spec/native-relay.md) is separate from the
+web boot/wipe contract. Its bundle excludes key storage, plaintext cryptography,
+boot and service workers; structural ciphertext checks retain T19/T21's limits.
+It must never be deployed to the full web application's origin.
+
+Do not install a native relay on a key- or plaintext-bearing device, including a
+device with a Route A PWA browser profile. Separate identifiers are not protection
+from a full-trust process under the same OS user. This is **DEPLOYMENT_ENFORCED**,
+as is managing the camera's view of the surroundings. The bundle/UI constraints
+are **REPOSITORY_IMPLEMENTABLE**; they cannot establish that the device meets those
+requirements.
+
+Store updates are allowed only for the relay. A compromised update, native core,
+WebView or OS is an **ARCHITECTURAL_RESIDUAL** whose access is not bounded by the
+legitimate relay's behavior. Tauri IPC capabilities do not remove native networking
+or OS privileges. Missing web response policies are not restored by one window or
+a camera prompt. Actual package permissions, fixed-offline-release interoperability,
+runtime/physical-device measurements and independent review are **EXTERNAL_ASSURANCE**.
+G0r's feasibility observations do not establish those gates. Offline installations
+remain permanently offline and are replaced only after sanitization.
+
 ## 5.1 Supply-chain incidents actually detected and handled during initial build-out (2026-07-21)
 
 | Incident                                                                                                                                                                                       | Assessment                                                | Action                                                                                                    |

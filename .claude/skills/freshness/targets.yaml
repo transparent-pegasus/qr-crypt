@@ -113,6 +113,40 @@ units:
       aube run lint
       aube run build:relay
 
+  - id: native-relay-host
+    category: native-policy
+    cadence_days: 30 # also before a native candidate or supported-floor change
+    last_checked: null
+    files:
+      - docs/spec/native-relay.md # host contract, lifecycle floor, and unmeasured release gates
+      - docs/locales/ja/spec/native-relay.md # equivalent Japanese contract
+      - docs/develop/native-spikes/g0r-20261025.md # historical evidence; recheck links, never rewrite measurement dates
+    why: >
+      Supported OS/runtime maintenance, native host defaults, response-policy
+      differences, and the boundary between measured and pending gates can drift.
+    method: |
+      Reconcile English/Japanese host requirements against the current relay
+      composition, local session, reader readiness, visible warnings, language
+      persistence and system theme. Check official Windows lifecycle and WebView2
+      servicing sources; a numeric floor does not permit an unmaintained release.
+      Inspect the exact selected native framework's origin, capability and
+      lifecycle defaults when a shell is introduced or its pin changes.
+      Keep native/package/physical gates explicitly pending until evidence identifies
+      their actual source, artifact hash, OS/runtime and measured operation.
+      Historical G0r results keep their original dates, failures and clipboard/camera
+      limitations; link revalidation is not a repeated native measurement.
+      Keep the device prohibition and ambient-camera warning consistent in both
+      READMEs, both Route A procedures, INSTALL.template.txt, threat-model and
+      security-review. Do not turn IPC denial into an OS network/sandbox claim.
+    verify: |
+      aube run test -- tests/unit/relay-bundle-allowlist.test.ts tests/ui/relay-app.test.tsx
+      aube run test -- tests/unit/generate-install-txt.test.ts tests/unit/release-static-package.test.ts
+      Verify every relative link in both host contracts, the G0r record and affected
+      entry documents. Compare EN/JA sections and the cited lifecycle dates manually.
+      Record pending native, package and physical measurements without stamping
+      those unexecuted checks as passed.
+    sync: [threat-model, security-review, ui-security-copy, readme]
+
   - id: crypto-noble
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     category: crypto
