@@ -34,6 +34,215 @@ jobs:
           install: true
           cache: false
 
+      - name: TEMPORARY NCHILDPROBE_1103 first child-process exception diagnostic
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+          $root = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/child-process-diagnostic'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          $directory = Join-Path $root ([Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory $directory | Out-Null
+          $manifestPath = Join-Path $directory 'manifest.json'
+          $manifest = [ordered]@{
+            marker = 'NCHILDPROBE_1103'; state = 'preliminary'; source = $env:GITHUB_SHA
+            diagnostic_only = $true; native_acceptance = $false; error = $null
+            observation_files = @('direct.json', 'medium.json', 'launcher.json')
+          }
+          $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath
+          foreach ($file in $manifest.observation_files) {
+            @{ state = 'not-observed'; source = $env:GITHUB_SHA } | ConvertTo-Json |
+              Set-Content -LiteralPath (Join-Path $directory $file)
+          }
+          try {
+            $inputs = [ordered]@{ source = $env:GITHUB_SHA; cwd = (Get-Location).ProviderPath; tools = [ordered]@{} }
+            foreach ($name in @('pwsh', 'mise', 'aube', 'node')) {
+              $tool = [ordered]@{ path = $null; sha256 = $null; selection_error = $null }
+              try {
+                $tool.path = (Get-Command "${name}.exe" -CommandType Application -ErrorAction Stop).Source
+                if (-not [IO.Path]::IsPathFullyQualified($tool.path) -or [IO.Path]::GetFileName($tool.path) -ine "${name}.exe") {
+                  throw 'Expected the selected absolute executable path'
+                }
+                $tool.sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $tool.path).Hash.ToLowerInvariant()
+              } catch {
+                $message = $_.Exception.Message
+                $tool.selection_error = $message.Substring(0, [Math]::Min(1024, $message.Length))
+              }
+              $inputs.tools[$name] = $tool
+            }
+            $inputsPath = Join-Path $directory 'inputs.json'
+            $inputs | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $inputsPath
+            $manifest.launcher_sha256 = (Get-FileHash -Algorithm SHA256 tests/e2e-native-relay/run-medium.ps1).Hash.ToLowerInvariant()
+            $manifest.workflow_sha256 = (Get-FileHash -Algorithm SHA256 .github/workflows/native-relay.yml).Hash.ToLowerInvariant()
+            $manifest.inputs_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $inputsPath).Hash.ToLowerInvariant()
+            $payloadPath = Join-Path $directory 'probe.ps1'
+            @'
+          param([Parameter(Mandatory)][ValidateSet('direct', 'medium')][string]$Context)
+          $ErrorActionPreference = 'Stop'
+          Set-StrictMode -Version Latest
+
+          function Get-DiagnosticException([Exception]$Exception) {
+            $chain = @()
+            while ($null -ne $Exception -and $chain.Count -lt 8) {
+              $message = $Exception.Message
+              $chain += [ordered]@{
+                type = $Exception.GetType().FullName
+                message = $message.Substring(0, [Math]::Min(1024, $message.Length))
+                hresult = $Exception.HResult
+                native_error_code = $(if ($Exception -is [ComponentModel.Win32Exception]) { $Exception.NativeErrorCode } else { $null })
+              }
+              $Exception = $Exception.InnerException
+            }
+            return @{ chain = $chain; truncated = ($null -ne $Exception) }
+          }
+
+          function Invoke-OwnedProbe([string]$File, [string[]]$Arguments, [int]$WaitMilliseconds = 8000) {
+            $result = [ordered]@{
+              path = $File; arguments = $Arguments; cwd = (Get-Location).ProviderPath
+              use_shell_execute = $false; redirect_stdout = $true; redirect_stderr = $true
+              wait_ms = $WaitMilliseconds; status = 'not-started'; failure_phase = $null
+              started = $false; timed_out = $false; exit_code = $null; elapsed_ms = $null
+              stdout = $null; stderr = $null; stdout_truncated = $false; stderr_truncated = $false
+              first_exception = $null; cleanup_errors = @(); cleanup_killed = $false; cleanup_exited = $false
+            }
+            $process = [Diagnostics.Process]::new()
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            $reads = @{}
+            $phase = 'prepare'
+            try {
+              $process.StartInfo.FileName = $File
+              $process.StartInfo.WorkingDirectory = $result.cwd
+              $process.StartInfo.UseShellExecute = $false
+              $process.StartInfo.RedirectStandardOutput = $true
+              $process.StartInfo.RedirectStandardError = $true
+              foreach ($argument in $Arguments) { $process.StartInfo.ArgumentList.Add($argument) }
+              $phase = 'start'
+              if (-not $process.Start()) { throw 'Process.Start returned false' }
+              $result.started = $true
+              $phase = 'begin-output-read'
+              foreach ($stream in @('stdout', 'stderr')) {
+                $reader = if ($stream -eq 'stdout') { $process.StandardOutput } else { $process.StandardError }
+                $buffer = [char[]]::new(4096)
+                $reads[$stream] = @{ buffer = $buffer; task = $reader.ReadBlockAsync($buffer, 0, $buffer.Length) }
+              }
+              $phase = 'wait'
+              if (-not $process.WaitForExit($WaitMilliseconds)) {
+                $result.timed_out = $true
+                throw [TimeoutException]::new('Owned diagnostic child exceeded its wait bound')
+              }
+              $result.exit_code = $process.ExitCode
+              $result.status = if ($process.ExitCode -eq 0) { 'ok' } else { 'nonzero-exit' }
+            } catch {
+              $result.status = 'failed'
+              $result.failure_phase = $phase
+              $result.first_exception = Get-DiagnosticException $_.Exception
+            } finally {
+              if ($result.started) {
+                try {
+                  if (-not $process.HasExited) { $process.Kill(); $result.cleanup_killed = $true }
+                  if (-not $process.WaitForExit(2000)) { throw 'Owned child cleanup exceeded 2000ms' }
+                  $result.cleanup_exited = $true
+                  $result.exit_code = $process.ExitCode
+                } catch { $result.cleanup_errors += Get-DiagnosticException $_.Exception }
+                foreach ($stream in @('stdout', 'stderr')) {
+                  try {
+                    if (-not $reads.ContainsKey($stream) -or -not $reads[$stream].task.Wait(1000)) {
+                      throw 'Bounded output read did not complete'
+                    }
+                    $read = $reads[$stream]
+                    $result[$stream] = [string]::new($read.buffer, 0, $read.task.Result)
+                    $result["${stream}_truncated"] = ($read.task.Result -eq $read.buffer.Length)
+                  } catch { $result.cleanup_errors += Get-DiagnosticException $_.Exception }
+                }
+              }
+              try { $process.Dispose() } catch { $result.cleanup_errors += Get-DiagnosticException $_.Exception }
+              $clock.Stop()
+              $result.elapsed_ms = $clock.ElapsedMilliseconds
+            }
+            if ($result.status -eq 'ok' -and ($result.cleanup_errors.Count -ne 0 -or $result.stdout_truncated -or $result.stderr_truncated -or $null -eq $result.stdout -or $null -eq $result.stderr)) {
+              $result.status = 'incomplete-observation'
+            }
+            return $result
+          }
+
+          $observationPath = Join-Path $PSScriptRoot "${Context}.json"
+          $observation = [ordered]@{
+            context = $Context; state = 'preliminary'; source = $env:GITHUB_SHA
+            cwd = (Get-Location).ProviderPath; cwd_matches_expected = $false
+            runtime = [ordered]@{
+              executable = [Environment]::ProcessPath; powershell = $PSVersionTable.PSVersion.ToString()
+              dotnet = [Runtime.InteropServices.RuntimeInformation]::FrameworkDescription
+              windows = [Environment]::OSVersion.VersionString
+              process_architecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+            }
+            payload_sha256 = $null; inputs_sha256 = $null; error = $null
+            version_probes_succeeded = $false
+            probes = @('pwsh', 'mise', 'aube', 'node' | ForEach-Object { @{ tool = $_; status = 'not-observed' } })
+          }
+          $observation | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $observationPath
+          $inputData = $null
+          try {
+            $inputsPath = Join-Path $PSScriptRoot 'inputs.json'
+            if ((Get-Item -LiteralPath $inputsPath).Length -gt 32768) { throw 'Controlled diagnostic inputs exceed 32768 bytes' }
+            $inputData = Get-Content -LiteralPath $inputsPath -Raw | ConvertFrom-Json
+            $observation.inputs_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $inputsPath).Hash.ToLowerInvariant()
+            $observation.payload_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $PSCommandPath).Hash.ToLowerInvariant()
+            $observation.cwd_matches_expected = $observation.cwd.Equals($inputData.cwd, [StringComparison]::OrdinalIgnoreCase)
+            $index = 0
+            foreach ($name in @('pwsh', 'mise', 'aube', 'node')) {
+              $tool = $inputData.tools.$name
+              $probe = [ordered]@{ tool = $name; path = $tool.path; sha256 = $tool.sha256; status = 'not-run'; selection_error = $tool.selection_error }
+              if ($null -eq $tool.selection_error) {
+                if (-not [IO.Path]::IsPathFullyQualified($tool.path) -or [IO.Path]::GetFileName($tool.path) -ine "${name}.exe") {
+                  throw 'Controlled inputs must select the expected absolute executable'
+                }
+                $arguments = if ($name -eq 'aube') { @('-V') } else { @('--version') }
+                $probe = Invoke-OwnedProbe -File $tool.path -Arguments $arguments
+                $probe.tool = $name
+                $probe.sha256 = $tool.sha256
+              }
+              $observation.probes[$index] = $probe
+              $index++
+              $observation.state = 'in-progress'
+              $observation | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $observationPath
+            }
+            $observation.version_probes_succeeded = $observation.cwd_matches_expected -and @($observation.probes | Where-Object { $_.status -ne 'ok' }).Count -eq 0
+          } catch { $observation.error = Get-DiagnosticException $_.Exception } finally {
+            $observation.state = 'final'
+            $observation | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $observationPath
+          }
+          if ($Context -eq 'medium') {
+            if ($observation.version_probes_succeeded) { exit 0 }
+            exit 1
+          }
+          $launch = [ordered]@{ status = 'not-run'; reason = 'Selected pwsh or controlled inputs unavailable' }
+          if ($null -ne $inputData -and $null -eq $inputData.tools.pwsh.selection_error) {
+            $previousPwsh = $env:NATIVE_RELAY_PWSH
+            try {
+              $env:NATIVE_RELAY_PWSH = $inputData.tools.pwsh.path
+              $command = "& '" + $PSCommandPath.Replace("'", "''") + "' -Context medium"
+              $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+              $launcher = Join-Path $inputData.cwd 'tests/e2e-native-relay/run-medium.ps1'
+              $launch = Invoke-OwnedProbe -File $inputData.tools.pwsh.path -Arguments @('-NoProfile', '-NonInteractive', '-File', $launcher, '-EncodedCommand', $encoded, '-TimeoutSeconds', '90') -WaitMilliseconds 150000
+            } catch {
+              $launch = @{ status = 'failed'; first_exception = (Get-DiagnosticException $_.Exception) }
+            } finally { $env:NATIVE_RELAY_PWSH = $previousPwsh }
+          }
+          $launch | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'launcher.json')
+          '@ | Set-Content -LiteralPath $payloadPath
+            $manifest.payload_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $payloadPath).Hash.ToLowerInvariant()
+            $manifest.state = 'prepared'
+            $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath
+            & $payloadPath -Context direct
+          } catch {
+            $message = $_.Exception.Message
+            $manifest.error = $message.Substring(0, [Math]::Min(1024, $message.Length))
+          } finally {
+            $manifest.state = 'final'
+            $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath
+          }
+          throw 'NCHILDPROBE_1103: temporary observations saved; this diagnostic candidate must fail'
+
       - name: Install the scoped Rust toolchain
         working-directory: native/desktop
         run: mise install
