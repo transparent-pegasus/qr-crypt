@@ -1045,6 +1045,17 @@ independent native PNG-content readback remain explicit. Native implementation a
 release assurance must be established on their own candidates; no independent
 third-party audit or release approval is added by this integration.
 
+Follow-up source `caeef7181119964a82908a7f470583de10d52879` passed the complete
+1,794-test suite in 109 files, type checking, and lint (13 existing warnings).
+The relay inventory remains 2,043 module IDs and four files. Ordinary web E2E
+and the extracted static-package suite each passed all 45 cases, including the
+delayed display-probe regression and healthy/damaged JavaScript controls.
+The packaged suite verified ZIP SHA-256
+`8d1ce05e31e52780c7d921827ea045c95022beb0bd22bf2d0e582faee26b50e7`
+and all 17 extracted members before and after execution. Production rebuilds
+were byte-identical. These are PWA checks; they do not establish native runtime,
+MSIX, physical-device or publication gates.
+
 ## 2. Prohibited Claims (UI / README / CI)
 
 None of the following may be used in UI, README, or CI displays.
