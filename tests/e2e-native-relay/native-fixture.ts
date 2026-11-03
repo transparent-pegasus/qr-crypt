@@ -213,17 +213,70 @@ export const test = base.extend<{ native: NativeRelay }>({
     const responseErrors: string[] = []
     const pageErrors: string[] = []
     const observations: unknown[] = []
-    const redact = (value: string) => redactEvidence(value, storage, executable)
+    const helperDiagnostics: unknown[] = []
+    const redact = (value: string) =>
+      redactEvidence(
+        value.replace(
+          /(-EncodedCommand\s+)[A-Za-z0-9+/=]+/g,
+          "$1<encoded-argument-omitted>",
+        ),
+        storage,
+        executable,
+      )
     const windows = async <T>(
       action: string,
       extra: Record<string, unknown> = {},
     ): Promise<T> => {
+      const started = performance.now()
+      const events: unknown[] = []
+      const note = (stage: string, detail = {}) =>
+        events.push({ stage, elapsedMs: performance.now() - started, ...detail })
+      const boundedText = (value: string) =>
+        redact(
+          value.replace(/[A-Za-z0-9+/=]{200,}/g, "<encoded-argument-omitted>"),
+        ).slice(0, 2_048)
+      const errorFields = (error: Error) => {
+        const failure = error as NodeJS.ErrnoException & {
+          signal?: string
+          killed?: boolean
+          timedOut?: boolean
+        }
+        return {
+          name: failure.name,
+          message: boundedText(failure.message),
+          code: failure.code ?? null,
+          errno: failure.errno ?? null,
+          syscall: failure.syscall ?? null,
+          signal: failure.signal ?? null,
+          killed: failure.killed ?? null,
+          timedOut: failure.timedOut ?? null,
+        }
+      }
+      const streams = {
+        stdout: { bytes: 0, text: "" },
+        stderr: { bytes: 0, text: "" },
+      }
+      let diagnosticError: unknown = null
       const pending = execute(
         "powershell.exe",
         ["-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", encodedScript],
         { timeout: 15_000, windowsHide: true },
       )
-      pending.child.stdin?.on("error", () => undefined)
+      const helper = pending.child
+      helper.once("spawn", () => note("spawn", { pid: helper.pid }))
+      helper.once("error", (error) => note("error", errorFields(error)))
+      helper.once("exit", (code, signal) => note("exit", { code, signal }))
+      helper.once("close", (code, signal) => note("close", { code, signal }))
+      for (const stream of ["stdout", "stderr"] as const) {
+        helper[stream]?.on("data", (chunk: string) => {
+          if (streams[stream].bytes === 0) note(stream + "-first-data")
+          streams[stream].bytes += Buffer.byteLength(chunk)
+        })
+      }
+      pending.child.stdin?.on("error", (error: Error) =>
+        note("stdin-error", errorFields(error)),
+      )
+      note("stdin-end-called")
       pending.child.stdin?.end(
         JSON.stringify({
           action,
@@ -236,12 +289,22 @@ export const test = base.extend<{ native: NativeRelay }>({
           port,
           ...extra,
         }),
+        (error?: Error | null) =>
+          note("stdin-end-callback", error ? errorFields(error) : {}),
       )
       try {
-        const { stdout } = await pending
+        const { stdout, stderr } = await pending
+        streams.stdout.text = boundedText(stdout)
+        streams.stderr.text = boundedText(stderr)
         return JSON.parse(stdout.replace(/^\uFEFF/, "").trim()) as T
       } catch (error) {
-        const failure = error as NodeJS.ErrnoException & { stderr?: string }
+        const failure = error as NodeJS.ErrnoException & {
+          stdout?: string
+          stderr?: string
+        }
+        diagnosticError = errorFields(failure)
+        streams.stdout.text = boundedText(failure.stdout ?? streams.stdout.text)
+        streams.stderr.text = boundedText(failure.stderr ?? streams.stderr.text)
         throw new Error(
           "Native PowerShell " +
             action +
@@ -249,6 +312,19 @@ export const test = base.extend<{ native: NativeRelay }>({
             redact(failure.stderr || failure.code || failure.message),
           { cause: error },
         )
+      } finally {
+        if (action === "token" || action === "terminate" || diagnosticError)
+          helperDiagnostics.push({
+            action,
+            pid: helper.pid ?? null,
+            elapsedMs: performance.now() - started,
+            code: helper.exitCode,
+            signal: helper.signalCode,
+            killed: helper.killed,
+            error: diagnosticError,
+            events,
+            ...streams,
+          })
       }
     }
     try {
@@ -551,6 +627,17 @@ export const test = base.extend<{ native: NativeRelay }>({
                   version,
                   exeSha256,
                   locks,
+                  helperDiagnostic: {
+                    marker: "NFIXDIAG_1103",
+                    acceptance: false,
+                    helperSha256: digest(Buffer.from(script)),
+                    encodedChars: encodedScript.length,
+                    timeoutMs: 15_000,
+                    captureEncoding:
+                      "utf8 (execFile default); byte counts after decoding",
+                    textLimitChars: 2_048,
+                    invocations: helperDiagnostics,
+                  },
                   process: processIdentity && {
                     ...processIdentity,
                     executable: redact(processIdentity.executable),
