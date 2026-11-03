@@ -34,7 +34,7 @@ jobs:
           install: true
           cache: false
 
-      - name: TEMPORARY NCHILDPROBE_1103 first child-process exception diagnostic
+      - name: TEMPORARY NPIPEOBS_1104 own-process pipe and security observation
         timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
@@ -45,7 +45,7 @@ jobs:
           New-Item -ItemType Directory $directory | Out-Null
           $manifestPath = Join-Path $directory 'manifest.json'
           $manifest = [ordered]@{
-            marker = 'NCHILDPROBE_1103'; state = 'preliminary'; source = $env:GITHUB_SHA
+            marker = 'NPIPEOBS_1104'; state = 'preliminary'; source = $env:GITHUB_SHA
             diagnostic_only = $true; native_acceptance = $false; error = $null
             observation_files = @('direct.json', 'medium.json', 'launcher.json')
           }
@@ -178,9 +178,224 @@ jobs:
               process_architecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
             }
             payload_sha256 = $null; inputs_sha256 = $null; error = $null
+            pipe_security = [ordered]@{
+              state = 'preliminary'; source_sha256 = $null; error = $null
+              stages = [ordered]@{
+                pipe = [ordered]@{ state = 'not-observed'; error = $null }
+                token_user = [ordered]@{ state = 'not-observed'; error = $null }
+                token_default_dacl = [ordered]@{ state = 'not-observed'; error = $null }
+                process_security = [ordered]@{ state = 'not-observed'; error = $null }
+              }
+            }
             version_probes_succeeded = $false
             probes = @('pwsh', 'mise', 'aube', 'node' | ForEach-Object { @{ tool = $_; status = 'not-observed' } })
           }
+          $observation | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $observationPath
+          $nativeSource = @"
+          using System;
+          using System.Collections;
+          using System.Runtime.InteropServices;
+          using System.Security.AccessControl;
+          using System.Security.Principal;
+
+          public static class NativePipeObservation1104
+          {
+              const int MaxBytes = 65536;
+
+              [StructLayout(LayoutKind.Sequential)]
+              struct SecurityAttributes
+              {
+                  public int Length;
+                  public IntPtr Descriptor;
+                  public int InheritHandle;
+              }
+
+              [DllImport("kernel32.dll")]
+              static extern IntPtr GetCurrentProcess();
+              [DllImport("kernel32.dll", SetLastError = true)]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              static extern bool CreatePipe(out IntPtr read, out IntPtr write, ref SecurityAttributes attributes, uint size);
+              [DllImport("kernel32.dll", SetLastError = true)]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              static extern bool DuplicateHandle(IntPtr sourceProcess, IntPtr source, IntPtr targetProcess,
+                  out IntPtr target, uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint options);
+              [DllImport("kernel32.dll", SetLastError = true)]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              static extern bool CloseHandle(IntPtr handle);
+              [DllImport("advapi32.dll", SetLastError = true)]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+              [DllImport("advapi32.dll", SetLastError = true)]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              static extern bool GetTokenInformation(IntPtr token, int kind, IntPtr buffer, uint length, out uint needed);
+              [DllImport("advapi32.dll", SetLastError = true)]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              static extern bool GetKernelObjectSecurity(IntPtr handle, uint information, [Out] byte[] buffer, uint length, out uint needed);
+
+              static Hashtable Call(bool success, int? error)
+              {
+                  return new Hashtable { ["attempted"] = true, ["succeeded"] = success, ["last_error"] = error };
+              }
+
+              static void CloseOwned(IDictionary result, string name, IntPtr handle)
+              {
+                  if (handle == IntPtr.Zero || handle == new IntPtr(-1))
+                      throw new InvalidOperationException("Refusing to close a null or pseudo handle");
+                  bool success = CloseHandle(handle);
+                  int? error = success ? (int?)null : Marshal.GetLastWin32Error();
+                  result[name] = Call(success, error);
+              }
+
+              static void Text(IDictionary result, string name, string text)
+              {
+                  result[name] = text.Substring(0, Math.Min(4096, text.Length));
+                  result["truncated"] = text.Length > 4096;
+              }
+
+              public static void Pipe(IDictionary result)
+              {
+                  var attributes = new SecurityAttributes {
+                      Length = Marshal.SizeOf<SecurityAttributes>(), Descriptor = IntPtr.Zero, InheritHandle = 1
+                  };
+                  result["security_attributes_length"] = attributes.Length;
+                  result["null_security_descriptor"] = true;
+                  result["inherit_handle"] = attributes.InheritHandle;
+                  result["pipe_size"] = 0;
+                  result["duplicate_own_read_end"] = true;
+                  result["duplicate_desired_access"] = 0;
+                  result["duplicate_inherit_handle"] = false;
+                  result["duplicate_options"] = 2;
+                  result["duplicate_handle"] = new Hashtable { ["attempted"] = false };
+                  IntPtr read = IntPtr.Zero, write = IntPtr.Zero, duplicate = IntPtr.Zero;
+                  bool created = false, duplicated = false;
+                  try
+                  {
+                      created = CreatePipe(out read, out write, ref attributes, 0);
+                      int? error = created ? (int?)null : Marshal.GetLastWin32Error();
+                      result["create_pipe"] = Call(created, error);
+                      if (!created) return;
+                      IntPtr current = GetCurrentProcess();
+                      duplicated = DuplicateHandle(current, read, current, out duplicate, 0, false, 2);
+                      error = duplicated ? (int?)null : Marshal.GetLastWin32Error();
+                      result["duplicate_handle"] = Call(duplicated, error);
+                  }
+                  finally
+                  {
+                      try { if (duplicated) CloseOwned(result, "close_duplicate", duplicate); }
+                      finally
+                      {
+                          try { if (created) CloseOwned(result, "close_write", write); }
+                          finally { if (created) CloseOwned(result, "close_read", read); }
+                      }
+                  }
+              }
+
+              public static void Token(IDictionary result, int kind)
+              {
+                  if (kind != 1 && kind != 6) throw new ArgumentOutOfRangeException(nameof(kind));
+                  result["information_class"] = kind;
+                  result["token_access"] = 8;
+                  result["buffer_cap_bytes"] = MaxBytes;
+                  result["truncated"] = false;
+                  IntPtr token = IntPtr.Zero, memory = IntPtr.Zero;
+                  bool opened = false;
+                  try
+                  {
+                      opened = OpenProcessToken(GetCurrentProcess(), 8, out token);
+                      int? error = opened ? (int?)null : Marshal.GetLastWin32Error();
+                      result["open_token"] = Call(opened, error);
+                      if (!opened) return;
+                      memory = Marshal.AllocHGlobal(MaxBytes);
+                      bool queried = GetTokenInformation(token, kind, memory, MaxBytes, out uint needed);
+                      error = queried ? (int?)null : Marshal.GetLastWin32Error();
+                      result["query"] = Call(queried, error);
+                      result["returned_bytes"] = needed;
+                      result["truncated"] = needed > MaxBytes;
+                      if (!queried) return;
+                      if (needed < IntPtr.Size || needed > MaxBytes)
+                          throw new InvalidOperationException("Token query returned an invalid bounded length");
+                      IntPtr pointer = Marshal.ReadIntPtr(memory);
+                      if (kind == 6 && pointer == IntPtr.Zero)
+                      {
+                          result["null_dacl"] = true;
+                          result["sddl"] = null;
+                          return;
+                      }
+                      long offset = pointer.ToInt64() - memory.ToInt64();
+                      if (offset < IntPtr.Size || offset >= needed)
+                          throw new InvalidOperationException("Token query pointer is outside its returned buffer");
+                      var bytes = new byte[(int)needed];
+                      Marshal.Copy(memory, bytes, 0, bytes.Length);
+                      if (kind == 1) Text(result, "sid", new SecurityIdentifier(bytes, (int)offset).Value);
+                      else
+                      {
+                          result["null_dacl"] = false;
+                          var descriptor = new RawSecurityDescriptor(ControlFlags.DiscretionaryAclPresent,
+                              null, null, null, new RawAcl(bytes, (int)offset));
+                          Text(result, "sddl", descriptor.GetSddlForm(AccessControlSections.Access));
+                      }
+                  }
+                  finally
+                  {
+                      try
+                      {
+                          if (memory != IntPtr.Zero) { Marshal.FreeHGlobal(memory); result["buffer_freed"] = true; }
+                      }
+                      finally { if (opened) CloseOwned(result, "close_token", token); }
+                  }
+              }
+
+              public static void ProcessSecurity(IDictionary result)
+              {
+                  result["security_information"] = 5;
+                  result["buffer_cap_bytes"] = MaxBytes;
+                  result["truncated"] = false;
+                  var bytes = new byte[MaxBytes];
+                  bool queried = GetKernelObjectSecurity(GetCurrentProcess(), 5, bytes, MaxBytes, out uint needed);
+                  int? error = queried ? (int?)null : Marshal.GetLastWin32Error();
+                  result["query"] = Call(queried, error);
+                  result["returned_bytes"] = needed;
+                  result["truncated"] = needed > MaxBytes;
+                  if (!queried) return;
+                  if (needed < 20 || needed > MaxBytes)
+                      throw new InvalidOperationException("Process descriptor returned an invalid bounded length");
+                  Array.Resize(ref bytes, (int)needed);
+                  var descriptor = new RawSecurityDescriptor(bytes, 0);
+                  result["owner_sid"] = descriptor.Owner == null ? null : descriptor.Owner.Value;
+                  result["dacl_present"] = (descriptor.ControlFlags & ControlFlags.DiscretionaryAclPresent) != 0;
+                  result["null_dacl"] = descriptor.DiscretionaryAcl == null;
+                  Text(result, "sddl", descriptor.GetSddlForm(AccessControlSections.Owner | AccessControlSections.Access));
+              }
+          }
+          "@
+          $nativeReady = $false
+          try {
+            $observation.pipe_security.source_sha256 = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($nativeSource))).ToLowerInvariant()
+            $observation.pipe_security.state = 'in-progress'
+            $observation | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $observationPath
+            Add-Type -TypeDefinition $nativeSource -ErrorAction Stop
+            $nativeReady = $true
+          } catch { $observation.pipe_security.error = Get-DiagnosticException $_.Exception }
+          if ($nativeReady) {
+            foreach ($stage in $observation.pipe_security.stages.Keys) {
+              $result = $observation.pipe_security.stages[$stage]
+              $result.state = 'in-progress'
+              try {
+                switch ($stage) {
+                  'pipe' { [NativePipeObservation1104]::Pipe($result) }
+                  'token_user' { [NativePipeObservation1104]::Token($result, 1) }
+                  'token_default_dacl' { [NativePipeObservation1104]::Token($result, 6) }
+                  'process_security' { [NativePipeObservation1104]::ProcessSecurity($result) }
+                }
+              } catch { $result.error = Get-DiagnosticException $_.Exception } finally {
+                $result.state = 'final'
+                $observation.state = 'in-progress'
+                $observation | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $observationPath
+              }
+            }
+          }
+          $observation.pipe_security.state = 'final'
+          $observation.state = 'in-progress'
           $observation | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $observationPath
           $inputData = $null
           try {
@@ -248,7 +463,7 @@ jobs:
             $manifest.state = 'final'
             $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $manifestPath
           }
-          throw 'NCHILDPROBE_1103: temporary observations saved; this diagnostic candidate must fail'
+          throw 'NPIPEOBS_1104: temporary observations saved; this diagnostic candidate must fail'
 
       - name: Install the scoped Rust toolchain
         working-directory: native/desktop
