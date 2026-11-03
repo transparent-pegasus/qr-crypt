@@ -136,6 +136,8 @@ units:
       - tests/e2e-native-relay/policy.spec.ts # actual navigation, popup, download and IPC denial
       - tests/e2e-native-relay/synthetic-camera.ts # test-side pixel source, never a physical-camera claim
       - tests/e2e-native-relay/windows.ps1 # test-side native window/process and clipboard APIs
+      - tests/e2e-native-relay/run-medium.ps1 # CI-only own-token launch, job ownership and bounded cleanup
+      - tests/e2e-native-relay/medium-launcher-timeout.ps1 # independent Windows deadline/tree cleanup control
       - tests/fixtures/relay-messages.ts # shared synthetic protocol fixtures, never product imports
     why: >
       Supported OS/runtime maintenance, native host defaults, response-policy
@@ -168,6 +170,12 @@ units:
       WebView profile remains unverified; requested-temp removal is not its cleanup.
       Then require all 18 current cases on the original EXE under measured Medium,
       and the assertion-only compiled hide control under the same launcher chain.
+      Use the measured own-primary-token CreateRestrictedToken flags0x5 path,
+      lower only the new token to Medium and validate its non-elevated state.
+      The suspended child must join a private kill-on-close job before resuming;
+      reject assignment/resume/wait/cleanup errors without elevated-token fallback.
+      Require the independent launcher deadline control to verify the complete
+      owned tree is gone before timeout124, without PID/name-only termination.
       Decode the pinned Playwright JSON reporter's Buffer attachment from Base64
       body, not a path. API/parse/access/startup failures cannot satisfy a control.
     verify: |
@@ -283,6 +291,8 @@ units:
       - .github/workflows/github-release.yml
       - .github/workflows/security-maintenance.yml # scheduled/manual read-only advisory and assessed-pin checks; integration-owned
       - .github/workflows/native-relay.yml # actual Windows developer EXE and strict native dependency checks
+      - tests/e2e-native-relay/run-medium.ps1 # Win32 own-token launcher and private job lifecycle
+      - tests/e2e-native-relay/medium-launcher-timeout.ps1 # independent launcher timeout control, outside Playwright discovery
       - scripts/check-assessed-releases.sh # exact Noble/decoder pins versus official latest releases; fail-closed signal
       - tests/unit/assessed-release-check.test.ts # both exact pins, invalid API/pin data, request failures, and independent checks
       - tests/fixtures/assessed-release-gh.py # offline official-release responses and real jq extraction
@@ -344,21 +354,29 @@ units:
       and runtime reports. Native developer artifacts do not establish package or
       physical-release gates. Review the Linux-hosted Windows-target dependency job
       separately from full-lock informational advisory notices.
-      The native CI-only launcher is exact portable gsudo v2.6.1 from
-      https://github.com/gerardog/gsudo/releases/download/v2.6.1/gsudo.portable.zip,
-      reviewed ZIP SHA256 21130bf178d7b9891207f00bff56f05b6b363ce9cec7b2d084e45fb12ee51f44.
-      Re-vet the exact-tag disabled-UAC Safer/SetIntegrity and no-service exit paths
-      before moving this pin. Check the reviewed digest and companion before any
-      extraction/execution; select only x64/gsudo.exe in fresh RUNNER_TEMP storage,
-      require exact version and retain actual ZIP/EXE hashes. Use Medium/direct/wait
-      for the whole existing Playwright command, preserving direct EXE ownership.
+      The native CI-only run-medium.ps1 uses the measured own-primary-token
+      CreateRestrictedToken LUA_TOKEN|DISABLE_MAX_PRIVILEGE flags0x5 path and
+      lowers only the new token to Medium. Recheck official Win32 token/process/job
+      contracts, API outputs and cleanup when this launcher changes. Open only the
+      current process token with necessary rights; validate the new token's Medium
+      integrity and non-elevated state before CreateProcessAsUserW of the absolute
+      selected pwsh. Use canonical UTF16LE/Base64, bounded command length/wait,
+      checkout CWD and inherited same-user environment/desktop. Assign the suspended
+      child to a private non-inherited kill-on-close job before resume; no breakaway,
+      PID/name-only termination, token fallback or account/UAC/registry/ACL changes.
+      Preserve exact normal child exits, including37; terminate and verify the
+      complete owned tree before timeout124 with NATIVE_RELAY_LAUNCH_TIMEOUT:.
+      Preserve primary errors and surface cleanup errors; close/free all owned
+      handles/buffers. Require the independent medium-launcher-timeout.ps1 control
+      separately from unchanged Playwright discovery18. Retain launcher source and
+      selected pwsh/tool hashes, preserving direct EXE ownership.
       Before native invocations, the same command chain must prove checkout CWD,
       selected mise and pinned aube/Node, distinct stdout/stderr and exact exit37;
       capture inside the Medium child and read both streams back in the parent.
-      Do not use copyEV/copyNS, global install/config/profile, automatic credential
-      caching, broad ACL grants or product automation hooks. Retain build/manifest
-      identity before any later control failure, High-control token/cleanup,
-      Medium baseline and assertion-only hide mutation evidence separately.
+      Do not use broad environment copying, global install/config/profile,
+      credentials, sandbox-inert flags, ACL grants or product automation hooks.
+      Retain build/manifest identity before any later control failure, High-control
+      token/cleanup, Medium baseline and assertion-only hide mutation evidence separately.
       Require actual Windows results for all 18 cases and both runtime controls;
       Linux discovery, launcher probes and source/digest review cannot stamp them.
       Check each action repository for newer majors and security advisories.

@@ -34,268 +34,6 @@ jobs:
           install: true
           cache: false
 
-      - name: TEMPORARY own-token LUA diagnostic
-        timeout-minutes: 2
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $evidence = Join-Path $env:GITHUB_WORKSPACE ('.tmp/native-relay-evidence/lua-token-diagnostic/' + [guid]::NewGuid().ToString('N'))
-          New-Item -ItemType Directory -Path $evidence -ErrorAction Stop | Out-Null
-          $report = [ordered]@{
-            sourceHead = $env:GITHUB_SHA
-            acceptance = $false
-            status = 'initializing'
-            startedAt = [DateTime]::UtcNow.ToString('o')
-            os = [Runtime.InteropServices.RuntimeInformation]::OSDescription
-            architecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
-            pwsh = [ordered]@{ version = $PSVersionTable.PSVersion.ToString(); edition = $PSVersionTable.PSEdition; framework = [Runtime.InteropServices.RuntimeInformation]::FrameworkDescription }
-            identities = [ordered]@{}
-            measurement = $null
-            error = $null
-          }
-          $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $evidence 'diagnostic.json')
-          $native = @'
-          using System;
-          using System.Collections.Generic;
-          using System.ComponentModel;
-          using System.Runtime.InteropServices;
-
-          public sealed class NativeLuaTokenDiagnostic
-          {
-              const int TokenElevation = 20, TokenIntegrityLevel = 25, TokenElevationType = 18;
-              const uint Medium = 8192, LUA_TOKEN = 0x4, DISABLE_MAX_PRIVILEGE = 0x1;
-              readonly List<object> calls = new List<object>(), cleanup = new List<object>(), errors = new List<object>();
-              readonly Dictionary<string, object> tokens = new Dictionary<string, object>();
-
-              [StructLayout(LayoutKind.Sequential)]
-              struct Label { public IntPtr Sid; public uint Attributes; }
-
-              [DllImport("kernel32.dll", ExactSpelling = true)]
-              static extern IntPtr GetCurrentProcess();
-              [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
-              [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              static extern bool GetTokenInformation(IntPtr token, int infoClass, IntPtr buffer, uint length, out uint returned);
-              [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              static extern bool SetTokenInformation(IntPtr token, int infoClass, IntPtr buffer, uint length);
-              [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              static extern bool SaferCreateLevel(uint scope, uint level, uint flags, out IntPtr handle, IntPtr reserved);
-              [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              static extern bool SaferComputeTokenFromLevel(IntPtr level, IntPtr source, out IntPtr token, uint flags, IntPtr reserved);
-              [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              static extern bool CreateRestrictedToken(IntPtr source, uint flags, uint disableCount, IntPtr disableSids, uint deleteCount, IntPtr deletePrivileges, uint restrictCount, IntPtr restrictSids, out IntPtr token);
-              [DllImport("advapi32.dll", ExactSpelling = true)]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              static extern bool IsValidSid(IntPtr sid);
-              [DllImport("advapi32.dll", ExactSpelling = true)]
-              static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
-              [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
-              static extern IntPtr GetSidSubAuthority(IntPtr sid, uint index);
-              [DllImport("kernel32.dll", ExactSpelling = true, SetLastError = true)]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              static extern bool CloseHandle(IntPtr handle);
-              [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
-              [return: MarshalAs(UnmanagedType.Bool)]
-              static extern bool SaferCloseLevel(IntPtr handle);
-
-              void Check(bool success, string api)
-              {
-                  int? lastError = success ? (int?)null : Marshal.GetLastWin32Error();
-                  calls.Add(new { api, success, lastError });
-                  if (!success) throw new Win32Exception(lastError.Value, api);
-              }
-
-              void Free(IntPtr buffer, string resource)
-              {
-                  if (buffer == IntPtr.Zero) return;
-                  try { Marshal.FreeHGlobal(buffer); cleanup.Add(new { resource, api = "FreeHGlobal", success = true }); }
-                  catch (Exception e) { cleanup.Add(new { resource, api = "FreeHGlobal", success = false, error = e.ToString() }); errors.Add(e.ToString()); }
-              }
-
-              void Close(IntPtr handle, string resource, bool safer = false)
-              {
-                  if (handle == IntPtr.Zero || handle == new IntPtr(-1)) return;
-                  try
-                  {
-                      bool success = safer ? SaferCloseLevel(handle) : CloseHandle(handle);
-                      int? lastError = success ? (int?)null : Marshal.GetLastWin32Error();
-                      cleanup.Add(new { resource, api = safer ? "SaferCloseLevel" : "CloseHandle", success, lastError });
-                      if (!success) errors.Add(resource + ": cleanup Win32 error " + lastError);
-                  }
-                  catch (Exception e) { cleanup.Add(new { resource, success = false, error = e.ToString() }); errors.Add(e.ToString()); }
-              }
-
-              uint Dword(IntPtr token, int infoClass, string name)
-              {
-                  IntPtr buffer = IntPtr.Zero;
-                  try
-                  {
-                      buffer = Marshal.AllocHGlobal(4);
-                      uint returned;
-                      Check(GetTokenInformation(token, infoClass, buffer, 4, out returned), name + "/GetTokenInformation/" + infoClass);
-                      if (returned != 4) throw new InvalidOperationException("Expected a DWORD; returned bytes=" + returned);
-                      return unchecked((uint)Marshal.ReadInt32(buffer));
-                  }
-                  finally { Free(buffer, name + "/DWORD/" + infoClass); }
-              }
-
-              uint Rid(IntPtr token, string name)
-              {
-                  uint needed, returned;
-                  int header = Marshal.SizeOf<Label>();
-                  bool success = GetTokenInformation(token, TokenIntegrityLevel, IntPtr.Zero, 0, out needed);
-                  int? lastError = success ? (int?)null : Marshal.GetLastWin32Error();
-                  calls.Add(new { api = name + "/GetTokenInformation/25/size", success, lastError, needed });
-                  if (success || lastError != 122 || needed < header + 12 || needed > 4096)
-                      throw new InvalidOperationException("Unexpected integrity buffer probe");
-                  IntPtr buffer = IntPtr.Zero;
-                  try
-                  {
-                      buffer = Marshal.AllocHGlobal((int)needed);
-                      Check(GetTokenInformation(token, TokenIntegrityLevel, buffer, needed, out returned), name + "/GetTokenInformation/25");
-                      if (returned < header + 12 || returned > needed) throw new InvalidOperationException("Invalid integrity info length=" + returned);
-                      Label label = Marshal.PtrToStructure<Label>(buffer);
-                      long start = buffer.ToInt64(), end = checked(start + returned), sid = label.Sid.ToInt64();
-                      if (sid < start + header || sid > end - 8) throw new InvalidOperationException("SID header outside owned buffer");
-                      byte count = Marshal.ReadByte(label.Sid, 1);
-                      if (count != 1 || sid + 8 + 4 * count > end) throw new InvalidOperationException("Invalid integrity SID extent");
-                      success = IsValidSid(label.Sid);
-                      calls.Add(new { api = name + "/IsValidSid", success });
-                      if (!success) throw new InvalidOperationException("Invalid integrity SID; IsValidSid has no extended error");
-                      for (int i = 2; i < 7; i++)
-                          if (Marshal.ReadByte(label.Sid, i) != 0) throw new InvalidOperationException("Invalid integrity SID authority");
-                      if (Marshal.ReadByte(label.Sid, 7) != 16) throw new InvalidOperationException("Expected mandatory-label SID authority");
-                      IntPtr countPointer = GetSidSubAuthorityCount(label.Sid);
-                      if (countPointer != IntPtr.Add(label.Sid, 1) || Marshal.ReadByte(countPointer) != count)
-                          throw new InvalidOperationException("Invalid SID subauthority-count pointer");
-                      IntPtr ridPointer = GetSidSubAuthority(label.Sid, (uint)(count - 1));
-                      Check(ridPointer == IntPtr.Add(label.Sid, 8 + 4 * (count - 1)), name + "/GetSidSubAuthority");
-                      return unchecked((uint)Marshal.ReadInt32(ridPointer));
-                  }
-                  finally { Free(buffer, name + "/integrity-info"); }
-              }
-
-              Dictionary<string, object> Measure(IntPtr token, string name)
-              {
-                  var measured = new Dictionary<string, object>();
-                  tokens.Add(name, measured);
-                  uint raw = Dword(token, TokenElevation, name);
-                  measured["TokenElevationDWORD"] = raw;
-                  measured["elevated"] = raw != 0;
-                  measured["TokenIntegrityLevelRID"] = Rid(token, name);
-                  uint type = Dword(token, TokenElevationType, name);
-                  measured["TokenElevationType"] = type;
-                  if (type < 1 || type > 3) throw new InvalidOperationException("Unexpected TokenElevationType=" + type);
-                  return measured;
-              }
-
-              void LowerNewToken(IntPtr token, IntPtr original, string name)
-              {
-                  if (token == original || token == IntPtr.Zero || token == new IntPtr(-1))
-                      throw new InvalidOperationException("Only a new owned token may be lowered");
-                  IntPtr buffer = IntPtr.Zero;
-                  try
-                  {
-                      int header = Marshal.SizeOf<Label>();
-                      byte[] mediumSid = { 1, 1, 0, 0, 0, 0, 0, 16, 0, 32, 0, 0 };
-                      buffer = Marshal.AllocHGlobal(header + mediumSid.Length);
-                      IntPtr sid = IntPtr.Add(buffer, header);
-                      Marshal.Copy(mediumSid, 0, sid, mediumSid.Length);
-                      bool valid = IsValidSid(sid);
-                      calls.Add(new { api = name + "/IsValidSid/Medium", success = valid });
-                      if (!valid) throw new InvalidOperationException("Invalid owned Medium SID");
-                      Marshal.StructureToPtr(new Label { Sid = sid, Attributes = 0x20 }, buffer, false);
-                      Check(SetTokenInformation(token, TokenIntegrityLevel, buffer, (uint)(header + mediumSid.Length)), name + "/SetTokenInformation/25");
-                  }
-                  finally { Free(buffer, name + "/Medium-label"); }
-              }
-
-              void Derived(IntPtr original, bool lua)
-              {
-                  string name = lua ? "lua-disable-max-privilege" : "safer-normal-user";
-                  IntPtr token = IntPtr.Zero, level = IntPtr.Zero;
-                  try
-                  {
-                      if (lua)
-                          Check(CreateRestrictedToken(original, LUA_TOKEN | DISABLE_MAX_PRIVILEGE, 0, IntPtr.Zero, 0, IntPtr.Zero, 0, IntPtr.Zero, out token), name + "/CreateRestrictedToken");
-                      else
-                      {
-                          Check(SaferCreateLevel(2, 0x20000, 1, out level, IntPtr.Zero), name + "/SaferCreateLevel");
-                          if (level == IntPtr.Zero || level == new IntPtr(-1)) throw new InvalidOperationException("Invalid Safer level handle");
-                          Check(SaferComputeTokenFromLevel(level, original, out token, 0, IntPtr.Zero), name + "/SaferComputeTokenFromLevel");
-                      }
-                      if (token == IntPtr.Zero || token == new IntPtr(-1) || token == original)
-                          throw new InvalidOperationException("Expected a distinct owned token handle");
-                      var before = Measure(token, name + "/before-medium");
-                      bool lower = (uint)before["TokenIntegrityLevelRID"] > Medium;
-                      calls.Add(new { api = name + "/Medium-adjustment", required = lower });
-                      if (lower) LowerNewToken(token, original, name);
-                      var after = Measure(token, name + "/after-medium");
-                      uint expectedRid = lower ? Medium : (uint)before["TokenIntegrityLevelRID"];
-                      if ((uint)after["TokenIntegrityLevelRID"] != expectedRid) throw new InvalidOperationException("Unexpected post-adjustment integrity RID");
-                  }
-                  catch (Exception e) { errors.Add(new { scope = name, error = e.ToString() }); }
-                  finally
-                  {
-                      if (token != original) Close(token, name + "/token");
-                      Close(level, name + "/level", true);
-                  }
-              }
-
-              public Dictionary<string, object> Run()
-              {
-                  IntPtr original = IntPtr.Zero;
-                  bool? originalUnchanged = null;
-                  try
-                  {
-                      // The pseudo process handle is borrowed; only the opened token handle is owned.
-                      Check(OpenProcessToken(GetCurrentProcess(), 0x8 | 0x2 | 0x80, out original), "current/OpenProcessToken");
-                      if (original == IntPtr.Zero || original == new IntPtr(-1)) throw new InvalidOperationException("Invalid own primary token handle");
-                      var before = Measure(original, "current/before");
-                      Derived(original, false);
-                      Derived(original, true);
-                      var after = Measure(original, "current/after");
-                      originalUnchanged = (uint)before["TokenElevationDWORD"] == (uint)after["TokenElevationDWORD"]
-                          && (uint)before["TokenIntegrityLevelRID"] == (uint)after["TokenIntegrityLevelRID"]
-                          && (uint)before["TokenElevationType"] == (uint)after["TokenElevationType"];
-                      if (originalUnchanged != true) throw new InvalidOperationException("Own process token measurements changed");
-                  }
-                  catch (Exception e) { errors.Add(new { scope = "current", error = e.ToString() }); }
-                  finally { Close(original, "current/token"); }
-                  return new Dictionary<string, object> {
-                      { "tokens", tokens }, { "apiCalls", calls }, { "cleanup", cleanup }, { "errors", errors },
-                      { "originalUnchanged", originalUnchanged }, { "measurementComplete", tokens.Count == 6 && errors.Count == 0 },
-                      { "restrictedFlags", LUA_TOKEN | DISABLE_MAX_PRIVILEGE }, { "saferScope", 2 }, { "saferLevel", 0x20000 }, { "saferFlags", 0 }
-                  };
-              }
-          }
-          '@
-          try {
-            $nativePath = Join-Path $evidence 'diagnostic.cs'
-            Set-Content -LiteralPath $nativePath -Value $native -Encoding utf8
-            $report.identities.nativeSourceSha256 = (Get-FileHash -Algorithm SHA256 $nativePath).Hash.ToLowerInvariant()
-            $report.identities.workflowSha256 = (Get-FileHash -Algorithm SHA256 (Join-Path $env:GITHUB_WORKSPACE '.github/workflows/native-relay.yml')).Hash.ToLowerInvariant()
-            $report.identities.projectToolPinsSha256 = (Get-FileHash -Algorithm SHA256 (Join-Path $env:GITHUB_WORKSPACE 'mise.toml')).Hash.ToLowerInvariant()
-            $report.identities.pwshExeSha256 = (Get-FileHash -Algorithm SHA256 (Join-Path $PSHOME 'pwsh.exe')).Hash.ToLowerInvariant()
-            $report.identities.stepScriptSha256 = (Get-FileHash -Algorithm SHA256 $PSCommandPath).Hash.ToLowerInvariant()
-            $report.identities.addTypeModuleVersion = (Get-Command Add-Type).Module.Version.ToString()
-            Add-Type -TypeDefinition $native -ErrorAction Stop
-            $report.measurement = [NativeLuaTokenDiagnostic]::new().Run()
-            $report.status = if ($report.measurement.measurementComplete) { 'measured' } else { 'measurement-errors' }
-          } catch {
-            $report.status = 'diagnostic-error'
-            $report.error = $_.Exception.ToString()
-          } finally {
-            $report.finishedAt = [DateTime]::UtcNow.ToString('o')
-            $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $evidence 'diagnostic.json')
-          }
-          throw 'NLUADIAG_1103 token-only diagnostic; native acceptance and developer EXE publication blocked'
-
       - name: Install the scoped Rust toolchain
         working-directory: native/desktop
         run: mise install
@@ -348,44 +86,24 @@ jobs:
           if ($autoElevate -and $autoElevate.InnerText -ne 'false') { throw 'Automatic elevation is forbidden' }
           Copy-Item native/desktop/gen/schemas/*.json .tmp/native-relay-evidence/
 
-      - name: Verify the exact portable Medium launcher
+      - name: Record the built-in own-token Medium launcher inputs
         run: |
-          $PSNativeCommandUseErrorActionPreference = $false
-          $toolRoot = Join-Path $env:RUNNER_TEMP ('native-gsudo-' + [guid]::NewGuid().ToString('N'))
-          New-Item -ItemType Directory $toolRoot | Out-Null
           $evidence = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/launcher'
           New-Item -ItemType Directory -Force $evidence | Out-Null
-          $url = 'https://github.com/gerardog/gsudo/releases/download/v2.6.1/gsudo.portable.zip'
-          $expectedHash = '21130bf178d7b9891207f00bff56f05b6b363ce9cec7b2d084e45fb12ee51f44'
-          $archivePath = Join-Path $toolRoot 'gsudo.portable.zip'
-          $checksumPath = Join-Path $toolRoot 'gsudo.portable.zip.sha256'
-          Invoke-WebRequest $url -OutFile $archivePath
-          Invoke-WebRequest "$url.sha256" -OutFile $checksumPath
-          $archiveHash = (Get-FileHash -Algorithm SHA256 $archivePath).Hash.ToLowerInvariant()
-          if ($archiveHash -cne $expectedHash -or (Get-Content -LiteralPath $checksumPath -Raw).Trim().ToLowerInvariant() -cne $expectedHash) {
-            throw 'The portable gsudo archive must match the reviewed SHA256 and companion before extraction'
-          }
-          $gsudo = Join-Path $toolRoot 'gsudo.exe'
-          $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
-          try {
-            $members = @($archive.Entries | Where-Object { $_.FullName -ceq 'x64/gsudo.exe' })
-            if ($members.Count -ne 1) { throw 'Expected exactly one x64/gsudo.exe archive member' }
-            [IO.Compression.ZipFileExtensions]::ExtractToFile($members[0], $gsudo)
-          } finally { $archive.Dispose() }
-          $version = (& $gsudo --version) -join "`n"
-          $versionExit = $LASTEXITCODE
+          $selectedPwsh = (Get-Command pwsh.exe -CommandType Application).Source
+          $selectedMise = (Get-Command mise.exe -CommandType Application).Source
           [ordered]@{
-            url = $url; archive_sha256 = $archiveHash
-            member = 'x64/gsudo.exe'
-            executable_sha256 = (Get-FileHash -Algorithm SHA256 $gsudo).Hash.ToLowerInvariant()
-            version = $version; exit = $versionExit
+            source = $env:GITHUB_SHA
+            launcher_sha256 = (Get-FileHash -Algorithm SHA256 tests/e2e-native-relay/run-medium.ps1).Hash.ToLowerInvariant()
+            token_method = 'CreateRestrictedToken LUA_TOKEN|DISABLE_MAX_PRIVILEGE (0x5), new token Medium'
+            pwsh = $selectedPwsh
+            pwsh_sha256 = (Get-FileHash -Algorithm SHA256 $selectedPwsh).Hash.ToLowerInvariant()
+            mise = $selectedMise
+            mise_sha256 = (Get-FileHash -Algorithm SHA256 $selectedMise).Hash.ToLowerInvariant()
+            cwd = (Get-Location).Path
           } | ConvertTo-Json | Set-Content (Join-Path $evidence 'tool.json')
-          if ($versionExit -ne 0 -or $version -cnotmatch '(?m)^gsudo v2\.6\.1 \([^\r\n]+\)\r?$') {
-            throw 'The verified launcher must report exact gsudo v2.6.1'
-          }
-          "NATIVE_RELAY_GSUDO=$gsudo" | Add-Content $env:GITHUB_ENV
-          "NATIVE_RELAY_PWSH=$((Get-Command pwsh.exe -CommandType Application).Source)" | Add-Content $env:GITHUB_ENV
-          "NATIVE_RELAY_MISE=$((Get-Command mise.exe -CommandType Application).Source)" | Add-Content $env:GITHUB_ENV
+          "NATIVE_RELAY_PWSH=$selectedPwsh" | Add-Content $env:GITHUB_ENV
+          "NATIVE_RELAY_MISE=$selectedMise" | Add-Content $env:GITHUB_ENV
 
       - name: Prove Medium launch preserves tools, streams and exit status
         run: |
@@ -441,7 +159,7 @@ jobs:
           exit $LASTEXITCODE
           '@
           $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
-          & $env:NATIVE_RELAY_GSUDO --integrity Medium --direct --wait $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -EncodedCommand $encoded
+          & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/run-medium.ps1 -EncodedCommand $encoded -TimeoutSeconds 120
           $probeExit = $LASTEXITCODE
           $probeExit | Set-Content (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'exit.txt')
           $stdout = [IO.File]::ReadAllText((Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log'))
@@ -452,6 +170,12 @@ jobs:
             throw 'The exact Medium launch must preserve CWD, pinned tools, distinct streams and exit 37'
           }
           exit 0
+
+      - name: Prove the Medium launcher deadline cleans its owned tree
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/medium-launcher-timeout.ps1
+          exit $LASTEXITCODE
 
       - name: Prove the untouched runner fails only the owned-token guard
         run: |
@@ -609,7 +333,7 @@ jobs:
           exit $LASTEXITCODE
           '@
             $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
-            & $env:NATIVE_RELAY_GSUDO --integrity Medium --direct --wait $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -EncodedCommand $encoded
+            & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/run-medium.ps1 -EncodedCommand $encoded -TimeoutSeconds 180
             $testExit = $LASTEXITCODE
           } finally {
             $env:NATIVE_RELAY_EXE = $originalExecutable
@@ -663,7 +387,7 @@ jobs:
           exit $LASTEXITCODE
           '@
             $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
-            & $env:NATIVE_RELAY_GSUDO --integrity Medium --direct --wait $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -EncodedCommand $encoded
+            & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/run-medium.ps1 -EncodedCommand $encoded -TimeoutSeconds 1800
             $testExit = $LASTEXITCODE
           } finally {
             $env:PLAYWRIGHT_JSON_OUTPUT_NAME = $previousJsonOutput
@@ -679,10 +403,6 @@ jobs:
           }
           if ((Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant() -cne $build.executable_sha256) { throw 'The original executable changed during the full Medium suite' }
           exit 0
-
-      - name: TEMPORARY actual fixture diagnostic stop
-        if: always()
-        run: throw 'NFIXDIAG_1103 diagnostic-only; native acceptance and developer EXE publication blocked'
 
       - name: Retain native verification evidence
         if: always()

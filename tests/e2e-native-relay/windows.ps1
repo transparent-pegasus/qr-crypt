@@ -1,27 +1,14 @@
-$dc = [Diagnostics.Stopwatch]::StartNew()
-function m($s) { [Console]::Error.WriteLine('NFIXDIAG_1103 '+$dc.ElapsedMilliseconds+' '+$s) }
-m 'entry'
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-m 'stdin-before'
-$diagnosticInput = [Console]::In.ReadToEnd()
-m 'stdin-after'
-m 'json-before'
-$request = $diagnosticInput | ConvertFrom-Json
-m 'json-after'
-m 'process-before'
+$request = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $owned = Get-Process -Id $request.processId -ErrorAction SilentlyContinue
-m 'process-after'
 if ($null -eq $owned) {
   if ($request.action -eq 'terminate') { '{"exited":true}'; exit 0 }
   throw 'Owned executable has exited'
 }
-m 'handle-before'
 $null = $owned.Handle
-m 'handle-after'
-m 'identity-before'
 $startedAt = ([DateTimeOffset]$owned.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
 if ($owned.Path -ine $request.executable -or $startedAt -lt $request.spawnedAfter) {
   throw 'Native process identity mismatch'
@@ -29,17 +16,13 @@ if ($owned.Path -ine $request.executable -or $startedAt -lt $request.spawnedAfte
 if ($null -ne $request.startedAt -and $startedAt -ne $request.startedAt) {
   throw 'Native process start identity changed'
 }
-m 'identity-after'
 if ($request.action -eq 'terminate') {
   # The held process handle and start identity guard the PID; never kill by image name.
-  m 'terminate-before'
   & "$env:SystemRoot\System32\taskkill.exe" /PID $owned.Id /T /F | Out-Null
   if ($LASTEXITCODE -ne 0 -and !$owned.HasExited) { throw 'Owned process tree termination failed' }
-  m 'terminate-after'
   '{"exited":true}'
   exit 0
 }
-m 'add-type-before'
 Add-Type @'
 using System;
 using System.ComponentModel;
@@ -104,11 +87,10 @@ public static class RelayWindow {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
 }
 '@
-m 'add-type-after'
 if ($request.action -eq 'token') {
   @{
     processId = $owned.Id; startedAt = $startedAt; executable = $owned.Path
-    integrity = $(m 'token-before'; [RelayToken]::Measure($owned.Handle); m 'token-after')
+    integrity = [RelayToken]::Measure($owned.Handle)
   } | ConvertTo-Json -Compress
   exit 0
 }

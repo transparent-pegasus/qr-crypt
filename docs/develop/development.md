@@ -197,17 +197,23 @@ Non-Windows hosts and missing/mismatched candidate inputs fail setup.
 [`native-relay.yml`](../../.github/workflows/native-relay.yml) builds on Windows
 Server 2025, checks the compiled context and actual WebView, and retains the linked
 manifest, generated ACL inputs and build hashes before runtime controls. CI alone
-uses portable gsudo `2.6.1`, verifies the reviewed ZIP SHA256
-`21130bf178d7b9891207f00bff56f05b6b363ce9cec7b2d084e45fb12ee51f44`
-and companion checksum before extracting only `x64/gsudo.exe` into a fresh
-`RUNNER_TEMP` directory, and records its exact version and actual ZIP/EXE hashes.
-`--integrity Medium --direct --wait` launches the whole PowerShell/mise/aube
-command; the fixture still directly owns the release EXE. The Medium child
-captures stdout/stderr separately for parent readback and returns the exact child
-exit code. A preceding probe requires checkout CWD, the selected mise and pinned
-aube/Node, distinct stream sentinels and deliberate exit `37`. No profile import,
-global install/configuration, credential cache, environment-copy option or ACL
-grant is used.
+uses [`run-medium.ps1`](../../tests/e2e-native-relay/run-medium.ps1) to derive a
+restricted version of its own primary token with `CreateRestrictedToken` flags
+`LUA_TOKEN | DISABLE_MAX_PRIVILEGE` (`0x5`). It sets only the new token to Medium,
+validates its integrity and elevation, and uses `CreateProcessAsUserW` to start
+the selected PowerShell in the checkout with the same user's inherited environment
+and desktop. The child starts suspended, joins a private kill-on-close Job Object
+without breakaway, then resumes. Deadlines terminate and verify the owned tree
+before returning `124` with `NATIVE_RELAY_LAUNCH_TIMEOUT:`; setup or cleanup errors
+fail closed. Normal child exit codes are preserved. The fixture still directly
+owns the release EXE; the Medium child captures stdout/stderr separately for parent
+readback. A preceding probe requires checkout CWD, the selected mise and pinned
+aube/Node, distinct stream sentinels and deliberate exit `37`. The independent
+`medium-launcher-timeout.ps1` control checks deadline cleanup. Launcher source and
+selected tool hashes are retained. No profile import, global configuration,
+credential cache, environment copying or ACL grant is used. Token-only measurements
+support this choice; launched-process and native acceptance still require Windows
+results.
 
 An untouched-runner control selects only the existing identity case. It must
 fail solely at the owned-token guard with RID `12288` and `elevated: true`, the
