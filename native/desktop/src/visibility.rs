@@ -1,4 +1,4 @@
-use tauri::{WebviewWindow, webview::PlatformWebview};
+use tauri::webview::PlatformWebview;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     UI::{
@@ -17,24 +17,15 @@ fn fail_closed() -> ! {
     std::process::exit(1);
 }
 
-pub(super) fn install(window: &WebviewWindow) -> tauri::Result<()> {
-    let main = window.clone();
-    window.with_webview(move |webview| {
-        let hwnd = main.hwnd().unwrap_or_else(|_| fail_closed());
-        // SAFETY: with_webview runs on the UI thread; the subclass owns this handle until WM_NCDESTROY.
-        unsafe {
-            webview
-                .controller()
-                .SetIsVisible(false)
-                .unwrap_or_else(|_| fail_closed());
-            let data = Box::into_raw(Box::new(webview));
-            if !SetWindowSubclass(hwnd, Some(window_proc), SUBCLASS_ID, data as usize).as_bool() {
-                drop(Box::from_raw(data));
-                fail_closed();
-            }
+pub(super) fn install(hwnd: HWND, webview: PlatformWebview) {
+    // SAFETY: the caller runs on the UI thread; the subclass owns this handle until WM_NCDESTROY.
+    unsafe {
+        let data = Box::into_raw(Box::new(webview));
+        if !SetWindowSubclass(hwnd, Some(window_proc), SUBCLASS_ID, data as usize).as_bool() {
+            drop(Box::from_raw(data));
+            fail_closed();
         }
-        main.show().unwrap_or_else(|_| fail_closed());
-    })
+    }
 }
 
 unsafe extern "system" fn window_proc(

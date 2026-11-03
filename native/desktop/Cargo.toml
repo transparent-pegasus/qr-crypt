@@ -16,4 +16,5 @@ tauri-build = "=2.7.4"
 tauri = { version = "=2.12.5", default-features = false, features = ["wry", "common-controls-v6"] }
 
 [target.'cfg(windows)'.dependencies]
+webview2-com = "=0.39.1"
 windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
