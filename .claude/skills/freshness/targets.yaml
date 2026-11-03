@@ -155,6 +155,12 @@ units:
       exact-origin admission, local empty rejection and fail-closed API errors.
       Preserve owned-sink and passive request/response/failure evidence even
       when a native policy assertion fails. A retained page is not no-egress.
+      Keep zero owned-sink hits. For the measured Windows navigation path,
+      require one exact GET/null-body attempt and the ordered request,
+      local403 response and ERR_ABORTED events, with complete bounded metadata
+      and the six DNS/connect/request-start timing fields at -1. Popup has no
+      external requests/events. Never substitute silent navigation, a missing
+      response or a CDP event alone for measured rejection/server contact.
       Attach CDP with noDefaults so focus emulation cannot mask OS visibility.
       Native text comparisons retain exact Windows CRLF and every frame byte.
       Do not claim native download denial from CDP allow/deny overrides or

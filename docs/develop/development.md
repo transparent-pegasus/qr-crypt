@@ -252,6 +252,9 @@ The subsequent request-stage correction produced zero owned-sink hits and a loca
 403 followed by `net::ERR_ABORTED`; CDP still records the attempted GET. Retain
 both request/response evidence and the server observation when assessing that
 boundary. A DevTools request event alone is not proof of network contact.
+Require exactly that local-response sequence and complete bounded metadata for
+navigation, alongside zero sink hits; silent or incomplete observations do not
+satisfy it. Popup requires zero external requests and passive events.
 All 18 cases must pass on the same candidate; a launcher probe or Linux
 discovery is insufficient. Medium integrity does not establish AppContainer or
 compromised-OS isolation. Separate mutation
