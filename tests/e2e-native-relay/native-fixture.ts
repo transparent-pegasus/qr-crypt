@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process"
+import { execFile, spawn, type ExecException } from "node:child_process"
 import { createHash } from "node:crypto"
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -23,10 +23,11 @@ export const APP_ORIGIN = "http://tauri.localhost"
 const digest = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex")
 
 export function redactEvidence(
-  value: string,
+  value: string | number,
   storage: string,
   executable: string,
 ): string {
+  value = String(value)
   for (const [path, label] of [
     [storage, "<owned-storage>"],
     [executable, "<release-exe>"],
@@ -213,7 +214,7 @@ export const test = base.extend<{ native: NativeRelay }>({
     const responseErrors: string[] = []
     const pageErrors: string[] = []
     const observations: unknown[] = []
-    const redact = (value: string) => redactEvidence(value, storage, executable)
+    const redact = (value: string | number) => redactEvidence(value, storage, executable)
     const windows = async <T>(
       action: string,
       extra: Record<string, unknown> = {},
@@ -241,7 +242,7 @@ export const test = base.extend<{ native: NativeRelay }>({
         const { stdout } = await pending
         return JSON.parse(stdout.replace(/^\uFEFF/, "").trim()) as T
       } catch (error) {
-        const failure = error as NodeJS.ErrnoException & { stderr?: string }
+        const failure = error as ExecException & { stderr?: string }
         throw new Error(
           "Native PowerShell " +
             action +

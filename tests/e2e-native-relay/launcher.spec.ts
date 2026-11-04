@@ -19,6 +19,16 @@ test("native evidence removes plain, escaped and forward-slash Windows user path
   expect(
     redactEvidence("http://tauri.localhost " + sha, "D:\\owned", "D:\\release.exe"),
   ).toBe("http://tauri.localhost " + sha)
+  expect
+    .soft(() => {
+      expect(redactEvidence(23, "D:\\owned", "D:\\release.exe")).toBe("23")
+    })
+    .not.toThrow()
+  expect
+    .soft(() => {
+      expect(redactEvidence(0, "D:\\owned", "D:\\release.exe")).toBe("0")
+    })
+    .not.toThrow()
 })
 
 test("launcher rejects unsupported hosts, relative executables and mismatched source identities", () => {
