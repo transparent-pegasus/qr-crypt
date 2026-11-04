@@ -45,11 +45,11 @@ function attachment(name, value) {
 }
 
 function observation(variant, phase) {
-  return {
+  const value = {
     phase,
     blobUrl,
     clickedAtMs: 1500,
-    observedAtMs: phase === "finally" ? 2000 : 1800,
+    observedAtMs: phase === "finally" ? 2800 : 2600,
     events: [
       {
         method: "Browser.downloadWillBegin",
@@ -98,6 +98,8 @@ function observation(variant, phase) {
     originalDenial: variant === "original" ? "denied" : "failed",
     mutantPositive: variant === "original" ? "failed" : "saved",
   }
+  assert.ok(value.observedAtMs - value.clickedAtMs >= 1000)
+  return value
 }
 
 // Shape from Windows attempt 41869381043/job 126711952586 (failed aggregation).
@@ -177,15 +179,15 @@ function report(variant = "original") {
     operations: [
       { action: "parent", root: null, value: { validated: true }, atMs: 100 },
       { action: "validate", root, value: { validated: true }, atMs: 1100 },
-      { action: "inventory", root, value: structuredClone(before.inventory), atMs: 1799 },
-      { action: "inventory", root, value: structuredClone(final.inventory), atMs: 1999 },
+      { action: "inventory", root, value: structuredClone(before.inventory), atMs: 2599 },
+      { action: "inventory", root, value: structuredClone(final.inventory), atMs: 2799 },
       {
         action: "members",
         root,
         value: { members: structuredClone(members) },
-        atMs: 2100,
+        atMs: 2850,
       },
-      { action: "drained", root, value: { drained: true }, atMs: 2200 },
+      { action: "drained", root, value: { drained: true }, atMs: 2900 },
       {
         action: "remove",
         root,
@@ -1358,7 +1360,7 @@ rejections("before and final must agree with the retained observations", [
     "final precedes before snapshot",
     (v) =>
       editAttachment(v, "native-download-finally.json", (item) => {
-        item.observedAtMs = 1700
+        item.observedAtMs = 2550
       }),
   ],
   [
