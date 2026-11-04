@@ -377,6 +377,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Frozen download caller tests failed' }
           mise exec -- aube node --test --test-reporter=tap tests/e2e-native-relay/download-report.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Independent download report tests failed' }
+          mise exec -- aube node --test --test-reporter=tap tests/e2e-native-relay/download-identifiers.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Independent download identifier tests failed' }
 
       - name: Prepare the source-bound native download helper
         run: |

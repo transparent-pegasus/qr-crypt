@@ -286,6 +286,7 @@ export function classifyDownload(
           typeof field === "string" &&
           (Buffer.byteLength(field) > 1024 || controlPattern.test(field)),
       ) ||
+      typeof event.guid !== "string" ||
       !event.guid
     )
       return "failed"
@@ -294,6 +295,7 @@ export function classifyDownload(
       if (
         states.has(event.guid) ||
         event.url !== o.blobUrl ||
+        typeof event.frameId !== "string" ||
         !event.frameId ||
         event.suggestedFilename !== "native-relay-inert-download.txt"
       )

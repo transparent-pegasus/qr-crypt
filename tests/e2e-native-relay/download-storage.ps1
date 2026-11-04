@@ -87,7 +87,25 @@ if ($request.action -eq 'members' -or $request.action -eq 'drained') {
   if ($members.Count -gt 128) { throw 'Candidate process inventory overflow' }
   foreach ($item in $members) {
     $start = ([DateTimeOffset]$item.CreationDate).ToUnixTimeMilliseconds()
-    if ($start -lt $request.spawnedAfter -or !$ids.Contains([uint32]$item.ProcessId)) { throw 'Foreign owned-profile process' }
+    if ($start -lt $request.spawnedAfter -or !$ids.Contains([uint32]$item.ProcessId)) {
+      $rootStart = $null
+      try {
+        $rootRecord = @($all | Where-Object { $_.ProcessId -eq $request.pid })
+        if ($rootRecord.Count -eq 1) { $rootStart = ([DateTimeOffset]$rootRecord[0].CreationDate).ToUnixTimeMilliseconds() }
+      } catch { $rootStart = $null }
+      $detail = [ordered]@{
+        root_pid = [uint32]$request.pid
+        lower_ms = [long]$request.spawnedAfter
+        pid = [uint32]$item.ProcessId
+        ppid = [uint32]$item.ParentProcessId
+        start_ms = [long]$start
+        in_descendants = $ids.Contains([uint32]$item.ProcessId)
+        profile_match = [bool](@($matched | ForEach-Object ProcessId) -contains $item.ProcessId)
+        root_start_available = $null -ne $rootStart
+        root_start_ms = $(if ($null -ne $rootStart) { $rootStart } else { 0 })
+      } | ConvertTo-Json -Compress
+      throw "Foreign owned-profile process $detail"
+    }
     if ($item.ProcessId -eq $request.pid -and $item.ExecutablePath -ine $request.executable) { throw 'Candidate image mismatch' }
   }
   ConvertTo-Json -Compress -InputObject @{ members = @($members | ForEach-Object { @{ pid = $_.ProcessId; startedAt = ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds(); image = $_.ExecutablePath } }) } -Depth 4

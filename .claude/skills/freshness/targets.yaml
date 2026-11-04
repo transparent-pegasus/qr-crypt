@@ -142,6 +142,7 @@ units:
       - tests/e2e-native-relay/download-control.ps1
       - tests/e2e-native-relay/download-report.mjs
       - tests/e2e-native-relay/download-report.test.mjs
+      - tests/e2e-native-relay/download-identifiers.test.mjs
       - tests/e2e-native-relay/download-profile/main.rs
       - tests/e2e-native-relay/download-profile/protocol.rs
       - tests/e2e-native-relay/download-profile/protocol_tests.rs
@@ -432,6 +433,7 @@ units:
       - tests/e2e-native-relay/download-control.ps1
       - tests/e2e-native-relay/download-report.mjs
       - tests/e2e-native-relay/download-report.test.mjs
+      - tests/e2e-native-relay/download-identifiers.test.mjs
       - eslint.config.js # narrow Node globals for unchanged native harness MJS tests
       - scripts/check-assessed-releases.sh # exact Noble/decoder pins versus official latest releases; fail-closed signal
       - tests/unit/assessed-release-check.test.ts # both exact pins, invalid API/pin data, request failures, and independent checks
