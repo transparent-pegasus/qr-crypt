@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process"
-import { realpath, stat } from "node:fs/promises"
+import { createHash } from "node:crypto"
+import { readFile, realpath, stat } from "node:fs/promises"
 import { createServer } from "node:net"
 import { win32 } from "node:path"
 
@@ -52,6 +53,39 @@ export async function existingExecutable(executable: string): Promise<string> {
   }
   throw new Error(
     "NATIVE_RELAY_SETUP: NATIVE_RELAY_EXE must be an existing absolute release EXE path",
+  )
+}
+
+export async function selectPowerShell(
+  executable: string | undefined,
+  expected: { source: string; pwsh: string; pwsh_sha256: string },
+  sourceHead: string,
+): Promise<{ executable: string; sha256: string }> {
+  try {
+    if (
+      executable &&
+      /^[a-z]:[\\/]/i.test(executable) &&
+      win32.basename(executable).toLowerCase() === "pwsh.exe"
+    ) {
+      const path = await realpath(executable)
+      if (
+        /^[a-z]:[\\/]/i.test(path) &&
+        win32.basename(path).toLowerCase() === "pwsh.exe" &&
+        (await stat(path)).isFile() &&
+        expected.source === sourceHead &&
+        path.toLowerCase() === expected.pwsh.toLowerCase()
+      ) {
+        const sha256 = createHash("sha256")
+          .update(await readFile(path))
+          .digest("hex")
+        if (sha256 === expected.pwsh_sha256) return { executable: path, sha256 }
+      }
+    }
+  } catch {
+    /* Report the same setup error for missing and mismatched helper identities. */
+  }
+  throw new Error(
+    "NATIVE_RELAY_SETUP: NATIVE_RELAY_PWSH must select the existing absolute pwsh.exe recorded in launcher/tool.json",
   )
 }
 

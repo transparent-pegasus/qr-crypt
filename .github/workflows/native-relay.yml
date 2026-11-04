@@ -92,12 +92,15 @@ jobs:
           New-Item -ItemType Directory -Force $evidence | Out-Null
           $selectedPwsh = (Get-Command pwsh.exe -CommandType Application).Source
           $selectedMise = (Get-Command mise.exe -CommandType Application).Source
+          $pwshVersion = (Get-Item -LiteralPath $selectedPwsh).VersionInfo
           [ordered]@{
             source = $env:GITHUB_SHA
             launcher_sha256 = (Get-FileHash -Algorithm SHA256 tests/e2e-native-relay/run-medium.ps1).Hash.ToLowerInvariant()
             token_method = 'CreateRestrictedToken LUA_TOKEN|DISABLE_MAX_PRIVILEGE (0x5), new token Medium'
             pwsh = $selectedPwsh
             pwsh_sha256 = (Get-FileHash -Algorithm SHA256 $selectedPwsh).Hash.ToLowerInvariant()
+            pwsh_file_version = $pwshVersion.FileVersion
+            pwsh_product_version = $pwshVersion.ProductVersion
             mise = $selectedMise
             mise_sha256 = (Get-FileHash -Algorithm SHA256 $selectedMise).Hash.ToLowerInvariant()
             cwd = (Get-Location).Path

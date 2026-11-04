@@ -15,6 +15,7 @@ import {
   existingExecutable,
   mayTerminateChild,
   selectCdpPort,
+  selectPowerShell,
   validateLaunchInputs,
 } from "./launcher"
 
@@ -142,6 +143,13 @@ export const test = base.extend<{ native: NativeRelay }>({
       sourceHead,
     )
     const executable = await existingExecutable(input.executable)
+    const powerShell = await selectPowerShell(
+      process.env.NATIVE_RELAY_PWSH,
+      JSON.parse(
+        await readFile(".tmp/native-relay-evidence/launcher/tool.json", "utf8"),
+      ) as { source: string; pwsh: string; pwsh_sha256: string },
+      sourceHead,
+    )
     const root = resolve("dist-relay")
     const assetHashes = new Map<string, string>()
     for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
@@ -220,7 +228,7 @@ export const test = base.extend<{ native: NativeRelay }>({
       extra: Record<string, unknown> = {},
     ): Promise<T> => {
       const pending = execute(
-        "powershell.exe",
+        powerShell.executable,
         ["-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", encodedScript],
         { timeout: 15_000, windowsHide: true },
       )
@@ -553,6 +561,10 @@ export const test = base.extend<{ native: NativeRelay }>({
                   version,
                   exeSha256,
                   locks,
+                  powerShell: {
+                    executable: redact(powerShell.executable),
+                    sha256: powerShell.sha256,
+                  },
                   process: processIdentity && {
                     ...processIdentity,
                     executable: redact(processIdentity.executable),
