@@ -1,0 +1,49 @@
+{
+  "source": "93f90970a9fdfc6565ae5b5d4d9e44cf02432712",
+  "fixture": "tests/fixtures/relay-messages.ts",
+  "fixtureSha256": "520ecf78e76ecf9dd20a1375689a5c611d42ea9e0575cb708790b1c717b2363e",
+  "decoderSource": "tests/e2e/helpers.ts#decodePng",
+  "decoderFunctionSha256": "d840b611b96c5b64496f2fc6349420bee930d06d188cd110598c707119774231",
+  "synthetic": true,
+  "containsRealKeysOrPlaintext": false,
+  "cryptographicallyValid": false,
+  "acceptanceScope": "Relay framing, camera, display and clipboard only",
+  "pngDecodedRoundTrips": 3,
+  "files": [
+    {
+      "name": "sym-message.txt",
+      "bytes": 370,
+      "sha256": "c913b0920d2d0990b73bfcb0d553e711fe7c150d65ca146b82ac85094224601a"
+    },
+    {
+      "name": "sym-frame-1.png",
+      "bytes": 13511,
+      "sha256": "77bbd326d6a6ddb57f7a8304a4de4d0d80381c0bd3ffe0095f8644bb21a04dba"
+    },
+    {
+      "name": "pq-message.txt",
+      "bytes": 2682,
+      "sha256": "160584f617f7e323d287ff95b724386b0af4c6da343ffb271c64f1c6d2bd7839"
+    },
+    {
+      "name": "pq-frame-1.png",
+      "bytes": 34409,
+      "sha256": "7c7a87105a8a11f5cebac0020f2d706b673dd2255a1ee38390aceeff5984b564"
+    },
+    {
+      "name": "pq-frame-2.png",
+      "bytes": 29183,
+      "sha256": "b404c90da7a2897e5daf4272bf717f85ea34b9a6d9e0e487d3ed430230b40274"
+    },
+    {
+      "name": "rejected-non-message.txt",
+      "bytes": 178,
+      "sha256": "24c4cc3b4c1085d207d47cacce53b28565db9b9bb08d620bd648575e4cdb698e"
+    },
+    {
+      "name": "qr-samples.html",
+      "bytes": 925,
+      "sha256": "edd3db06293195147a6aa2ffe72d049d90d359c6c4dfcd40312ec8feebda8091"
+    }
+  ]
+}

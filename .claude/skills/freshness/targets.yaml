@@ -140,6 +140,15 @@ units:
       - tests/e2e-native-relay/run-medium.ps1 # CI-only own-token launch, job ownership and bounded cleanup
       - tests/e2e-native-relay/medium-launcher-timeout.ps1 # independent Windows deadline/tree cleanup control
       - tests/fixtures/relay-messages.ts # shared synthetic protocol fixtures, never product imports
+      - tests/manual/native-relay/README-ja.md # Windows 11 x64 manual E2E and synthetic-only scope
+      - tests/manual/native-relay/manifest.json # historical fixture provenance and exact sample bytes
+      - tests/manual/native-relay/sym-message.txt
+      - tests/manual/native-relay/pq-message.txt
+      - tests/manual/native-relay/rejected-non-message.txt
+      - tests/manual/native-relay/sym-frame-1.png
+      - tests/manual/native-relay/pq-frame-1.png
+      - tests/manual/native-relay/pq-frame-2.png
+      - tests/manual/native-relay/qr-samples.html
     why: >
       Supported OS/runtime maintenance, native host defaults, response-policy
       differences, and the boundary between measured and pending gates can drift.
@@ -163,6 +172,12 @@ units:
       response or a CDP event alone for measured rejection/server contact.
       Attach CDP with noDefaults so focus emulation cannot mask OS visibility.
       Native text comparisons retain exact Windows CRLF and every frame byte.
+      Compare manual sample text with loadRelayMessages, decode all three PNGs
+      with the existing E2E decoder, and verify the manifest's fixture/sample
+      hashes and byte counts. Preserve the TXT bytes through Git checkout.
+      Keep Japanese instructions aligned with visible controls and synthetic-only
+      framing/camera/clipboard scope. Historical sample provenance is separate
+      from the source and hash of the original EXE in build.json.
       Do not claim native download denial from CDP allow/deny overrides or
       an empty unused directory; native-default observation needs a verified
       owned destination/profile and a discriminating compiled control.
@@ -366,6 +381,8 @@ units:
       - .github/workflows/github-release.yml
       - .github/workflows/security-maintenance.yml # scheduled/manual read-only advisory and assessed-pin checks; integration-owned
       - .github/workflows/native-relay.yml # actual Windows developer EXE and strict native dependency checks
+      - .gitattributes # preserve exact CRLF bytes for the manual relay TXT samples
+      - tests/manual/native-relay/manifest.json # source/hash-bound samples staged with the original EXE
       - tests/e2e-native-relay/run-medium.ps1 # Win32 own-token launcher and private job lifecycle
       - tests/e2e-native-relay/medium-launcher-timeout.ps1 # independent launcher timeout control, outside Playwright discovery
       - scripts/check-assessed-releases.sh # exact Noble/decoder pins versus official latest releases; fail-closed signal
@@ -429,6 +446,12 @@ units:
       and runtime reports. Native developer artifacts do not establish package or
       physical-release gates. Review the Linux-hosted Windows-target dependency job
       separately from full-lock informational advisory notices.
+      Stage the manual kit only after the complete native gate, using the preserved
+      original EXE and build.json plus the static manual files. Verify the staged
+      EXE/source against the recorded build and current commit, and the manifest's
+      fixture/sample hashes before the success-only developer upload. Check flat
+      artifact membership and unchanged TXT bytes after Git storage/checkout.
+      The Japanese guide must distinguish sample provenance from EXE identity.
       The native CI-only run-medium.ps1 uses the measured own-primary-token
       CreateRestrictedToken LUA_TOKEN|DISABLE_MAX_PRIVILEGE flags0x5 path and
       lowers only the new token to Medium. Preserve all default-DACL entries/order,

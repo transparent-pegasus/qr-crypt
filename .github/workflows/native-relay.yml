@@ -422,11 +422,55 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Stage the verified Windows manual E2E kit
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'native-relay-manual-kit'
+          if (Test-Path -LiteralPath $stage) { throw 'Manual kit staging must be fresh' }
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item -LiteralPath $env:NATIVE_RELAY_EXE -Destination (Join-Path $stage 'qr-crypt-relay.exe')
+          Copy-Item -LiteralPath .tmp/native-relay-evidence/build.json -Destination $stage
+          Get-ChildItem -LiteralPath tests/manual/native-relay -File | Copy-Item -Destination $stage
+          @'
+          import assert from "node:assert/strict"
+          import { createHash } from "node:crypto"
+          import { readFileSync, readdirSync } from "node:fs"
+          import { join } from "node:path"
+          const stage = process.argv[2]
+          const read = name => readFileSync(join(stage, name))
+          const sha = bytes => createHash("sha256").update(bytes).digest("hex")
+          const build = JSON.parse(read("build.json"))
+          const manifest = JSON.parse(read("manifest.json"))
+          assert.match(process.env.GITHUB_SHA, /^[a-f0-9]{40}$/)
+          assert.equal(build.source, process.env.GITHUB_SHA, "EXE build source")
+          assert.equal(sha(read("qr-crypt-relay.exe")), build.executable_sha256, "staged original EXE")
+          assert.equal(sha(readFileSync(process.env.NATIVE_RELAY_EXE)), build.executable_sha256, "preserved original EXE")
+          assert.equal(manifest.fixture, "tests/fixtures/relay-messages.ts")
+          assert.equal(sha(readFileSync(manifest.fixture)), manifest.fixtureSha256, "sample fixture source")
+          assert.equal(manifest.synthetic, true)
+          assert.equal(manifest.containsRealKeysOrPlaintext, false)
+          assert.equal(manifest.cryptographicallyValid, false)
+          const names = ["qr-crypt-relay.exe", "build.json", "README-ja.md", "manifest.json"]
+          for (const file of manifest.files) {
+            assert.match(file.name, /^[a-z0-9-]+\.(?:txt|png|html)$/)
+            assert.ok(!names.includes(file.name), "duplicate sample")
+            names.push(file.name)
+            const bytes = read(file.name)
+            assert.equal(bytes.length, file.bytes, file.name)
+            assert.equal(sha(bytes), file.sha256, file.name)
+          }
+          const entries = readdirSync(stage, { withFileTypes: true })
+          assert.ok(entries.every(entry => entry.isFile()), "flat regular files only")
+          assert.deepEqual(entries.map(entry => entry.name).sort(), names.sort())
+          console.log("Verified original EXE, source and manual sample bytes")
+          '@ | Set-Content .tmp/native-relay-evidence/check-manual-kit.mjs
+          mise exec -- aube node .tmp/native-relay-evidence/check-manual-kit.mjs $stage
+          if ($LASTEXITCODE -ne 0) { throw 'Manual kit identity check failed' }
+
       - name: Retain the verified developer executable
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-relay-windows-developer-${{ github.sha }}
-          path: native/desktop/target/release/qr-crypt-relay.exe
+          path: ${{ runner.temp }}/native-relay-manual-kit
           if-no-files-found: error
           retention-days: 14
 

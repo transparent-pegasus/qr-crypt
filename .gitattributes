@@ -7,3 +7,4 @@
 * text=auto eol=lf
 
 *.png binary
+tests/manual/native-relay/*.txt -text
