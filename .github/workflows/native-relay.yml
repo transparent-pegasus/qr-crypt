@@ -191,7 +191,7 @@ jobs:
           $previousJsonOutput = $env:PLAYWRIGHT_JSON_OUTPUT_NAME
           try {
             $env:PLAYWRIGHT_JSON_OUTPUT_NAME = Join-Path $evidence 'report.json'
-            & mise exec -- aube exec playwright test -c playwright.native-relay.config.ts tests/e2e-native-relay/native-relay.spec.ts --grep "${title}$" --workers=1 --retries=0 --timeout=45000 --global-timeout=90000 --reporter=list,json "--output=$(Join-Path $evidence 'test-results')" 1> (Join-Path $evidence 'stdout.log') 2> (Join-Path $evidence 'stderr.log')
+            & mise exec -- aube node node_modules/@playwright/test/cli.js test -c playwright.native-relay.config.ts tests/e2e-native-relay/native-relay.spec.ts --grep "${title}$" --workers=1 --retries=0 --timeout=45000 --global-timeout=90000 --reporter=list,json "--output=$(Join-Path $evidence 'test-results')" 1> (Join-Path $evidence 'stdout.log') 2> (Join-Path $evidence 'stderr.log')
             $testExit = $LASTEXITCODE
           } finally { $env:PLAYWRIGHT_JSON_OUTPUT_NAME = $previousJsonOutput }
           $testExit | Set-Content (Join-Path $evidence 'exit.txt')
@@ -332,7 +332,7 @@ jobs:
             $command = @'
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
-          & $env:NATIVE_RELAY_MISE exec -- aube exec playwright test -c playwright.native-relay.config.ts tests/e2e-native-relay/lifecycle.spec.ts --grep 'OS hide ends active synthetic camera tracks and restore never resumes capture$' --workers=1 --retries=0 --reporter=list,json "--output=$(Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'test-results')" 1> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log') 2> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stderr.log')
+          & $env:NATIVE_RELAY_MISE exec -- aube node node_modules/@playwright/test/cli.js test -c playwright.native-relay.config.ts tests/e2e-native-relay/lifecycle.spec.ts --grep 'OS hide ends active synthetic camera tracks and restore never resumes capture$' --workers=1 --retries=0 --reporter=list,json "--output=$(Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'test-results')" 1> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log') 2> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stderr.log')
           exit $LASTEXITCODE
           '@
             $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
@@ -371,6 +371,23 @@ jobs:
           }
           exit 0
 
+      - name: Check the frozen download caller and independent report tests
+        run: |
+          mise exec -- aube node --test --test-reporter=tap tests/e2e-native-relay/download-profile/download-candidate.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen download caller tests failed' }
+          mise exec -- aube node --test --test-reporter=tap tests/e2e-native-relay/download-report.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Independent download report tests failed' }
+
+      - name: Prepare the source-bound native download helper
+        run: |
+          & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/prepare-download-harness.ps1
+          exit $LASTEXITCODE
+
+      - name: Prove the isolated download allow control fails the original assertion
+        run: |
+          & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/download-control.ps1
+          exit $LASTEXITCODE
+
       - name: Test the actual Windows WebView2 executable
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
@@ -386,7 +403,7 @@ jobs:
             $command = @'
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $false
-          & $env:NATIVE_RELAY_MISE exec -- aube exec playwright test -c playwright.native-relay.config.ts --workers=1 --retries=0 --reporter=list,html,json 1> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log') 2> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stderr.log')
+          & $env:NATIVE_RELAY_MISE exec -- aube node node_modules/@playwright/test/cli.js test -c playwright.native-relay.config.ts --workers=1 --retries=0 --reporter=list,html,json 1> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log') 2> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stderr.log')
           exit $LASTEXITCODE
           '@
             $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
@@ -404,6 +421,8 @@ jobs:
           if (@($report.errors).Count -ne 0 -or $report.stats.expected -ne 18 -or $report.stats.unexpected -ne 0 -or $report.stats.skipped -ne 0 -or $report.stats.flaky -ne 0) {
             throw 'The original Medium executable must pass all 18 cases without skips, retries or infrastructure errors'
           }
+          mise exec -- aube node tests/e2e-native-relay/download-report.mjs (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'report.json') .tmp/native-relay-evidence/download-profile/expected-original.json
+          if ($LASTEXITCODE -ne 0) { throw 'Original download evidence rejected' }
           if ((Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant() -cne $build.executable_sha256) { throw 'The original executable changed during the full Medium suite' }
           exit 0
 

@@ -1,0 +1,8 @@
+{
+  "productName": "Disposable profile observation",
+  "version": "0.0.0",
+  "identifier": "org.qrcrypt.disposable-profile-observation",
+  "build": {},
+  "app": { "windows": [], "withGlobalTauri": false, "security": { "capabilities": [] } },
+  "bundle": { "active": false, "icon": [] }
+}

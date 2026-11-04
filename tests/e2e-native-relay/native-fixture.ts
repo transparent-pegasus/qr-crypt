@@ -4,6 +4,9 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm } from "node:fs/promise
 import { tmpdir } from "node:os"
 import { join, relative, resolve, sep } from "node:path"
 import { promisify } from "node:util"
+import { performance } from "node:perf_hooks"
+import { prepareAndUse, type DownloadIo } from "./download-io"
+import { remainingMs } from "./download-candidate"
 import {
   expect,
   test as base,
@@ -123,6 +126,7 @@ export interface NativeRelay {
   initial: DocumentObservation
   requests: ObservedRequest[]
   downloads: string
+  downloadDiagnostic?: DownloadIo
   minimize(): Promise<NativeWindowState>
   hide(): Promise<NativeWindowState>
   restore(): Promise<NativeWindowState>
@@ -131,10 +135,29 @@ export interface NativeRelay {
   assertBundleTraffic(requireWasm?: boolean): Promise<void>
 }
 
-export const test = base.extend<{ native: NativeRelay }>({
-  native: async ({ playwright }, provide, testInfo) => {
+export const test = base.extend<{ native: NativeRelay; prepareDownloads: boolean }>({
+  prepareDownloads: [false, { option: true }],
+  native: async ({ playwright, prepareDownloads }, provide, testInfo) => {
+    const observationStarted = performance.now()
+    let cleaning = false
+    const wait = (cap: number, cleanup = cleaning) =>
+      prepareDownloads
+        ? Math.max(
+            1,
+            Math.floor(
+              remainingMs(
+                observationStarted,
+                performance.now(),
+                cap,
+                cleanup ? "cleanup" : "work",
+                null,
+              ),
+            ),
+          )
+        : cap
+    if (prepareDownloads) testInfo.setTimeout(Math.min(testInfo.timeout, 80000))
     const sourceHead = (
-      await execute("git", ["rev-parse", "HEAD"], { timeout: 5_000 })
+      await execute("git", ["rev-parse", "HEAD"], { timeout: wait(5_000) })
     ).stdout.trim()
     const input = validateLaunchInputs(
       process.platform,
@@ -183,414 +206,471 @@ export const test = base.extend<{ native: NativeRelay }>({
     const exeSha256 = digest(await readFile(executable))
     const script = await readFile(new URL("./windows.ps1", import.meta.url), "utf8")
     const encodedScript = Buffer.from(script, "utf16le").toString("base64")
-    const storage = await mkdtemp(join(await realpath(tmpdir()), "qr-native-relay-"))
-    const profile = join(storage, "profile")
-    const downloads = join(storage, "downloads")
-    await mkdir(downloads)
-    const port = await selectCdpPort()
-    const spawnedAfter = Date.now() - 2_000
-    const child = spawn(executable, [], {
-      shell: false,
-      windowsHide: false,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        WEBVIEW2_USER_DATA_FOLDER: profile,
-        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
-          "--remote-debugging-address=127.0.0.1 --remote-debugging-port=" + port,
-      },
-    })
-    let output = ""
-    const recordOutput = (chunk: Buffer) => {
-      output = (output + chunk.toString()).slice(-32_768)
-    }
-    child.stdout.on("data", recordOutput)
-    child.stderr.on("data", recordOutput)
-    let spawnError: Error | undefined
-    child.on("error", (error) => {
-      spawnError = error
-    })
-    let browser: Browser | undefined
-    let processIdentity: ProcessIdentity | undefined
-    let identity: WindowIdentity | undefined
-    let runtime: unknown
-    let cleanupFailure: unknown
-    let cleanup: unknown
-    const requests: ObservedRequest[] = []
-    const responses: AssetResponse[] = []
-    const responseTasks: Promise<void>[] = []
-    const responseErrors: string[] = []
-    const pageErrors: string[] = []
-    const observations: unknown[] = []
-    const redact = (value: string | number) => redactEvidence(value, storage, executable)
-    const windows = async <T>(
-      action: string,
-      extra: Record<string, unknown> = {},
-    ): Promise<T> => {
-      const pending = execute(
-        powerShell.executable,
-        ["-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", encodedScript],
-        { timeout: 15_000, windowsHide: true },
-      )
-      pending.child.stdin?.on("error", () => undefined)
-      pending.child.stdin?.end(
-        JSON.stringify({
-          action,
-          processId: child.pid,
-          executable,
-          spawnedAfter,
-          startedAt: identity?.startedAt ?? processIdentity?.startedAt ?? null,
-          windowHandle: identity?.windowHandle ?? null,
-          profile,
-          port,
-          ...extra,
-        }),
-      )
-      try {
-        const { stdout } = await pending
-        return JSON.parse(stdout.replace(/^\uFEFF/, "").trim()) as T
-      } catch (error) {
-        const failure = error as ExecException & { stderr?: string }
-        throw new Error(
-          "Native PowerShell " +
-            action +
-            " failed: " +
-            redact(failure.stderr || failure.code || failure.message),
-          { cause: error },
-        )
-      }
-    }
-    try {
-      if (child.pid === undefined)
-        throw new Error(
-          "NATIVE_RELAY_SETUP: executable did not start: " +
-            redact(String(spawnError ?? "no child PID") + "\n" + output),
-        )
-      processIdentity = await windows<ProcessIdentity>("token")
-      if (
-        processIdentity?.processId !== child.pid ||
-        !Number.isSafeInteger(processIdentity.startedAt) ||
-        processIdentity.startedAt < spawnedAfter ||
-        processIdentity.executable?.toLowerCase() !== executable.toLowerCase() ||
-        !Number.isSafeInteger(processIdentity.integrity?.rid) ||
-        typeof processIdentity.integrity?.elevated !== "boolean"
-      )
-        throw new Error("NATIVE_RELAY_SETUP: invalid owned token observation")
-      if (processIdentity.integrity.rid !== 8192 || processIdentity.integrity.elevated)
-        throw new Error(
-          "NATIVE_RELAY_INTEGRITY: expected rid=8192 elevated=false; measured rid=" +
-            processIdentity.integrity.rid +
-            " elevated=" +
-            processIdentity.integrity.elevated,
-        )
-      const startupDeadline = Date.now() + 45_000
-      let lastError: unknown
-      while (Date.now() < startupDeadline) {
-        if (spawnError || child.exitCode !== null || child.signalCode !== null) {
-          throw new Error(
-            "NATIVE_RELAY_SETUP: child failed: " +
-              redact(
-                String(
-                  spawnError ?? "exit " + child.exitCode + " signal " + child.signalCode,
-                ) +
-                  "\n" +
-                  output,
-              ),
-          )
-        }
-        try {
-          identity = await windows<WindowIdentity>("inspect")
-          browser = await playwright.chromium.connectOverCDP("http://127.0.0.1:" + port, {
-            timeout: 2_000,
-            noDefaults: true,
-          })
-          break
-        } catch (error) {
-          lastError = error
-          if (
-            /mismatch|does not belong|unique owned profile|loopback-only/.test(
-              String(error),
-            )
-          )
-            throw error
-          await new Promise((done) => setTimeout(done, 200))
-        }
-      }
-      if (!browser || !identity)
-        throw new Error(
-          "NATIVE_RELAY_SETUP: bounded startup failed: " +
-            redact(String(lastError) + "\n" + output),
-        )
-      expect(identity.processId).toBe(child.pid)
-      expect(identity.cdpOwned).toBe(true)
-      expect(browser.contexts()).toHaveLength(1)
-      const context = browser.contexts()[0]!
-      const page =
-        context.pages()[0] ?? (await context.waitForEvent("page", { timeout: 5_000 }))
-      expect(context.pages()).toHaveLength(1)
-      page.on("pageerror", (error) => pageErrors.push(redact(error.message)))
-      context.on("request", (request) =>
-        requests.push({
-          url: request.url(),
-          method: request.method(),
-          body: request.postData(),
-        }),
-      )
-      context.on("response", (response) => {
-        const url = new URL(response.url())
-        // Tauri owns document bootstrapping; check its CSP/identity separately and hash the loaded asset bytes.
-        if (
-          url.origin !== APP_ORIGIN ||
-          url.pathname === "/" ||
-          url.pathname === "/index.html"
-        )
-          return
-        responseTasks.push(
-          (async () => {
-            try {
-              responses.push({
-                path: url.pathname,
-                status: response.status(),
-                mime: response.headers()["content-type"] ?? "",
-                sha256: digest(await response.body()),
-              })
-            } catch (error) {
-              responseErrors.push(redact(String(error)))
-            }
-          })(),
-        )
-      })
-      await windows("restore")
-      await expect(page.locator("h1")).toHaveText(/^QR Crypt (?:Relay|リレー)$/)
-      const initial = await observeDocument(page)
-      observations.push({ phase: "initial-real-window", document: initial })
-      runtime = {
-        browser: browser.version(),
-        ...(await page.evaluate(() => ({
-          userAgent: navigator.userAgent,
-          platform: navigator.platform,
-        }))),
-      }
-      await context.addInitScript(() => {
-        const target = window as InstrumentedWindow
-        target.__nativeRegistrations = []
-        target.__nativeVisibility = []
-        document.addEventListener("visibilitychange", () =>
-          target.__nativeVisibility.push({
-            state: document.visibilityState,
-            at: Date.now(),
-          }),
-        )
-        if (navigator.serviceWorker) {
-          const register = navigator.serviceWorker.register.bind(navigator.serviceWorker)
-          navigator.serviceWorker.register = (...args) => {
-            target.__nativeRegistrations.push(String(args[0]))
-            return register(...args)
-          }
-        }
-      })
-      await page.evaluate(() => localStorage.setItem("oc-lang", "en"))
-      const session = await context.newCDPSession(page)
-      await session.send("Network.enable")
-      await session.send("Network.setCacheDisabled", { cacheDisabled: true })
-      await session.send("Browser.setDownloadBehavior", {
-        behavior: "allow",
-        downloadPath: downloads,
-        eventsEnabled: true,
-      })
-      await page.reload({ waitUntil: "load" })
-      await expect(
-        page.getByRole("heading", { level: 1, name: "QR Crypt Relay", exact: true }),
-      ).toBeVisible()
-      const ownedWindow = identity
-      const changeWindow = async (action: "minimize" | "hide" | "restore") => {
-        const result = await windows<NativeWindowState>(action)
-        observations.push({ phase: "OS-" + action, result })
-        expect(result.windowHandle).toBe(ownedWindow.windowHandle)
-        expect(result.processId).toBe(ownedWindow.processId)
-        expect(result).toMatchObject({
-          minimized: action === "minimize",
-          visible: action !== "hide",
-        })
-        await expect
-          .poll(
-            async () => {
-              const state = await page.evaluate(() => document.visibilityState)
-              observations.push({ phase: "DOM-" + action, state, at: Date.now() })
-              return state
-            },
-            {
-              message:
-                action === "hide"
-                  ? "NATIVE_RELAY_HIDE_DOM: owned non-minimized hidden HWND must make the document hidden"
-                  : "Native " + action + " must reach document visibility",
-            },
-          )
-          .toBe(action === "restore" ? "visible" : "hidden")
-        return result
-      }
-      await provide({
-        page,
-        context,
-        initial,
-        version,
-        integrity: processIdentity.integrity,
-        buildSha: input.buildSha,
-        requests,
-        downloads,
-        minimize: () => changeWindow("minimize"),
-        hide: () => changeWindow("hide"),
-        restore: () => changeWindow("restore"),
-        seedClipboard: (text) => windows<NativeClipboard>("seedClipboard", { text }),
-        readClipboard: () => windows<NativeClipboard>("readClipboard"),
-        assertBundleTraffic: async (requireWasm = false) => {
-          await Promise.all(responseTasks)
-          expect(responseErrors).toEqual([])
-          expect(requests.length).toBeGreaterThan(0)
-          for (const request of requests) {
-            const url = new URL(request.url)
-            expect(url.origin, request.url).toBe(APP_ORIGIN)
-            expect(request.method, request.url).toBe("GET")
-            expect(request.body, request.url).toBeNull()
-            expect(url.search, request.url).toBe("")
-            expect(url.username + url.password + url.port, request.url).toBe("")
-            expect(
-              url.pathname === "/" || assetHashes.has(url.pathname),
-              request.url,
-            ).toBe(true)
-            expect([
-              "/manifest.webmanifest",
-              "/reachability-sentinel.txt",
-              "/sw.js",
-            ]).not.toContain(url.pathname)
-          }
-          expect(responses.some((response) => response.path.endsWith(".js"))).toBe(true)
-          if (requireWasm)
-            expect(responses.some((response) => response.path.endsWith(".wasm"))).toBe(
-              true,
-            )
-          for (const response of responses) {
-            expect(response.status, response.path).toBe(200)
-            expect(response.sha256, response.path).toBe(assetHashes.get(response.path))
-            if (response.path.endsWith(".wasm"))
-              expect(response.mime).toMatch(/^application\/wasm(?:;|$)/)
-            if (response.path.endsWith(".js"))
-              expect(response.mime).toMatch(/^(?:text|application)\/javascript(?:;|$)/)
-            if (response.path.endsWith(".css"))
-              expect(response.mime).toMatch(/^text\/css(?:;|$)/)
-          }
-          expect(
-            await page.evaluate(
-              () => (window as InstrumentedWindow).__nativeRegistrations,
-            ),
-          ).toEqual([])
-          expect(
-            await page.evaluate(async () =>
-              navigator.serviceWorker
-                ? (await navigator.serviceWorker.getRegistrations()).length
-                : 0,
-            ),
-          ).toBe(0)
+    const runCandidate = async (storage: string, diagnostic?: DownloadIo) => {
+      const bounded = <T>(operation: () => Promise<T>, cap = 15000) =>
+        diagnostic ? diagnostic.run(operation, cap, cleaning) : operation()
+      const profile = join(storage, "profile")
+      const downloads = join(storage, "downloads")
+      if (!prepareDownloads) await mkdir(downloads)
+      const port = await selectCdpPort()
+      const spawnedAfter = Date.now() - 2_000
+      const child = spawn(executable, [], {
+        shell: false,
+        windowsHide: false,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: {
+          ...process.env,
+          WEBVIEW2_USER_DATA_FOLDER: profile,
+          WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
+            "--remote-debugging-address=127.0.0.1 --remote-debugging-port=" + port,
         },
       })
-      observations.push({
-        phase: "final",
-        document: await observeDocument(page),
-        visibility: await page.evaluate(
-          () => (window as InstrumentedWindow).__nativeVisibility,
-        ),
+      diagnostic?.retainChild(child, executable, spawnedAfter)
+      let output = ""
+      let outputBytes = 0
+      const recordOutput = (chunk: Buffer) => {
+        outputBytes = Math.min(32769, outputBytes + chunk.length)
+        output = (output + chunk.toString()).slice(-32_768)
+      }
+      child.stdout.on("data", recordOutput)
+      child.stderr.on("data", recordOutput)
+      let spawnError: Error | undefined
+      child.on("error", (error) => {
+        spawnError = error
       })
-    } finally {
-      try {
-        if (child.pid !== undefined && mayTerminateChild(child, child.pid))
-          await windows("terminate")
-        if (
-          child.exitCode === null &&
-          child.signalCode === null &&
-          child.pid !== undefined
-        ) {
-          await new Promise<void>((done, fail) => {
-            const timeout = setTimeout(
-              () => fail(new Error("Owned native process did not exit")),
-              10_000,
-            )
-            child.once("exit", () => {
-              clearTimeout(timeout)
-              done()
-            })
-          })
+      let browser: Browser | undefined
+      let processIdentity: ProcessIdentity | undefined
+      let identity: WindowIdentity | undefined
+      let runtime: unknown
+      let cleanupFailure: unknown
+      let cleanup: unknown
+      const requests: ObservedRequest[] = []
+      const responses: AssetResponse[] = []
+      const responseTasks: Promise<void>[] = []
+      const responseErrors: string[] = []
+      const pageErrors: string[] = []
+      const observations: unknown[] = []
+      const redact = (value: string | number) =>
+        redactEvidence(value, storage, executable)
+      const windows = async <T>(
+        action: string,
+        extra: Record<string, unknown> = {},
+      ): Promise<T> => {
+        const pending = execute(
+          powerShell.executable,
+          ["-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", encodedScript],
+          {
+            timeout: wait(15_000),
+            windowsHide: true,
+            ...(diagnostic ? { maxBuffer: 32768 } : {}),
+          },
+        )
+        pending.child.stdin?.on("error", () => undefined)
+        pending.child.stdin?.end(
+          JSON.stringify({
+            action,
+            processId: child.pid,
+            executable,
+            spawnedAfter,
+            startedAt: identity?.startedAt ?? processIdentity?.startedAt ?? null,
+            windowHandle: identity?.windowHandle ?? null,
+            profile,
+            port,
+            ...extra,
+          }),
+        )
+        try {
+          const { stdout } = await pending
+          return JSON.parse(stdout.replace(/^\uFEFF/, "").trim()) as T
+        } catch (error) {
+          const failure = error as ExecException & { stderr?: string }
+          throw new Error(
+            "Native PowerShell " +
+              action +
+              " failed: " +
+              redact(failure.stderr || failure.code || failure.message),
+            { cause: error },
+          )
         }
-        if (browser) {
-          let timeout: ReturnType<typeof setTimeout> | undefined
+      }
+      try {
+        if (child.pid === undefined)
+          throw new Error(
+            "NATIVE_RELAY_SETUP: executable did not start: " +
+              redact(String(spawnError ?? "no child PID") + "\n" + output),
+          )
+        processIdentity = await windows<ProcessIdentity>("token")
+        if (
+          processIdentity?.processId !== child.pid ||
+          !Number.isSafeInteger(processIdentity.startedAt) ||
+          processIdentity.startedAt < spawnedAfter ||
+          processIdentity.executable?.toLowerCase() !== executable.toLowerCase() ||
+          !Number.isSafeInteger(processIdentity.integrity?.rid) ||
+          typeof processIdentity.integrity?.elevated !== "boolean"
+        )
+          throw new Error("NATIVE_RELAY_SETUP: invalid owned token observation")
+        if (processIdentity.integrity.rid !== 8192 || processIdentity.integrity.elevated)
+          throw new Error(
+            "NATIVE_RELAY_INTEGRITY: expected rid=8192 elevated=false; measured rid=" +
+              processIdentity.integrity.rid +
+              " elevated=" +
+              processIdentity.integrity.elevated,
+          )
+        const startupDeadline = performance.now() + wait(45_000)
+        let lastError: unknown
+        while (performance.now() < startupDeadline) {
+          if (spawnError || child.exitCode !== null || child.signalCode !== null) {
+            throw new Error(
+              "NATIVE_RELAY_SETUP: child failed: " +
+                redact(
+                  String(
+                    spawnError ??
+                      "exit " + child.exitCode + " signal " + child.signalCode,
+                  ) +
+                    "\n" +
+                    output,
+                ),
+            )
+          }
           try {
-            await Promise.race([
-              browser.close(),
-              new Promise<never>((_, fail) => {
-                timeout = setTimeout(
-                  () => fail(new Error("Owned CDP connection did not close")),
-                  5_000,
-                )
-              }),
-            ])
-          } finally {
-            clearTimeout(timeout)
+            identity = await windows<WindowIdentity>("inspect")
+            browser = await playwright.chromium.connectOverCDP(
+              "http://127.0.0.1:" + port,
+              {
+                timeout: wait(2_000),
+                noDefaults: true,
+              },
+            )
+            break
+          } catch (error) {
+            lastError = error
+            if (
+              /mismatch|does not belong|unique owned profile|loopback-only/.test(
+                String(error),
+              )
+            )
+              throw error
+            await new Promise((done) => setTimeout(done, wait(200)))
           }
         }
-        await rm(storage, {
-          recursive: true,
-          force: true,
-          maxRetries: 5,
-          retryDelay: 300,
+        if (!browser || !identity)
+          throw new Error(
+            "NATIVE_RELAY_SETUP: bounded startup failed: " +
+              redact(String(lastError) + "\n" + output),
+          )
+        expect(identity.processId).toBe(child.pid)
+        expect(identity.cdpOwned).toBe(true)
+        expect(browser.contexts()).toHaveLength(1)
+        const context = browser.contexts()[0]!
+        const page =
+          context.pages()[0] ??
+          (await context.waitForEvent("page", { timeout: wait(5_000) }))
+        expect(context.pages()).toHaveLength(1)
+        page.on("pageerror", (error) => pageErrors.push(redact(error.message)))
+        context.on("request", (request) =>
+          requests.push({
+            url: request.url(),
+            method: request.method(),
+            body: request.postData(),
+          }),
+        )
+        context.on("response", (response) => {
+          const url = new URL(response.url())
+          // Tauri owns document bootstrapping; check its CSP/identity separately and hash the loaded asset bytes.
+          if (
+            url.origin !== APP_ORIGIN ||
+            url.pathname === "/" ||
+            url.pathname === "/index.html"
+          )
+            return
+          responseTasks.push(
+            (async () => {
+              try {
+                responses.push({
+                  path: url.pathname,
+                  status: response.status(),
+                  mime: response.headers()["content-type"] ?? "",
+                  sha256: digest(await response.body()),
+                })
+              } catch (error) {
+                responseErrors.push(redact(String(error)))
+              }
+            })(),
+          )
         })
-        cleanup = {
-          ownedTreeExited: true,
-          requestedStorageRemoved: true,
-          profileRemoved: identity?.cdpOwned === true,
+        await windows("restore")
+        await expect(page.locator("h1")).toHaveText(/^QR Crypt (?:Relay|リレー)$/, {
+          timeout: wait(15000),
+        })
+        const initial = await bounded(() => observeDocument(page))
+        observations.push({ phase: "initial-real-window", document: initial })
+        runtime = {
+          browser: browser.version(),
+          ...(await bounded(() =>
+            page.evaluate(() => ({
+              userAgent: navigator.userAgent,
+              platform: navigator.platform,
+            })),
+          )),
         }
-      } catch (error) {
-        cleanup = { error: redact(String(error)) }
-        cleanupFailure = error
+        await bounded(() =>
+          context.addInitScript(() => {
+            const target = window as InstrumentedWindow
+            target.__nativeRegistrations = []
+            target.__nativeVisibility = []
+            document.addEventListener("visibilitychange", () =>
+              target.__nativeVisibility.push({
+                state: document.visibilityState,
+                at: Date.now(),
+              }),
+            )
+            if (navigator.serviceWorker) {
+              const register = navigator.serviceWorker.register.bind(
+                navigator.serviceWorker,
+              )
+              navigator.serviceWorker.register = (...args) => {
+                target.__nativeRegistrations.push(String(args[0]))
+                return register(...args)
+              }
+            }
+          }),
+        )
+        await bounded(() => page.evaluate(() => localStorage.setItem("oc-lang", "en")))
+        const session = await bounded(() => context.newCDPSession(page))
+        await bounded(() => session.send("Network.enable"))
+        await bounded(() =>
+          session.send("Network.setCacheDisabled", { cacheDisabled: true }),
+        )
+        if (!diagnostic) {
+          await session.send("Browser.setDownloadBehavior", {
+            behavior: "allow",
+            downloadPath: downloads,
+            eventsEnabled: true,
+          })
+        }
+        await page.reload({ waitUntil: "load", timeout: wait(30000) })
+        await expect(
+          page.getByRole("heading", { level: 1, name: "QR Crypt Relay", exact: true }),
+        ).toBeVisible({ timeout: wait(15000) })
+        const ownedWindow = identity
+        const changeWindow = async (action: "minimize" | "hide" | "restore") => {
+          const result = await windows<NativeWindowState>(action)
+          observations.push({ phase: "OS-" + action, result })
+          expect(result.windowHandle).toBe(ownedWindow.windowHandle)
+          expect(result.processId).toBe(ownedWindow.processId)
+          expect(result).toMatchObject({
+            minimized: action === "minimize",
+            visible: action !== "hide",
+          })
+          await expect
+            .poll(
+              async () => {
+                const state = await page.evaluate(() => document.visibilityState)
+                observations.push({ phase: "DOM-" + action, state, at: Date.now() })
+                return state
+              },
+              {
+                message:
+                  action === "hide"
+                    ? "NATIVE_RELAY_HIDE_DOM: owned non-minimized hidden HWND must make the document hidden"
+                    : "Native " + action + " must reach document visibility",
+              },
+            )
+            .toBe(action === "restore" ? "visible" : "hidden")
+          return result
+        }
+        await provide({
+          page,
+          context,
+          initial,
+          version,
+          integrity: processIdentity.integrity,
+          buildSha: input.buildSha,
+          requests,
+          downloads,
+          ...(diagnostic ? { downloadDiagnostic: diagnostic } : {}),
+          minimize: () => changeWindow("minimize"),
+          hide: () => changeWindow("hide"),
+          restore: () => changeWindow("restore"),
+          seedClipboard: (text) => windows<NativeClipboard>("seedClipboard", { text }),
+          readClipboard: () => windows<NativeClipboard>("readClipboard"),
+          assertBundleTraffic: async (requireWasm = false) => {
+            await Promise.all(responseTasks)
+            expect(responseErrors).toEqual([])
+            expect(requests.length).toBeGreaterThan(0)
+            for (const request of requests) {
+              const url = new URL(request.url)
+              expect(url.origin, request.url).toBe(APP_ORIGIN)
+              expect(request.method, request.url).toBe("GET")
+              expect(request.body, request.url).toBeNull()
+              expect(url.search, request.url).toBe("")
+              expect(url.username + url.password + url.port, request.url).toBe("")
+              expect(
+                url.pathname === "/" || assetHashes.has(url.pathname),
+                request.url,
+              ).toBe(true)
+              expect([
+                "/manifest.webmanifest",
+                "/reachability-sentinel.txt",
+                "/sw.js",
+              ]).not.toContain(url.pathname)
+            }
+            expect(responses.some((response) => response.path.endsWith(".js"))).toBe(true)
+            if (requireWasm)
+              expect(responses.some((response) => response.path.endsWith(".wasm"))).toBe(
+                true,
+              )
+            for (const response of responses) {
+              expect(response.status, response.path).toBe(200)
+              expect(response.sha256, response.path).toBe(assetHashes.get(response.path))
+              if (response.path.endsWith(".wasm"))
+                expect(response.mime).toMatch(/^application\/wasm(?:;|$)/)
+              if (response.path.endsWith(".js"))
+                expect(response.mime).toMatch(/^(?:text|application)\/javascript(?:;|$)/)
+              if (response.path.endsWith(".css"))
+                expect(response.mime).toMatch(/^text\/css(?:;|$)/)
+            }
+            expect(
+              await page.evaluate(
+                () => (window as InstrumentedWindow).__nativeRegistrations,
+              ),
+            ).toEqual([])
+            expect(
+              await page.evaluate(async () =>
+                navigator.serviceWorker
+                  ? (await navigator.serviceWorker.getRegistrations()).length
+                  : 0,
+              ),
+            ).toBe(0)
+          },
+        })
+        if (diagnostic && outputBytes > 32768)
+          throw new Error("Candidate output overflow; evidence incomplete")
+        observations.push({
+          phase: "final",
+          document: await bounded(() => observeDocument(page)),
+          visibility: await bounded(() =>
+            page.evaluate(() => (window as InstrumentedWindow).__nativeVisibility),
+          ),
+        })
       } finally {
-        await testInfo.attach("native-candidate.json", {
-          body: Buffer.from(
-            redact(
-              JSON.stringify(
-                {
-                  sourceHead,
-                  expectedBuildSha: input.buildSha,
-                  version,
-                  exeSha256,
-                  locks,
-                  powerShell: {
-                    executable: redact(powerShell.executable),
-                    sha256: powerShell.sha256,
+        cleaning = true
+        if (diagnostic) await diagnostic.captureMembers()
+        try {
+          if (child.pid !== undefined && mayTerminateChild(child, child.pid))
+            await windows("terminate")
+          if (
+            child.exitCode === null &&
+            child.signalCode === null &&
+            child.pid !== undefined
+          ) {
+            await new Promise<void>((done, fail) => {
+              const timeout = setTimeout(
+                () => fail(new Error("Owned native process did not exit")),
+                wait(10_000),
+              )
+              child.once("exit", () => {
+                clearTimeout(timeout)
+                done()
+              })
+            })
+          }
+          if (browser) {
+            let timeout: ReturnType<typeof setTimeout> | undefined
+            try {
+              await Promise.race([
+                browser.close(),
+                new Promise<never>((_, fail) => {
+                  timeout = setTimeout(
+                    () => fail(new Error("Owned CDP connection did not close")),
+                    wait(5_000),
+                  )
+                }),
+              ])
+            } finally {
+              clearTimeout(timeout)
+            }
+          }
+          if (diagnostic) {
+            await diagnostic.confirmDrained()
+          } else {
+            await rm(storage, {
+              recursive: true,
+              force: true,
+              maxRetries: 5,
+              retryDelay: 300,
+            })
+          }
+          cleanup = {
+            ownedTreeExited: true,
+            requestedStorageRemoved: !diagnostic,
+            profileRemoved: !diagnostic && identity?.cdpOwned === true,
+            storageRemovalDelegated: !!diagnostic,
+          }
+        } catch (error) {
+          cleanup = { error: redact(String(error)) }
+          cleanupFailure = error
+        } finally {
+          await testInfo.attach("native-candidate.json", {
+            body: Buffer.from(
+              redact(
+                JSON.stringify(
+                  {
+                    sourceHead,
+                    expectedBuildSha: input.buildSha,
+                    version,
+                    exeSha256,
+                    locks,
+                    powerShell: {
+                      executable: redact(powerShell.executable),
+                      sha256: powerShell.sha256,
+                    },
+                    process: processIdentity && {
+                      ...processIdentity,
+                      executable: redact(processIdentity.executable),
+                    },
+                    window: identity,
+                    runtime,
+                    assets: Object.fromEntries(assetHashes),
+                    observations,
+                    requests,
+                    responses,
+                    responseErrors,
+                    pageErrors,
+                    childOutput: redact(output),
+                    childOutputOverflow: outputBytes > 32768,
+                    childExit: { code: child.exitCode, signal: child.signalCode },
+                    cleanup,
                   },
-                  process: processIdentity && {
-                    ...processIdentity,
-                    executable: redact(processIdentity.executable),
-                  },
-                  window: identity,
-                  runtime,
-                  assets: Object.fromEntries(assetHashes),
-                  observations,
-                  requests,
-                  responses,
-                  responseErrors,
-                  pageErrors,
-                  childOutput: redact(output),
-                  childExit: { code: child.exitCode, signal: child.signalCode },
-                  cleanup,
-                },
-                null,
-                2,
+                  null,
+                  2,
+                ),
               ),
             ),
-          ),
-          contentType: "application/json",
-        })
+            contentType: "application/json",
+          })
+        }
       }
+      if (cleanupFailure) throw cleanupFailure
     }
-    if (cleanupFailure) throw cleanupFailure
+    if (prepareDownloads) {
+      await prepareAndUse(
+        powerShell.executable,
+        sourceHead,
+        observationStarted,
+        runCandidate,
+        async (name, value) => {
+          await testInfo.attach(name, {
+            body: Buffer.from(JSON.stringify(value, null, 2)),
+            contentType: "application/json",
+          })
+        },
+      )
+    } else {
+      await runCandidate(
+        await mkdtemp(join(await realpath(tmpdir()), "qr-native-relay-")),
+      )
+    }
   },
   page: async ({ native }, provide) => provide(native.page),
   context: async ({ native }, provide) => provide(native.context),

@@ -174,13 +174,22 @@ and denied calls in the actual Windows candidate. Also retain the generated
 Windows resource manifest from that build; a developer EXE does not prove
 package capabilities or OS isolation.
 
-After building the clean candidate above, execute its native tests on a dedicated
-relay test device in a non-elevated PowerShell:
-
-```powershell
-$env:NATIVE_RELAY_EXE = (Resolve-Path native/desktop/target/release/qr-crypt-relay.exe).Path
-mise exec -- aube exec playwright test -c playwright.native-relay.config.ts --workers=1 --retries=0
-```
+Run automated native verification through
+[`native-relay.yml`](../../.github/workflows/native-relay.yml) on its disposable
+Windows runner. A direct Playwright invocation is insufficient: the workflow
+first records `build.json`, the linked application manifest and
+`launcher/tool.json`, proves the existing launcher/High/navigation/ACL/hide
+controls, then runs the frozen caller and independent report tests. It invokes
+[`prepare-download-harness.ps1`](../../tests/e2e-native-relay/prepare-download-harness.ps1)
+to build and test the explicit `native-relay-download-profile` binary with
+`--features native-e2e --bin native-relay-download-profile`, record current input
+hashes under `.tmp/native-relay-evidence/download-profile/`, compare linked
+manifests and run the helper's old-arity/relative-parent controls. The feature is
+absent from default builds; the helper is excluded from the manual kit.
+The isolated compiled download control and full original 18-case suite follow.
+Manual Windows 11 x64 users use the verified kit's
+[Japanese procedure](../../tests/manual/native-relay/README-ja.md); they do not
+need Rust, Node, mise or the CI launcher.
 
 Keep `VITE_BUILD_SHA` equal to that checkout's full HEAD. The suite launches the
 actual EXE directly. Before waiting for CDP, the PowerShell helper measures that
@@ -237,17 +246,34 @@ or retries. The compiled hide mutant uses the same Medium command chain and must
 fail only the existing DOM-hide assertion. Both controls decode the pinned
 Playwright JSON reporter's Buffer attachment from its Base64 `body`, retaining
 candidate/token and cleanup evidence. Reports and separate streams live under
-`.tmp/native-relay-evidence/{launcher,integrity-negative,hide-negative,medium}`,
+`.tmp/native-relay-evidence/{launcher,integrity-negative,hide-negative,download-profile,download-negative,medium}`,
 with the ordinary HTML report under `playwright-report/native-relay`.
 At source `75b1324965b9a966a544f0191d6abb8b19e38bd1`, Windows Server 2025
 with WebView2 `156.0.4314.50` passed 16 of 18 cases, including all five OS lifecycle
 cases and native text/PNG clipboard content. The original hide case passed and
 the compiled hide control failed its intended assertion. External navigation
 still reached the owned loopback sink; the download case observed completion.
-The two explicit test-side CDP download `allow` settings override native handling;
-safe native-default observation needs an owned profile/destination setup and a
-discriminating compiled control. Do not substitute CDP `deny`, silence, or an empty
-unused directory for evidence. See the [dated results](../security/security-review.md#111-windows-native-runtime-checkpoint-2026-11-04).
+The older test-side CDP download `allow` settings overrode native handling.
+The maintained download case now prepares an exclusively owned profile/destination
+using the test helper's existing set/close/read protocol. It requires the actual
+Medium token, nonce/PID-bound receipt, normal helper exit/pipe EOF and job drainage
+before launching the candidate. One browser CDP session uses native `default`
+behavior with events enabled and no download path. Before/final bounded GUID
+observations and complete no-reparse inventories must agree; silence is unresolved.
+The same denial assertion runs against an isolated one-site download-allow mutant,
+which must complete a matching GUID and save the exact contained 27-byte inert
+payload. Candidate drainage and root/parent removal require independent proof;
+uncertain ownership retains storage and fails, with primary and cleanup errors
+recorded separately. Nested reports are validated by the shared
+[`download-report.mjs`](../../tests/e2e-native-relay/download-report.mjs) against
+independent build/helper/host identities.
+At source `5ff18c2f6481eb7bd46cc166b296a5e56861717d`, attempt `41869381043`
+observed original cancellation with empty inventories and mutant completion with
+the exact payload, including cleanup. That diagnostic CI attempt remains failed
+because its old aggregation could not read an omitted leaf `suites` field.
+The maintained full-suite and control gates still require a new Windows result;
+these observations establish neither Windows 11 physical/camera compatibility,
+MSIX/Store readiness, offline crypto behavior nor absence of runtime dependencies. See the [dated results](../security/security-review.md#111-windows-native-runtime-checkpoint-2026-11-04).
 The subsequent request-stage correction produced zero owned-sink hits and a local
 403 followed by `net::ERR_ABORTED`; CDP still records the attempted GET. Retain
 both request/response evidence and the server observation when assessing that

@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-11-04 # last revision of this registry itself
+updated: 2026-11-05 # last revision of this registry itself
 
 units:
   - id: deps
@@ -135,6 +135,22 @@ units:
       - tests/e2e-native-relay/native-relay.spec.ts # native clipboard content and real WASM decoding of synthetic camera pixels
       - tests/e2e-native-relay/lifecycle.spec.ts # OS minimize/restore, active and pending work
       - tests/e2e-native-relay/policy.spec.ts # actual navigation, popup, download and IPC denial
+      - tests/e2e-native-relay/download-candidate.ts
+      - tests/e2e-native-relay/download-io.ts
+      - tests/e2e-native-relay/download-storage.ps1
+      - tests/e2e-native-relay/prepare-download-harness.ps1
+      - tests/e2e-native-relay/download-control.ps1
+      - tests/e2e-native-relay/download-report.mjs
+      - tests/e2e-native-relay/download-report.test.mjs
+      - tests/e2e-native-relay/download-profile/main.rs
+      - tests/e2e-native-relay/download-profile/protocol.rs
+      - tests/e2e-native-relay/download-profile/protocol_tests.rs
+      - tests/e2e-native-relay/download-profile/win.rs
+      - tests/e2e-native-relay/download-profile/helper.rs
+      - tests/e2e-native-relay/download-profile/observe.rs
+      - tests/e2e-native-relay/download-profile/tauri.conf.json
+      - tests/e2e-native-relay/download-profile/download-candidate.test.mjs
+      - tests/unit/native-download-parent.test.ts # independent synchronous allocation/retention contract
       - tests/e2e-native-relay/synthetic-camera.ts # test-side pixel source, never a physical-camera claim
       - tests/e2e-native-relay/windows.ps1 # test-side native window/process and clipboard APIs
       - tests/e2e-native-relay/run-medium.ps1 # CI-only own-token launch, job ownership and bounded cleanup
@@ -181,6 +197,23 @@ units:
       Do not claim native download denial from CDP allow/deny overrides or
       an empty unused directory; native-default observation needs a verified
       owned destination/profile and a discriminating compiled control.
+      The explicit native-e2e helper target is absent from default Cargo builds
+      and the manual kit. Recheck its locked WebView2 set/close/read APIs, current
+      input manifest and selected-host hashes, linked application-manifest equality,
+      old-arity/relative-parent controls, actual Medium token/job trace and normal
+      helper exit/pipe EOF before receipt transfer. Preserve the NDL0_READY v1
+      nonce/PID/exact-child contract and the 80s work/90s total/45s preparation caps.
+      Validate all required inputs before synchronous parent allocation; retain the
+      exact created path before a post-creation deadline check. Carry failure into
+      the existing supervisor, block launch, and report separate primary/cleanup
+      failures and actual removal/retention. Never delete uncertain storage.
+      Keep one browser session at native default with events enabled/no path,
+      complete bounded before/final GUID and no-reparse inventory observations,
+      recomputed receipt/classifications and independently proved process/storage
+      cleanup. The isolated download-allow mutant uses the same original denial
+      assertion, a completed GUID and the exact contained 27-byte inert payload.
+      Preserve independent frozen caller/report/parent/protocol tests. A report
+      status/assertion alone or an old failed diagnostic is not native acceptance.
       Keep native/package/physical gates explicitly pending until evidence identifies
       their actual source, artifact hash, OS/runtime and measured operation.
       Historical G0r results keep their original dates, failures and clipboard/camera
@@ -234,6 +267,14 @@ units:
       - native/desktop/mise.toml # Rust toolchain scoped to the desktop shell
       - native/desktop/deny.toml # source/license policy; no advisory or unknown-license bypass
       - native/desktop/build.rs # native build-time entry point
+      - tests/e2e-native-relay/download-profile/main.rs
+      - tests/e2e-native-relay/download-profile/protocol.rs
+      - tests/e2e-native-relay/download-profile/protocol_tests.rs
+      - tests/e2e-native-relay/download-profile/win.rs
+      - tests/e2e-native-relay/download-profile/helper.rs
+      - tests/e2e-native-relay/download-profile/observe.rs
+      - tests/e2e-native-relay/download-profile/tauri.conf.json
+      - tests/e2e-native-relay/prepare-download-harness.ps1 # explicit locked helper build and manifest/source identity
       - docs/develop/development.md # native build and pinned audit-tool commands
     why: >
       Native framework defaults, WebView2/Win32 bindings, transitive build scripts,
@@ -262,8 +303,10 @@ units:
       cargo deny --locked check
       On Windows: cargo test --release --locked --target-dir target
       and cargo build --release --locked --target-dir target.
-      With absolute NATIVE_RELAY_EXE and VITE_BUILD_SHA equal to checkout HEAD:
-      mise exec -- aube exec playwright test -c playwright.native-relay.config.ts --workers=1 --retries=0
+      Use .github/workflows/native-relay.yml for the automated Windows gate:
+      it records build/selected-host/linked-manifest identities, prepares/tests the
+      explicit native-e2e helper, then checks the isolated download control and
+      original exact18 suite. A direct Playwright command omits prerequisites.
       The native workflow's isolated permissive-navigation and added-IPC-permission
       controls must compile and fail their intended assertions, not fail setup.
       Run the actual Windows native gate with this candidate's full source SHA;
@@ -385,6 +428,11 @@ units:
       - tests/manual/native-relay/manifest.json # source/hash-bound samples staged with the original EXE
       - tests/e2e-native-relay/run-medium.ps1 # Win32 own-token launcher and private job lifecycle
       - tests/e2e-native-relay/medium-launcher-timeout.ps1 # independent launcher timeout control, outside Playwright discovery
+      - tests/e2e-native-relay/prepare-download-harness.ps1
+      - tests/e2e-native-relay/download-control.ps1
+      - tests/e2e-native-relay/download-report.mjs
+      - tests/e2e-native-relay/download-report.test.mjs
+      - eslint.config.js # narrow Node globals for unchanged native harness MJS tests
       - scripts/check-assessed-releases.sh # exact Noble/decoder pins versus official latest releases; fail-closed signal
       - tests/unit/assessed-release-check.test.ts # both exact pins, invalid API/pin data, request failures, and independent checks
       - tests/fixtures/assessed-release-gh.py # offline official-release responses and real jq extraction
@@ -479,8 +527,16 @@ units:
       credentials, sandbox-inert flags, existing-object ACL grants or product automation hooks.
       Retain build/manifest identity before any later control failure, High-control
       token/cleanup, Medium baseline and assertion-only hide mutation evidence separately.
-      Require actual Windows results for all 18 cases and both runtime controls;
-      Linux discovery, launcher probes and source/digest review cannot stamp them.
+      Require actual Windows results for all 18 cases and High/hide/download
+      runtime controls, alongside navigation/ACL and launcher controls. Retain
+      source-bound helper inputs/EXE/linked manifest, parent traces, normal exit/EOF,
+      original/mutant EXE and lock identities, complete download observations and
+      independently proved drainage/removal. The shared report validator accepts
+      omitted leaf suites but rejects malformed reports, duplicate targets,
+      retries/skips/flakiness, unrelated failures and contradictory evidence.
+      Keep always-upload evidence and success-only original manual-kit staging
+      after every gate; the helper never enters the kit. Linux discovery, launcher
+      probes and source/digest review cannot stamp actual Windows checks.
       Check each action repository for newer majors and security advisories.
       Keep release-workflow actions pinned to full SHAs;
       verify tag-backed SHAs against their exact documented releases, peeling
@@ -490,7 +546,8 @@ units:
       embedded/requested Cosign 3.1.3 equality and the vetted hardcoded Linux
       amd64 digest against official release metadata/checksums. The hash check
       must precede execution, without the old affected bootstrap bundle parser;
-      latest tagged installer v4.1.2 remains affected. Review the pinned
+      installer v4.1.2 retains the affected bootstrap. Installer v4.1.3 embeds
+      Cosign 3.1.4 and was assessed on 2026-11-05 but is not selected. Review the pinned
       Cosign release, verifier image digest, and verification contract. Keep
       deploy/package.json's exact Wrangler pin, deploy/aube-lock.yaml importer,
       deployment docs, and validate's version smoke exactly equal. Assess the

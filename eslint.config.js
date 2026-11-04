@@ -66,6 +66,7 @@ export default tseslint.config(
   {
     files: [
       "scripts/**/*.mjs",
+      "tests/e2e-native-relay/**/*.mjs",
       "vite.config.ts",
       "vite.relay.config.ts",
       "vitest.config.ts",

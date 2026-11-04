@@ -56,6 +56,26 @@ The desktop host creates one window, `main`, and grants no application IPC permi
 
 Allow navigation only to the exact platform application origin. Reject all new-window and download events. The relay UI supplies no external link, file export or share sheet. Source policy tests must cover credential, hostname, scheme and port confusion; native tests must establish the actual effect on navigation, popup and download attempts.
 
+The Windows download gate uses the feature-gated test-only
+`native-relay-download-profile` helper to prepare an exclusively owned profile and
+destination through set/close/read, with source/EXE/lock/selected-host identities,
+actual Medium integrity, normal helper exit/EOF and job drainage before transfer.
+The selected case keeps one browser CDP session at native `default` behavior,
+events enabled and no download path. Require matching canceled GUIDs and complete
+empty before/final no-reparse inventories; silence is unresolved. The isolated
+one-site allow control runs the same denial assertion and must instead prove a
+completed GUID and the exact contained 27-byte inert payload. Retain separate
+primary/cleanup failures and independently prove candidate drainage and owned
+root/parent removal; uncertainty fails and retains storage. The helper is absent
+from default product builds and the manual kit.
+
+The 2026-11-05 diagnostic at source `5ff18c2f6481eb7bd46cc166b296a5e56861717d`
+measured that original/control distinction and cleanup. Attempt `41869381043`
+remains failed due to its old nested-report aggregation; the maintained full
+18-case/control gate still needs actual Windows verification. This evidence does
+not establish Windows 11 physical/camera behavior, MSIX/Store readiness, offline
+crypto behavior or absence of runtime dependencies.
+
 On Windows, navigation cancellation alone can still allow a GET while the host responds. Start with a hidden `about:blank` controller, install HTTP(S) request filters for all resource contexts and source kinds, then navigate to the embedded application and show the window. Reuse the exact-origin predicate and synchronously answer foreign or malformed requests with an empty local 403 response. Failure to install or apply the guard terminates the process. The transient blank page is not an allowed application destination. Verify the actual owned sink as well as request/response evidence; a retained application page alone does not prove rejection. This content-request guard does not cover OS networking, runtime telemetry, DNS/preconnect or a compromised WebView.
 
 These controls constrain the legitimate WebView-to-host interface. They do not remove Rust's OS privileges, sandbox a compromised runtime, or prove OS network denial. A developer EXE is not an AppContainer package. The Windows packaging phase must try AppContainer first and verify its actual capabilities and behavior; it may not silently switch to `runFullTrust`. Any required fallback needs a recorded residual-risk decision. Android's eventual merged manifest must be checked for removal of INTERNET; iOS has no equivalent general outbound-network permission to remove. Neither prospective package design is established by G0r.

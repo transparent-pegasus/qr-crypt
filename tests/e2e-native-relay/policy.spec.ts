@@ -1,6 +1,7 @@
 import { createServer } from "node:http"
-import { readdir } from "node:fs/promises"
-import type { Page, Request, Response } from "@playwright/test"
+import type { CDPSession, Page, Request, Response } from "@playwright/test"
+import { classifyDownload, type DownloadEvent } from "./download-candidate"
+import type { Inventory } from "./download-io"
 import { APP_ORIGIN, expect, test } from "./native-fixture"
 
 for (const operation of ["navigation", "popup"] as const) {
@@ -158,80 +159,235 @@ for (const operation of ["navigation", "popup"] as const) {
   )
 }
 
-test("a trusted blob download cannot complete or save a file in owned storage", async ({
-  native,
-  page,
-  context,
-}, testInfo) => {
-  const session = await context.newCDPSession(page)
-  const progress: { state: string; receivedBytes: number }[] = []
-  const downloads: { url: string; failure: Promise<string | null> }[] = []
-  session.on("Browser.downloadProgress", (event) =>
-    progress.push({ state: event.state, receivedBytes: event.receivedBytes }),
-  )
-  await session.send("Browser.setDownloadBehavior", {
-    behavior: "allow",
-    downloadPath: native.downloads,
-    eventsEnabled: true,
-  })
-  page.on("download", (download) =>
-    downloads.push({ url: download.url(), failure: download.failure() }),
-  )
-  await page.evaluate(() => {
-    const anchor = document.createElement("a")
-    anchor.textContent = "Inert native download attempt"
-    anchor.href = URL.createObjectURL(
-      new Blob(["inert native download probe"], { type: "text/plain" }),
-    )
-    anchor.download = "native-relay-inert-download.txt"
-    document.body.append(anchor)
-  })
-  await page
-    .getByRole("link", { name: "Inert native download attempt", exact: true })
-    .click()
-  await page.waitForTimeout(1_000)
-  const failures = await Promise.all(
-    downloads.map(async (download) => ({
-      url: download.url,
-      failure: await Promise.race([
-        download.failure,
-        new Promise<never>((_, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("Native download did not cancel within five seconds")),
-            5_000,
-          )
-          timer.unref()
-        }),
-      ]),
-    })),
-  )
-  for (const download of failures)
-    expect(download.failure).toMatch(/cancel|denied|abort|blocked/i)
-  expect(progress.some((event) => event.state === "completed")).toBe(false)
-  const files = await readdir(native.downloads, { recursive: true })
-  expect(files).toEqual([])
-  expect(new URL(page.url()).origin).toBe(APP_ORIGIN)
-  expect(context.pages()).toEqual([page])
-  expect(
-    native.requests.every((request) => {
-      const url = new URL(request.url)
-      return (
-        url.origin === APP_ORIGIN ||
-        (url.protocol === "blob:" && url.pathname.startsWith(APP_ORIGIN + "/"))
+test.describe(() => {
+  test.use({ prepareDownloads: true })
+  test("a trusted blob download cannot complete or save a file in owned storage", async ({
+    native,
+    page,
+    context,
+  }, testInfo) => {
+    const io = native.downloadDiagnostic
+    if (!io) throw new Error("Download diagnostic was not prepared")
+    const events: DownloadEvent[] = []
+    let droppedEvents = 0
+    let evidenceError: unknown | null = null
+    let inventoryError: unknown | null = null
+    let primary: unknown | null = null
+    let blobUrl = ""
+    let clickedAtMs = 0
+    let observedAtMs = 0
+    let before: Inventory | undefined
+    let final: Inventory | undefined
+    let beforeOriginal: string | undefined
+    let beforeMutant: string | undefined
+    let session: CDPSession | undefined
+    const at = () => performance.now() - io.startedAt
+    const append = (event: DownloadEvent) => {
+      if (events.length >= 64) {
+        droppedEvents++
+        return
+      }
+      if (
+        Object.values(event).some(
+          (value) =>
+            typeof value === "string" &&
+            (Buffer.byteLength(value) > 1024 ||
+              // eslint-disable-next-line no-control-regex -- Reject raw controls in event evidence.
+              /[\u0000-\u001f\u007f-\u009f]/u.test(value)),
+        )
+      ) {
+        evidenceError ??= new Error("Download event field overflow/control")
+        return
+      }
+      if (Buffer.byteLength(JSON.stringify([...events, event])) > 32768) {
+        droppedEvents++
+        return
+      }
+      events.push(event)
+    }
+    const begin = (
+      event: Omit<
+        Extract<DownloadEvent, { method: "Browser.downloadWillBegin" }>,
+        "method" | "atMs"
+      >,
+    ) =>
+      append({
+        method: "Browser.downloadWillBegin",
+        atMs: at(),
+        guid: event.guid,
+        url: event.url,
+        frameId: event.frameId,
+        suggestedFilename: event.suggestedFilename,
+      })
+    const progress = (
+      event: Omit<
+        Extract<DownloadEvent, { method: "Browser.downloadProgress" }>,
+        "method" | "atMs"
+      >,
+    ) =>
+      append({
+        method: "Browser.downloadProgress",
+        atMs: at(),
+        guid: event.guid,
+        state: event.state,
+        receivedBytes: event.receivedBytes,
+        totalBytes: event.totalBytes,
+      })
+    const classification = (
+      inventory: Inventory | undefined,
+      variant: "original" | "mutant",
+    ) =>
+      classifyDownload({
+        variant,
+        blobUrl,
+        clickedAtMs,
+        observedAtMs,
+        events: [...events],
+        files: inventory?.files ?? [],
+        droppedEvents,
+        evidenceError,
+        inventoryError:
+          inventoryError ??
+          (inventory?.complete === true && inventory.no_reparse === true
+            ? null
+            : new Error("Incomplete downloads inventory")),
+      })
+    const save = async (phase: string, inventory: Inventory | undefined) => {
+      await testInfo.attach("native-download-" + phase + ".json", {
+        body: Buffer.from(
+          JSON.stringify(
+            {
+              phase,
+              blobUrl,
+              clickedAtMs,
+              observedAtMs,
+              events,
+              droppedEvents,
+              evidenceError:
+                evidenceError === null ? null : String(evidenceError).slice(0, 1024),
+              inventoryError:
+                inventoryError === null ? null : String(inventoryError).slice(0, 1024),
+              inventory,
+              originalDenial: classification(inventory, "original"),
+              mutantPositive: classification(inventory, "mutant"),
+            },
+            null,
+            2,
+          ),
+        ),
+        contentType: "application/json",
+      })
+    }
+    try {
+      const browser = context.browser()
+      if (!browser) throw new Error("Existing native context has no browser")
+      session = await io.run(() => browser.newBrowserCDPSession(), 5000)
+      session.on("Browser.downloadWillBegin", begin)
+      session.on("Browser.downloadProgress", progress)
+      await io.run(
+        () =>
+          session!.send("Browser.setDownloadBehavior", {
+            behavior: "default",
+            eventsEnabled: true,
+          }),
+        5000,
       )
-    }),
-  ).toBe(true)
-  await testInfo.attach("native-download-denial.json", {
-    body: Buffer.from(
-      JSON.stringify({
-        observationMilliseconds: 1_000,
-        progress,
-        failures,
-        files,
-        requests: native.requests,
-      }),
-    ),
-    contentType: "application/json",
+      blobUrl = await io.run(
+        () =>
+          page.evaluate(() => {
+            const anchor = document.createElement("a")
+            anchor.textContent = "Inert native download attempt"
+            anchor.href = URL.createObjectURL(
+              new Blob(["inert native download probe"], { type: "text/plain" }),
+            )
+            anchor.download = "native-relay-inert-download.txt"
+            document.body.append(anchor)
+            return anchor.href
+          }),
+        5000,
+      )
+      clickedAtMs = at()
+      await page
+        .getByRole("link", { name: "Inert native download attempt", exact: true })
+        .click({ timeout: io.work(15000) })
+      // Observe a full second after click and every started GUID's original five-second cancellation window.
+      await io.run(() => page.waitForTimeout(1000), 1500)
+      while (
+        events.some(
+          (event) =>
+            event.method === "Browser.downloadWillBegin" &&
+            !events.some(
+              (progress) =>
+                progress.method === "Browser.downloadProgress" &&
+                progress.guid === event.guid &&
+                progress.state !== "inProgress",
+            ) &&
+            at() - event.atMs < 5000,
+        )
+      ) {
+        await io.run(() => page.waitForTimeout(Math.min(50, io.work(50))), 1000)
+      }
+      try {
+        before = await io.inventory()
+      } catch (error) {
+        inventoryError = error
+      }
+      observedAtMs = at()
+      beforeOriginal = classification(before, "original")
+      beforeMutant = classification(before, "mutant")
+      await save("before-assertion", before)
+      expect(
+        beforeOriginal,
+        "NATIVE_DOWNLOAD_DENIAL: same original denial assertion for every EXE",
+      ).toBe("denied")
+      expect(new URL(page.url()).origin).toBe(APP_ORIGIN)
+      expect(context.pages()).toEqual([page])
+      expect(
+        native.requests.every((request) => {
+          const url = new URL(request.url)
+          return (
+            url.origin === APP_ORIGIN ||
+            (url.protocol === "blob:" && url.pathname.startsWith(APP_ORIGIN + "/"))
+          )
+        }),
+      ).toBe(true)
+    } catch (error) {
+      primary = error
+    } finally {
+      try {
+        final = await io.inventory(true)
+      } catch (error) {
+        inventoryError ??= error
+      }
+      observedAtMs = at()
+      if (session) {
+        session.off("Browser.downloadWillBegin", begin)
+        session.off("Browser.downloadProgress", progress)
+        try {
+          await io.run(() => session!.detach(), 2000, true)
+        } catch (error) {
+          evidenceError ??= error
+        }
+      }
+      await save("finally", final)
+      await testInfo.attach("native-download-classifications.json", {
+        body: Buffer.from(
+          JSON.stringify({
+            beforeOriginal,
+            beforeMutant,
+            finalOriginal: classification(final, "original"),
+            finalMutant: classification(final, "mutant"),
+            primary: primary === null ? null : String(primary).slice(0, 2048),
+          }),
+        ),
+        contentType: "application/json",
+      })
+    }
+    if (primary !== null) throw primary
+    expect(
+      classification(final, "original"),
+      "NATIVE_DOWNLOAD_DENIAL: final complete inventory",
+    ).toBe("denied")
   })
 })
 
