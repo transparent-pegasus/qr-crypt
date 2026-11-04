@@ -255,6 +255,46 @@ units:
       no stamp until the generated ACL/manifest and required runtime checks pass.
     sync: [native-relay-host, threat-model, security-review]
 
+  - id: native-relay-distribution-docs
+    category: docs
+    cadence_days: 30 # also before submission or a privacy/release-record change
+    last_checked: 2026-11-04
+    files:
+      - docs/privacy/native-relay.md # English dedicated-relay notice
+      - docs/locales/ja/privacy/native-relay.md # equivalent Japanese notice
+      - docs/develop/native-relay-distribution.md # listing drafts, fixed-peer ledger and account/publication prerequisites
+    why: >
+      Privacy claims, listing text, Store/account guidance and release records
+      must match the actual app, submitted package and retained evidence.
+    method: |
+      Compare both privacy notices with the dedicated relay entry, session,
+      camera, clipboard, language persistence and host contract. Include input
+      before validation and camera surroundings; distinguish app-managed storage
+      from OS/runtime/clipboard copies and memory cleanup from erasure.
+      Keep both languages' three warnings and visible metadata disclosure aligned
+      with the catalogs. Store-copy fields exclude beta/experimental/test/demo
+      under project policy; development annotations stay outside those fields.
+      For every candidate/public release and fixed counterpart, require Store,
+      edition, version, Store build number, full source SHA, active wire format,
+      artifact identity/hash, exact runtime/platform, Route A verification and
+      installation-approval state. Bind both-direction sym/PQ/multiframe,
+      signature/package, submission/manual-hold/staged-rollout, physical and
+      publication records to evidence. No public tag or synthetic fixture alone
+      is an approved counterpart. No completed native rows without evidence.
+      Check official Store/account links actually cited and date the guidance;
+      do not invent contact, identity, credential/recovery or publication facts.
+      Reconcile developer-EXE evidence with the separate native browser-matrix
+      section while retaining unmeasured client/package/physical gates.
+    verify: |
+      Verify relative links and English/Japanese semantic agreement; inspect each
+      privacy claim against source and every completed ledger field against its
+      retained source/artifact evidence. Reject unsupported completed states,
+      invented contacts or no-network/erasure assurances. Explicit pending facts
+      may pass document-consistency review but never count as Store readiness.
+      Preserve existing PWA measurements, compatibility invariants and product,
+      dependency, lock and workflow bytes. Record actual official-source check
+      dates and any unavailable guidance. Stamp only after these checks pass.
+
   - id: crypto-noble
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     category: crypto
@@ -984,7 +1024,7 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-11-03
+    last_checked: 2026-11-04
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together

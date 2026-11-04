@@ -220,3 +220,31 @@ operation.
 
 These are reference values from a development machine. They do not substitute for the
 on-device measurements above, nor for the `release-approved` determination.
+
+## Windows native relay development evidence
+
+Reviewed 2026-11-04. This separate table records the unsigned developer EXE at
+source `d2cc5cf0609d6cf190a554e83f8e4406982a3531`; it changes none of the PWA or
+physical-device rows above. It is not a passing Store/MSIX or Windows client column.
+Package and publication records belong in the
+[distribution ledger](native-relay-distribution.md#release-and-interoperability-ledger).
+
+| Item | Recorded result and limit |
+| --- | --- |
+| Environment | Windows Server 2025 Datacenter build 26100; WebView2 `156.0.4314.50`. No Windows 11 client measurement |
+| Original native suite | [Push run 41693065623](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41693065623), Windows job `126116357293`: 17 passed / 1 failed out of 18, no retries, skips or flaky results |
+| Candidate binding | All 14 native case records bind the original source/build/assets and reported EXE SHA-256 `46ba8eb37692e09488c7a80ba856e79589db6a83a51d37dbed49e1f0fe7ed247`; RID 8192, not elevated, owned PID/start/window/CDP and recorded tree/profile cleanup. EXE publication was skipped after the failing gate; this is a runner-reported hash, not an independently downloaded EXE verification |
+| Lifecycle | Five OS minimize/hide/restore cases passed, including active and pending work. This does not measure physical camera hardware, lock, sleep or every background transition |
+| Clipboard and QR | Exact native text readback, PNG/bitmap readback and expected QR decode passed. Camera pixels were synthetic |
+| Navigation and popup | Owned external sinks received no requests. Navigation observed the exact GET attempt, local 403 and `ERR_ABORTED`, with DNS/connect/request-start timings at -1; popup had no external request events. This is a content-request observation, not OS network isolation |
+| Other host checks | Initial/reload identity and denied IPC passed; compiled navigation/IPC controls, hide control, launcher exit/deadline controls and original High-integrity rejection passed in this push |
+| Download | Unresolved: the download case observed `completed` under explicit test-side CDP `allow`; the later saved-file inventory assertion was not reached. This neither establishes native-default denial nor isolates a native policy defect |
+| Same-tree PR execution | [PR run 41693077335](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41693077335), Windows job `126116397612`, synthetic merge `d726b39217f427600202fce1947dd68250414c56`: the original PowerShell token helper failed before identity measurement; later native cases were not executed. The cause is unresolved, not a proven timeout. Push success does not erase this failure |
+| Still pending | Native-default download observation with a discriminating control; reliable helper execution; signed MSIX, actual AppContainer token/capabilities, production listener and contaminated-package checks; supported Windows client, physical camera/clipboard, authorized fixed-offline-counterpart interoperability and public release |
+
+Retained push evidence artifact `13258203074` has ZIP SHA-256
+`7e69777d67203d73a12ce495a6344ad3a1e45b239997d295a45566ea5a5bd4c5`;
+PR artifact `13258596081` has ZIP SHA-256
+`157b6431421402ba53d9c636628537e228c31ad78869b5db7180ade29e9eab8c`.
+These identify evidence archives, not signed product packages. CI artifact retention
+is finite; later candidates require their own retained source/artifact measurements.

@@ -4,9 +4,13 @@
 
 This contract governs the native host of `dist-relay/`, the ciphertext-only relay bundle. It is a specification for implementation, not a native release approval or a claim that every platform below is supported. The first product target is Windows; [G0r](../develop/native-spikes/g0r-20261025.md) records older feasibility measurements separately. The [wire specification](qr-protocol-v2.md), [threat model](../security/threat-model.md) and [security review](../security/security-review.md) still apply.
 
+See the [user privacy information](../privacy/native-relay.md) and
+[distribution guide and interoperability ledger](../develop/native-relay-distribution.md)
+for information handling, listing drafts and still-pending publication records.
+
 ## 1. Device and edition boundary
 
-**Do not install the relay on a device that holds keys or plaintext, including a device with a Route A PWA browser profile.** Separate application identifiers prevent accidental data sharing; they do not protect that profile from a full-trust process under the same OS user. The prohibition applies before capture, copy or paste, and must remain visible in both application languages, user documentation and each store listing.
+**Do not install or use the relay on a device that holds, or has ever held, keys, identities or plaintext, including a device with a Route A PWA browser profile.** Separate application identifiers prevent accidental data sharing; they do not protect that profile from a full-trust process under the same OS user. The prohibition applies before capture, copy or paste, and must remain visible in both application languages, user documentation and each store listing.
 
 Only the offline edition may generate/store keys or encrypt/decrypt plaintext. The native relay accepts complete canonical `sym-message` and `pq-message` ciphertext frame sets and rejects other outer artifact types. Its envelope validation is structural; it cannot authenticate a sender, inspect encrypted plaintext, or prevent an already compromised offline endpoint from hiding data in an accepted ciphertext. Independent identity confirmation remains necessary.
 
