@@ -1,8 +1,32 @@
+# NH1 BEGIN A
+$nativeHelperWatch = $null
+try { $nativeHelperWatch = [Diagnostics.Stopwatch]::StartNew() } catch {}
+function private:Write-NativeHelperMilestone([string]$stage) {
+  try {
+    if ($null -ne $nativeHelperWatch) {
+      [Console]::Error.WriteLine('NH1|' + $stage + '|' + $nativeHelperWatch.ElapsedMilliseconds.ToString([Globalization.CultureInfo]::InvariantCulture))
+    }
+  } catch {}
+}
+Write-NativeHelperMilestone 'A'
+# NH1 END A
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# NH1 BEGIN B
+Write-NativeHelperMilestone 'B'
+# NH1 END B
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+# NH1 BEGIN C
+Write-NativeHelperMilestone 'C'
+# NH1 END C
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+# NH1 BEGIN D
+Write-NativeHelperMilestone 'D'
+# NH1 END D
 $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
+# NH1 BEGIN E
+Write-NativeHelperMilestone 'E'
+# NH1 END E
 $owned = Get-Process -Id $request.processId -ErrorAction SilentlyContinue
 if ($null -eq $owned) {
   if ($request.action -eq 'terminate') { '{"exited":true}'; exit 0 }
@@ -16,13 +40,25 @@ if ($owned.Path -ine $request.executable -or $startedAt -lt $request.spawnedAfte
 if ($null -ne $request.startedAt -and $startedAt -ne $request.startedAt) {
   throw 'Native process start identity changed'
 }
+# NH1 BEGIN F
+Write-NativeHelperMilestone 'F'
+# NH1 END F
 if ($request.action -eq 'terminate') {
   # The held process handle and start identity guard the PID; never kill by image name.
+  # NH1 BEGIN T
+  Write-NativeHelperMilestone 'T'
+  # NH1 END T
   & "$env:SystemRoot\System32\taskkill.exe" /PID $owned.Id /T /F | Out-Null
+  # NH1 BEGIN U
+  Write-NativeHelperMilestone 'U'
+  # NH1 END U
   if ($LASTEXITCODE -ne 0 -and !$owned.HasExited) { throw 'Owned process tree termination failed' }
   '{"exited":true}'
   exit 0
 }
+# NH1 BEGIN G
+Write-NativeHelperMilestone 'G'
+# NH1 END G
 Add-Type @'
 using System;
 using System.ComponentModel;
@@ -87,11 +123,20 @@ public static class RelayWindow {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr handle);
 }
 '@
+# NH1 BEGIN H
+Write-NativeHelperMilestone 'H'
+# NH1 END H
 if ($request.action -eq 'token') {
+  # NH1 BEGIN I
+  Write-NativeHelperMilestone 'I'
+  # NH1 END I
   @{
     processId = $owned.Id; startedAt = $startedAt; executable = $owned.Path
     integrity = [RelayToken]::Measure($owned.Handle)
   } | ConvertTo-Json -Compress
+  # NH1 BEGIN J
+  Write-NativeHelperMilestone 'J'
+  # NH1 END J
   exit 0
 }
 $handle = if ($null -eq $request.windowHandle) { $owned.MainWindowHandle } else { [IntPtr]([long]$request.windowHandle) }
