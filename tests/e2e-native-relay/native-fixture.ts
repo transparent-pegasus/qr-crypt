@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { createHash } from "node:crypto"
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join, relative, resolve, sep } from "node:path"
+import { join, relative, resolve, sep, win32 } from "node:path"
 import { promisify } from "node:util"
 import {
   expect,
@@ -42,6 +42,7 @@ export function redactEvidence(
 function createHelperObservation(
   redact: (value: string) => string,
   privatePaths: readonly string[],
+  helperHost: { selected: string; executable: string; sha256: string },
 ) {
   const started = performance.now()
   const now = () => performance.now() - started
@@ -333,7 +334,9 @@ function createHelperObservation(
         acceptance: false,
         identity,
         helper: {
-          executable: "powershell.exe",
+          selectedExecutable: text(helperHost.selected).text,
+          executable: text(helperHost.executable).text,
+          executableSha256: helperHost.sha256,
           arguments: [
             "-NoProfile",
             "-NonInteractive",
@@ -525,6 +528,37 @@ export const test = base.extend<{ native: NativeRelay }>({
       sourceHead,
     )
     const executable = await existingExecutable(input.executable)
+    const selectedPwsh = process.env.NATIVE_RELAY_PWSH
+    if (
+      !selectedPwsh ||
+      !/^[a-z]:[\\/]/i.test(selectedPwsh) ||
+      win32.basename(selectedPwsh).toLowerCase() !== "pwsh.exe"
+    )
+      throw new Error(
+        "NATIVE_RELAY_SETUP: NATIVE_RELAY_PWSH must select an absolute existing pwsh.exe",
+      )
+    const helperExecutable = await existingExecutable(selectedPwsh)
+    if (
+      !/^[a-z]:[\\/]/i.test(helperExecutable) ||
+      win32.basename(helperExecutable).toLowerCase() !== "pwsh.exe"
+    )
+      throw new Error("NATIVE_RELAY_SETUP: selected helper must resolve to pwsh.exe")
+    const helperExecutableSha256 = digest(await readFile(helperExecutable))
+    const launcherTool = JSON.parse(
+      await readFile(".tmp/native-relay-evidence/launcher/tool.json", "utf8"),
+    ) as { source?: unknown; pwsh?: unknown; pwsh_sha256?: unknown }
+    if (
+      launcherTool.source !== sourceHead ||
+      typeof launcherTool.pwsh !== "string" ||
+      !/^[a-z]:[\\/]/i.test(launcherTool.pwsh) ||
+      win32.basename(launcherTool.pwsh).toLowerCase() !== "pwsh.exe" ||
+      (await existingExecutable(launcherTool.pwsh)).toLowerCase() !==
+        helperExecutable.toLowerCase() ||
+      launcherTool.pwsh_sha256 !== helperExecutableSha256
+    )
+      throw new Error(
+        "NATIVE_RELAY_SETUP: selected helper must match launcher/tool.json source, resolved path and SHA256",
+      )
     const root = resolve("dist-relay")
     const assetHashes = new Map<string, string>()
     for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
@@ -565,13 +599,21 @@ export const test = base.extend<{ native: NativeRelay }>({
     const port = await selectCdpPort()
     const spawnedAfter = Date.now() - 2_000
     const redact = (value: string) => redactEvidence(value, storage, executable)
-    const helperObservation = createHelperObservation(redact, [
-      storage,
-      executable,
-      process.cwd(),
-      process.env.USERPROFILE ?? "",
-      process.env.HOME ?? "",
-    ])
+    const helperObservation = createHelperObservation(
+      redact,
+      [
+        storage,
+        executable,
+        process.cwd(),
+        process.env.USERPROFILE ?? "",
+        process.env.HOME ?? "",
+      ],
+      {
+        selected: selectedPwsh,
+        executable: helperExecutable,
+        sha256: helperExecutableSha256,
+      },
+    )
     const child = spawn(executable, [], {
       shell: false,
       windowsHide: false,
@@ -614,7 +656,7 @@ export const test = base.extend<{ native: NativeRelay }>({
       let pending: Promise<{ stdout: string; stderr: string }> & { child: ChildProcess }
       try {
         pending = execute(
-          "powershell.exe",
+          helperExecutable,
           ["-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand", encodedScript],
           { timeout: 15_000, windowsHide: true },
         )

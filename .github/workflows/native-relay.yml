@@ -91,6 +91,7 @@ jobs:
           $evidence = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/launcher'
           New-Item -ItemType Directory -Force $evidence | Out-Null
           $selectedPwsh = (Get-Command pwsh.exe -CommandType Application).Source
+          $selectedPwshVersion = (Get-Item -LiteralPath $selectedPwsh).VersionInfo
           $selectedMise = (Get-Command mise.exe -CommandType Application).Source
           [ordered]@{
             source = $env:GITHUB_SHA
@@ -98,6 +99,8 @@ jobs:
             token_method = 'CreateRestrictedToken LUA_TOKEN|DISABLE_MAX_PRIVILEGE (0x5), new token Medium'
             pwsh = $selectedPwsh
             pwsh_sha256 = (Get-FileHash -Algorithm SHA256 $selectedPwsh).Hash.ToLowerInvariant()
+            pwsh_file_version = $selectedPwshVersion.FileVersion
+            pwsh_product_version = $selectedPwshVersion.ProductVersion
             mise = $selectedMise
             mise_sha256 = (Get-FileHash -Algorithm SHA256 $selectedMise).Hash.ToLowerInvariant()
             cwd = (Get-Location).Path
