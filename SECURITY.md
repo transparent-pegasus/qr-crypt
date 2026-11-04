@@ -15,9 +15,11 @@ persistence, bypass of the offline acknowledgement or OnlineGate flow).
 
 In scope:
 
-- This repository: an offline-first encryption PWA (QR-based key and message
-  exchange), including its cryptographic code paths, storage handling
-  (IndexedDB / localStorage), service worker, and build tooling.
+- This repository: the offline-first encryption PWA and the native ciphertext
+  relay under development, including cryptographic code paths, storage handling
+  (IndexedDB / localStorage), service worker, native host boundaries, and build
+  tooling. The [native relay contract](docs/spec/native-relay.md) records its
+  separate device requirements and pending release gates.
 
 Out of scope:
 

@@ -9,9 +9,10 @@ import {
 } from "react"
 import type { FeatureSupport } from "@/lib/feature-detect"
 import { DisplayGateProvider } from "@/app/display-gate"
+import { FeatureSupportProvider } from "@/app/feature-support"
 import { PwaOfflineReady, type UseRegisterSwHook } from "@/components/pwa-offline-ready"
 import { Toaster } from "@/components/ui/sonner"
-import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/storage/reset-events"
+import { OC_LOCAL_STORAGE_CLEARED_EVENT } from "@/lib/local-storage-events"
 
 export type Theme = "light" | "dark" | "system"
 
@@ -124,30 +125,6 @@ function DisplayGateLayer({ children }: { children: ReactNode }) {
   return (
     <DisplayGateProvider clearTransient={clearTransient}>{children}</DisplayGateProvider>
   )
-}
-
-const FeatureSupportContext = createContext<FeatureSupport | null>(null)
-
-export function FeatureSupportProvider({
-  children,
-  features,
-}: {
-  children: ReactNode
-  features: FeatureSupport
-}) {
-  return (
-    <FeatureSupportContext.Provider value={features}>
-      {children}
-    </FeatureSupportContext.Provider>
-  )
-}
-
-export function useFeatureSupport(): FeatureSupport {
-  const value = useContext(FeatureSupportContext)
-  if (!value) {
-    throw new Error("useFeatureSupport must be used inside FeatureSupportProvider")
-  }
-  return value
 }
 
 export function AppProviders({

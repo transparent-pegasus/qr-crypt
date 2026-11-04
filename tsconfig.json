@@ -21,5 +21,15 @@
     "paths": { "@/*": ["./src/*"] },
     "types": ["vite/client", "node"]
   },
-  "include": ["src", "tests", "scripts", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
+  "include": [
+    "src",
+    "tests",
+    "scripts",
+    "vite.config.ts",
+    "vite.relay.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts",
+    "playwright.relay.config.ts",
+    "playwright.native-relay.config.ts"
+  ]
 }

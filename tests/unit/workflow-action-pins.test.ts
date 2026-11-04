@@ -315,7 +315,7 @@ describe("workflow action pinning", () => {
       with: { name: "dist-${{ github.sha }}", path: "dist" },
     })
     expect(job.permissions).toEqual({ contents: "read" })
-    expect(job.needs).toEqual(["validate", "e2e"])
+    expect(job.needs).toEqual(["validate", "e2e", "e2e-relay"])
     expect(job).toMatchObject({
       if: "github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')",
       "runs-on": "ubuntu-latest",
@@ -383,7 +383,7 @@ describe("workflow action pinning", () => {
     expect(
       steps.findIndex((step) => step.name === "Smoke-test the deploy toolchain"),
     ).toBeGreaterThan(previous)
-    expect(jobs.deploy!.needs).toEqual(["validate", "e2e"])
+    expect(jobs.deploy!.needs).toEqual(["validate", "e2e", "e2e-relay"])
   })
 
   it("security maintenance audits the deploy toolchain", () => {

@@ -1,0 +1,26 @@
+{
+  "productName": "QR Crypt Relay",
+  "version": "../../package.json",
+  "identifier": "org.qrcrypt.relay",
+  "build": {
+    "frontendDist": "../../dist-relay"
+  },
+  "app": {
+    "windows": [],
+    "withGlobalTauri": false,
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "relay",
+          "windows": ["main"],
+          "permissions": []
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.ico", "../../public/icons/icon-512.png"]
+  }
+}

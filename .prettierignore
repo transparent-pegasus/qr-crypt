@@ -1,4 +1,5 @@
 dist
+dist-relay
 dev-dist
 coverage
 playwright-report

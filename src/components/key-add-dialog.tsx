@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
-import { useFeatureSupport } from "@/app/providers"
+import { useFeatureSupport } from "@/app/feature-support"
 import { BundleConfirmView } from "@/components/key-add/bundle-confirm-view"
 import {
   CreateKeyView,

@@ -1,0 +1,27 @@
+[package]
+name = "qr-crypt-relay"
+edition = "2024"
+rust-version = "1.99.1"
+license = "Apache-2.0"
+publish = false
+default-run = "qr-crypt-relay"
+
+[[bin]]
+name = "native-relay-download-profile"
+path = "../../tests/e2e-native-relay/download-profile/main.rs"
+required-features = ["native-e2e"]
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+native-e2e = []
+
+[build-dependencies]
+tauri-build = "=2.7.4"
+
+[dependencies]
+tauri = { version = "=2.12.5", default-features = false, features = ["wry", "common-controls-v6"] }
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "=0.39.1"
+windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

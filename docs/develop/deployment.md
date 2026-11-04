@@ -33,8 +33,10 @@ Artifact upload/download use v7.0.2 at
 uses merged upstream [PR #252](https://github.com/sigstore/cosign-installer/pull/252),
 commit `af595e623eec1ede52d6322f53b635d5def0a95a`, which embeds the requested
 Cosign 3.1.3 and checks its vetted hardcoded digest before execution. This is
-an explicit upstream-commit pin: the latest tagged installer v4.1.2 still has
-the affected bootstrap. [Security review §1.6](../security/security-review.md)
+an explicit upstream-commit pin; installer v4.1.2 has the affected bootstrap.
+Checked 2026-11-05: [installer v4.1.3](https://github.com/sigstore/cosign-installer/releases/tag/v4.1.3)
+embeds Cosign 3.1.4. The workflow retains the reviewed 3.1.3 bootstrap
+and matching requested version. [Security review §1.6](../security/security-review.md)
 records the hash, tested source and assurance limits; no hosted CI pass follows
 from this static pin correction.
 
@@ -68,8 +70,10 @@ request targeting `main` or `dev`:
   and the locked Wrangler's `--version` to equal `4.155.0`. Explicit `shell: bash`
   enables `pipefail`, so either command's failure blocks deployment.
   It then runs type checking, lint, unit tests, post-quantum
-  known-answer and integration tests, multipart QR tests, and the production
-  build. The audit step has no `continue-on-error`: an open known npm advisory
+  known-answer and integration tests, multipart QR tests, the production
+  build, and the relay-only build (`aube run build:relay`). The relay-only
+  build fails when any module, worker, output file or URL origin falls outside
+  `scripts/relay-bundle-allowlist.mjs`. The audit step has no `continue-on-error`: an open known npm advisory
   fails the job on the next triggered run. Scheduled/manual external
   maintenance is also required by the approved 2026-09-07 contract below;
   neither gate replaces the freshness review of the written advisory record.
@@ -77,7 +81,19 @@ request targeting `main` or `dev`:
   `aube run build:prod` and serves `dist/` with `aube run serve:dist`, so the
   browser receives the `_headers` response policy rather than running against
   Vite preview without those headers
-* The `deploy` job requires **both** to pass, and only runs on a `push`:
+* The `e2e-relay` job builds `dist-relay/` and serves it with
+  `SERVE_DIST_HEADERS=none`, because the native relay shells receive no
+  response headers. It disables the reusable mise cache and installs both
+  Chromium and WebKit. The `mobile-chromium` and `webkit` projects both check
+  CSP, own-file requests, no service worker, sym/pq playback, non-message
+  rejection, and close/reopen cleanup. WebKit skips only the text and PNG
+  clipboard readback cases (their `clipboard-write` permission grant is
+  unsupported) and fake-camera capture (Chromium-only media flags).
+  Injected decoder results, the fake camera, and the injected visibility
+  event do not establish physical-camera or native OS background behavior.
+  `dist-relay/` is never uploaded or deployed; only `dist/` reaches
+  Cloudflare Pages and the release archive
+* The `deploy` job requires `validate`, `e2e` and `e2e-relay` to pass, and only runs on a `push`:
   `main` deploys to `CLOUDFLARE_PAGES_PROJECT`, `dev` deploys to
   `CLOUDFLARE_PAGES_PROJECT_DEV`. It publishes the artifact `validate` built
   rather than rebuilding, so the deployed bytes are the validated ones.

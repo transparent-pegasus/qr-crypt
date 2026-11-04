@@ -135,6 +135,29 @@ As a cross-cutting countermeasure for T8/T11, OnlineGate fail-closes encryption,
   that browser behavior. No service-worker event is a destructive wipe trigger;
   T17/T18 retain sentinel-only evidence.
 
+### Native relay boundary (2026-11-03)
+
+The [native relay host contract](../spec/native-relay.md) is separate from the
+web boot/wipe contract. Its bundle excludes key storage, plaintext cryptography,
+boot and service workers; structural ciphertext checks retain T19/T21's limits.
+It must never be deployed to the full web application's origin.
+
+Do not install a native relay on a key- or plaintext-bearing device, including a
+device with a Route A PWA browser profile. Separate identifiers are not protection
+from a full-trust process under the same OS user. This is **DEPLOYMENT_ENFORCED**,
+as is managing the camera's view of the surroundings. The bundle/UI constraints
+are **REPOSITORY_IMPLEMENTABLE**; they cannot establish that the device meets those
+requirements.
+
+Store updates are allowed only for the relay. A compromised update, native core,
+WebView or OS is an **ARCHITECTURAL_RESIDUAL** whose access is not bounded by the
+legitimate relay's behavior. Tauri IPC capabilities do not remove native networking
+or OS privileges. Missing web response policies are not restored by one window or
+a camera prompt. Actual package permissions, fixed-offline-release interoperability,
+runtime/physical-device measurements and independent review are **EXTERNAL_ASSURANCE**.
+G0r's feasibility observations do not establish those gates. Offline installations
+remain permanently offline and are replaced only after sanitization.
+
 ## 5.1 Supply-chain incidents actually detected and handled during initial build-out (2026-07-21)
 
 | Incident                                                                                                                                                                                       | Assessment                                                | Action                                                                                                    |
@@ -169,7 +192,7 @@ history the new CI gate answers; neither is erased by the now-clean result.
 | `brace-expansion` forced to `5.0.9` for both the `@5` and `@2` selectors | **RESOLVED** `GHSA-mh99-v99m-4gvg` and `GHSA-rgw5-rvv9-x895` | `2.1.4` is also patched; using `5.0.9` for both selectors is a deliberate one-version-in-the-graph decision. Build tooling only; absent from the browser bundle |
 | `fast-uri@3.1.5`, `nanoid@3.3.18`, and `undici@7.29.0` forced via `aube.overrides` | **RESOLVED** known advisories; patched versions installed | Build, test, and deploy tooling only; absent from the browser bundle. The `nanoid` pin moved from `3.3.17` on 2026-08-14; see the re-check below |
 | Full locked dependency graph | `aube audit` reports no known vulnerabilities on 2026-08-08 | The result is dated; it is not a continuing claim about advisories published later |
-| Cosign signer/image v3.1.3 (2026-08-08); installer bootstrap follow-up (2026-10-30) | **REPOSITORY FIXED** high-severity `GHSA-fx35-mq7g-6g98`, published 2026-08-06; affected v3 versions are `<=3.1.2` | The earlier signer/image fix left the installer's embedded v3.0.6 exposed. Merged upstream #252 at `af595e623eec1ede52d6322f53b635d5def0a95a` now embeds the requested v3.1.3 and its vetted hardcoded bootstrap digest (security-review.md §1.6); latest tagged installer v4.1.2 remains affected. Route A still requires independently authenticated Cosign v3.1.3 or later; recipient provisioning is external. `aube audit` cannot detect this non-npm advisory, and independent rebuild remains mandatory |
+| Cosign signer/image v3.1.3 (2026-08-08); installer bootstrap follow-up (2026-10-30) | **REPOSITORY FIXED** high-severity `GHSA-fx35-mq7g-6g98`, published 2026-08-06; affected v3 versions are `<=3.1.2` | The earlier signer/image fix left the installer's embedded v3.0.6 exposed. Merged upstream #252 at `af595e623eec1ede52d6322f53b635d5def0a95a` now embeds the requested v3.1.3 and its vetted hardcoded bootstrap digest (security-review.md §1.6); installer v4.1.2 retains the affected bootstrap. Route A still requires independently authenticated Cosign v3.1.3 or later; recipient provisioning is external. `aube audit` cannot detect this non-npm advisory, and independent rebuild remains mandatory |
 
 ### Noble pin-move re-check (2026-08-13)
 

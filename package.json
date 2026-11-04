@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:prod": "vite build --mode prod",
+    "build:relay": "vite build --config vite.relay.config.ts --mode prod",
     "preview": "vite preview",
     "serve:dist": "node scripts/serve-dist.mjs",
     "typecheck": "tsc --noEmit",
@@ -18,7 +19,8 @@
     "test:pq-vectors": "vitest run tests/pq-vectors",
     "test:qr-multipart": "vitest run tests/qr-multipart",
     "bench:pq": "vitest bench --project node tests/bench/pq",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:relay": "playwright test -c playwright.relay.config.ts"
   },
   "dependencies": {
     "@noble/post-quantum": "0.7.1",

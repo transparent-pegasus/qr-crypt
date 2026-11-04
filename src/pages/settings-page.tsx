@@ -18,8 +18,8 @@ import {
 } from "@/app/boot/boot-controller"
 import { useMaintenanceToken } from "@/hooks/use-maintenance-token"
 import { performUserRequestedReset } from "@/app/boot/wipe-coordinator"
+import { useFeatureSupport } from "@/app/feature-support"
 import {
-  useFeatureSupport,
   useTheme,
   useTransientClear,
   type Theme,

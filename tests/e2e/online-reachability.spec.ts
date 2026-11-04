@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises"
 import { expect, test, type Request } from "@playwright/test"
 import { loadOnlineGate, mainNavigation } from "./helpers"
 
@@ -10,21 +11,29 @@ function isDisplayProbe(request: Request): boolean {
   )
 }
 
-for (const tab of ["Home", "Relay"] as const) {
-  test(`online ${tab} survives repeated display HEAD failures after admission`, async ({
+for (const [tab, routeDelayMs] of [
+  ["Home", 0],
+  ["Home", 500],
+  ["Relay", 0],
+  ["Relay", 500],
+] as const) {
+  test(`online ${tab} survives repeated display HEAD failures after admission (${routeDelayMs}ms route delay)`, async ({
     context,
     page,
   }, testInfo) => {
     let failDisplayProbes = false
     let failedProbes = 0
-    const failedRequests: string[] = []
+    const abortedProbeUrls = new Set<string>()
+    const failedRequests: Request[] = []
     page.on("requestfailed", (request) => {
-      if (failDisplayProbes && isDisplayProbe(request)) failedRequests.push(request.url())
+      if (failDisplayProbes && isDisplayProbe(request)) failedRequests.push(request)
     })
     await context.route("**/manifest.webmanifest?reach=*", async (route) => {
       if (failDisplayProbes && isDisplayProbe(route.request())) {
+        if (routeDelayMs > 0) await delay(routeDelayMs)
         failedProbes += 1
         await route.abort("failed")
+        abortedProbeUrls.add(route.request().url())
       } else await route.continue()
     })
     // Observe protected-store transactions without opening a database ourselves.
@@ -72,22 +81,30 @@ for (const tab of ["Home", "Relay"] as const) {
     })
     failDisplayProbes = true
     let virtualElapsedMs = 0
-    // Advance until each request has actually failed. Yielding between ticks
-    // lets the browser finish routing instead of timing out queued traffic.
+    // Wait for each deliberate abort and its matching Chromium failure before
+    // advancing again, so the clock cannot trigger the probe's own timeout.
     for (let poll = 1; poll <= 3; poll += 1) {
+      await page.clock.runFor(4_000)
+      virtualElapsedMs += 4_000
+      await expect.poll(() => abortedProbeUrls.size).toBe(poll)
+      const url = [...abortedProbeUrls][poll - 1]
       await expect
-        .poll(
-          async () => {
-            await page.clock.runFor(1_000)
-            virtualElapsedMs += 1_000
-            return failedRequests.length
-          },
-          { intervals: [10] },
-        )
-        .toBeGreaterThanOrEqual(poll)
+        .poll(() => {
+          const request = failedRequests.find((request) => request.url() === url)
+          return request?.failure()?.errorText
+        })
+        .toBe("net::ERR_FAILED")
     }
+    // Release UI cleanup timers after the bounded probe observation.
+    await page.clock.resume()
     await testInfo.attach("display-probe-failures", {
-      body: JSON.stringify({ failedProbes, failedRequests, virtualElapsedMs }),
+      body: JSON.stringify({
+        failedProbes,
+        abortedProbeUrls: [...abortedProbeUrls],
+        failedRequests: failedRequests.map((request) => request.url()),
+        failureErrors: failedRequests.map((request) => request.failure()?.errorText),
+        virtualElapsedMs,
+      }),
       contentType: "application/json",
     })
     expect(failedProbes).toBeGreaterThanOrEqual(3)

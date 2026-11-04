@@ -1,0 +1,529 @@
+name: Native relay
+
+on:
+  push:
+  pull_request:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-relay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      VITE_BUILD_SHA: ${{ github.sha }}
+      NATIVE_RELAY_EXE: ${{ github.workspace }}/native/desktop/target/release/qr-crypt-relay.exe
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pinned project tools
+        uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: false
+
+      - name: Install the scoped Rust toolchain
+        working-directory: native/desktop
+        run: mise install
+
+      - name: Install frozen frontend dependencies
+        run: mise exec -- aube ci
+
+      - name: Build the isolated relay assets
+        run: mise exec -- aube run build:relay
+
+      - name: Check Rust formatting
+        working-directory: native/desktop
+        run: mise exec -- cargo fmt --all -- --check
+
+      - name: Test the locked Windows host policy
+        working-directory: native/desktop
+        run: mise exec -- cargo test --release --locked --target-dir target
+
+      - name: Build the release executable
+        working-directory: native/desktop
+        run: mise exec -- cargo build --release --locked --target-dir target
+
+      - name: Record the developer executable identity
+        run: |
+          New-Item -ItemType Directory -Force .tmp/native-relay-evidence | Out-Null
+          $identity = [ordered]@{
+            source = $env:GITHUB_SHA
+            executable_sha256 = (Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant()
+            cargo_lock_sha256 = (Get-FileHash -Algorithm SHA256 native/desktop/Cargo.lock).Hash.ToLowerInvariant()
+            aube_lock_sha256 = (Get-FileHash -Algorithm SHA256 aube-lock.yaml).Hash.ToLowerInvariant()
+            windows = [Environment]::OSVersion.Version.ToString()
+            artifact_kind = 'unsigned developer executable; not an MSIX or store release'
+          }
+          $identity | ConvertTo-Json | Set-Content .tmp/native-relay-evidence/build.json
+
+      - name: Inspect the linked Windows manifest and retain ACL inputs
+        run: |
+          $sdkBin = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits/10/bin'
+          $mt = Get-ChildItem "$sdkBin/*/x64/mt.exe" | Sort-Object FullName | Select-Object -Last 1
+          if (-not $mt) { throw 'Windows SDK manifest tool is required' }
+          $manifestPath = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/application.manifest'
+          & $mt.FullName "-inputresource:$($env:NATIVE_RELAY_EXE);#1" "-out:$manifestPath"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the actual executable manifest' }
+          [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
+          $level = $manifest.SelectSingleNode("//*[local-name()='requestedExecutionLevel']")
+          if ($level -and ($level.level -ne 'asInvoker' -or $level.uiAccess -eq 'true')) {
+            throw 'The relay must not request elevated or UIAccess privileges'
+          }
+          $autoElevate = $manifest.SelectSingleNode("//*[local-name()='autoElevate']")
+          if ($autoElevate -and $autoElevate.InnerText -ne 'false') { throw 'Automatic elevation is forbidden' }
+          Copy-Item native/desktop/gen/schemas/*.json .tmp/native-relay-evidence/
+
+      - name: Record the built-in own-token Medium launcher inputs
+        run: |
+          $evidence = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/launcher'
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          $selectedPwsh = (Get-Command pwsh.exe -CommandType Application).Source
+          $selectedMise = (Get-Command mise.exe -CommandType Application).Source
+          $pwshVersion = (Get-Item -LiteralPath $selectedPwsh).VersionInfo
+          [ordered]@{
+            source = $env:GITHUB_SHA
+            launcher_sha256 = (Get-FileHash -Algorithm SHA256 tests/e2e-native-relay/run-medium.ps1).Hash.ToLowerInvariant()
+            token_method = 'CreateRestrictedToken LUA_TOKEN|DISABLE_MAX_PRIVILEGE (0x5), new token Medium'
+            pwsh = $selectedPwsh
+            pwsh_sha256 = (Get-FileHash -Algorithm SHA256 $selectedPwsh).Hash.ToLowerInvariant()
+            pwsh_file_version = $pwshVersion.FileVersion
+            pwsh_product_version = $pwshVersion.ProductVersion
+            mise = $selectedMise
+            mise_sha256 = (Get-FileHash -Algorithm SHA256 $selectedMise).Hash.ToLowerInvariant()
+            cwd = (Get-Location).Path
+          } | ConvertTo-Json | Set-Content (Join-Path $evidence 'tool.json')
+          "NATIVE_RELAY_PWSH=$selectedPwsh" | Add-Content $env:GITHUB_ENV
+          "NATIVE_RELAY_MISE=$selectedMise" | Add-Content $env:GITHUB_ENV
+
+      - name: Prove Medium launch preserves tools, streams and exit status
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $env:NATIVE_RELAY_RUN_EVIDENCE = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/launcher/probe'
+          New-Item -ItemType Directory $env:NATIVE_RELAY_RUN_EVIDENCE | Out-Null
+          $miseVersion = (& $env:NATIVE_RELAY_MISE --version) -join "`n"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the selected mise' }
+          $nodePath = (& $env:NATIVE_RELAY_MISE which node).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the pinned Node' }
+          $aubePath = (& $env:NATIVE_RELAY_MISE which aube).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve the pinned aube' }
+          $aubeVersion = ((& $env:NATIVE_RELAY_MISE exec -- aube -V) -join "`n").Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify the pinned aube' }
+          @{
+            cwd = (Get-Location).Path; mise = $env:NATIVE_RELAY_MISE; miseVersion = $miseVersion.Trim()
+            node = $nodePath; aube = $aubePath; aubeVersion = $aubeVersion
+          } | ConvertTo-Json | Set-Content (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'expected.json')
+          @'
+          import assert from "node:assert/strict"
+          import { spawnSync } from "node:child_process"
+          import { readFileSync, realpathSync, writeFileSync } from "node:fs"
+          import { join } from "node:path"
+          const root = process.env.NATIVE_RELAY_RUN_EVIDENCE
+          const expected = JSON.parse(readFileSync(join(root, "expected.json"), "utf8"))
+          const run = (args) => {
+            const child = spawnSync(process.env.NATIVE_RELAY_MISE, args, { encoding: "utf8", windowsHide: true })
+            assert.equal(child.error, undefined)
+            assert.equal(child.status, 0, child.stderr)
+            return child.stdout.trim()
+          }
+          const observed = {
+            cwd: process.cwd(), mise: process.env.NATIVE_RELAY_MISE,
+            miseVersion: run(["--version"]), node: process.execPath,
+            aube: run(["which", "aube"]), aubeVersion: run(["exec", "--", "aube", "-V"]),
+            nodeVersion: process.version,
+          }
+          writeFileSync(join(root, "observed.json"), JSON.stringify(observed, null, 2) + "\n")
+          const canonical = (path) => realpathSync(path).toLowerCase()
+          for (const key of ["cwd", "mise", "node", "aube"]) assert.equal(canonical(observed[key]), canonical(expected[key]), key)
+          for (const key of ["miseVersion", "aubeVersion"]) assert.equal(observed[key], expected[key], key)
+          const pins = readFileSync("mise.toml", "utf8")
+          assert.equal(observed.nodeVersion, "v" + pins.match(/^node = "([^"]+)"$/m)[1])
+          assert.equal(observed.aubeVersion.split(/\s/, 1)[0], pins.match(/^aube = "([^"]+)"$/m)[1])
+          process.stdout.write("NATIVE_RELAY_LAUNCH_STDOUT\n")
+          process.stderr.write("NATIVE_RELAY_LAUNCH_STDERR\n")
+          process.exitCode = 37
+          '@ | Set-Content (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'probe.mjs')
+          $command = @'
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $env:NATIVE_RELAY_MISE exec -- aube node (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'probe.mjs') 1> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log') 2> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stderr.log')
+          exit $LASTEXITCODE
+          '@
+          $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+          & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/run-medium.ps1 -EncodedCommand $encoded -TimeoutSeconds 120
+          $probeExit = $LASTEXITCODE
+          $probeExit | Set-Content (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'exit.txt')
+          $stdout = [IO.File]::ReadAllText((Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log'))
+          $stderr = [IO.File]::ReadAllText((Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stderr.log'))
+          [Console]::Out.Write($stdout)
+          [Console]::Error.Write($stderr)
+          if ($probeExit -ne 37 -or $stdout -notmatch '(?m)^NATIVE_RELAY_LAUNCH_STDOUT\r?$' -or $stderr -notmatch '(?m)^NATIVE_RELAY_LAUNCH_STDERR\r?$' -or $stdout.Contains('NATIVE_RELAY_LAUNCH_STDERR') -or $stderr.Contains('NATIVE_RELAY_LAUNCH_STDOUT')) {
+            throw 'The exact Medium launch must preserve CWD, pinned tools, distinct streams and exit 37'
+          }
+          exit 0
+
+      - name: Prove the Medium launcher deadline cleans its owned tree
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/medium-launcher-timeout.ps1
+          exit $LASTEXITCODE
+
+      - name: Prove the untouched runner fails only the owned-token guard
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $evidence = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/integrity-negative'
+          New-Item -ItemType Directory $evidence | Out-Null
+          $build = Get-Content .tmp/native-relay-evidence/build.json -Raw | ConvertFrom-Json
+          if ((Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant() -cne $build.executable_sha256) { throw 'The integrity control must use the original executable' }
+          $title = 'the initial and reloaded EXE window has the exact origin, CSP and full candidate identity'
+          $previousJsonOutput = $env:PLAYWRIGHT_JSON_OUTPUT_NAME
+          try {
+            $env:PLAYWRIGHT_JSON_OUTPUT_NAME = Join-Path $evidence 'report.json'
+            & mise exec -- aube node node_modules/@playwright/test/cli.js test -c playwright.native-relay.config.ts tests/e2e-native-relay/native-relay.spec.ts --grep "${title}$" --workers=1 --retries=0 --timeout=45000 --global-timeout=90000 --reporter=list,json "--output=$(Join-Path $evidence 'test-results')" 1> (Join-Path $evidence 'stdout.log') 2> (Join-Path $evidence 'stderr.log')
+            $testExit = $LASTEXITCODE
+          } finally { $env:PLAYWRIGHT_JSON_OUTPUT_NAME = $previousJsonOutput }
+          $testExit | Set-Content (Join-Path $evidence 'exit.txt')
+          [Console]::Out.Write([IO.File]::ReadAllText((Join-Path $evidence 'stdout.log')))
+          [Console]::Error.Write([IO.File]::ReadAllText((Join-Path $evidence 'stderr.log')))
+          $report = Get-Content -LiteralPath (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+          $specs = @($report.suites | ForEach-Object { $_.specs })
+          if ($testExit -ne 1 -or @($report.errors).Count -ne 0 -or $report.stats.unexpected -ne 1 -or $report.stats.expected -ne 0 -or $report.stats.skipped -ne 0 -or $report.stats.flaky -ne 0 -or $specs.Count -ne 1 -or $specs[0].title -cne $title -or @($specs[0].tests).Count -ne 1) {
+            throw 'The untouched-runner control must report exactly one intended failure and no infrastructure errors or skips'
+          }
+          $case = $specs[0].tests[0]
+          $results = @($case.results)
+          if ($case.expectedStatus -ne 'passed' -or $case.status -ne 'unexpected' -or $results.Count -ne 1 -or $results[0].status -ne 'failed' -or $results[0].retry -ne 0 -or @($results[0].errors).Count -ne 1) {
+            throw 'The untouched-runner control must reach only the owned-token guard'
+          }
+          $message = $results[0].errors[0].message -replace '\x1b\[[0-9;]*m', ''
+          if (($message -split '\r?\n', 2)[0] -cne 'Error: NATIVE_RELAY_INTEGRITY: expected rid=8192 elevated=false; measured rid=12288 elevated=true') {
+            throw 'Only the exact measured High/elevated integrity rejection satisfies this control'
+          }
+          $attachments = @($results[0].attachments | Where-Object { $_.name -eq 'native-candidate.json' -and $_.contentType -eq 'application/json' })
+          if ($attachments.Count -ne 1 -or $attachments[0].body -isnot [string]) { throw 'The integrity control must retain its Buffer attachment body' }
+          $candidate = [Text.UTF8Encoding]::new($false, $true).GetString([Convert]::FromBase64String($attachments[0].body)) | ConvertFrom-Json
+          if ($candidate.sourceHead -cne $env:GITHUB_SHA -or $candidate.expectedBuildSha -cne $env:GITHUB_SHA -or $candidate.exeSha256 -cne $build.executable_sha256 -or $candidate.locks.cargo -cne $build.cargo_lock_sha256 -or $candidate.locks.aube -cne $build.aube_lock_sha256 -or $candidate.process.processId -le 0 -or $candidate.process.startedAt -le 0 -or $candidate.process.executable -cne '<release-exe>' -or $candidate.process.integrity.rid -ne 12288 -or $candidate.process.integrity.elevated -isnot [bool] -or $candidate.process.integrity.elevated -ne $true -or $null -ne $candidate.window -or $null -ne $candidate.runtime -or $candidate.cleanup.ownedTreeExited -ne $true -or $candidate.cleanup.requestedStorageRemoved -ne $true -or $candidate.cleanup.profileRemoved -ne $false) {
+            throw 'The High control must retain the original candidate/token and owned-tree/requested-storage cleanup; its default WebView profile is unverified'
+          }
+          if ((Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant() -cne $build.executable_sha256) { throw 'The original executable changed during the integrity control' }
+          exit 0
+
+      - name: Prove a permissive policy fails the negative tests
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $negativeRoot = Join-Path $env:RUNNER_TEMP 'native-policy-negative'
+          git worktree add --detach $negativeRoot $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create the isolated negative checkout' }
+          Copy-Item dist-relay (Join-Path $negativeRoot 'dist-relay') -Recurse
+          $policy = Join-Path $negativeRoot 'native/desktop/src/navigation.rs'
+          Set-Content -LiteralPath $policy -Encoding utf8 -Value 'pub(crate) fn navigation_allowed(_url: &tauri::Url) -> bool { true }'
+          Push-Location (Join-Path $negativeRoot 'native/desktop')
+          try {
+            $output = & mise exec -- cargo test --release --locked --target-dir target --test navigation 2>&1
+            $testExit = $LASTEXITCODE
+          } finally {
+            Pop-Location
+          }
+          New-Item -ItemType Directory -Force .tmp/native-relay-evidence | Out-Null
+          $output | Set-Content .tmp/native-relay-evidence/permissive-policy.log
+          $output | Write-Output
+          if ($testExit -eq 0 -or ($output -join "`n") -notmatch 'test .*rejects.*FAILED') {
+            throw 'The permissive mutation must compile and fail a navigation denial assertion'
+          }
+          exit 0
+
+      - name: Prove an added IPC permission fails the generated-authority test
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $negativeRoot = Join-Path $env:RUNNER_TEMP 'native-policy-negative'
+          $configPath = Join-Path $negativeRoot 'native/desktop/tauri.conf.json'
+          $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+          $config.app.security.capabilities[0].permissions = @('core:app:allow-version')
+          $config | ConvertTo-Json -Depth 32 | Set-Content -LiteralPath $configPath -Encoding utf8
+          Push-Location (Join-Path $negativeRoot 'native/desktop')
+          try {
+            $output = & mise exec -- cargo test --release --locked --target-dir target --test acl 2>&1
+            $testExit = $LASTEXITCODE
+          } finally {
+            Pop-Location
+          }
+          $output | Set-Content .tmp/native-relay-evidence/added-permission.log
+          $output | Write-Output
+          if ($testExit -eq 0 -or ($output -join "`n") -notmatch 'test denies_frontend_commands_in_generated_context .*FAILED') {
+            throw 'The added permission must compile and fail the generated authority assertion'
+          }
+          exit 0
+
+      - name: Prove missing hide forwarding fails the native DOM assertion
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $negativeRoot = Join-Path $env:RUNNER_TEMP 'native-policy-negative'
+          $evidence = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/hide-negative'
+          New-Item -ItemType Directory -Force $evidence | Out-Null
+          $inputs = @(git ls-files -- native/desktop)
+          if ($LASTEXITCODE -ne 0 -or $inputs.Count -eq 0) { throw 'Cannot identify the original native inputs' }
+          foreach ($inputPath in $inputs) {
+            Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE $inputPath) -Destination (Join-Path $negativeRoot $inputPath) -Force
+          }
+          git -C $negativeRoot diff --exit-code -- native/desktop
+          if ($LASTEXITCODE -ne 0) { throw 'The hide control must start from the original tracked native inputs' }
+          $visibilityPath = Join-Path $negativeRoot 'native/desktop/src/visibility.rs'
+          $source = Get-Content -LiteralPath $visibilityPath -Raw
+          $before = @'
+                          let visible = match message {
+                              WM_SIZE => {
+                                  wparam.0 != SIZE_MINIMIZED as usize && IsWindowVisible(hwnd).as_bool()
+                              }
+                              WM_SHOWWINDOW => wparam.0 != 0 && !IsIconic(hwnd).as_bool(),
+                              _ => IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool(),
+                          };
+          '@
+          $before = $before.Replace("`r`n", "`n")
+          if ($source.Contains("`r`n")) { $before = $before.Replace("`n", "`r`n") }
+          $after = '                let visible = !IsIconic(hwnd).as_bool();'
+          if ([regex]::Matches($source, [regex]::Escape($before)).Count -ne 1) {
+            throw 'Expected exactly one complete visibility-callback mutation target'
+          }
+          $originalExecutable = $env:NATIVE_RELAY_EXE
+          $originalHash = (Get-FileHash -Algorithm SHA256 $originalExecutable).Hash.ToLowerInvariant()
+          $mutation = [ordered]@{
+            source = $env:GITHUB_SHA
+            original_executable_sha256 = $originalHash
+            original_visibility_sha256 = (Get-FileHash -Algorithm SHA256 $visibilityPath).Hash.ToLowerInvariant()
+            path = 'native/desktop/src/visibility.rs'; before = $before; after = $after
+          }
+          [IO.File]::WriteAllText($visibilityPath, $source.Replace($before, $after), [Text.UTF8Encoding]::new($false))
+          $mutation.mutant_visibility_sha256 = (Get-FileHash -Algorithm SHA256 $visibilityPath).Hash.ToLowerInvariant()
+          $mutation | ConvertTo-Json | Set-Content (Join-Path $evidence 'mutation.json')
+          git -C $negativeRoot diff -- native/desktop | Set-Content (Join-Path $evidence 'mutation.diff')
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot retain the hide mutation diff' }
+          Push-Location (Join-Path $negativeRoot 'native/desktop')
+          try {
+            $output = & mise exec -- cargo build --release --locked --target-dir target 2>&1
+            $buildExit = $LASTEXITCODE
+          } finally {
+            Pop-Location
+          }
+          $output | Set-Content (Join-Path $evidence 'build.log')
+          $output | Write-Output
+          if ($buildExit -ne 0) { throw 'The hide mutation must compile successfully' }
+          $mutantExecutable = Join-Path $negativeRoot 'native/desktop/target/release/qr-crypt-relay.exe'
+          $mutation.mutant_executable_sha256 = (Get-FileHash -Algorithm SHA256 $mutantExecutable).Hash.ToLowerInvariant()
+          $mutation | ConvertTo-Json | Set-Content (Join-Path $evidence 'mutation.json')
+          if ($mutation.mutant_executable_sha256 -eq $originalHash) { throw 'The hide mutant must differ from the original executable' }
+          $title = 'OS hide ends active synthetic camera tracks and restore never resumes capture'
+          $previousJsonOutput = $env:PLAYWRIGHT_JSON_OUTPUT_NAME
+          try {
+            $env:NATIVE_RELAY_EXE = $mutantExecutable
+            $env:PLAYWRIGHT_JSON_OUTPUT_NAME = Join-Path $evidence 'report.json'
+            $env:NATIVE_RELAY_RUN_EVIDENCE = $evidence
+            $command = @'
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $env:NATIVE_RELAY_MISE exec -- aube node node_modules/@playwright/test/cli.js test -c playwright.native-relay.config.ts tests/e2e-native-relay/lifecycle.spec.ts --grep 'OS hide ends active synthetic camera tracks and restore never resumes capture$' --workers=1 --retries=0 --reporter=list,json "--output=$(Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'test-results')" 1> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log') 2> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stderr.log')
+          exit $LASTEXITCODE
+          '@
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+            & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/run-medium.ps1 -EncodedCommand $encoded -TimeoutSeconds 180
+            $testExit = $LASTEXITCODE
+          } finally {
+            $env:NATIVE_RELAY_EXE = $originalExecutable
+            $env:PLAYWRIGHT_JSON_OUTPUT_NAME = $previousJsonOutput
+            $mutation.original_executable_unchanged = (Get-FileHash -Algorithm SHA256 $originalExecutable).Hash.ToLowerInvariant() -eq $originalHash
+            $mutation | ConvertTo-Json | Set-Content (Join-Path $evidence 'mutation.json')
+            if (!$mutation.original_executable_unchanged) { throw 'The original release executable changed' }
+          }
+          $testExit | Set-Content (Join-Path $evidence 'exit.txt')
+          [Console]::Out.Write([IO.File]::ReadAllText((Join-Path $evidence 'stdout.log')))
+          [Console]::Error.Write([IO.File]::ReadAllText((Join-Path $evidence 'stderr.log')))
+          $report = Get-Content -LiteralPath (Join-Path $evidence 'report.json') -Raw | ConvertFrom-Json
+          $specs = @($report.suites | ForEach-Object { $_.specs })
+          if ($testExit -ne 1 -or @($report.errors).Count -ne 0 -or $report.stats.unexpected -ne 1 -or $report.stats.expected -ne 0 -or $report.stats.skipped -ne 0 -or $report.stats.flaky -ne 0 -or $specs.Count -ne 1 -or $specs[0].title -cne $title -or @($specs[0].tests).Count -ne 1) {
+            throw 'The hide control must report exactly one intended failing case and no infrastructure errors or skips'
+          }
+          $case = $specs[0].tests[0]
+          $results = @($case.results)
+          if ($case.expectedStatus -ne 'passed' -or $case.status -ne 'unexpected' -or $results.Count -ne 1 -or $results[0].status -ne 'failed' -or $results[0].retry -ne 0 -or @($results[0].errors).Count -ne 1 -or $results[0].errors[0].message -notmatch 'NATIVE_RELAY_HIDE_DOM:') {
+            throw 'The hide mutant must fail only the dedicated DOM-hide assertion, not startup, OS setup, timeout or cleanup'
+          }
+          $message = $results[0].errors[0].message -replace '\x1b\[[0-9;]*m', ''
+          if ($message -notmatch 'Expected:\s+"hidden"' -or $message -notmatch 'Received:\s+"visible"') {
+            throw 'The DOM-hide assertion must observe visible instead of hidden, not a failed evaluation'
+          }
+          $attachments = @($results[0].attachments | Where-Object { $_.name -eq 'native-candidate.json' -and $_.contentType -eq 'application/json' })
+          if ($attachments.Count -ne 1 -or $attachments[0].body -isnot [string]) { throw 'The hide control must retain its Buffer attachment body' }
+          $candidate = [Text.UTF8Encoding]::new($false, $true).GetString([Convert]::FromBase64String($attachments[0].body)) | ConvertFrom-Json
+          $build = Get-Content .tmp/native-relay-evidence/build.json -Raw | ConvertFrom-Json
+          if ($candidate.sourceHead -cne $env:GITHUB_SHA -or $candidate.expectedBuildSha -cne $env:GITHUB_SHA -or $candidate.exeSha256 -cne $mutation.mutant_executable_sha256 -or $candidate.locks.cargo -cne $build.cargo_lock_sha256 -or $candidate.locks.aube -cne $build.aube_lock_sha256 -or $candidate.process.processId -le 0 -or $candidate.process.startedAt -le 0 -or $candidate.process.executable -cne '<release-exe>' -or $candidate.process.integrity.rid -ne 8192 -or $candidate.process.integrity.elevated -isnot [bool] -or $candidate.process.integrity.elevated -ne $false -or $candidate.window.processId -ne $candidate.process.processId -or $candidate.window.startedAt -ne $candidate.process.startedAt -or $candidate.window.cdpOwned -ne $true -or $candidate.cleanup.ownedTreeExited -ne $true -or $candidate.cleanup.requestedStorageRemoved -ne $true -or $candidate.cleanup.profileRemoved -ne $true) {
+            throw 'The hide control must identify the Medium mutant and complete owned-process/profile cleanup'
+          }
+          exit 0
+
+      - name: Check the frozen download caller and independent report tests
+        run: |
+          mise exec -- aube node --test --test-reporter=tap tests/e2e-native-relay/download-profile/download-candidate.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen download caller tests failed' }
+          mise exec -- aube node --test --test-reporter=tap tests/e2e-native-relay/download-report.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Independent download report tests failed' }
+          mise exec -- aube node --test --test-reporter=tap tests/e2e-native-relay/download-identifiers.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Independent download identifier tests failed' }
+
+      - name: Prepare the source-bound native download helper
+        run: |
+          & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/prepare-download-harness.ps1
+          exit $LASTEXITCODE
+
+      - name: Prove the isolated download allow control fails the original assertion
+        run: |
+          & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/download-control.ps1
+          exit $LASTEXITCODE
+
+      - name: Test the actual Windows WebView2 executable
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $env:NATIVE_RELAY_RUN_EVIDENCE = Join-Path $env:GITHUB_WORKSPACE '.tmp/native-relay-evidence/medium'
+          New-Item -ItemType Directory $env:NATIVE_RELAY_RUN_EVIDENCE | Out-Null
+          $build = Get-Content .tmp/native-relay-evidence/build.json -Raw | ConvertFrom-Json
+          if ((Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant() -cne $build.executable_sha256) { throw 'The full Medium suite must use the original executable' }
+          $previousJsonOutput = $env:PLAYWRIGHT_JSON_OUTPUT_NAME
+          $previousHtmlOutput = $env:PLAYWRIGHT_HTML_OUTPUT_DIR
+          try {
+            $env:PLAYWRIGHT_JSON_OUTPUT_NAME = Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'report.json'
+            $env:PLAYWRIGHT_HTML_OUTPUT_DIR = Join-Path $env:GITHUB_WORKSPACE 'playwright-report/native-relay'
+            $command = @'
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          & $env:NATIVE_RELAY_MISE exec -- aube node node_modules/@playwright/test/cli.js test -c playwright.native-relay.config.ts --workers=1 --retries=0 --reporter=list,html,json 1> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log') 2> (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stderr.log')
+          exit $LASTEXITCODE
+          '@
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+            & $env:NATIVE_RELAY_PWSH -NoProfile -NonInteractive -File tests/e2e-native-relay/run-medium.ps1 -EncodedCommand $encoded -TimeoutSeconds 1800
+            $testExit = $LASTEXITCODE
+          } finally {
+            $env:PLAYWRIGHT_JSON_OUTPUT_NAME = $previousJsonOutput
+            $env:PLAYWRIGHT_HTML_OUTPUT_DIR = $previousHtmlOutput
+          }
+          $testExit | Set-Content (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'exit.txt')
+          [Console]::Out.Write([IO.File]::ReadAllText((Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stdout.log')))
+          [Console]::Error.Write([IO.File]::ReadAllText((Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'stderr.log')))
+          if ($testExit -ne 0) { exit $testExit }
+          $report = Get-Content -LiteralPath (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'report.json') -Raw | ConvertFrom-Json
+          if (@($report.errors).Count -ne 0 -or $report.stats.expected -ne 18 -or $report.stats.unexpected -ne 0 -or $report.stats.skipped -ne 0 -or $report.stats.flaky -ne 0) {
+            throw 'The original Medium executable must pass all 18 cases without skips, retries or infrastructure errors'
+          }
+          mise exec -- aube node tests/e2e-native-relay/download-report.mjs (Join-Path $env:NATIVE_RELAY_RUN_EVIDENCE 'report.json') .tmp/native-relay-evidence/download-profile/expected-original.json
+          if ($LASTEXITCODE -ne 0) { throw 'Original download evidence rejected' }
+          if ((Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant() -cne $build.executable_sha256) { throw 'The original executable changed during the full Medium suite' }
+          exit 0
+
+      - name: Retain native verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-relay-windows-evidence-${{ github.sha }}
+          include-hidden-files: true
+          path: |
+            .tmp/native-relay-evidence
+            test-results
+            playwright-report/native-relay
+            native/desktop/Cargo.lock
+            native/desktop/tauri.conf.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Stage the verified Windows manual E2E kit
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'native-relay-manual-kit'
+          if (Test-Path -LiteralPath $stage) { throw 'Manual kit staging must be fresh' }
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item -LiteralPath $env:NATIVE_RELAY_EXE -Destination (Join-Path $stage 'qr-crypt-relay.exe')
+          Copy-Item -LiteralPath .tmp/native-relay-evidence/build.json -Destination $stage
+          Get-ChildItem -LiteralPath tests/manual/native-relay -File | Copy-Item -Destination $stage
+          @'
+          import assert from "node:assert/strict"
+          import { createHash } from "node:crypto"
+          import { readFileSync, readdirSync } from "node:fs"
+          import { join } from "node:path"
+          const stage = process.argv[2]
+          const read = name => readFileSync(join(stage, name))
+          const sha = bytes => createHash("sha256").update(bytes).digest("hex")
+          const build = JSON.parse(read("build.json"))
+          const manifest = JSON.parse(read("manifest.json"))
+          assert.match(process.env.GITHUB_SHA, /^[a-f0-9]{40}$/)
+          assert.equal(build.source, process.env.GITHUB_SHA, "EXE build source")
+          assert.equal(sha(read("qr-crypt-relay.exe")), build.executable_sha256, "staged original EXE")
+          assert.equal(sha(readFileSync(process.env.NATIVE_RELAY_EXE)), build.executable_sha256, "preserved original EXE")
+          assert.equal(manifest.fixture, "tests/fixtures/relay-messages.ts")
+          assert.equal(sha(readFileSync(manifest.fixture)), manifest.fixtureSha256, "sample fixture source")
+          assert.equal(manifest.synthetic, true)
+          assert.equal(manifest.containsRealKeysOrPlaintext, false)
+          assert.equal(manifest.cryptographicallyValid, false)
+          const names = ["qr-crypt-relay.exe", "build.json", "README-ja.md", "manifest.json"]
+          for (const file of manifest.files) {
+            assert.match(file.name, /^[a-z0-9-]+\.(?:txt|png|html)$/)
+            assert.ok(!names.includes(file.name), "duplicate sample")
+            names.push(file.name)
+            const bytes = read(file.name)
+            assert.equal(bytes.length, file.bytes, file.name)
+            assert.equal(sha(bytes), file.sha256, file.name)
+          }
+          const entries = readdirSync(stage, { withFileTypes: true })
+          assert.ok(entries.every(entry => entry.isFile()), "flat regular files only")
+          assert.deepEqual(entries.map(entry => entry.name).sort(), names.sort())
+          console.log("Verified original EXE, source and manual sample bytes")
+          '@ | Set-Content .tmp/native-relay-evidence/check-manual-kit.mjs
+          mise exec -- aube node .tmp/native-relay-evidence/check-manual-kit.mjs $stage
+          if ($LASTEXITCODE -ne 0) { throw 'Manual kit identity check failed' }
+
+      - name: Retain the verified developer executable
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-relay-windows-developer-${{ github.sha }}
+          path: ${{ runner.temp }}/native-relay-manual-kit
+          if-no-files-found: error
+          retention-days: 14
+
+  dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: native/desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up project tools
+        uses: jdx/mise-action@f10502fc09dadecfefb962fff68ce77213930204 # v4.2.2
+        with:
+          install: true
+          cache: false
+
+      - name: Install the scoped Rust toolchain
+        run: mise install
+
+      - name: Install the exact audit tool
+        run: mise exec -- cargo install cargo-audit --version 0.22.2 --locked
+
+      - name: Install the exact license and source checker
+        run: mise exec -- cargo install cargo-deny --version 0.20.2 --locked
+
+      - name: Audit the entire lockfile
+        run: mise exec -- cargo audit --file Cargo.lock
+
+      - name: Check the Windows dependency graph
+        run: mise exec -- cargo deny --locked check

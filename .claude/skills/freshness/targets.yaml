@@ -17,13 +17,13 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-11-03 # last revision of this registry itself
+updated: 2026-11-05 # last revision of this registry itself
 
 units:
   - id: deps
     category: dependencies
     cadence_days: 14
-    last_checked: 2026-09-12
+    last_checked: 2026-11-03
     files:
       - package.json
       - aube-lock.yaml
@@ -82,13 +82,296 @@ units:
       not the asset directory. Detecting git from the asset directory would
       turn dev production uploads into preview deployments.
     verify: aube ci && aube run typecheck && aube run lint && aube run test && aube run build:prod && aube -C deploy ci && aube -C deploy audit
-    sync: [threat-model, security-review]
+    sync: [threat-model, security-review, relay-bundle]
+
+  - id: relay-bundle
+    category: build-policy
+    cadence_days: 14 # also triggered by dependency or relay build-graph changes
+    last_checked: 2026-11-03
+    files:
+      - vite.relay.config.ts # standalone build, CSP derivation, and fail-closed inventory/worker plugins
+      - scripts/relay-bundle-allowlist.mjs # exact module, query, output, inert-origin, and URL-template inventory
+      - scripts/relay-bundle-allowlist.d.mts # declaration companion for the checker
+      - tests/unit/relay-bundle-allowlist.test.ts # positive inventory and rejection boundaries
+      - tests/integration/relay-bundle-build.test.ts # final output and injected-plugin rejection builds
+    why: >
+      The relay's measured source, package, virtual-module, query-import,
+      output, inert URL-origin, and URL-template inventories drift when dependencies or
+      build tooling change.
+    method: |
+      Re-measure the standalone relay build's module graph and emitted files.
+      Review every inventory change against the relay's storage, boot, worker,
+      feature, and crypto exclusions. Permit a URL origin only with a reason
+      showing why its literals can never be loaded as resources. Permit a
+      URL template only through an exact normalized-template entry with a reason.
+      Keep the checker implementation and declarations in step. Do not stamp a seed
+      inventory that has not yet been measured against the relay build.
+    verify: |
+      make test-one FILE=tests/unit/relay-bundle-allowlist.test.ts
+      make test-one FILE=tests/integration/relay-bundle-build.test.ts
+      aube run typecheck
+      aube run lint
+      aube run build:relay
+
+  - id: native-relay-host
+    category: native-policy
+    cadence_days: 30 # also before a native candidate or supported-floor change
+    last_checked: 2026-11-05
+    files:
+      - docs/spec/native-relay.md # host contract, lifecycle floor, and unmeasured release gates
+      - docs/locales/ja/spec/native-relay.md # equivalent Japanese contract
+      - docs/develop/native-spikes/g0r-20261025.md # historical evidence; recheck links, never rewrite measurement dates
+      - native/desktop/tauri.conf.json # exact origin, inline zero-permission capability, embedded frontend
+      - native/desktop/src/main.rs # navigation, popup/download denial and one main window
+      - native/desktop/src/navigation.rs # platform origin, credentials and port boundary
+      - native/desktop/src/request_policy.rs # pre-navigation HTTP(S) filters and local denial
+      - native/desktop/src/visibility.rs # actual Win32 lifecycle propagation; recheck locked Wry behavior
+      - native/desktop/tests/navigation.rs # exact-origin behavior, including parsed URL normalization
+      - native/desktop/tests/acl.rs # actual generated context; recheck pinned Tauri authority API
+      - tests/unit/native-relay-host.test.ts # parsed config intent, separate from runtime enforcement
+      - tests/e2e-native-relay/native-fixture.ts # actual EXE, source/asset identity, process ownership and request observation
+      - tests/e2e-native-relay/launcher.ts # fail-closed platform/path/SHA and owned-process setup
+      - tests/e2e-native-relay/launcher.spec.ts
+      - tests/e2e-native-relay/native-relay.spec.ts # native clipboard content and real WASM decoding of synthetic camera pixels
+      - tests/e2e-native-relay/lifecycle.spec.ts # OS minimize/restore, active and pending work
+      - tests/e2e-native-relay/policy.spec.ts # actual navigation, popup, download and IPC denial
+      - tests/e2e-native-relay/download-candidate.ts
+      - tests/e2e-native-relay/download-io.ts
+      - tests/e2e-native-relay/download-storage.ps1
+      - tests/e2e-native-relay/prepare-download-harness.ps1
+      - tests/e2e-native-relay/download-control.ps1
+      - tests/e2e-native-relay/download-report.mjs
+      - tests/e2e-native-relay/download-report.test.mjs
+      - tests/e2e-native-relay/download-identifiers.test.mjs
+      - tests/e2e-native-relay/download-profile/main.rs
+      - tests/e2e-native-relay/download-profile/protocol.rs
+      - tests/e2e-native-relay/download-profile/protocol_tests.rs
+      - tests/e2e-native-relay/download-profile/win.rs
+      - tests/e2e-native-relay/download-profile/helper.rs
+      - tests/e2e-native-relay/download-profile/observe.rs
+      - tests/e2e-native-relay/download-profile/tauri.conf.json
+      - tests/e2e-native-relay/download-profile/download-candidate.test.mjs
+      - tests/unit/native-download-parent.test.ts # independent synchronous allocation/retention contract
+      - tests/e2e-native-relay/synthetic-camera.ts # test-side pixel source, never a physical-camera claim
+      - tests/e2e-native-relay/windows.ps1 # test-side native window/process and clipboard APIs
+      - tests/e2e-native-relay/run-medium.ps1 # CI-only own-token launch, job ownership and bounded cleanup
+      - tests/e2e-native-relay/medium-launcher-timeout.ps1 # independent Windows deadline/tree cleanup control
+      - tests/fixtures/relay-messages.ts # shared synthetic protocol fixtures, never product imports
+      - tests/manual/native-relay/README-ja.md # Windows 11 x64 manual E2E and synthetic-only scope
+      - tests/manual/native-relay/manifest.json # historical fixture provenance and exact sample bytes
+      - tests/manual/native-relay/sym-message.txt
+      - tests/manual/native-relay/pq-message.txt
+      - tests/manual/native-relay/rejected-non-message.txt
+      - tests/manual/native-relay/sym-frame-1.png
+      - tests/manual/native-relay/pq-frame-1.png
+      - tests/manual/native-relay/pq-frame-2.png
+      - tests/manual/native-relay/qr-samples.html
+    why: >
+      Supported OS/runtime maintenance, native host defaults, response-policy
+      differences, and the boundary between measured and pending gates can drift.
+    method: |
+      Reconcile English/Japanese host requirements against the current relay
+      composition, local session, reader readiness, visible warnings, language
+      persistence and system theme. Check official Windows lifecycle and WebView2
+      servicing sources; a numeric floor does not permit an unmaintained release.
+      Inspect the exact selected native framework's origin, capability and
+      lifecycle defaults when a shell is introduced or its pin changes.
+      Check hidden blank bootstrap and request-filter registration before the
+      first application navigation; require all HTTP(S) contexts/source kinds,
+      exact-origin admission, local empty rejection and fail-closed API errors.
+      Preserve owned-sink and passive request/response/failure evidence even
+      when a native policy assertion fails. A retained page is not no-egress.
+      Keep zero owned-sink hits. For the measured Windows navigation path,
+      require one exact GET/null-body attempt and the ordered request,
+      local403 response and ERR_ABORTED events, with complete bounded metadata
+      and the six DNS/connect/request-start timing fields at -1. Popup has no
+      external requests/events. Never substitute silent navigation, a missing
+      response or a CDP event alone for measured rejection/server contact.
+      Attach CDP with noDefaults so focus emulation cannot mask OS visibility.
+      Native text comparisons retain exact Windows CRLF and every frame byte.
+      Compare manual sample text with loadRelayMessages, decode all three PNGs
+      with the existing E2E decoder, and verify the manifest's fixture/sample
+      hashes and byte counts. Preserve the TXT bytes through Git checkout.
+      Keep Japanese instructions aligned with visible controls and synthetic-only
+      framing/camera/clipboard scope. Historical sample provenance is separate
+      from the source and hash of the original EXE in build.json.
+      Do not claim native download denial from CDP allow/deny overrides or
+      an empty unused directory; native-default observation needs a verified
+      owned destination/profile and a discriminating compiled control.
+      The explicit native-e2e helper target is absent from default Cargo builds
+      and the manual kit. Recheck its locked WebView2 set/close/read APIs, current
+      input manifest and selected-host hashes, linked application-manifest equality,
+      old-arity/relative-parent controls, actual Medium token/job trace and normal
+      helper exit/pipe EOF before receipt transfer. Preserve the NDL0_READY v1
+      nonce/PID/exact-child contract and the 80s work/90s total/45s preparation caps.
+      Validate all required inputs before synchronous parent allocation; retain the
+      exact created path before a post-creation deadline check. Carry failure into
+      the existing supervisor, block launch, and report separate primary/cleanup
+      failures and actual removal/retention. Never delete uncertain storage.
+      Keep one browser session at native default with events enabled/no path,
+      complete bounded before/final GUID and no-reparse inventory observations,
+      recomputed receipt/classifications and independently proved process/storage
+      cleanup. The isolated download-allow mutant uses the same original denial
+      assertion, a completed GUID and the exact contained 27-byte inert payload.
+      Preserve independent frozen caller/report/parent/protocol tests. A report
+      status/assertion alone or an old failed diagnostic is not native acceptance.
+      Keep native/package/physical gates explicitly pending until evidence identifies
+      their actual source, artifact hash, OS/runtime and measured operation.
+      Historical G0r results keep their original dates, failures and clipboard/camera
+      limitations; link revalidation is not a repeated native measurement.
+      Keep the device prohibition and ambient-camera warning consistent in both
+      READMEs, both Route A procedures, INSTALL.template.txt, threat-model and
+      security-review. Do not turn IPC denial into an OS network/sandbox claim.
+      Compare native fixture observations with actual embedded assets, compiled
+      authority and linked manifest. Test-side CDP/profile/window/clipboard operations
+      must belong to the spawned candidate. Missing Windows execution or clipboard
+      content is an incomplete gate, never a blanket skip or a browser substitute.
+      Before CDP, measure the directly spawned EXE's TokenIntegrityLevel RID and
+      TokenElevation using TOKEN_QUERY on its held, path/start-validated process
+      handle; retain PID/start/token evidence even for rejection and close/free
+      token handles/buffers. Require native.integrity {rid:8192,elevated:false}.
+      The single untouched-runner identity control must fail only the immediate
+      NATIVE_RELAY_INTEGRITY guard with measured RID12288/elevatedtrue, original
+      source/EXE/locks and owned-tree/requested-storage cleanup. An ignored default
+      WebView profile remains unverified; requested-temp removal is not its cleanup.
+      Then require all 18 current cases on the original EXE under measured Medium,
+      and the assertion-only compiled hide control under the same launcher chain.
+      Use the measured own-primary-token CreateRestrictedToken flags0x5 path,
+      lower only the new token to Medium and validate its non-elevated state.
+      Preserve its default DACL's entries/order and append a non-inheritable
+      GENERIC_ALL allow for its actual TokenUser SID, then verify readback;
+      reject null/invalid/oversized data or API failure. This private new-token
+      default addresses the measured administrator-default pipe failure, without
+      changing any existing filesystem, desktop or process ACL.
+      The suspended child must join a private kill-on-close job before resuming;
+      reject assignment/resume/wait/cleanup errors without elevated-token fallback.
+      Require the independent launcher deadline control to verify the complete
+      owned tree is gone before timeout124, without PID/name-only termination.
+      Decode the pinned Playwright JSON reporter's Buffer attachment from Base64
+      body, not a path. API/parse/access/startup failures cannot satisfy a control.
+    verify: |
+      aube run test -- tests/unit/relay-bundle-allowlist.test.ts tests/ui/relay-app.test.tsx
+      aube run test -- tests/unit/generate-install-txt.test.ts tests/unit/release-static-package.test.ts
+      Verify every relative link in both host contracts, the G0r record and affected
+      entry documents. Compare EN/JA sections and the cited lifecycle dates manually.
+      Record pending native, package and physical measurements without stamping
+      those unexecuted checks as passed.
+    sync: [threat-model, security-review, ui-security-copy, readme]
+
+  - id: native-relay-deps
+    category: dependencies
+    cadence_days: 14 # also before a native candidate or dependency/toolchain change
+    last_checked: 2026-11-05
+    files:
+      - native/desktop/Cargo.toml # exact direct native pins and minimal features
+      - native/desktop/Cargo.lock # resolved registry origins, checksums and transitive versions
+      - native/desktop/mise.toml # Rust toolchain scoped to the desktop shell
+      - native/desktop/deny.toml # source/license policy; no advisory or unknown-license bypass
+      - native/desktop/build.rs # native build-time entry point
+      - tests/e2e-native-relay/download-profile/main.rs
+      - tests/e2e-native-relay/download-profile/protocol.rs
+      - tests/e2e-native-relay/download-profile/protocol_tests.rs
+      - tests/e2e-native-relay/download-profile/win.rs
+      - tests/e2e-native-relay/download-profile/helper.rs
+      - tests/e2e-native-relay/download-profile/observe.rs
+      - tests/e2e-native-relay/download-profile/tauri.conf.json
+      - tests/e2e-native-relay/prepare-download-harness.ps1 # explicit locked helper build and manifest/source identity
+      - docs/develop/development.md # native build and pinned audit-tool commands
+    why: >
+      Native framework defaults, WebView2/Win32 bindings, transitive build scripts,
+      licenses, advisories and the Rust/audit toolchain decay independently of
+      the JavaScript graph. Source checks do not establish Windows runtime behavior.
+    method: |
+      Check official release/advisory and pinned source evidence for Tauri,
+      tauri-build, the locked Wry/Tao, Windows bindings and Rust toolchain.
+      Run cargo metadata --locked; inspect direct/transitive source origins,
+      target reachability, enabled features, build scripts and licenses.
+      Use cargo-audit 0.22.2 and cargo-deny 0.20.2 without advisory ignores or
+      unknown-license exceptions. Record maintenance and soundness notices
+      separately from vulnerability errors with dated target reachability.
+      Rebuild the relay with its full source SHA and compile/test the release
+      shell on Windows. Inspect generated ACL/resource manifest and exercise
+      actual denied IPC, navigation/popups/downloads, native minimize/hide/restore,
+      camera teardown and clipboard content. Keep physical/package gates pending.
+    verify: |
+      mise exec -- aube run typecheck
+      mise exec -- aube run lint
+      mise exec -- aube run build:relay
+      From native/desktop with the scoped toolchain:
+      cargo fmt -- --check
+      cargo metadata --locked --format-version 1
+      cargo audit
+      cargo deny --locked check
+      On Windows: cargo test --release --locked --target-dir target
+      and cargo build --release --locked --target-dir target.
+      Use .github/workflows/native-relay.yml for the automated Windows gate:
+      it records build/selected-host/linked-manifest identities, prepares/tests the
+      explicit native-e2e helper, then checks the isolated download control and
+      original exact18 suite. A direct Playwright command omits prerequisites.
+      The native workflow's isolated permissive-navigation and added-IPC-permission
+      controls must compile and fail their intended assertions, not fail setup.
+      Run the actual Windows native gate with this candidate's full source SHA;
+      no stamp until the generated ACL/manifest and required runtime checks pass.
+    sync: [native-relay-host, threat-model, security-review]
+
+  - id: native-relay-distribution-docs
+    category: docs
+    cadence_days: 30 # also before submission or a privacy/release-record change
+    last_checked: 2026-11-04
+    files:
+      - docs/privacy/native-relay.md # English dedicated-relay notice
+      - docs/locales/ja/privacy/native-relay.md # equivalent Japanese notice
+      - public/about/native-relay-privacy.html # prepared English policy page
+      - public/about/native-relay-privacy-ja.html # equivalent Japanese page
+      - docs/develop/native-relay-distribution.md # listing drafts, fixed-peer ledger and account/publication prerequisites
+    why: >
+      Privacy claims, listing text, Store/account guidance and release records
+      must match the actual app, submitted package and retained evidence.
+    method: |
+      Compare both privacy notices with the dedicated relay entry, session,
+      camera, clipboard, language persistence and host contract. Include input
+      before validation and camera surroundings; distinguish app-managed storage
+      from OS/runtime/clipboard copies and memory cleanup from erasure.
+      Keep both languages' three warnings and visible metadata disclosure aligned
+      with the catalogs. Store-copy fields exclude beta/experimental/test/demo
+      under project policy; development annotations stay outside those fields.
+      For every candidate/public release and fixed counterpart, require Store,
+      edition, version, Store build number, full source SHA, active wire format,
+      artifact identity/hash, exact runtime/platform, Route A verification and
+      installation-approval state. Bind both-direction sym/PQ/multiframe,
+      signature/package, submission/manual-hold/staged-rollout, physical and
+      publication records to evidence. No public tag or synthetic fixture alone
+      is an approved counterpart. No completed native rows without evidence.
+      Check official Store/account links actually cited and date the guidance;
+      do not invent contact, identity, credential/recovery or publication facts.
+      Reconcile developer-EXE evidence with the separate native browser-matrix
+      section while retaining unmeasured client/package/physical gates.
+      Keep the two static HTML pages semantically aligned with their Markdown
+      notices, including warnings, metadata, storage and platform boundaries.
+      Verify actual copied page content, reciprocal language links and assets;
+      no app script, event handler or API belongs in these documents. Preserve
+      their exclusion from offline precache, app-shell navigation fallback,
+      offline release ZIP and the dedicated relay bundle. Cache exclusion does
+      not promise absence of browser/HTTP caches or same-origin isolation.
+    verify: |
+      Verify relative links and English/Japanese semantic agreement; inspect each
+      privacy claim against source and every completed ledger field against its
+      retained source/artifact evidence. Reject unsupported completed states,
+      invented contacts or no-network/erasure assurances. Explicit pending facts
+      may pass document-consistency review but never count as Store readiness.
+      Preserve existing PWA measurements, compatibility invariants and product,
+      dependency, lock and workflow bytes. Record actual official-source check
+      dates and any unavailable guidance. Stamp only after these checks pass.
+      Inspect desktop and narrow pages with JavaScript disabled, keyboard/skip
+      navigation and no horizontal overflow; inspect static source separately
+      for scripts and unexpected resource references. Confirm built-page content
+      and cache/package/relay exclusion, not just an HTTP success status.
 
   - id: crypto-noble
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md
     category: crypto
     cadence_days: 90 # also triggered by any @noble/post-quantum advisory/release
-    last_checked: 2026-09-12
+    last_checked: 2026-11-03
     files:
       - package.json # "@noble/post-quantum" exact pin
       - aube-lock.yaml # frozen graph must move with the pin
@@ -115,7 +398,7 @@ units:
   - id: toolchain
     category: dependencies
     cadence_days: 30
-    last_checked: 2026-07-25
+    last_checked: 2026-11-03
     files:
       - mise.toml # node / aube pins
       - docs/develop/development.md # duplicates the pinned versions in prose
@@ -135,16 +418,29 @@ units:
   - id: ci-actions
     category: dependencies
     cadence_days: 60
-    last_checked: 2026-09-07
+    last_checked: 2026-11-05
     files:
       - .github/workflows/cloudflare-pages.yml
       - .github/workflows/dev-to-main-pr.yml
       - .github/workflows/github-release.yml
       - .github/workflows/security-maintenance.yml # scheduled/manual read-only advisory and assessed-pin checks; integration-owned
+      - .github/workflows/native-relay.yml # actual Windows developer EXE and strict native dependency checks
+      - .gitattributes # preserve exact CRLF bytes for the manual relay TXT samples
+      - tests/manual/native-relay/manifest.json # source/hash-bound samples staged with the original EXE
+      - tests/e2e-native-relay/run-medium.ps1 # Win32 own-token launcher and private job lifecycle
+      - tests/e2e-native-relay/medium-launcher-timeout.ps1 # independent launcher timeout control, outside Playwright discovery
+      - tests/e2e-native-relay/prepare-download-harness.ps1
+      - tests/e2e-native-relay/download-control.ps1
+      - tests/e2e-native-relay/download-report.mjs
+      - tests/e2e-native-relay/download-report.test.mjs
+      - tests/e2e-native-relay/download-identifiers.test.mjs
+      - eslint.config.js # narrow Node globals for unchanged native harness MJS tests
       - scripts/check-assessed-releases.sh # exact Noble/decoder pins versus official latest releases; fail-closed signal
       - tests/unit/assessed-release-check.test.ts # both exact pins, invalid API/pin data, request failures, and independent checks
       - tests/fixtures/assessed-release-gh.py # offline official-release responses and real jq extraction
       - playwright.config.ts # no-build artifact root, isolated port, and server lifecycle contract
+      - playwright.relay.config.ts # isolated relay port, header-less server, and mobile browser project
+      - playwright.native-relay.config.ts # actual Windows EXE through test-side CDP, one worker and no retries
       - tests/e2e/release-artifact.spec.ts # real healthy/damaged artifact boot, trace pageError, and unchanged original control
       - tests/fixtures/artifact-browser.ts # isolated child ports, bounded processes, tree digests, and trace evidence
       - scripts/release/check-packaged-responses.mjs # archived JS/CSS/WASM and sentinel/CSP/MIME responses; integration-owned
@@ -190,8 +486,59 @@ units:
       docs/develop/install-route-a/README.md holds the complete Route A Cosign /
       rebuild procedure while the README publishes only a summary plus a link.
     method: |
-      Review all four workflows, scripts/check-assessed-releases.sh, playwright.config.ts,
+      Review all workflows, scripts/check-assessed-releases.sh, playwright.config.ts,
+      playwright.relay.config.ts, playwright.native-relay.config.ts,
       and the scripts/release programs they invoke.
+      Native Windows checks use a release EXE, locked Cargo graph and full source SHA,
+      no reusable caches or signing/store secrets. Keep mutation checkouts/targets
+      separate from the EXE under test; require assertion failures for both negative
+      controls. Retain EXE/lock hashes, actual linked manifest, generated ACL inputs
+      and runtime reports. Native developer artifacts do not establish package or
+      physical-release gates. Review the Linux-hosted Windows-target dependency job
+      separately from full-lock informational advisory notices.
+      Stage the manual kit only after the complete native gate, using the preserved
+      original EXE and build.json plus the static manual files. Verify the staged
+      EXE/source against the recorded build and current commit, and the manifest's
+      fixture/sample hashes before the success-only developer upload. Check flat
+      artifact membership and unchanged TXT bytes after Git storage/checkout.
+      The Japanese guide must distinguish sample provenance from EXE identity.
+      The native CI-only run-medium.ps1 uses the measured own-primary-token
+      CreateRestrictedToken LUA_TOKEN|DISABLE_MAX_PRIVILEGE flags0x5 path and
+      lowers only the new token to Medium. Preserve all default-DACL entries/order,
+      append one non-inheritable GENERIC_ALL allow for the actual TokenUser SID
+      on that private new token only, and verify readback. Reject null, malformed,
+      oversized or failed queries/setters. No existing filesystem/desktop/process
+      ACL changes. Recheck official Win32 token/process/job
+      contracts, API outputs and cleanup when this launcher changes. Open only the
+      current process token with necessary rights; validate the new token's Medium
+      integrity and non-elevated state before CreateProcessAsUserW of the absolute
+      selected pwsh. Use canonical UTF16LE/Base64, bounded command length/wait,
+      checkout CWD and inherited same-user environment/desktop. Assign the suspended
+      child to a private non-inherited kill-on-close job before resume; no breakaway,
+      PID/name-only termination, token fallback or account/UAC/registry changes.
+      Preserve exact normal child exits, including37; terminate and verify the
+      complete owned tree before timeout124 with NATIVE_RELAY_LAUNCH_TIMEOUT:.
+      Preserve primary errors and surface cleanup errors; close/free all owned
+      handles/buffers. Require the independent medium-launcher-timeout.ps1 control
+      separately from unchanged Playwright discovery18. Retain launcher source and
+      selected pwsh/tool hashes, preserving direct EXE ownership.
+      Before native invocations, the same command chain must prove checkout CWD,
+      selected mise and pinned aube/Node, distinct stdout/stderr and exact exit37;
+      capture inside the Medium child and read both streams back in the parent.
+      Do not use broad environment copying, global install/config/profile,
+      credentials, sandbox-inert flags, existing-object ACL grants or product automation hooks.
+      Retain build/manifest identity before any later control failure, High-control
+      token/cleanup, Medium baseline and assertion-only hide mutation evidence separately.
+      Require actual Windows results for all 18 cases and High/hide/download
+      runtime controls, alongside navigation/ACL and launcher controls. Retain
+      source-bound helper inputs/EXE/linked manifest, parent traces, normal exit/EOF,
+      original/mutant EXE and lock identities, complete download observations and
+      independently proved drainage/removal. The shared report validator accepts
+      omitted leaf suites but rejects malformed reports, duplicate targets,
+      retries/skips/flakiness, unrelated failures and contradictory evidence.
+      Keep always-upload evidence and success-only original manual-kit staging
+      after every gate; the helper never enters the kit. Linux discovery, launcher
+      probes and source/digest review cannot stamp actual Windows checks.
       Check each action repository for newer majors and security advisories.
       Keep release-workflow actions pinned to full SHAs;
       verify tag-backed SHAs against their exact documented releases, peeling
@@ -201,7 +548,8 @@ units:
       embedded/requested Cosign 3.1.3 equality and the vetted hardcoded Linux
       amd64 digest against official release metadata/checksums. The hash check
       must precede execution, without the old affected bootstrap bundle parser;
-      latest tagged installer v4.1.2 remains affected. Review the pinned
+      installer v4.1.2 retains the affected bootstrap. Installer v4.1.3 embeds
+      Cosign 3.1.4 and was assessed on 2026-11-05 but is not selected. Review the pinned
       Cosign release, verifier image digest, and verification contract. Keep
       deploy/package.json's exact Wrangler pin, deploy/aube-lock.yaml importer,
       deployment docs, and validate's version smoke exactly equal. Assess the
@@ -285,6 +633,7 @@ units:
       aube run test -- tests/unit/release-packaged-pwa.test.ts tests/unit/release-tested-archive.test.ts tests/unit/assessed-release-check.test.ts
       aube run test:e2e -- tests/e2e/release-artifact.spec.ts --workers=1 --retries=0
       aube run test:e2e
+      aube run test:e2e:relay
       After packaging the integrated tree with package-static-pwa.sh, set
       RUNNER_TEMP to its absolute staging directory, ARCHIVE_NAME to its ZIP
       basename, and GITHUB_OUTPUT to the gate output file, then run:
@@ -336,7 +685,7 @@ units:
   - id: threat-model
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-11-03
+    last_checked: 2026-11-05
     files:
       - docs/security/threat-model.md
       - src/app/boot/boot-controller.ts # T19 protected admission versus display-only eligibility
@@ -432,7 +781,7 @@ units:
   - id: security-review
     category: security-knowledge
     cadence_days: 30 # and before every release candidate
-    last_checked: 2026-11-03
+    last_checked: 2026-11-05
     files:
       - docs/security/security-review.md
       - public/_headers # CSP claims recorded in §1 (script-src tokens)
@@ -695,10 +1044,11 @@ units:
   - id: ui-security-copy
     category: security-knowledge
     cadence_days: 90
-    last_checked: 2026-11-03
+    last_checked: 2026-11-05
     files:
       - src/i18n/catalog-en.ts # canonical disclosure copy, en (settings.security.*, gate.*, offlineAck.*, keys.* banners)
       - src/i18n/catalog-ja.ts # the same disclosure copy, ja; both locales move together
+      - src/relay/relay-app.tsx # always-visible device-separation, ambient-camera, and audit notice
       - src/pages/settings-confirmations.ts # exact destructive ceremony phrases mirrored in both catalogs
       - src/pages/settings-page.tsx # "About security" disclosures (renders catalog keys)
       - src/app/maintenance-token.tsx # persistent armed-token warning and disarm copy on offline routes
@@ -736,7 +1086,10 @@ units:
     method: |
       Diff the disclosure copy (src/i18n/catalog-en.ts and catalog-ja.ts) against
       docs/security/security-review.md and docs/security/threat-model.md; update banners when
-      audit/release status moves. Check the rendered disclosures in
+      audit/release status moves. Keep relay-app.tsx's relay.native.notice.*
+      disclosure visible before every relay action in both locales; compare
+      its camera warning against environment-threat-catalog.md E2.
+      Check the rendered disclosures in
       key-add-dialog.tsx, key-add/{create-key-view,import-source-view,
       symmetric-import-view,bundle-confirm-view}.tsx, and
       key-detail/{delete-confirm,destroy-superseded-confirm}.tsx against those
@@ -766,7 +1119,7 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-11-03
+    last_checked: 2026-11-05
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together

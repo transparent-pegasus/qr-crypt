@@ -11,7 +11,7 @@ import {
   ScanLine,
 } from "lucide-react"
 import type { RelaySessionEndReason } from "@/app/boot/boot-controller"
-import { useFeatureSupport } from "@/app/providers"
+import { useFeatureSupport } from "@/app/feature-support"
 import { AnimatedQrFrames } from "@/components/animated-qr-frames"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -67,6 +67,7 @@ const PARSE_ERROR_KEYS: Record<RelayParseErrorCode, MessageKey> = {
 type DialogMode = "capture" | "image" | "playback" | null
 export interface OnlineRelayProps {
   eligible: boolean
+  descriptionKey?: MessageKey
   onEligibilityRefresh?: () => Promise<boolean>
   onSessionAcquire?: (signal: AbortSignal) => Promise<RelayLease | null>
   registerRelaySessionEndHandler?: (
@@ -76,6 +77,7 @@ export interface OnlineRelayProps {
 
 export function OnlineRelay({
   eligible,
+  descriptionKey = "relay.card.description",
   onEligibilityRefresh,
   onSessionAcquire,
   registerRelaySessionEndHandler,
@@ -523,7 +525,7 @@ export function OnlineRelay({
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            {t("relay.card.description")}
+            {t(descriptionKey)}
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
             <Button

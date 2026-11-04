@@ -45,7 +45,7 @@ vi.mock("@/hooks/use-register-sw", () => ({
   useDefaultRegisterSW: () => ({ offlineReady: false }),
 }))
 
-import { FeatureSupportProvider } from "@/app/providers"
+import { FeatureSupportProvider } from "@/app/feature-support"
 import { OnlineRelay } from "@/components/online-relay"
 import { AppError } from "@/crypto/errors"
 import {
