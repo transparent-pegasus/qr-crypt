@@ -4,6 +4,8 @@ import { existingExecutable, mayTerminateChild, validateLaunchInputs } from "./l
 import { redactEvidence } from "./native-fixture"
 
 const sha = "0123456789abcdef0123456789abcdef01234567"
+const helperContents = "inert PowerShell selector fixture; never executed\n"
+const helperSha256 = "eb9c7526e2e524b4386a13d81460b35ae18e54d7cb58e50678059c2ef6fe237a"
 
 test("native evidence removes plain, escaped and forward-slash Windows user paths", () => {
   for (const [source, expected] of [
@@ -31,7 +33,7 @@ test("native evidence removes plain, escaped and forward-slash Windows user path
     .not.toThrow()
 })
 
-test("launcher rejects unsupported hosts, relative executables and mismatched source identities", () => {
+test("launcher rejects unsupported hosts, relative executables and mismatched source identities", async () => {
   expect(() => validateLaunchInputs("linux", undefined, undefined, sha)).toThrow(
     "NATIVE_RELAY_SETUP: Windows is required (host: linux)",
   )
@@ -58,6 +60,36 @@ test("launcher rejects unsupported hosts, relative executables and mismatched so
   expect(
     validateLaunchInputs("win32", "C:\\release\\qr-crypt-relay.exe", sha, sha),
   ).toEqual({ executable: "C:\\release\\qr-crypt-relay.exe", buildSha: sha })
+
+  const { selectPowerShell } = await import("./launcher")
+  expect(selectPowerShell, "launcher must export selected-host validation").toEqual(
+    expect.any(Function),
+  )
+  for (const executable of [
+    undefined,
+    "",
+    "pwsh.exe",
+    ".\\pwsh.exe",
+    "C:pwsh.exe",
+    "\\pwsh.exe",
+    "/pwsh.exe",
+    "\\\\server\\share\\pwsh.exe",
+    "//server/share/pwsh.exe",
+    "\\\\?\\C:\\selected\\pwsh.exe",
+    "C:\\selected\\powershell.exe",
+    "C:\\selected\\pwsh.cmd",
+    "C:\\selected\\other-pwsh.exe",
+    "C:\\selected\\pwsh.exe.old",
+  ]) {
+    await expect(
+      selectPowerShell(
+        executable,
+        { source: sha, pwsh: "C:\\selected\\pwsh.exe", pwsh_sha256: helperSha256 },
+        sha,
+      ),
+      String(executable),
+    ).rejects.toThrow(/^NATIVE_RELAY_SETUP: NATIVE_RELAY_PWSH/)
+  }
 })
 
 test("launcher cleanup refuses an unrelated PID and never kills an exited child", () => {
@@ -89,4 +121,60 @@ test("launcher requires an existing regular executable file before spawning", as
   )
   await writeFile(candidate, "inert launcher validation fixture; never executed")
   expect(await existingExecutable(candidate)).toBe(await realpath(candidate))
+
+  if (process.platform === "win32") {
+    const { selectPowerShell } = await import("./launcher")
+    expect(selectPowerShell, "launcher must export selected-host validation").toEqual(
+      expect.any(Function),
+    )
+    const hostDirectory = testInfo.outputPath("selected host")
+    await mkdir(hostDirectory)
+    const helper = testInfo.outputPath("selected host", "pwsh.exe")
+    await writeFile(helper, helperContents)
+    const executable = await realpath(helper)
+    const expected = { source: sha, pwsh: executable, pwsh_sha256: helperSha256 }
+    const selected = { executable, sha256: helperSha256 }
+    await expect(selectPowerShell(helper, expected, sha)).resolves.toEqual(selected)
+    await expect(
+      selectPowerShell(
+        helper.toUpperCase(),
+        { ...expected, pwsh: executable.toUpperCase() },
+        sha,
+      ),
+    ).resolves.toEqual(selected)
+
+    const missing = testInfo.outputPath("missing host", "pwsh.exe")
+    const directory = testInfo.outputPath("directory host", "pwsh.exe")
+    await mkdir(directory, { recursive: true })
+    for (const path of [missing, directory]) {
+      await expect(
+        selectPowerShell(path, { ...expected, pwsh: path }, sha),
+      ).rejects.toThrow(/^NATIVE_RELAY_SETUP: NATIVE_RELAY_PWSH/)
+    }
+
+    const wrongName = testInfo.outputPath("selected host", "powershell.exe")
+    await writeFile(wrongName, helperContents)
+    await expect(
+      selectPowerShell(wrongName, { ...expected, pwsh: wrongName }, sha),
+    ).rejects.toThrow(/^NATIVE_RELAY_SETUP: NATIVE_RELAY_PWSH/)
+
+    const otherDirectory = testInfo.outputPath("other host")
+    await mkdir(otherDirectory)
+    const otherHelper = testInfo.outputPath("other host", "pwsh.exe")
+    await writeFile(otherHelper, helperContents)
+    for (const identity of [
+      { ...expected, source: "a".repeat(40) },
+      { ...expected, pwsh: await realpath(otherHelper) },
+      { ...expected, pwsh_sha256: "0".repeat(64) },
+      { ...expected, pwsh_sha256: helperSha256.toUpperCase() },
+    ]) {
+      await expect(selectPowerShell(helper, identity, sha)).rejects.toThrow(
+        /^NATIVE_RELAY_SETUP: NATIVE_RELAY_PWSH/,
+      )
+    }
+    await writeFile(helper, helperContents + "changed bytes\n")
+    await expect(selectPowerShell(helper, expected, sha)).rejects.toThrow(
+      /^NATIVE_RELAY_SETUP: NATIVE_RELAY_PWSH/,
+    )
+  }
 })
