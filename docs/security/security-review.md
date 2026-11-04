@@ -689,9 +689,9 @@ T14 residual as they stood at the time.
   the source-to-binary gap.
 - **Bootstrap follow-up, 2026-10-30:** the earlier signer/image correction did
   not patch the installer's embedded v3.0.6 verifier. The merged upstream
-  installer commit and vetted bootstrap digest are recorded in §1.6; the
-  latest tagged installer v4.1.2 remains affected. Recipient-side independent
-  verifier provisioning remains required.
+  installer commit and vetted bootstrap digest are recorded in §1.6. On that
+  date, v4.1.2 was the latest tagged installer and retained the affected
+  bootstrap. Recipient-side independent verifier provisioning remains required.
 
 ### Recorded, not implemented
 
@@ -903,9 +903,9 @@ The separately reviewed CI follow-up `686b6b2df2ef7e957e599820415b285ddabbd262`
 `af595e623eec1ede52d6322f53b635d5def0a95a`. Its embedded and requested Cosign
 are 3.1.3; the Linux amd64 hardcoded SHA-256 is
 `4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71`,
-checked before execution. Latest tagged installer v4.1.2 remains affected;
-this is an upstream-commit exception, not a new release tag. Artifact upload
-v7.0.2/download v8.0.2 use exact SHAs; Wrangler action v4.0.0 and binary
+checked before execution. At that assessment, the latest tagged installer v4.1.2
+remained affected; this is an upstream-commit exception, not a new release tag.
+Artifact upload v7.0.2/download v8.0.2 use exact SHAs; Wrangler action v4.0.0 and binary
 4.155.0 remain selected. Static upstream/source/digest checks support this
 bootstrap correction, separately from the application runs above.
 

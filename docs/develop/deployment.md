@@ -33,8 +33,10 @@ Artifact upload/download use v7.0.2 at
 uses merged upstream [PR #252](https://github.com/sigstore/cosign-installer/pull/252),
 commit `af595e623eec1ede52d6322f53b635d5def0a95a`, which embeds the requested
 Cosign 3.1.3 and checks its vetted hardcoded digest before execution. This is
-an explicit upstream-commit pin: the latest tagged installer v4.1.2 still has
-the affected bootstrap. [Security review §1.6](../security/security-review.md)
+an explicit upstream-commit pin; installer v4.1.2 has the affected bootstrap.
+Checked 2026-11-05: [installer v4.1.3](https://github.com/sigstore/cosign-installer/releases/tag/v4.1.3)
+embeds Cosign 3.1.4. The workflow retains the reviewed 3.1.3 bootstrap
+and matching requested version. [Security review §1.6](../security/security-review.md)
 records the hash, tested source and assurance limits; no hosted CI pass follows
 from this static pin correction.
 
