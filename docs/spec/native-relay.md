@@ -69,12 +69,14 @@ primary/cleanup failures and independently prove candidate drainage and owned
 root/parent removal; uncertainty fails and retains storage. The helper is absent
 from default product builds and the manual kit.
 
-The 2026-11-05 diagnostic at source `5ff18c2f6481eb7bd46cc166b296a5e56861717d`
-measured that original/control distinction and cleanup. Attempt `41869381043`
-remains failed due to its old nested-report aggregation; the maintained full
-18-case/control gate still needs actual Windows verification. This evidence does
-not establish Windows 11 physical/camera behavior, MSIX/Store readiness, offline
-crypto behavior or absence of runtime dependencies.
+On 2026-11-05, source `ae8dffac47489823fc67d75f9c169c8548be672f` passed all
+18 maintained cases and required controls on Windows Server 2025 build 26100,
+WebView2 `156.0.4314.50`. The original EXE and synthetic samples are available for
+Windows 11 x64 manual testing; [the evidence record](../security/security-review.md#112-windows-manual-relay-candidate-2026-11-05)
+identifies the artifact and hashes. Earlier diagnostic/report and process-ownership
+cleanup failures remain recorded; this success does not explain their causes.
+Windows 11 physical/camera behavior, MSIX/Store readiness and offline crypto remain
+unverified. The EXE still requires WebView2 Runtime.
 
 On Windows, navigation cancellation alone can still allow a GET while the host responds. Start with a hidden `about:blank` controller, install HTTP(S) request filters for all resource contexts and source kinds, then navigate to the embedded application and show the window. Reuse the exact-origin predicate and synchronously answer foreign or malformed requests with an empty local 403 response. Failure to install or apply the guard terminates the process. The transient blank page is not an allowed application destination. Verify the actual owned sink as well as request/response evidence; a retained application page alone does not prove rejection. This content-request guard does not cover OS networking, runtime telemetry, DNS/preconnect or a compromised WebView.
 
@@ -102,7 +104,7 @@ The device prohibition, ambient-camera warning and lack of independent audit mus
 
 ## 7. First Windows engineering target
 
-Checked 2026-11-03. The initial target is x64 Windows 11 build 26100 or newer, **on a Microsoft-maintained release and edition with current security updates**. On this date, Home/Pro require 25H2 or newer; Enterprise/Education may use 24H2 while it remains maintained. Require a maintained WebView2 Evergreen runtime with functional baseline major 155 or newer. These are selected engineering floors, not completed minimum-client compatibility measurements. The G0r user agent reported Edg/155; it did not measure a Windows 11 client or all qualifying releases.
+Checked 2026-11-05. The initial target is x64 Windows 11 build 26100 or newer, **on a Microsoft-maintained release and edition with current security updates**. On this date, Home/Pro require 25H2 or newer; Enterprise/Education may use 24H2 while it remains maintained. Require a maintained WebView2 Evergreen runtime with functional baseline major 155 or newer. These are selected engineering floors, not completed minimum-client compatibility measurements. The G0r user agent reported Edg/155; it did not measure a Windows 11 client or all qualifying releases.
 
 The [Windows release-information table](https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information) lists these servicing dates:
 

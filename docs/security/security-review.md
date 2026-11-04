@@ -46,8 +46,8 @@ retained four-suite wire/codec contract. Boot alone keeps a read-only
 Self-investigation and self-authored documents (including this one) are no
 substitute for independent review and do not close the blocker.
 
-Maximum fixture re-verified 2026-11-03 in the passing complete Vitest run
-(105 files / 1,638 tests), including `tests/pq/maximum-artifact-size.golden.test.ts`
+Maximum fixture re-verified 2026-11-05 in the passing complete Vitest run
+(110 files / 1,799 tests at the §1.12 source), including `tests/pq/maximum-artifact-size.golden.test.ts`
 (`maxPlaintext=120,000B`, `name="テスト"` — the literal fixture string):
 
 | artifact | canonical CBOR (bytes) | compatible-preference frames | default-preference frames |
@@ -142,6 +142,16 @@ assurance.
 The source-diff, upgrade, and validation records below retain their original
 dates. The 2026-11-03 recheck changed no package, lockfile, pin, or override;
 its local verification is recorded separately in §1.9.
+
+**Rechecked 2026-11-05 for the §1.12 manual candidate.** The official
+Noble post-quantum and zxing-wasm release signals still match the selected pins;
+their exact-version published GitHub advisory queries returned no entries and
+both frozen package audits passed. Both downloaded NIST errata workbooks have
+the same SHA-256 bytes as the full 2026-11-03 assessment, so its recorded
+selected-source dispositions remain applicable. Package/lock bytes are unchanged;
+this does not replace the dates of the earlier tarball/provenance checks or establish an
+independent audit. The complete 1,799-test run includes the KATs and size goldens;
+§1.12 records the current browser, native and packaged-artifact evidence.
 
 ### @noble/post-quantum 0.7.1 (exact pin; version ranges forbidden)
 
@@ -346,7 +356,8 @@ measurement for the table above.
   detect. Trust also continues to include the lockfile pin, npm provenance
   attestation, and recorded zxing-wasm SHA-256 rather than a zxing-wasm
   from-source rebuild
-- **Not independently audited**; no advisories at the pinned version as of 2026-08-02
+- **Not independently audited**; the exact-version published GitHub advisory query
+  returned no entries on 2026-11-05
 - Consequence for CSP: live `script-src` / `'wasm-unsafe-eval'` facts are owned
   by [threat-model.md](threat-model.md) §2
 - Attacker-controlled camera pixels now reach a C++/Emscripten parser. See
@@ -1118,6 +1129,74 @@ all 45 packaged E2E cases with retries disabled. ZIP SHA-256
 `b900687a05e63b00b78805fd681d608c527e8094bcbdcf9c8aa6220d61bbfe03`
 and all 17 extracted members matched before/after testing. This unsigned local
 PWA artifact is not a later native candidate's artifact.
+
+## 1.12 Windows manual relay candidate (2026-11-05)
+
+Source `ae8dffac47489823fc67d75f9c169c8548be672f` passed the maintained
+[Windows execution](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41913956770),
+attempt 1: **18 passed, no skips, retries, flaky results or global errors**.
+The runner was Windows Server 2025 build 26100 with WebView2 `156.0.4314.50`.
+All 14 actual-native records identify the original EXE, source, locks and owned
+process/window/CDP endpoint, with Medium RID 8192 and `elevated=false`.
+The other four cases exercise portable launcher/evidence boundaries.
+
+The original download retained native `default` behavior without a CDP save path.
+Matching canceled GUIDs and complete empty before/final inventories establish
+the measured denial. The isolated one-site allow mutant failed the same denial
+assertion with a completed GUID and the exact contained 27-byte inert payload.
+Both records passed the independent report replay, including helper normal
+exit/EOF, candidate drainage, and owned root/parent removal. The linked helper
+manifest matched the product manifest; source/EXE/locks and selected PowerShell
+identities were retained. The helper is excluded from default builds and the kit.
+The High-token guard, compiled navigation/ACL/hide controls, launcher exit/timeout
+and descendant-cleanup controls also passed. Native clipboard text/PNG readback,
+synthetic-camera lifecycle, exact embedded assets and locally answered navigation
+with zero owned-sink requests passed on this candidate.
+
+Earlier failures remain failures. The `5ff18c2` diagnostic execution `41869381043`
+measured original/mutant download behavior but failed nested-report aggregation.
+Source `392589b51d5e5bcd078c14685a734d2f45a26c32`
+([execution](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41906878486))
+passed 17/18: its download was canceled, but a process-membership guard rejected
+cleanup, retained the directories and correctly blocked acceptance. The rejected
+process identity was not captured, so its cause is unresolved. The new candidate
+adds bounded rejection diagnostics without changing ownership/deletion guards or
+deadlines; its success is not evidence of a causal fix. Separately, two runtime
+string checks now reject malformed GUID/frame identifiers, with 50 independent
+regressions passing after the recorded 16 failing cases before the fix.
+
+The [Windows 11 x64 manual kit](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41913956770/artifacts/13365052221)
+contains exactly 11 files: original EXE, build identity, Japanese instructions,
+sample manifest and seven synthetic samples. Downloaded ZIP/member hashes,
+sample provenance, CRLF text bytes and the actual EXE's AMD64/PE32+ identity were
+verified. Direct PE imports contained no VCRUNTIME, MSVCP or WebView2Loader DLL;
+this is not a claim that dynamic runtime dependencies are absent. WebView2 Runtime
+remains required. The CI artifacts have limited retention.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Original `qr-crypt-relay.exe` | `fbde9fd90bb3bdb5c0c68589107847b66e9a0d59229da3a67c36f05227445cc9` |
+| Manual kit ZIP (3,103,164 bytes) | `193603c997094be3831bb779434c076e248e3cfa666c25799fefe40631ba9e2e` |
+| Evidence ZIP (165 members) | `4b9f3132926d6ce9ed337bee09da53ef9c6b54c3451c2cd12c907f7dc5d2e05d` |
+
+[Ordinary CI](https://github.com/transparent-pegasus/qr-crypt/actions/runs/41913956836)
+passed 1,799 tests in 110 files, all 45 web E2E cases, and 11 relay browser cases
+with three existing, individually identified API skips. Typecheck and both package
+audits passed; lint retained 13 existing warnings and no errors. Native dependency
+checks passed; `RUSTSEC-2024-0370` and `RUSTSEC-2024-0429` remain informational
+notices outside the inspected Windows target graph. A separate local deterministic
+production rebuild and all 45 packaged PWA E2E cases passed on the same source,
+with retries disabled and all 17 members unchanged before/after execution
+(ZIP SHA-256 `b58a8cf39ebee6b5c45efb505aae9e652ba26ef3f6dd0610706bcbca81111f40`).
+That PWA archive is not the Windows kit.
+
+This milestone enables manual tests of the **unsigned developer relay**, using
+synthetic samples on a separate online Windows PC. Windows 11 client and physical
+camera behavior are the next measurements. MSIX, AppContainer, Store publication,
+fixed offline-release interoperability and independent third-party audit remain
+unapproved. CI success and these hashes do not attest a benign compiler, runtime
+or OS, and do not authorize use on a device that holds or has held keys,
+identities or plaintext.
 
 ## 2. Prohibited Claims (UI / README / CI)
 
