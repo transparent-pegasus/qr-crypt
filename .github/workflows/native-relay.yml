@@ -217,6 +217,10 @@ jobs:
           if ((Get-FileHash -Algorithm SHA256 $env:NATIVE_RELAY_EXE).Hash.ToLowerInvariant() -cne $build.executable_sha256) { throw 'The original executable changed during the integrity control' }
           exit 0
 
+      - name: Stop after the original High helper observation
+        if: always()
+        run: throw 'Original-helper observation only; native acceptance remains incomplete'
+
       - name: Prove a permissive policy fails the negative tests
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
