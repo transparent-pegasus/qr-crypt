@@ -1472,3 +1472,82 @@ for (const damagedFile of ["reportPath", "expectedPath"]) {
     assert.notEqual(child.status, 0, child.stdout)
   })
 }
+
+const formattedDenial =
+  "Error: NATIVE_DOWNLOAD_DENIAL: same original denial assertion for every EXE\n\n" +
+  "\u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\n" +
+  'Expected: \u001b[32m"\u001b[7mdeni\u001b[27med"\u001b[39m\n' +
+  'Received: \u001b[31m"\u001b[7mfail\u001b[27med"\u001b[39m'
+
+function setMutantAssertion(value, message) {
+  result(value).error.message = message
+  result(value).errors[0].message = message
+  editAttachment(value, "native-download-classifications.json", (item) => {
+    item.primary = message
+  })
+}
+
+function formattedMutantReport() {
+  const value = report("mutant")
+  setMutantAssertion(value, formattedDenial)
+  const location = "    at C:\\synthetic\\tests\\policy.spec.ts:73:9"
+  result(value).error.stack = `${formattedDenial}\n${location}`
+  result(value).errors[0].message +=
+    "\n\n  71 |         beforeOriginal,\n" +
+    '  72 |         "NATIVE_DOWNLOAD_DENIAL: same original denial assertion for every EXE",\n' +
+    '> 73 |       ).toBe("denied")\n' +
+    "     |         ^\n" +
+    "  74 |       expect(context.pages()).toEqual([page])\n" +
+    location
+  return value
+}
+
+test("accepts ANSI denial messages with an appended reporter source frame and stack", () => {
+  assert.equal(
+    validateDownloadReport(formattedMutantReport(), expected("mutant")),
+    undefined,
+  )
+})
+
+test("actual CLI accepts the ANSI denial with reporter source frame and stack", async (t) => {
+  const { reportPath, expectedPath } = await savedInputs(
+    t,
+    formattedMutantReport(),
+    expected("mutant"),
+  )
+  const child = runNode([fileURLToPath(moduleUrl), reportPath, expectedPath])
+  assert.equal(child.status, 0, child.stderr)
+})
+
+rejections(
+  "denial markers in every field cannot replace the intended assertion",
+  [
+    ["wrong Expected", formattedDenial.replace(/^Expected:.*$/m, 'Expected: "allowed"')],
+    ["absent Expected", formattedDenial.replace(/^Expected:.*\n/m, "")],
+    ["wrong Received", formattedDenial.replace(/^Received:.*$/m, 'Received: "saved"')],
+    ["absent Received", formattedDenial.replace(/\nReceived:.*$/m, "")],
+    [
+      "different assertion with the same marker and values",
+      formattedDenial.replace(
+        "same original denial assertion for every EXE",
+        "a different denial assertion",
+      ),
+    ],
+  ].map(([label, message]) => [label, (value) => setMutantAssertion(value, message)]),
+  "mutant",
+)
+
+for (const field of ["error.message", "errors[0].message", "classifications.primary"]) {
+  test(`rejects a different denial Received value in ${field}`, () => {
+    const value = report("mutant")
+    const message = denial.replace('Received: "failed"', 'Received: "saved"')
+    if (field === "error.message") result(value).error.message = message
+    else if (field === "errors[0].message") result(value).errors[0].message = message
+    else {
+      editAttachment(value, "native-download-classifications.json", (item) => {
+        item.primary = message
+      })
+    }
+    assert.throws(() => validateDownloadReport(value, expected("mutant")))
+  })
+}
