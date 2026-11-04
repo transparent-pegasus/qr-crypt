@@ -15,6 +15,16 @@ details and private privacy contact, and reconcile the Store declarations with t
 exact submitted package. All of these publication/account facts remain pending.
 The repository notice alone is not a live Store policy or a legal-compliance finding.
 
+Static pages are prepared for the existing site at
+`https://qr-crypt.pages.dev/about/native-relay-privacy.html` (English) and
+`https://qr-crypt.pages.dev/about/native-relay-privacy-ja.html` (Japanese). These are
+intended production paths, **not verified live URLs**. Check the actual policy
+document and language links after authorized deployment; an HTTP 200 alone may
+be the site's app-shell fallback. The pages load no app script and are excluded
+from the offline app's precache, app-shell navigation fallback and release ZIP.
+That exclusion does not prevent ordinary browser/HTTP caching or create a
+separate-origin security boundary.
+
 Microsoft's [Store policies](https://learn.microsoft.com/en-us/windows/apps/publish/store-policies)
 §§10.5.1 and 10.7, checked 2026-11-04, require applicable privacy information and
 localized descriptions for declared languages. Recheck them at submission. The

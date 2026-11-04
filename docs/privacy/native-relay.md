@@ -2,6 +2,9 @@
 
 [日本語](../locales/ja/privacy/native-relay.md)
 
+The [prepared web-page source](../../public/about/native-relay-privacy.html) contains
+the same privacy information. Its production URL has not yet been verified live.
+
 Reviewed 2026-11-04. This notice describes the dedicated Windows relay under
 development. It does not describe the offline encryption PWA or establish that a
 native app has been released. Distribution status is recorded in the

@@ -262,6 +262,8 @@ units:
     files:
       - docs/privacy/native-relay.md # English dedicated-relay notice
       - docs/locales/ja/privacy/native-relay.md # equivalent Japanese notice
+      - public/about/native-relay-privacy.html # prepared English policy page
+      - public/about/native-relay-privacy-ja.html # equivalent Japanese page
       - docs/develop/native-relay-distribution.md # listing drafts, fixed-peer ledger and account/publication prerequisites
     why: >
       Privacy claims, listing text, Store/account guidance and release records
@@ -285,6 +287,13 @@ units:
       do not invent contact, identity, credential/recovery or publication facts.
       Reconcile developer-EXE evidence with the separate native browser-matrix
       section while retaining unmeasured client/package/physical gates.
+      Keep the two static HTML pages semantically aligned with their Markdown
+      notices, including warnings, metadata, storage and platform boundaries.
+      Verify actual copied page content, reciprocal language links and assets;
+      no app script, event handler or API belongs in these documents. Preserve
+      their exclusion from offline precache, app-shell navigation fallback,
+      offline release ZIP and the dedicated relay bundle. Cache exclusion does
+      not promise absence of browser/HTTP caches or same-origin isolation.
     verify: |
       Verify relative links and English/Japanese semantic agreement; inspect each
       privacy claim against source and every completed ledger field against its
@@ -294,6 +303,10 @@ units:
       Preserve existing PWA measurements, compatibility invariants and product,
       dependency, lock and workflow bytes. Record actual official-source check
       dates and any unavailable guidance. Stamp only after these checks pass.
+      Inspect desktop and narrow pages with JavaScript disabled, keyboard/skip
+      navigation and no horizontal overflow; inspect static source separately
+      for scripts and unexpected resource references. Confirm built-page content
+      and cache/package/relay exclusion, not just an HTTP success status.
 
   - id: crypto-noble
     # policy changed 2026-08-01 by owner request, no-compatibility vocabulary purge, see .tmp/design-20260801-sym-v2-and-legacy-removal.md

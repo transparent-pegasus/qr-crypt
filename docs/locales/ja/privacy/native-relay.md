@@ -2,6 +2,9 @@
 
 [English](../../../privacy/native-relay.md)
 
+[公開用ページのソース](../../../../public/about/native-relay-privacy-ja.html)にも、同じ
+プライバシー情報を用意しています。本番 URL での公開は、まだ確認していません。
+
 確認日: 2026-11-04。この文書は、開発中の Windows 専用中継版について説明します。
 オフライン暗号化 PWA の説明ではなく、ネイティブ版の公開を示すものでもありません。
 配布状況は[配布手順と台帳](../../../develop/native-relay-distribution.md)に記録します。
