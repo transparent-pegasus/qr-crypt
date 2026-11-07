@@ -17,7 +17,7 @@
 # it here (enforced by the one-line rule in /AGENTS.md).
 
 version: 1
-updated: 2026-11-03 # last revision of this registry itself
+updated: 2026-11-08 # last revision of this registry itself
 
 units:
   - id: deps
@@ -766,7 +766,7 @@ units:
   - id: readme
     category: docs
     cadence_days: 30
-    last_checked: 2026-11-03
+    last_checked: 2026-11-08
     files:
       - README.md # general-audience entry point (en)
       - README.ja.md # same content, ja; both must move together
