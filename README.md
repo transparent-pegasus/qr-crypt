@@ -2,233 +2,191 @@
 
 日本語版: [README.ja.md](README.ja.md)
 
-## Overview
-
 > Any device that has ever been online may already be compromised. Key exchange,
 > encryption, and decryption must therefore happen on a device that stays fully offline.
 
-Once a device has been set up as the offline device, it never goes back online. To retire
-it, sanitize or destroy the medium — see the disclaimer below for why the app's own wipe
-alone is not enough.
+QR Crypt is a Progressive Web App for a device you keep offline for good. You type a
+message; the app encrypts it there and shows the ciphertext as a QR code. Your everyday
+online phone scans the code and sends it as text through any messenger. The recipient
+reverses the steps and decrypts on their own offline device.
 
-QR Crypt is a Progressive Web App you install on a device you then keep permanently
-offline. You type a message; the app encrypts it on that device and shows the ciphertext on
-screen as a QR code. Your everyday online phone scans that code, turns it into a text
-string, and sends it through any ordinary messenger. The recipient does the same in
-reverse and decrypts the message on the offline device. Anyone watching the
-transfer can still read the message type, stable shared-key or recipient-key identifier,
-size, and frame count. Shared-key messages also expose the sender-reported creation time;
-repeated key identifiers allow transfers to be linked.
+## How it works
 
-**What it does**: encryption and decryption on the offline device (AES-256-GCM, or the
-post-quantum ML-KEM / ML-DSA suites), key generation and management, QR display and
-scanning, and offline startup as a PWA.
+- **The offline device does the work.** It generates and manages keys, encrypts, and
+  decrypts, with no CDN at runtime. Once set up, it never goes back online. To retire it,
+  sanitize or destroy its storage: the app's own wipe is not enough (see
+  [Security](#security)).
+- **Keys travel face to face.** Keys and public keys are exchanged in person as QR codes:
+  no server, cloud key escrow, or account sync. Within app-managed persistent storage,
+  key records live only in the offline device's IndexedDB. A shared AES key travels as an
+  exportable `OCK2` secret-key QR.
+- **Fingerprints confirm identities.** Before you confirm an imported or saved identity,
+  compare all 64 hex digits of its identity fingerprint with the intended person over an
+  independent channel. Shared-key import checks all 64 key-fingerprint digits the same
+  way. An acknowledgement proves neither the comparison nor a trusted channel
+  ([threat model](docs/security/threat-model.md) T6).
+- **Only light crosses the gap.** On the QR path, data moves between the offline and
+  online devices as a QR code on one screen and a camera on the other. The app keeps no
+  message ciphertext. Exported files (PNG, or a ZIP of frames) on removable media and
+  clipboard text are separate paths: they fall outside this claim, the app's control,
+  and its wipe.
+- **Observers still see metadata.** Anyone watching a transfer sees the message type, the
+  stable shared-key or recipient-key identifier, the size, and the frame count.
+  Shared-key messages also show the sender-reported creation time. Repeated key
+  identifiers link transfers.
+- **Standard algorithms only.** AES-256-GCM, or the post-quantum ML-KEM-1024 / ML-DSA-87
+  suite. The claim is about where they run.
 
-**What it does not do**: transmit plaintext or private keys off the device, store keys in
-the cloud, use custom cryptographic algorithms, depend on CDNs at runtime, treat an
-offline indicator as proof of safety, or keep message ciphertext inside the app. Files you
-export yourself (PNG, or a ZIP of the frames) and anything you copy to the clipboard are outside the
-app's control and outside the scope of its wipe.
+## Getting started
 
-### How it differs from other encryption apps
+### Route A: signed ZIP (default)
 
-One thing: it is operated fully offline. That splits into two habits the app enforces.
+Route A keeps the offline device from ever contacting the live app origin. Before you
+install, verify the signed ZIP independently: Cosign policy values from a separate
+channel, the checksums, and an independent rebuild-and-compare. Follow the
+[complete procedure](docs/develop/install-route-a/README.md). The archive's `INSTALL.txt`
+is its self-contained copy that reaches the offline device.
 
-* **Key exchange happens offline.** Keys and public keys are exchanged face to face as QR
-  codes. There is no server in between, no cloud key escrow, no account sync. Within
-  app-managed persistent storage, key records live only in the offline device's IndexedDB.
-  The documented exchange path deliberately displays exchange material as QR codes; for a
-  shared AES key, that is an exportable `OCK2` secret-key QR.
-* **Data moves between the offline and online devices as QR codes.** On the QR transfer
-  path, only light crosses that gap: a QR code on one screen, a camera on the other.
-  Exported files carried on removable media and text carried through the system clipboard
-  are separate alternatives, outside this optical claim and the app's control as disclosed
-  above.
-
-The algorithms themselves are the standard ones. The claim is about where they are run.
-
-## Requirements
-
-* **Two devices per person.** One that stays permanently offline and runs QR Crypt, and
-  one ordinary online device used only to carry the scrambled text.
-* **Browser.** Android Chrome and iOS Safari are the primary targets; camera QR scanning
-  requires Safari/iOS 16 or newer. Windows Chrome, macOS Safari, and Edge are recorded as
-  reference environments
-  ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)). Without Web Crypto or
-  IndexedDB the app stops at a start-up screen and no feature is available. The online
-  optical relay additionally needs the Web Locks API: the proof that the origin holds no
-  keys is taken while every sensitive write is excluded origin-wide, and a browser that
-  cannot hold that lock is refused relay eligibility rather than trusted.
-* **Origin.** The app must be served over `https://`, or locally over
-  `http://127.0.0.1`. Opening `index.html` from a `file://` path does not work, and plain
-  HTTP over a LAN address does not either — the camera and the service worker are not
-  available in those contexts.
-* **WebAssembly.** Camera QR scanning uses a WebAssembly decoder, and there is no
-  JavaScript fallback:
-  * Where WebAssembly is disabled or blocked, the reader readiness gate disables the scan
-    control and refuses camera access before `getUserMedia`. A terminal QR-reader-blocked
-    message is shown; on iPhone it directs the user to Safari 16 or newer. Nothing can be
-    scanned.
-  * Where WebAssembly runs without JIT compilation (some hardened or lockdown
-    configurations), decoding is expected to be much slower. How much slower has not been
-    measured on real devices ([docs/develop/browser-matrix.md](docs/develop/browser-matrix.md)).
-  * QR display does not follow the local decoder signal: the displaying device cannot know
-    what the peer camera can read. One labelled compatibility switch lets you choose.
-    Off is the shipped default (1,000 B at a 200 ms minimum dwell); on is the compatible
-    preference (100 B at a 2,000 ms minimum dwell). If an artifact cannot fit at 100 B, its
-    effective density is clamped upward for that artifact only and is not saved. At the
-    1,000 B clamp, the switch still keeps the longer 2,000 ms dwell. Contract:
-    [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) §6.
-  * The only remaining input path is then typing or pasting the payload text by hand, and
-    that field accepts a complete payload string — not the individual QR frames. A
-    post-quantum message is split across many frames, and post-quantum public keys and
-    identities are always carried as frames too, so without a working camera neither
-    post-quantum messages nor post-quantum key exchange are practical. AES-256 keys and
-    messages remain single payload strings.
-
-## Usage
-
-### Install route A: signed ZIP
-
-This is the default route. It keeps the offline device from ever contacting the live app
-origin. Independent verification of the signed ZIP — Cosign policy values from a separate
-channel, checksum check, and an independent rebuild-and-compare — is required before
-installation. The complete procedure is in
-[docs/develop/install-route-a/](docs/develop/install-route-a/README.md). The archive's
-`INSTALL.txt` is the self-contained copy that reaches the offline device; its
-verification contract is in §§2–5 of that procedure.
-
-### Install route B: direct-origin PWA
+### Route B: direct-origin PWA
 
 1. On the device you will keep offline, open the app URL in a browser.
 2. Install it with the browser's **Install** / **Add to Home Screen** action.
 3. Wait until the install screen reports **Offline-use readiness: Ready**.
-4. Disconnect that device from every network and leave it that way.
-5. Use the app from the normal screens that appear once the device is offline.
+4. Disconnect the device from every network, and keep it that way.
+5. Use the app from the normal screens, which appear once the device is offline.
 
-Route B provides no integrity check that the receiving user can perform. High-assurance
-use must use Route A only — including why Route A's `127.0.0.1` origin avoids the live
-beacon residual:
-[docs/develop/install-route-a/](docs/develop/install-route-a/README.md).
+Route B offers no integrity check you can perform (§1 of the
+[Route A procedure](docs/develop/install-route-a/README.md) explains the risk). A Route B
+device also keeps the live origin: after any reconnection, its reachability probe reaches
+that origin before wipe can fire. Once Route A's install server stops and its reserved
+port stays unused, its `127.0.0.1` origin has no peer to answer. High-assurance use must
+use Route A only.
 
-### Sending a message payload through an online device
+## Relay
 
-The two offline devices do not have to be in the same room. A third, online device carries
-the message-payload QR text through any messenger. Ciphertext is the intended workflow,
-not a property the relay can authenticate. Use an online device that has never held QR
-Crypt keys.
+The two offline devices need not share a room. A third, online device carries the
+message text through any messenger. Use an online device that has never held QR Crypt
+keys. Carrying only ciphertext is the intended workflow, not something the relay can
+verify.
 
-For AES-256-GCM (`sym-message` / `OCA2`), the offline device always emits exactly one
-OCF2 frame (single-QR hard constraint), and every OCF2 receiver refuses a multi-frame
-`sym-message`. The post-quantum path remains a multi-frame OCF2 transfer. The relay
-accepts only validated OCF2 frames declaring `pq-message` or `sym-message`.
+1. **Sender's offline device:** encrypt. AES shows one OCF2 frame; a post-quantum message
+   shows a frame sequence.
+2. **Sender's online device:** on the **Relay** page, use **QR → Text** to collect every
+   frame, then copy the text into a messenger.
+3. **Recipient's online device:** on the **Relay** page, paste the text into
+   **Text → QR** and play the frames back.
+4. **Recipient's offline device:** scan the frames. Only this device authenticates the
+   assembled message (AEAD, plus ML-DSA for post-quantum messages).
 
-1. **Sender's offline device** — encrypt as usual and display the single OCF2 frame for
-   AES, or the OCF2 frame sequence for a post-quantum message.
-2. **Sender's online device** — open the **Relay** page, use **QR → Text**, collect
-   every OCF2 frame for the transfer, and copy the resulting text. That clipboard copy
-   can persist or sync outside the app, and outside any wipe.
-3. **Recipient's online device** — open the **Relay** page, paste the text into
-   **Text → QR**, and play the OCF2 frames back for the recipient's camera.
-4. **Recipient's offline device** — scan the frames. Only this device authenticates the
-   assembled artifact (AEAD, and ML-DSA for post-quantum messages).
+For a single-frame message, **QR → QR** on the sender's online device replaces steps 2
+and 3. It re-renders the frame as a QR image for a messenger that accepts images, and the
+recipient scans it straight from the chat screen. It validates the frame exactly like
+**QR → Text**, decrypts or authenticates nothing, and refuses multi-frame (post-quantum)
+transfers.
 
-When the whole message fits in one OCF2 frame — always the case for AES — steps 2 and 3
-have a shorter alternative on the sender's online device: **QR → QR** captures that single
-frame and re-renders it as a QR image to copy and paste into a messenger that accepts
-images, so the recipient scans it straight from the chat screen. It is only a convenience
-on the same hop: the frame is validated exactly as **QR → Text** validates it, and nothing
-is decrypted or authenticated on the way. A multi-frame transfer — the post-quantum path —
-is refused there and stays on **QR → Text**. The image copy carries the same residual as
-the text copy: the PNG can persist or sync outside the app, and outside any wipe.
+Copied text and images can persist or sync outside the app, and outside any wipe. The
+relay accepts only validated OCF2 `pq-message` and `sym-message` frames, never keys.
+Allowlist and residuals: [threat model](docs/security/threat-model.md) T19 / T21.
 
-Public keys and identities are still exchanged face to face. The relay accepts only
-canonical OCF2 `pq-message` or `sym-message` frames, validates the assembled artifact
-before playback, and does not authenticate accepted opaque bytes — full allowlist and
-residual: [docs/security/threat-model.md](docs/security/threat-model.md) T19 / T21.
+## Requirements
 
-Before confirming an imported or saved public identity, compare **all 64
-hexadecimal digits of the identity fingerprint** with the intended person
-through an independent channel. The display groups digits in fours; the
-separate KEM and signing fingerprints are supplementary. Shared-key import
-also requires comparing all 64 key-fingerprint digits. An acknowledgement
-cannot establish that the comparison happened or that the channel was trusted.
+- **Two devices per person:** one kept offline for good, one online for the relay.
+- **Browser:** Android Chrome and iOS Safari are the primary targets; camera scanning
+  needs Safari/iOS 16 or newer. Windows Chrome, macOS Safari, and Edge are reference
+  environments ([browser matrix](docs/develop/browser-matrix.md)). Without Web Crypto or
+  IndexedDB, the app stops at its start-up screen. The relay also needs the Web Locks
+  API; a browser without it cannot relay.
+- **Origin:** `https://`, or `http://127.0.0.1` locally. A `file://` path or plain HTTP on
+  a LAN address does not work: the camera and the service worker are unavailable there.
+- **WebAssembly:** camera scanning uses a WebAssembly decoder with no JavaScript fallback.
+  If WebAssembly is blocked, the app disables scanning before any camera access and shows
+  a blocked-reader message; on iPhone it points to Safari 16 or newer. Without JIT (some
+  hardened or lockdown modes), decoding is expected to be much slower; how much is
+  unmeasured on real devices.
+- **Without camera scanning:** you can only type or paste a complete payload string, not
+  single frames. Post-quantum messages, public keys, and identities always travel as
+  frames, so they are impractical without a camera. AES keys and messages stay single
+  strings.
+- **Display:** QR display ignores the local decoder, because the sender cannot know what
+  the peer camera reads. A labelled compatibility switch shows smaller frames for longer.
+  Values and per-artifact clamps: [QR protocol](docs/spec/qr-protocol-v2.md) §6.
 
 ## Encryption
 
-| Mode | When to use it |
+| Mode | Use it for |
 | --- | --- |
-| **Shared-key mode** (default; AES-256-GCM, HKDF per message) | One-to-one messages, with a secret the two of you shared in person. Each message travels in exactly one QR code. Shared keys can be rotated; superseded generations still decrypt. |
-| **Public-key mode** (ML-KEM-1024 + ML-DSA-87 + AES-256-GCM) | Several senders writing to one recipient, or anywhere you do not want a sender holding a secret that can decrypt. ML-KEM establishes the message secret from the recipient's public key and ML-DSA confirms the sender. The body is AES-256-GCM either way; the signature and public-key data make the message larger, so it becomes a sequence of QR codes. |
+| **Shared key** (default; AES-256-GCM, HKDF per message) | One-to-one messages, with a secret you shared in person. Each message is exactly one QR code. Keys rotate; superseded generations still decrypt. |
+| **Public key** (ML-KEM-1024 + ML-DSA-87 + AES-256-GCM) | Many senders to one recipient, or no sender holding a secret that decrypts. ML-KEM sets the message secret from the recipient's public key; ML-DSA confirms the sender. Signatures and key data make each message a sequence of QR codes. |
 
-For post-quantum identities and shared keys, the rotation cadence is the granularity of
-forward secrecy. Rotation retains superseded generations for decryption, so every envelope
-addressed to an older generation remains decryptable until you explicitly discard that
-generation.
+For post-quantum identities and shared keys, rotation cadence sets the granularity of
+forward secrecy. Superseded generations stay for decryption, so envelopes addressed to
+them stay decryptable until you discard that generation.
 
-An exact authenticated envelope already received in this session is flagged before its
-contents are shown. Post-quantum messages also refuse the same authenticated message ID
-arriving with different ciphertext. Symmetric messages carry no message ID, so their exact
-canonical envelope hash is the replay identity. The check is session-scoped: it restarts
-when the app reloads.
+An exact authenticated envelope seen earlier in this session is flagged before its
+contents show. A post-quantum message ID that returns with different ciphertext is
+refused. The check is session-scoped and resets on reload
+([threat model](docs/security/threat-model.md) §5).
 
-The post-quantum suite is **experimental** and **not independently audited**. QR Crypt
-adopts implementations of the FIPS 203 / FIPS 204 algorithms; that does not confer FIPS 140
-validation or an independent security assessment. Current status and blockers:
-[docs/security/security-review.md](docs/security/security-review.md).
+The single post-quantum suite is **experimental** and **not independently audited**. It
+implements the FIPS 203 / FIPS 204 algorithms; that is not FIPS 140 validation or an
+independent security assessment. Status and blockers:
+[security review](docs/security/security-review.md).
 
-## Documentation
+## Security
 
-* [docs/spec/qr-protocol-v2.md](docs/spec/qr-protocol-v2.md) — QR protocol specification (v2: post-quantum and symmetric), including the user-selected display preference and per-artifact density clamps
-* [docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md) — Boot / wipe-on-online contract
-* [docs/security/threat-model.md](docs/security/threat-model.md) — Threat model
-* [docs/security/environment-threat-catalog.md](docs/security/environment-threat-catalog.md) — Physical and operational threat catalog ([日本語](docs/locales/ja/security/environment-threat-catalog.md))
-* [docs/security/security-review.md](docs/security/security-review.md) — Security review record (v2, audit classification)
-* [docs/develop/development.md](docs/develop/development.md) — Tech stack, setup, commands, environment variables
-* [docs/develop/deployment.md](docs/develop/deployment.md) — Cloudflare Pages deployment and CI flow
-* [docs/develop/install-route-a/](docs/develop/install-route-a/README.md) — Complete Route A signed-ZIP install procedure ([日本語](docs/locales/ja/develop/install-route-a/README.md))
-* [docs/develop/browser-matrix.md](docs/develop/browser-matrix.md) — Browser verification matrix and reference measurements
-* [docs/develop/deviations.md](docs/develop/deviations.md) — Managed deviations from the specification
-* [SECURITY.md](SECURITY.md) — Reporting a vulnerability
-* [design-system/](design-system/) — Archived design snapshots and provenance derived from ui-ux-pro-max; not current implementation specifications
-* [LICENSE](LICENSE) — Apache License 2.0, under which this project is distributed
-* [design-system/PROVENANCE.md](design-system/PROVENANCE.md) — Provenance of the archival design-system exports, which include MIT-licensed generator output
+The only guarantee: the app does not intentionally send plaintext or private keys off the
+device.
 
-## Security assumptions and disclaimers
+Out of scope, as the in-app **About security** screen also states:
 
-The only guarantee this app makes is that the application does not intentionally transmit
-plaintext or private keys off the device.
-
-The following are outside the scope of defense, and are stated in the in-app "About
-security" screen as well:
-
-* Compromise of the OS, browser, or firmware
-* Keyloggers, screen recording, screenshots
-* Malware that captures camera frames
-* Supply-chain compromise at first PWA fetch or reinstallation
-* Physical theft of the device
-* The user's own accidental sharing of a secret QR
-* Loss of keys through browser data deletion
+- Compromise of the OS, browser, or firmware
+- Keyloggers, screen recording, screenshots
+- Malware that captures camera frames
+- Supply-chain compromise at first PWA fetch or reinstallation
+- Physical theft of the device
+- Your own accidental sharing of a secret QR
+- Loss of keys through browser data deletion
 
 **An offline indicator is not proof of safety.** It only reports the current network
 state.
 
-**Going online is for installation and for the relay page — nothing else.** While online,
-encryption, decryption, key management, and settings stay blocked. If the app
-goes online while in use, plaintext and decryption results are cleared immediately.
+**Go online only to install or to use the Relay page.** While online, encryption,
+decryption, key management, and settings stay blocked. If the app goes online during use,
+it clears plaintext and decryption results at once.
 
-**wipe-on-online** (default ON) fires only when a network is confirmed, and then attempts
-best-effort *logical* deletion of local data — physical erasure is not guaranteed (LevelDB
+**wipe-on-online** (default ON) fires only when a network is confirmed. It attempts
+best-effort *logical* deletion of local data; physical erasure is not guaranteed (LevelDB
 is append-only; SSDs use wear leveling). Even a full device format does not guarantee
 erasure on flash media. When assurance matters, use a media-appropriate sanitization
 procedure (for example NIST SP 800-88), or destroy the media. Details:
-[docs/spec/boot-and-reset-v2.md](docs/spec/boot-and-reset-v2.md).
+[boot and reset](docs/spec/boot-and-reset-v2.md).
 
-**There is no supported in-app upgrade.** If the installed origin becomes reachable,
-the browser's service-worker lifecycle can fetch and activate replacement code. Permanent
-offline operation is a deployment requirement, not a browser guarantee that code stays
-unchanged ([threat model, §5](docs/security/threat-model.md)). To use a new version,
-sanitize the device and install fresh. Never bring a device that holds or has held keys,
-identities, or plaintext-bearing state back online without sanitizing it first.
+**No in-app upgrade.** If the installed origin becomes reachable, the browser's
+service-worker lifecycle can fetch and activate replacement code. Permanent offline
+operation is a deployment requirement, not a browser guarantee
+([threat model](docs/security/threat-model.md) §5). To use a new version, sanitize the
+device and install fresh. Never bring a device that holds or has held keys, identities,
+or plaintext-bearing state back online without sanitizing it first.
 
-This project is distributed under the Apache License 2.0 ([LICENSE](LICENSE)).
+## Documentation
+
+- **Specs:** [QR protocol](docs/spec/qr-protocol-v2.md) ·
+  [Boot and wipe-on-online](docs/spec/boot-and-reset-v2.md) ·
+  [Spec deviations](docs/develop/deviations.md)
+- **Security:** [Threat model](docs/security/threat-model.md) ·
+  [Physical and operational threats](docs/security/environment-threat-catalog.md)
+  ([日本語](docs/locales/ja/security/environment-threat-catalog.md)) ·
+  [Security review](docs/security/security-review.md) ·
+  [Reporting a vulnerability](SECURITY.md)
+- **Install and develop:** [Route A install](docs/develop/install-route-a/README.md)
+  ([日本語](docs/locales/ja/develop/install-route-a/README.md)) ·
+  [Browser matrix](docs/develop/browser-matrix.md) ·
+  [Development setup](docs/develop/development.md) ·
+  [Deployment and CI](docs/develop/deployment.md)
+- **Archive:** [design-system](design-system/), historical design snapshots and their
+  provenance; not a current specification.
+
+## License
+
+[Apache License 2.0](LICENSE). The archived design-system exports include MIT-licensed
+generator output; see [PROVENANCE](design-system/PROVENANCE.md).
